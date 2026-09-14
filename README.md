@@ -46,7 +46,13 @@ I also spent way too much time on the animations. Scrolling feels bouncy, button
 
 ## Screenshots
 
-Coming soon.
+<p align="center">
+  <img src="assets/screenshots/home.png" width="19%" alt="Home" />
+  <img src="assets/screenshots/player.png" width="19%" alt="Now playing" />
+  <img src="assets/screenshots/lyrics.png" width="19%" alt="Synced lyrics" />
+  <img src="assets/screenshots/options.png" width="19%" alt="Song options" />
+  <img src="assets/screenshots/about.png" width="19%" alt="About" />
+</p>
 
 ## Want to try it?
 
