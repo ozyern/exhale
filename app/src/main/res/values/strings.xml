@@ -981,4 +981,9 @@ Exhale will only extract your token, and everything else is stored locally.</str
     <string name="update_releases_page_desc">Downloads, notes and older builds</string>
     <string name="about_tagline">Music, exhaled.</string>
     <string name="settings_search_hint">Search settings</string>
+    <string name="copy_token">Copy Token</string>
+    <string name="paste_token">Paste Token</string>
+    <string name="token_pasted">Token pasted from clipboard</string>
+    <string name="clear_token">Clear</string>
+    <string name="token_login_success">Logged in with token successfully!</string>
 </resources>

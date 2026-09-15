@@ -112,6 +112,7 @@ import com.ozyern.exhale.ui.component.InfoLabel
 import com.ozyern.exhale.ui.component.bounceClick
 import com.ozyern.exhale.ui.component.SettingsDividerThickness
 import com.ozyern.exhale.ui.component.SettingsGroupCornerRadius
+import com.ozyern.exhale.ui.component.TokenEditorDialog
 import com.ozyern.exhale.ui.component.TextFieldDialog
 import com.ozyern.exhale.ui.component.liquidGlassSurface
 import com.ozyern.exhale.ui.component.settingsDividerColor
@@ -307,19 +308,6 @@ fun AccountSettings(
             // Token Editor Dialog
             if (showTokenEditor) {
                 TokenEditorDialog(
-                    innerTubeCookie = innerTubeCookie,
-                    visitorData = visitorData,
-                    dataSyncId = dataSyncId,
-                    accountNamePref = accountNamePref,
-                    accountEmail = accountEmail,
-                    accountChannelHandle = accountChannelHandle,
-                    onInnerTubeCookieChange = onInnerTubeCookieChange,
-                    onPoTokenChange = onPoTokenChange,
-                    onVisitorDataChange = onVisitorDataChange,
-                    onDataSyncIdChange = onDataSyncIdChange,
-                    onAccountNameChange = onAccountNameChange,
-                    onAccountEmailChange = onAccountEmailChange,
-                    onAccountChannelHandleChange = onAccountChannelHandleChange,
                     onDismiss = { showTokenEditor = false }
                 )
             }
@@ -1291,59 +1279,6 @@ private fun AppVersionFooter() {
     }
 }
 
-@Composable
-private fun TokenEditorDialog(
-    innerTubeCookie: String,
-    visitorData: String,
-    dataSyncId: String,
-    accountNamePref: String,
-    accountEmail: String,
-    accountChannelHandle: String,
-    onInnerTubeCookieChange: (String) -> Unit,
-    onPoTokenChange: (String) -> Unit,
-    onVisitorDataChange: (String) -> Unit,
-    onDataSyncIdChange: (String) -> Unit,
-    onAccountNameChange: (String) -> Unit,
-    onAccountEmailChange: (String) -> Unit,
-    onAccountChannelHandleChange: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val text = """
-        ***INNERTUBE COOKIE*** =$innerTubeCookie
-        ***VISITOR DATA*** =$visitorData
-        ***DATASYNC ID*** =$dataSyncId
-        ***PO TOKEN*** =${YouTube.poToken.orEmpty()}
-        ***ACCOUNT NAME*** =$accountNamePref
-        ***ACCOUNT EMAIL*** =$accountEmail
-        ***ACCOUNT CHANNEL HANDLE*** =$accountChannelHandle
-    """.trimIndent()
-
-    TextFieldDialog(
-        initialTextFieldValue = TextFieldValue(text),
-        onDone = { data ->
-            data.split("\n").forEach {
-                when {
-                    it.startsWith("***INNERTUBE COOKIE*** =") -> onInnerTubeCookieChange(it.substringAfter("="))
-                    it.startsWith("***VISITOR DATA*** =") -> onVisitorDataChange(it.substringAfter("="))
-                    it.startsWith("***DATASYNC ID*** =") -> onDataSyncIdChange(it.substringAfter("="))
-                    it.startsWith("***PO TOKEN*** =") -> onPoTokenChange(it.substringAfter("="))
-                    it.startsWith("***ACCOUNT NAME*** =") -> onAccountNameChange(it.substringAfter("="))
-                    it.startsWith("***ACCOUNT EMAIL*** =") -> onAccountEmailChange(it.substringAfter("="))
-                    it.startsWith("***ACCOUNT CHANNEL HANDLE*** =") -> onAccountChannelHandleChange(it.substringAfter("="))
-                }
-            }
-        },
-        onDismiss = onDismiss,
-        singleLine = false,
-        maxLines = 20,
-        isInputValid = {
-            it.isNotEmpty() && "SAPISID" in parseCookieString(it)
-        },
-        extraContent = {
-            InfoLabel(text = stringResource(R.string.token_adv_login_description))
-        }
-    )
-}
 
 @Composable
 private fun PlaylistSelectionDialog(onDismiss: () -> Unit) {
