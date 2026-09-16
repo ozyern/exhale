@@ -291,7 +291,11 @@ fun TextFieldDialog(
     onDismiss: () -> Unit,
     extraContent: (@Composable () -> Unit)? = null,
 ) {
-    val legacyFieldState = remember { mutableStateOf(initialTextFieldValue) }
+    val legacyFieldState = remember(initialTextFieldValue) { mutableStateOf(initialTextFieldValue) }
+
+    LaunchedEffect(initialTextFieldValue) {
+        legacyFieldState.value = initialTextFieldValue
+    }
 
     val focusRequester = remember { FocusRequester() }
 

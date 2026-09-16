@@ -1,10 +1,7 @@
 /*
- * Exhale Project Original (2026)
- * ozyern (github.com/ozyern)
- * Licensed Under GPL-3.0 | see git history for contributors
+ * Exhale Project (2026)
+ * Licensed Under GPL-3.0
  */
-
-
 
 package com.ozyern.exhale.ui.screens
 
@@ -15,15 +12,21 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -38,15 +41,19 @@ import com.ozyern.exhale.constants.DataSyncIdKey
 import com.ozyern.exhale.constants.InnerTubeCookieKey
 import com.ozyern.exhale.constants.PoTokenKey
 import com.ozyern.exhale.constants.VisitorDataKey
-import com.ozyern.exhale.ui.component.LiquidBackButton
+import com.ozyern.exhale.innertube.YouTube
+import com.ozyern.exhale.innertube.utils.parseCookieString
 import com.ozyern.exhale.ui.component.IconButton
+import com.ozyern.exhale.ui.component.LiquidBackButton
 import com.ozyern.exhale.ui.utils.backToMain
 import com.ozyern.exhale.utils.rememberPreference
 import com.ozyern.exhale.utils.reportException
-import com.ozyern.exhale.innertube.YouTube
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 const val LOGIN_ROUTE = "login"
 const val LOGIN_URL_ARGUMENT = "url"
@@ -58,14 +65,37 @@ fun buildLoginRoute(startUrl: String? = null): String {
 
 private const val DEFAULT_LOGIN_URL = "https://accounts.google.com/ServiceLogin?continue=https%3A%2F%2Fmusic.youtube.com"
 
+private class LoginJsInterface {
+    var onVisitorDataReceived: ((String?) -> Unit)? = null
+    var onDataSyncIdReceived: ((String?) -> Unit)? = null
+    var onPoTokenReceived: ((String?) -> Unit)? = null
+
+    @JavascriptInterface
+    fun onRetrieveVisitorData(visitorData: String?) {
+        onVisitorDataReceived?.invoke(visitorData)
+    }
+
+    @JavascriptInterface
+    fun onRetrieveDataSyncId(dataSyncId: String?) {
+        onDataSyncIdReceived?.invoke(dataSyncId)
+    }
+
+    @JavascriptInterface
+    fun onRetrievePoToken(poToken: String?) {
+        onPoTokenReceived?.invoke(poToken)
+    }
+}
+
 @SuppressLint("SetJavaScriptEnabled")
-@OptIn(ExperimentalMaterial3Api::class, DelicateCoroutinesApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
     navController: NavController,
     startUrl: String? = null,
 ) {
     val coroutineScope = rememberCoroutineScope()
+    val jsInterface = remember { LoginJsInterface() }
+
     var visitorData by rememberPreference(VisitorDataKey, "")
     var dataSyncId by rememberPreference(DataSyncIdKey, "")
     var innerTubeCookie by rememberPreference(InnerTubeCookieKey, "")
@@ -74,85 +104,162 @@ fun LoginScreen(
     var accountEmail by rememberPreference(AccountEmailKey, "")
     var accountChannelHandle by rememberPreference(AccountChannelHandleKey, "")
 
-    var webView: WebView? = null
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    var isFinalizingLogin by remember { mutableStateOf(false) }
+    var showTokenDialog by remember { mutableStateOf(false) }
 
-    AndroidView(
+    fun checkAndFinalizeLogin(view: WebView) {
+        if (isFinalizingLogin) return
+        val cookieManager = CookieManager.getInstance()
+        val currentCookie = mergeYouTubeCookies(cookieManager).orEmpty()
+        if ("SAPISID" !in parseCookieString(currentCookie)) return
+
+        isFinalizingLogin = true
+
+        coroutineScope.launch(Dispatchers.IO) {
+            var mergedCookie = ""
+            var hasAuthCookie = false
+            var extractedVisitorData: String? = null
+            var extractedDataSyncId: String? = null
+            var extractedPoToken: String? = null
+
+            repeat(20) {
+                mergedCookie = mergeYouTubeCookies(cookieManager).orEmpty()
+                val cookieMap = runCatching { parseCookieString(mergedCookie) }.getOrDefault(emptyMap())
+                hasAuthCookie = "SAPISID" in cookieMap
+
+                val visitorDeferred = CompletableDeferred<String?>()
+                val dataSyncDeferred = CompletableDeferred<String?>()
+                val poTokenDeferred = CompletableDeferred<String?>()
+
+                jsInterface.onVisitorDataReceived = { if (!visitorDeferred.isCompleted) visitorDeferred.complete(it) }
+                jsInterface.onDataSyncIdReceived = { if (!dataSyncDeferred.isCompleted) dataSyncDeferred.complete(it) }
+                jsInterface.onPoTokenReceived = { if (!poTokenDeferred.isCompleted) poTokenDeferred.complete(it) }
+
+                withContext(Dispatchers.Main) {
+                    view.loadUrl("javascript:Android.onRetrieveVisitorData(window.yt&&window.yt.config_?window.yt.config_.VISITOR_DATA:null)")
+                    view.loadUrl("javascript:Android.onRetrieveDataSyncId(window.yt&&window.yt.config_?window.yt.config_.DATASYNC_ID:null)")
+                    view.loadUrl("javascript:void((function(){try{var c=window.ytcfg;if(c&&c.get){var t=c.get('PO_TOKEN');if(t){Android.onRetrievePoToken(t);return}}var s=document.querySelectorAll('script');for(var i=0;i<s.length;i++){var m=s[i].textContent.match(/\"PO_TOKEN\":\"([^\"]+)\"/);if(m){Android.onRetrievePoToken(m[1]);return}}}catch(e){}})())")
+                }
+
+                withTimeoutOrNull(800) {
+                    extractedVisitorData = visitorDeferred.await()
+                    extractedDataSyncId = dataSyncDeferred.await()
+                    extractedPoToken = poTokenDeferred.await()
+                }
+
+                if (hasAuthCookie && !extractedVisitorData.isNullOrBlank()) {
+                    return@repeat
+                }
+                delay(400)
+            }
+
+            if (hasAuthCookie && mergedCookie.isNotBlank()) {
+                val cleanDataSyncId = extractedDataSyncId?.substringBefore("||").orEmpty()
+
+                innerTubeCookie = mergedCookie
+                if (!extractedVisitorData.isNullOrBlank()) visitorData = extractedVisitorData!!
+                if (cleanDataSyncId.isNotBlank()) dataSyncId = cleanDataSyncId
+                if (!extractedPoToken.isNullOrBlank()) poToken = extractedPoToken!!
+
+                YouTube.cookie = mergedCookie
+                if (!extractedVisitorData.isNullOrBlank()) YouTube.visitorData = extractedVisitorData
+                if (cleanDataSyncId.isNotBlank()) YouTube.dataSyncId = cleanDataSyncId
+                if (!extractedPoToken.isNullOrBlank()) YouTube.poToken = extractedPoToken
+
+                YouTube.accountInfo().onSuccess { info ->
+                    accountName = info.name
+                    accountEmail = info.email.orEmpty()
+                    accountChannelHandle = info.channelHandle.orEmpty()
+                }.onFailure {
+                    reportException(it)
+                }
+
+                withContext(Dispatchers.Main) {
+                    navController.navigateUp()
+                }
+            } else {
+                withContext(Dispatchers.Main) {
+                    isFinalizingLogin = false
+                }
+            }
+        }
+    }
+
+    Box(
         modifier = Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current)
             .fillMaxSize(),
-        factory = { context ->
-            WebView(context).apply {
-                val cookieManager = CookieManager.getInstance()
-                cookieManager.setAcceptCookie(true)
-                webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(view: WebView, url: String?) {
-                        val isYouTubePage = url?.contains("youtube.com", ignoreCase = true) == true
-                        if (isYouTubePage) {
-                            loadUrl("javascript:Android.onRetrieveVisitorData(window.yt.config_.VISITOR_DATA)")
-                            loadUrl("javascript:Android.onRetrieveDataSyncId(window.yt.config_.DATASYNC_ID)")
-                            loadUrl("javascript:void((function(){try{var c=window.ytcfg;if(c&&c.get){var t=c.get('PO_TOKEN');if(t){Android.onRetrievePoToken(t);return}}var s=document.querySelectorAll('script');for(var i=0;i<s.length;i++){var m=s[i].textContent.match(/\"PO_TOKEN\":\"([^\"]+)\"/);if(m){Android.onRetrievePoToken(m[1]);return}}}catch(e){}})())")
+    ) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { context ->
+                WebView(context).apply {
+                    val cookieManager = CookieManager.getInstance()
+                    cookieManager.setAcceptCookie(true)
+                    webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView, url: String?) {
+                            checkAndFinalizeLogin(view)
                         }
 
-                        val mergedCookie = mergeYouTubeCookies(cookieManager)
-                        if (!mergedCookie.isNullOrBlank()) {
-                            innerTubeCookie = mergedCookie
-                            coroutineScope.launch {
-                                YouTube.accountInfo().onSuccess {
-                                    accountName = it.name
-                                    accountEmail = it.email.orEmpty()
-                                    accountChannelHandle = it.channelHandle.orEmpty()
-                                }.onFailure {
-                                    reportException(it)
-                                }
-                            }
+                        override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
+                            super.doUpdateVisitedHistory(view, url, isReload)
+                            checkAndFinalizeLogin(view)
                         }
                     }
+                    settings.apply {
+                        javaScriptEnabled = true
+                        domStorageEnabled = true
+                        setSupportZoom(true)
+                        builtInZoomControls = true
+                        displayZoomControls = false
+                    }
+                    addJavascriptInterface(jsInterface, "Android")
+                    webViewRef = this
+                    loadUrl(startUrl?.takeIf { it.isNotBlank() } ?: DEFAULT_LOGIN_URL)
                 }
-                settings.apply {
-                    javaScriptEnabled = true
-                    setSupportZoom(true)
-                    builtInZoomControls = true
-                    displayZoomControls = false
-                }
-                addJavascriptInterface(object {
-                    @JavascriptInterface
-                    fun onRetrieveVisitorData(newVisitorData: String?) {
-                        if (newVisitorData != null) {
-                            visitorData = newVisitorData
-                        }
-                    }
-                    @JavascriptInterface
-                    fun onRetrieveDataSyncId(newDataSyncId: String?) {
-                        if (newDataSyncId != null) {
-                            dataSyncId = newDataSyncId.substringBefore("||")
-                        }
-                    }
-                    @JavascriptInterface
-                    fun onRetrievePoToken(newPoToken: String?) {
-                        if (!newPoToken.isNullOrBlank()) {
-                            poToken = newPoToken
-                        }
-                    }
-                }, "Android")
-                webView = this
-                loadUrl(startUrl?.takeIf { it.isNotBlank() } ?: DEFAULT_LOGIN_URL)
             }
-        }
-    )
+        )
 
-    TopAppBar(
-        title = { Text(stringResource(R.string.login)) },
-        navigationIcon = {
-            LiquidBackButton(
-                onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
-                icon = R.drawable.arrow_back,
-            )
+        if (isFinalizingLogin) {
+            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         }
-    )
 
-    BackHandler(enabled = webView?.canGoBack() == true) {
-        webView?.goBack()
+        TopAppBar(
+            title = { Text(stringResource(R.string.login)) },
+            navigationIcon = {
+                LiquidBackButton(
+                    onClick = navController::navigateUp,
+                    onLongClick = navController::backToMain,
+                    icon = R.drawable.arrow_back,
+                )
+            },
+            actions = {
+                IconButton(
+                    onClick = { showTokenDialog = true },
+                    onLongClick = {}
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.token),
+                        contentDescription = stringResource(R.string.advanced_login),
+                    )
+                }
+            }
+        )
+    }
+
+    if (showTokenDialog) {
+        com.ozyern.exhale.ui.component.TokenEditorDialog(
+            onDismiss = { showTokenDialog = false },
+            onSuccess = {
+                showTokenDialog = false
+                navController.navigateUp()
+            }
+        )
+    }
+
+    BackHandler(enabled = webViewRef?.canGoBack() == true && !isFinalizingLogin) {
+        webViewRef?.goBack()
     }
 }
 
