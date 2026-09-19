@@ -290,9 +290,12 @@ fun TextFieldDialog(
 
     onDismiss: () -> Unit,
     extraContent: (@Composable () -> Unit)? = null,
+    onTextChange: ((String) -> Unit)? = null,
 ) {
-    val legacyFieldState = remember(initialTextFieldValue) { mutableStateOf(initialTextFieldValue) }
+    val legacyFieldState = remember { mutableStateOf(initialTextFieldValue) }
 
+    // Set from outside — pasting, say — replaces what's in the field. Typing doesn't come through
+    // here, so the state isn't keyed on the value: that would rebuild it on every keystroke.
     LaunchedEffect(initialTextFieldValue) {
         legacyFieldState.value = initialTextFieldValue
     }
@@ -363,7 +366,10 @@ fun TextFieldDialog(
             } else {
                 TextField(
                     value = legacyFieldState.value,
-                    onValueChange = { legacyFieldState.value = it },
+                    onValueChange = {
+                        legacyFieldState.value = it
+                        onTextChange?.invoke(it.text)
+                    },
                     placeholder = placeholder,
                     singleLine = singleLine,
                     maxLines = maxLines,

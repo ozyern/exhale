@@ -6,8 +6,10 @@
 package com.ozyern.exhale.ui.component
 
 import android.content.ClipData
+import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
+import android.os.PersistableBundle
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -84,6 +86,9 @@ fun TokenEditorDialog(
     }
 
     var textFieldValue by remember(initialText) { mutableStateOf(TextFieldValue(initialText)) }
+    // What is in the field right now. The dialog owns its own editing state, so without this the
+    // copy button would hand over the text as it was before anything was typed.
+    var currentText by remember(initialText) { mutableStateOf(initialText) }
 
     val clipboardManager = remember {
         context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -97,7 +102,6 @@ fun TokenEditorDialog(
             var visitorDataValue = ""
             var dataSyncIdValue = ""
             var poTokenValue = ""
-            var authUserValue = "0"
             var accountNameValue = ""
             var accountEmailValue = ""
             var accountChannelHandleValue = ""
@@ -109,7 +113,6 @@ fun TokenEditorDialog(
                         line.startsWith("***VISITOR DATA*** =") -> visitorDataValue = line.substringAfter("=").trim()
                         line.startsWith("***DATASYNC ID*** =") -> dataSyncIdValue = line.substringAfter("=").trim()
                         line.startsWith("***PO TOKEN*** =") -> poTokenValue = line.substringAfter("=").trim()
-                        line.startsWith("***AUTH USER*** =") -> authUserValue = line.substringAfter("=").trim()
                         line.startsWith("***ACCOUNT NAME*** =") -> accountNameValue = line.substringAfter("=").trim()
                         line.startsWith("***ACCOUNT EMAIL*** =") -> accountEmailValue = line.substringAfter("=").trim()
                         line.startsWith("***ACCOUNT CHANNEL HANDLE*** =") -> accountChannelHandleValue = line.substringAfter("=").trim()
@@ -153,6 +156,7 @@ fun TokenEditorDialog(
             }
         },
         onDismiss = onDismiss,
+        onTextChange = { currentText = it },
         singleLine = false,
         maxLines = 20,
         isInputValid = { fullText ->
@@ -171,9 +175,13 @@ fun TokenEditorDialog(
                 ) {
                     FilledTonalButton(
                         onClick = {
-                            val textToCopy = textFieldValue.text
+                            val textToCopy = currentText
                             if (textToCopy.isNotBlank()) {
-                                val clip = ClipData.newPlainText("Exhale Token", textToCopy)
+                                val clip = ClipData.newPlainText("Exhale Token", textToCopy).apply {
+                                    description.extras = PersistableBundle().apply {
+                                        putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
+                                    }
+                                }
                                 clipboardManager.setPrimaryClip(clip)
                                 Toast.makeText(context, R.string.token_copied, Toast.LENGTH_SHORT).show()
                             }
@@ -195,6 +203,7 @@ fun TokenEditorDialog(
                                 val pastedText = clip.getItemAt(0).text?.toString().orEmpty()
                                 if (pastedText.isNotBlank()) {
                                     textFieldValue = TextFieldValue(pastedText)
+                                    currentText = pastedText
                                     Toast.makeText(context, R.string.token_pasted, Toast.LENGTH_SHORT).show()
                                 }
                             }
@@ -215,6 +224,7 @@ fun TokenEditorDialog(
                 OutlinedButton(
                     onClick = {
                         textFieldValue = TextFieldValue("")
+                        currentText = ""
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
