@@ -77,6 +77,9 @@ class TogetherServer(
 
     private val clients = ConcurrentHashMap<String, Client>()
 
+    /** Phones (by their own id, which survives a reconnect) that were sent away for good. */
+    private val banned: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
     var onEvent: ((TogetherServerEvent) -> Unit)? = null
 
     fun currentParticipants(): List<TogetherParticipant> = lastParticipants
@@ -88,7 +91,11 @@ class TogetherServer(
             if (engine != null) return
             engine =
                 embeddedServer(CIO, port = port, host = "0.0.0.0") {
-                    install(WebSockets)
+                    install(WebSockets) {
+                        // Without pings a phone that sleeps or changes network stays in the room, silently, forever.
+                        pingPeriodMillis = 20_000
+                        timeoutMillis = 45_000
+                    }
                     routing {
                         webSocket("/together") {
                             handleClient()
@@ -120,6 +127,17 @@ class TogetherServer(
         }
     }
 
+    /** Sends someone out of the room; with [ban], that phone is also refused if it tries to come back. */
+    suspend fun removeParticipant(participantId: String, reason: String?, ban: Boolean) {
+        val client = clients[participantId] ?: return
+        if (ban) banned.add(client.clientId)
+        val notice: TogetherMessage =
+            if (ban) BanParticipant(sessionId = sessionId, participantId = participantId, reason = reason)
+            else KickParticipant(sessionId = sessionId, participantId = participantId, reason = reason)
+        runCatching { client.session.send(TogetherJson.json.encodeToString(TogetherMessage.serializer(), notice)) }
+        runCatching { client.session.close(CloseReason(CloseReason.Codes.NORMAL, if (ban) "Banned" else "Removed")) }
+    }
+
     suspend fun approveParticipant(participantId: String, approved: Boolean) {
         val client = clients[participantId] ?: return
         if (!client.pending) return
@@ -133,9 +151,8 @@ class TogetherServer(
                     ),
                 )
             }
+            // The connection's own cleanup removes them and announces the departure, once.
             runCatching { client.session.close(CloseReason(CloseReason.Codes.NORMAL, "Not approved")) }
-            clients.remove(participantId)
-            onEvent?.invoke(TogetherServerEvent.ParticipantLeft(participantId, "Not approved"))
             return
         }
 
@@ -201,6 +218,7 @@ class TogetherServer(
             val safeState =
                 if (client.pending) {
                     baseState.copy(
+                        participants = baseState.participants.filter { it.isHost || it.id == client.participantId },
                         queue = emptyList(),
                         queueHash = "",
                         currentIndex = 0,
@@ -261,6 +279,17 @@ class TogetherServer(
                 ),
             )
             close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "Invalid session"))
+            return
+        }
+
+        if (hello.clientId in banned) {
+            send(
+                TogetherJson.json.encodeToString(
+                    TogetherMessage.serializer(),
+                    ServerError(sessionId = hello.sessionId, message = "You were removed from this session", code = "banned"),
+                ),
+            )
+            close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "Banned"))
             return
         }
 

@@ -805,7 +805,7 @@ fun SpotifyPlaylistScreen(
                     onLongClick = {
                         if (!isSearching) navController.backToMain()
                     },
-                    icon = if (isSearching) R.drawable.close else R.drawable.arrow_back,
+                    icon = if (isSearching) R.drawable.close else R.drawable.chevron_back,
                 )
             },
             actions = {

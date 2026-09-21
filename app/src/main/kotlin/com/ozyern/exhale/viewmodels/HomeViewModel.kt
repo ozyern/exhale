@@ -8,6 +8,9 @@
 
 package com.ozyern.exhale.viewmodels
 
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.async
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -76,6 +79,13 @@ class HomeViewModel @Inject constructor(
     val forgottenFavorites = MutableStateFlow<List<Song>?>(null)
     val keepListening = MutableStateFlow<List<LocalItem>?>(null)
     val similarRecommendations = MutableStateFlow<List<SimilarRecommendation>?>(null)
+
+    /**
+     * The big cards at the top of Home, as the Windows app builds them: songs from the radios of the
+     * artists this listener actually plays most, alternated with the songs YouTube's own feed picked,
+     * each carrying the reason it is there.
+     */
+    val madeForYou = MutableStateFlow<List<com.ozyern.exhale.models.Recommendation>?>(null)
     val accountPlaylists = MutableStateFlow<List<PlaylistItem>?>(null)
     val homePage = MutableStateFlow<HomePage?>(null)
     val explorePage = MutableStateFlow<ExplorePage?>(null)
@@ -273,6 +283,9 @@ class HomeViewModel @Inject constructor(
             viewModelScope.launch(Dispatchers.IO) {
                 loadSimilarRecommendations()
             }
+            viewModelScope.launch(Dispatchers.IO) {
+                runCatching { loadMadeForYou() }.onFailure { reportException(it) }
+            }
                     
             isInitialLoadComplete.value = true
         } catch (e: Exception) {
@@ -332,6 +345,53 @@ class HomeViewModel @Inject constructor(
                 items = items,
             )
         }
+    }
+
+    private suspend fun loadMadeForYou() {
+        val hideExplicit = context.dataStore.get(HideExplicitKey, false)
+        val hideVideo = context.dataStore.get(HideVideoKey, false)
+        val languages = preferredLanguages()
+        val month = System.currentTimeMillis() - 86400000L * 30
+
+        // Who they listen to: the last month first, all-time when the month is thin.
+        val artists = (database.mostPlayedArtists(month, limit = 12).first() + database.allArtistsByPlayTime().first().take(12))
+            .filter { it.artist.isYouTubeArtist }
+            .distinctBy { it.id }
+            .take(4)
+
+        val mix = coroutineScope {
+            artists.map { artist ->
+                async {
+                    val page = YouTube.artist(artist.id).getOrNull() ?: return@async emptyList()
+                    val radio = page.artist.radioEndpoint ?: return@async emptyList()
+                    YouTube.next(radio).getOrNull()?.items.orEmpty()
+                        .map { com.ozyern.exhale.models.Recommendation(it, "Because you like ${artist.artist.name}") }
+                }
+            }.awaitAll()
+        }
+        // Each artist's radio in turn, so four artists read as four artists and not one.
+        val fromArtists = buildList {
+            val lists = mix.map { it.drop(1).shuffled() }
+            for (i in 0 until (lists.maxOfOrNull { it.size } ?: 0)) lists.forEach { list -> list.getOrNull(i)?.let(::add) }
+        }
+
+        val page = homePage.value ?: YouTube.home().getOrNull()
+        val fromFeed = page?.sections.orEmpty().flatMap { section ->
+            section.items.filterIsInstance<com.ozyern.exhale.innertube.models.SongItem>()
+                .map { com.ozyern.exhale.models.Recommendation(it, section.title) }
+        }
+
+        val picks = buildList {
+            for (i in 0 until maxOf(fromArtists.size, fromFeed.size)) {
+                fromArtists.getOrNull(i)?.let(::add)
+                fromFeed.getOrNull(i)?.let(::add)
+            }
+        }
+        val allowed = ContentLanguageFilter.filterItems(
+            picks.map { it.song }.filterExplicit(hideExplicit).filterVideo(hideVideo),
+            languages,
+        ).mapTo(HashSet()) { it.id }
+        madeForYou.value = picks.filter { it.song.id in allowed }.distinctBy { it.song.id }.take(10)
     }
 
     private suspend fun loadSimilarRecommendations() {

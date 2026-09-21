@@ -82,12 +82,19 @@ class TogetherClient(
     private val externalScope: CoroutineScope,
     clientId: String = UUID.randomUUID().toString(),
     private val bearerToken: String? = null,
+    /**
+     * Sockets for a LAN session, bound to the Wi-Fi network. Joined to a phone's hotspot that has
+     * no internet of its own, Android keeps mobile data as the default network and would send the
+     * connection to 192.168.x.1 out over the carrier, where it can only time out.
+     */
+    private val socketFactory: javax.net.SocketFactory? = null,
 ) {
     private val client =
         HttpClient(OkHttp) {
             engine {
                 config {
                     connectTimeout(15, TimeUnit.SECONDS)
+                    this@TogetherClient.socketFactory?.let { socketFactory(it) }
                     readTimeout(30, TimeUnit.SECONDS)
                     writeTimeout(15, TimeUnit.SECONDS)
                     pingInterval(25, TimeUnit.SECONDS)
@@ -118,8 +125,10 @@ class TogetherClient(
             disconnect()
             _state.value = TogetherClientState.Connecting(joinInfo)
 
-            val wsUrl = joinInfo.toWebSocketUrl()
-            val urls = listOfNotNull(wsUrl, alternateWebSocketSchemeOrNull(wsUrl)).distinct()
+            // Every address the host listed, in its order: the hotspot's own first.
+            val urls = joinInfo.candidateUrls()
+                .flatMap { listOfNotNull(it, alternateWebSocketSchemeOrNull(it)) }
+                .distinct()
 
             val token = normalizedBearerToken
 

@@ -34,6 +34,8 @@ import com.ozyern.exhale.constants.MiniPlayerHeight
 import com.ozyern.exhale.constants.MiniPlayerPillCornerRadius
 import com.ozyern.exhale.constants.SwipeSensitivityKey
 import com.ozyern.exhale.ui.component.BottomSheetState
+import com.ozyern.exhale.ui.component.MiniPlayerGlassBlurRadius
+import com.ozyern.exhale.ui.component.MiniPlayerGlassExtraTint
 import com.ozyern.exhale.ui.component.rememberChromeGlassModifier
 import com.ozyern.exhale.utils.rememberPreference
 import kotlin.math.roundToInt
@@ -135,8 +137,11 @@ private fun NewMiniPlayer(
                             // Verbatim from `LiquidGlassBottomBar.frostedGlassModifier`. Copied
                             // rather than shared because that one is private to the bar; if
                             // either moves, they must move together.
-                            tintAlpha = if (isSystemInDarkTheme()) 0.30f else 0.26f,
-                            blurRadius = 52.dp,
+                            // Frosted past the dock's strength on purpose: the song title sits on
+                            // this pane, and at the dock's blur a page heading scrolling underneath
+                            // stayed readable and collided with it.
+                            tintAlpha = (if (isSystemInDarkTheme()) 0.30f else 0.26f) + MiniPlayerGlassExtraTint,
+                            blurRadius = MiniPlayerGlassBlurRadius,
                             quality = 0.5f,
                         ),
                     )

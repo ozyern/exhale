@@ -21,4 +21,10 @@ data class Assets(
     val largeText: String? = null,
     @SerialName("small_text")
     val smallText: String? = null,
+    /** Where the artwork goes when it's clicked. Discord ignores it on clients that don't support it. */
+    @SerialName("large_url")
+    val largeUrl: String? = null,
+    /** The same for the badge in the artwork's corner. */
+    @SerialName("small_url")
+    val smallUrl: String? = null,
 )

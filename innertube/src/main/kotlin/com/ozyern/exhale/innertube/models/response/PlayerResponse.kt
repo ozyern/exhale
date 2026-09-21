@@ -46,6 +46,12 @@ data class PlayerResponse(
         val formats: List<Format>?,
         val adaptiveFormats: List<Format>,
         val expiresInSeconds: Int? = null,
+        /**
+         * A playlist of the whole thing in segments, which the native clients are given alongside the
+         * single-file renditions. Segments are fetched one at a time and can be fetched in any order,
+         * so unlike those files it can be seeked.
+         */
+        val hlsManifestUrl: String? = null,
     ) {
         @Serializable
         data class Format(

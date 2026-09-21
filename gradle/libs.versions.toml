@@ -69,6 +69,7 @@ navigation = { module = "androidx.navigation:navigation-compose", version.ref = 
 hilt-navigation = { module = "androidx.hilt:hilt-navigation-compose", version.ref = "hiltNavigation" }
 datastore = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "workManager" }
+zxing-core = { module = "com.google.zxing:core", version = "3.5.3" }
 
 compose-runtime = { module = "androidx.compose.runtime:runtime", version.ref = "compose" }
 compose-foundation = { module = "androidx.compose.foundation:foundation", version.ref = "compose" }

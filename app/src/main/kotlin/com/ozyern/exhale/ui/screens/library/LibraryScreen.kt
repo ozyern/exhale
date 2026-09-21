@@ -233,7 +233,7 @@ private fun LibrarySubPageHeader(
     ) {
         LiquidGlassIconButton(
             onClick = onBack,
-            icon = R.drawable.arrow_back,
+            icon = R.drawable.chevron_back,
             contentDescription = stringResource(R.string.back),
         )
 

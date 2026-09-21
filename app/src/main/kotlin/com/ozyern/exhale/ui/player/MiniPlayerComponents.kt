@@ -566,11 +566,10 @@ fun NewMiniPlayerContent(
 
             Spacer(modifier = Modifier.width(4.dp))
 
-            MiniPlayerPlayPauseButton(
+            com.ozyern.exhale.ui.component.LiquidPlayPauseButton(
                 isPlaying = isPlaying,
                 isLoading = isLoading,
-                playerConnection = playerConnection,
-                size = buttonSize,
+                onClick = { playerConnection.player.togglePlayPause() },
             )
         }
 
@@ -632,116 +631,6 @@ private fun BoxScope.MiniPlayerProgress(
                 strokeWidth = stroke,
                 cap = StrokeCap.Round,
             )
-        }
-    }
-}
-
-/**
- * The pill's play/pause control.
- *
- * The state change is carried by the **shape**, not just by swapping a glyph. Paused it is a
- * circle; playing it pulls in to a squircle, and the corner radius springs between the two with a
- * little overshoot — so the button visibly reacts to the thing it just did, and you can read
- * playback state from the corner of your eye without resolving the icon at all. That is the part
- * a stock `FilledIconButton` cannot do: its shape is fixed, so the only thing that ever moved was
- * the glyph crossfade, and the button sat there inert underneath.
- *
- * (The version before that was worse still — it drove a `graphicsLayer` from an
- * `animateFloatAsState` whose target was a constant `1f`, an animation that could never run.)
- *
- * The fill is a vertical gradient off the accent rather than a flat tint, with a light rim, so it
- * catches light like every other surface in the app instead of reading as a Material chip dropped
- * onto glass. Press response is [pressScaleContainer], which fires on ACTION_DOWN, so the button
- * moves the instant the thumb lands rather than after a ripple has decided.
- */
-@Composable
-private fun MiniPlayerPlayPauseButton(
-    isPlaying: Boolean,
-    isLoading: Boolean,
-    playerConnection: PlayerConnection,
-    size: Dp = 48.dp,
-) {
-    val (enableHaptic) = rememberPreference(EnableHapticFeedbackKey, true)
-    val haptic = rememberHaptic(enabled = enableHaptic)
-
-    // Half the box is exactly a circle; ~a third of it is the squircle. Expressed as fractions of
-    // [size] so the compact button morphs through the same *shape*, not the same absolute radius.
-    // The spring is deliberately under-damped - the overshoot is what makes the press feel
-    // answered.
-    val corner by animateDpAsState(
-        targetValue = if (isPlaying) size * 0.32f else size / 2f,
-        animationSpec = spring(
-            dampingRatio = 0.55f,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
-        label = "playPauseCorner",
-    )
-    val shape = RoundedCornerShape(corner)
-
-    val accent = MaterialTheme.colorScheme.primary
-    val fill = remember(accent) {
-        Brush.verticalGradient(
-            listOf(accent, accent.copy(alpha = 0.80f)),
-        )
-    }
-    // A soft accent glow under the button instead of a white rim around it. On glass a hard
-    // 1dp highlight reads as a plastic chip laid on the pane; a coloured shadow reads as the
-    // button sitting *in* it, and it is the only element in the pill that casts one, which is
-    // exactly the hierarchy this control should have.
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .size(size)
-            .pressScaleContainer()
-            .shadow(
-                elevation = 6.dp,
-                shape = shape,
-                clip = false,
-                ambientColor = accent,
-                spotColor = accent,
-            )
-            .clip(shape)
-            .background(fill)
-            .clickable(
-                enabled = !isLoading,
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = {
-                    haptic.click()
-                    playerConnection.player.togglePlayPause()
-                },
-            ),
-    ) {
-        if (isLoading) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(20.dp),
-                color = MaterialTheme.colorScheme.onPrimary,
-                strokeWidth = 2.dp,
-            )
-        } else {
-            AnimatedContent(
-                targetState = isPlaying,
-                transitionSpec = {
-                    (fadeIn(tween(120)) +
-                        scaleIn(
-                            initialScale = 0.55f,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                stiffness = Spring.StiffnessMedium,
-                            ),
-                        )).togetherWith(
-                        fadeOut(tween(90)) + scaleOut(targetScale = 1.35f, animationSpec = tween(90)),
-                    )
-                },
-                label = "playPauseIcon",
-            ) { playing ->
-                Icon(
-                    painter = painterResource(if (playing) R.drawable.pause else R.drawable.play),
-                    contentDescription = stringResource(if (playing) R.string.pause else R.string.play),
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(size * 0.46f),
-                )
-            }
         }
     }
 }

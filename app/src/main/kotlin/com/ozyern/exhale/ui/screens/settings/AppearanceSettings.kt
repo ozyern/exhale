@@ -87,6 +87,7 @@ import com.ozyern.exhale.constants.PlayerBackgroundStyle
 import com.ozyern.exhale.constants.PlayerBackgroundStyleKey
 import com.ozyern.exhale.constants.PureBlackKey
 import com.ozyern.exhale.constants.RandomThemeOnStartupKey
+import com.ozyern.exhale.constants.SabrinaThemeKey
 import com.ozyern.exhale.constants.UiScaleKey
 import com.ozyern.exhale.utils.UiScaleDefault
 import com.ozyern.exhale.constants.UseSystemFontKey
@@ -141,6 +142,10 @@ fun AppearanceSettings(
     val (dynamicTheme, onDynamicThemeChange) = rememberPreference(
         DynamicThemeKey,
         defaultValue = true
+    )
+    val (sabrinaTheme, onSabrinaThemeChange) = rememberPreference(
+        SabrinaThemeKey,
+        defaultValue = false
     )
     val (randomThemeOnStartup, onRandomThemeOnStartupChange) = rememberPreference(
         RandomThemeOnStartupKey,
@@ -355,12 +360,25 @@ fun AppearanceSettings(
             title = stringResource(R.string.theme),
         )
 
+        // Sabrina sits first because it beats everything under it, and the things it beats are
+        // hidden while it is on rather than left switchable and inert. A toggle that visibly moves
+        // and changes nothing is worse than a toggle that is not there.
         SwitchPreference(
-            title = { Text(stringResource(R.string.enable_dynamic_theme)) },
+            title = { Text(stringResource(R.string.sabrina_theme)) },
+            description = stringResource(R.string.sabrina_theme_desc),
             icon = { Icon(painterResource(R.drawable.palette), null) },
-            checked = dynamicTheme,
-            onCheckedChange = onDynamicThemeChange,
+            checked = sabrinaTheme,
+            onCheckedChange = onSabrinaThemeChange,
         )
+
+        AnimatedVisibility(visible = !sabrinaTheme) {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.enable_dynamic_theme)) },
+                icon = { Icon(painterResource(R.drawable.palette), null) },
+                checked = dynamicTheme,
+                onCheckedChange = onDynamicThemeChange,
+            )
+        }
 
         SwitchPreference(
             title = { Text(stringResource(R.string.player_fullscreen)) },
@@ -376,7 +394,7 @@ fun AppearanceSettings(
             onCheckedChange = onHapticEnabledChange,
         )
 
-        AnimatedVisibility(visible = !dynamicTheme || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+        AnimatedVisibility(visible = !sabrinaTheme && (!dynamicTheme || Build.VERSION.SDK_INT < Build.VERSION_CODES.S)) {
             SwitchPreference(
                 title = { Text(stringResource(R.string.random_theme_on_startup)) },
                 description = stringResource(R.string.random_theme_on_startup_desc),
@@ -386,7 +404,7 @@ fun AppearanceSettings(
             )
         }
 
-        AnimatedVisibility(visible = !dynamicTheme || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+        AnimatedVisibility(visible = !sabrinaTheme && (!dynamicTheme || Build.VERSION.SDK_INT < Build.VERSION_CODES.S)) {
             PreferenceEntry(
                 title = { Text(stringResource(R.string.color_palette)) },
                 description = stringResource(R.string.customize_theme_colors),
@@ -489,6 +507,7 @@ fun AppearanceSettings(
                     PlayerBackgroundStyle.BLUR_GRADIENT -> stringResource(R.string.blur_gradient)
                     PlayerBackgroundStyle.GLOW -> stringResource(R.string.glow)
                     PlayerBackgroundStyle.GLOW_ANIMATED -> "Glow Animated"
+                    PlayerBackgroundStyle.FLUID -> "Fluid (moving artwork)"
                 }
             },
         )
@@ -962,7 +981,7 @@ fun AppearanceSettings(
             LiquidBackButton(
                 onClick = navController::navigateUp,
                 onLongClick = navController::backToMain,
-                icon = R.drawable.arrow_back,
+                icon = R.drawable.chevron_back,
             )
         }
     )

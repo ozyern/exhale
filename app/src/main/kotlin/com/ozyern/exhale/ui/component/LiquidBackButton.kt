@@ -31,7 +31,7 @@ fun LiquidBackButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
-    @DrawableRes icon: Int = R.drawable.arrow_back,
+    @DrawableRes icon: Int = R.drawable.chevron_back,
     enabled: Boolean = true,
     contentDescription: String? = null,
     /** Icon tint. Defaults to the on-surface colour; pass white over dark full-bleed artwork. */

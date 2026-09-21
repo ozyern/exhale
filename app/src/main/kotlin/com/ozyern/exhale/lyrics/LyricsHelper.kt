@@ -74,29 +74,39 @@ constructor(
 
         val ordered = orderedProviders()
         val providers = if (preferredProviderOnly) listOf(ordered.first()) else ordered
+        val rawTitle = mediaMetadata.title
+        val rawArtist = mediaMetadata.artists.joinToString { it.name }
+        val phrasings = listOf(
+            SongQuery.cleanTitle(rawTitle) to (SongQuery.creditedArtist(rawTitle, mediaMetadata.artists.map { it.name }) ?: rawArtist),
+            rawTitle to rawArtist,
+        ).distinct()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val deferred = scope.async {
             for (provider in providers) {
                 val enabled = provider.isEnabled(context)
 
                 if (enabled) {
-                    try {
-                        val result = provider.getLyrics(
-                            mediaMetadata.id,
-                            mediaMetadata.title,
-                            mediaMetadata.artists.joinToString { it.name },
-                            mediaMetadata.album?.title,
-                            mediaMetadata.duration,
-                        )
-                        result.onSuccess { lyrics ->
-                            if (isMeaningfulLyrics(lyrics)) {
-                                return@async lyrics
+                    // Each source is asked twice at most: the way a lyrics database would title the song
+                    // ("Levitating", not "Levitating (feat. DaBaby)"), then as YouTube writes it.
+                    for ((title, artist) in phrasings) {
+                        try {
+                            val result = provider.getLyrics(
+                                mediaMetadata.id,
+                                title,
+                                artist,
+                                mediaMetadata.album?.title,
+                                mediaMetadata.duration,
+                            )
+                            result.onSuccess { lyrics ->
+                                if (isMeaningfulLyrics(lyrics)) {
+                                    return@async lyrics
+                                }
+                            }.onFailure {
+                                reportException(it)
                             }
-                        }.onFailure {
-                            reportException(it)
+                        } catch (e: Exception) {
+                            reportException(e)
                         }
-                    } catch (e: Exception) {
-                        reportException(e)
                     }
                 }
             }

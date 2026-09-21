@@ -37,7 +37,7 @@ object SearchPage {
                 SongItem(
                     id = renderer.playlistItemData?.videoId ?: endpoint?.videoId ?: return null,
                     title = title,
-                    artists = metadata.getOrNull(0).toArtists(),
+                    artists = metadata.artistGroup().toArtists(),
                     album =
                         metadata.getOrNull(1)?.firstOrNull()
                             ?.takeIf { it.navigationEndpoint?.browseEndpoint != null }?.let {
@@ -84,7 +84,7 @@ object SearchPage {
                             ?.playlistId
                             ?: return null,
                     title = title,
-                    artists = metadata.getOrNull(0).toArtists().takeIf { it.isNotEmpty() },
+                    artists = metadata.artistGroup().toArtists().takeIf { it.isNotEmpty() },
                     year = metadata.year(),
                     thumbnail = thumbnail ?: return null,
                     explicit = renderer.isExplicit,
@@ -165,6 +165,9 @@ private fun MusicResponsiveListItemRenderer.watchEndpoint(): WatchEndpoint? =
 private fun List<Run>?.toArtists(): List<Artist> =
     this
         ?.oddElements()
+        // A runtime is not an artist. Some rows lead with one, and "2:59" as the artist name quietly
+        // poisons everything downstream: the lyrics search, radio, and going to the artist.
+        ?.filterNot { it.text.parseTime() != null }
         ?.map {
             Artist(
                 name = it.text,
@@ -172,6 +175,18 @@ private fun List<Run>?.toArtists(): List<Artist> =
             )
         }
         .orEmpty()
+
+/**
+ * Which metadata group holds the artists. Usually the first, but not on every layout, so a group
+ * carrying a real artist link is taken first — an artist's id is a channel (`UC…`), where an album's
+ * is `MPRE…` — and only failing that the first group that is neither a runtime nor a bare number.
+ */
+private fun List<List<Run>>.artistGroup(): List<Run>? =
+    firstOrNull { group ->
+        group.any { it.navigationEndpoint?.browseEndpoint?.browseId?.startsWith("UC") == true }
+    } ?: firstOrNull { group ->
+        group.none { run -> run.text.parseTime() != null || run.text.trim().toIntOrNull() != null }
+    }
 
 private fun List<List<Run>>.duration(): Int? {
     for (group in asReversed()) {

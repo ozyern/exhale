@@ -8,6 +8,7 @@
 
 package com.ozyern.exhale.ui.screens
 
+import com.ozyern.exhale.extensions.toMediaItem
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -114,6 +115,7 @@ fun HomeScreen(
 
     val quickPicks by viewModel.quickPicks.collectAsState()
     val keepListening by viewModel.keepListening.collectAsState()
+    val madeForYou by viewModel.madeForYou.collectAsState()
     val homePage by viewModel.homePage.collectAsState()
     val allItemsMetadata by viewModel.allItemsMetadata.collectAsState()
 
@@ -259,10 +261,7 @@ fun HomeScreen(
     Box(
         modifier = Modifier.fillMaxSize()
     ) {
-        AmbientArtworkGlow(
-            colors = ambientColors,
-            modifier = Modifier.fillMaxSize(),
-        )
+        // No wash of colour behind Home: Apple's is plain black, and the artwork is on the cards.
 
         BoxWithConstraints(
             modifier = Modifier
@@ -357,29 +356,43 @@ fun HomeScreen(
                     }
                 }
 
+                madeForYou?.takeIf { it.isNotEmpty() }?.let { picks ->
+                    item(key = "home_made_for_you", contentType = "made_for_you") {
+                        HomeMadeForYou(
+                            picks = picks,
+                            activeId = mediaMetadata?.id,
+                            isPlaying = isPlaying,
+                            onPlay = { song ->
+                                if (song.id == mediaMetadata?.id) {
+                                    playerConnection.player.togglePlayPause()
+                                } else {
+                                    playerConnection.playQueue(
+                                        YouTubeQueue(
+                                            endpoint = song.endpoint ?: WatchEndpoint(song.id),
+                                            preloadItem = song.toMediaMetadata(),
+                                        )
+                                    )
+                                }
+                            },
+                            onPlayNext = { song -> playerConnection.playNext(song.toMediaItem()) },
+                            modifier = Modifier.animateItem(),
+                        )
+                    }
+                }
+
                 keepListening?.takeIf { it.isNotEmpty() }?.let { items ->
                     item(key = "home_shortcuts", contentType = "shortcuts") {
-                        HomeShortcutsGrid(
-                            items = items.take(6),
+                        // Apple Music's "Top Picks for You": tall cards coloured by their own artwork.
+                        HomeTopPicks(
+                            items = items.take(10),
                             onItemClick = onShortcutClick,
+                            onItemLongClick = onShortcutLongClick,
                             modifier = Modifier.animateItem(),
                             activeId = mediaMetadata?.id,
                             isPlaying = isPlaying,
-                            onItemLongClick = onShortcutLongClick,
-                            // The one shelf that arrives tile by tile rather than as a block.
-                            //
-                            // It can, because it is the only shelf whose parts are laid out at
-                            // once instead of scrolled through: six tiles all on screen, so a
-                            // cascade across them is a thing you can actually watch. It is also
-                            // the first thing on the page, and a page that starts by assembling
-                            // itself in front of you sets a different expectation for everything
-                            // below it than one that simply appears.
-                            //
-                            // A third of a slot apart, so the whole cascade is over in about
-                            // seventy milliseconds -- read as one gesture with a grain to it, not
-                            // as six things taking turns.
-                            tileIntro = { index ->
-                                Modifier.feedIntro(index * ShortcutTileStagger, introProgress)
+                            // The first cards on screen arrive in a short cascade rather than as one block.
+                            cardIntro = { index ->
+                                Modifier.feedIntro(index.coerceAtMost(3) * ShortcutTileStagger, introProgress)
                             },
                         )
                     }
@@ -561,17 +574,11 @@ private fun HomeLargeTitle(
         // competing with the line under it, and an eyebrow that competes with its own headline
         // is just a two-line heading.
         Text(
-            text = weekday,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
             text = stringResource(R.string.home),
             // Tracked in hard. At 36sp the default fitting leaves visible gaps between letters
             // — the difference between a word that has been *set* and one that has been typed.
             // This is the largest type in the app, so it is where loose tracking shows most.
-            style = MaterialTheme.typography.displaySmall.copy(letterSpacing = (-0.03).em),
+            style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
         )

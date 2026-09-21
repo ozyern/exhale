@@ -95,6 +95,8 @@ import com.ozyern.exhale.constants.HidePlayerThumbnailKey
 import com.ozyern.exhale.extensions.metadata
 import com.ozyern.exhale.extensions.toMediaItem
 import com.ozyern.exhale.ui.component.supportsLiveBlur
+import com.ozyern.exhale.ui.component.SabrinaCoverCharms
+import com.ozyern.exhale.ui.component.sabrinaDecorEnabled
 import com.ozyern.exhale.ui.utils.highRes
 import com.ozyern.exhale.utils.rememberEnumPreference
 import com.ozyern.exhale.utils.rememberPreference
@@ -289,6 +291,16 @@ fun Thumbnail(
         defaultValue = 16f
     )
     val cropThumbnailToSquare by rememberPreference(CropThumbnailToSquareKey, false)
+    val sabrinaCharms = sabrinaDecorEnabled()
+    val sabrinaCharmPalette = if (sabrinaCharms) {
+        listOf(
+            MaterialTheme.colorScheme.primary,
+            MaterialTheme.colorScheme.secondary,
+            MaterialTheme.colorScheme.tertiary,
+        )
+    } else {
+        emptyList()
+    }
     val canSkipPrevious by playerConnection.canSkipPrevious.collectAsState()
     val canSkipNext by playerConnection.canSkipNext.collectAsState()
 
@@ -306,6 +318,7 @@ fun Thumbnail(
         PlayerBackgroundStyle.BLUR_GRADIENT -> Color.White
         PlayerBackgroundStyle.GLOW -> Color.White
         PlayerBackgroundStyle.GLOW_ANIMATED -> Color.White
+        PlayerBackgroundStyle.FLUID -> Color.White
         PlayerBackgroundStyle.CUSTOM -> Color.White
     }
 
@@ -830,6 +843,17 @@ fun Thumbnail(
                                             )
                                         }
                                     }
+                                }
+
+                                // Tied on last, so it sits over the cover rather than under it.
+                                // A sibling of the artwork box, not a child: the artwork box clips
+                                // to the corner radius, and a bow meant to overhang the corner
+                                // cannot live inside the thing clipping that corner off.
+                                if (sabrinaCharms) {
+                                    SabrinaCoverCharms(
+                                        size = coverSize,
+                                        colors = sabrinaCharmPalette,
+                                    )
                                 }
                             }
                         }

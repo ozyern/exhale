@@ -344,7 +344,7 @@ fun YearInMusicScreen(
                     LiquidBackButton(
                         onClick   = navController::navigateUp,
                         onLongClick = navController::backToMain,
-                        icon = R.drawable.arrow_back,
+                        icon = R.drawable.chevron_back,
                         tint = Snow,
                     )
                     Spacer(Modifier.weight(1f))

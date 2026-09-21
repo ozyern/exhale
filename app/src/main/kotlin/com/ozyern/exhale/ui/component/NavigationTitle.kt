@@ -53,9 +53,9 @@ fun NavigationTitle(
             }
             // Generous Apple-style breathing room: lots of air ABOVE each section header,
             // a little below before its row content starts.
-            .padding(start = 16.dp, end = 16.dp, top = 28.dp, bottom = 10.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 8.dp)
     ) {
-        thumbnail?.invoke()
+        // Apple's shelf headers carry no artwork: the title and its chevron are the whole header.
 
         Column(
             verticalArrangement = Arrangement.Center,
@@ -64,8 +64,10 @@ fun NavigationTitle(
             label?.let { label ->
                 Text(
                     text = label,
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     overflow = TextOverflow.Ellipsis,
+                    maxLines = 1,
                 )
             }
 
@@ -85,13 +87,8 @@ fun NavigationTitle(
                     text = title,
                     // Apple-Music header: LARGE, heavy, high-contrast ink with generous air above
                     // each section — the whitespace does the separating, not dividers.
-                    style = MaterialTheme.typography.headlineSmall.copy(
-                        // Tightened. Letter fitting that is right at body size is visibly airy at
-                        // 24sp, and every typographic system that cares tracks large sizes in.
-                        // This is most of the answer to why an Apple heading looks set and ours
-                        // looked typed.
-                        letterSpacing = (-0.02).em,
-                    ),
+                    // Apple Music's shelf title: Title 2, 22pt bold.
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
                     overflow = TextOverflow.Ellipsis,
@@ -112,13 +109,30 @@ fun NavigationTitle(
                             .size(20.dp),
                     )
                 }
+
+                // A ribbon tied to the end of every section header, when the Sabrina theme is on.
+                //
+                // After the chevron rather than before the title: the title and its disclosure
+                // mark are one phrase you press, and a bow wedged inside that phrase would break
+                // it apart. Trailing the whole thing, it decorates the header instead of joining
+                // it. Static, unlike the drifting backdrop — nothing should move next to a line
+                // someone is reading.
+                if (sabrinaDecorEnabled()) {
+                    SabrinaBow(
+                        color = MaterialTheme.colorScheme.primary,
+                        size = 17.dp,
+                        rotation = -10f,
+                        alpha = 0.9f,
+                        modifier = Modifier.padding(start = 7.dp),
+                    )
+                }
             }
 
             subtitle?.let {
                 Text(
                     text = it,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.secondary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     overflow = TextOverflow.Ellipsis,
                     maxLines = 1,
                 )

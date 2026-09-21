@@ -8,6 +8,16 @@
 
 package com.ozyern.exhale.ui.component
 
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.background
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.basicMarquee
@@ -147,41 +157,69 @@ fun NewMenuSectionHeader(
     )
 }
 
-// Enhanced Action Grid - Material 3 Expressive Design
+/**
+ * A menu's actions as the player's menu draws them: round targets with a caption under each, in
+ * rows of at most five, spread evenly. They used to be a grid of elevated square tiles — a different
+ * design from the player's menu, in the same app, for the same kind of sheet.
+ */
 @Composable
 fun NewActionGrid(
     actions: List<NewAction>,
     modifier: Modifier = Modifier,
-    columns: Int = 3
+    @Suppress("UNUSED_PARAMETER") columns: Int = 3,
 ) {
-    val rows = actions.chunked(columns)
-    
+    if (actions.isEmpty()) return
+    // Balanced rows: six actions are two rows of three, not five and one.
+    val rowCount = (actions.size + 4) / 5
+    val perRow = (actions.size + rowCount - 1) / rowCount
     Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        rows.forEach { row ->
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                row.forEach { action ->
-                    NewActionButton(
-                        icon = action.icon,
-                        text = action.text,
-                        onClick = action.onClick,
-                        modifier = Modifier.weight(1f),
-                        enabled = action.enabled,
-                        backgroundColor = if (action.backgroundColor != Color.Unspecified) action.backgroundColor else MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = if (action.contentColor != Color.Unspecified) action.contentColor else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                
-                // Fill remaining space if row is not full
-                repeat(columns - row.size) {
-                    Spacer(modifier = Modifier.weight(1f))
-                }
+        actions.chunked(perRow).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { action -> MenuQuickAction(action, Modifier.weight(1f)) }
+                repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
+    }
+}
+
+@Composable
+private fun MenuQuickAction(action: NewAction, modifier: Modifier = Modifier) {
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        if (pressed) 0.90f else 1f,
+        spring(dampingRatio = com.ozyern.exhale.constants.AquamorphicDampingRatio, stiffness = com.ozyern.exhale.constants.AquamorphicStiffness),
+        label = "menuQuickActionScale",
+    )
+    val container = if (action.backgroundColor != Color.Unspecified) action.backgroundColor else MaterialTheme.colorScheme.surfaceContainerHighest
+    val content = if (action.contentColor != Color.Unspecified) action.contentColor else MaterialTheme.colorScheme.onSurface
+    Column(modifier.graphicsLayer { alpha = if (action.enabled) 1f else 0.45f }, horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .graphicsLayer { scaleX = scale; scaleY = scale }
+                .clip(CircleShape)
+                .background(container)
+                .clickable(interactionSource = source, indication = null, enabled = action.enabled, onClick = action.onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            CompositionLocalProvider(LocalContentColor provides content) {
+                Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { action.icon() }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = action.text,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            lineHeight = 13.sp,
+        )
     }
 }
 
@@ -298,4 +336,24 @@ fun MenuSurfaceSection(
     ) {
         Column(content = content)
     }
+}
+
+/**
+ * Hairlines between the rows of one grouped menu card, as the player's menu draws them: inset to
+ * the label, and never above the first row. A fresh one per composition, so rows that come and go
+ * with state still get exactly one line between each pair.
+ */
+class MenuDividers {
+    internal var needed = false
+}
+
+@Composable
+fun MenuDividers.Next() {
+    if (needed) {
+        HorizontalDivider(
+            modifier = Modifier.padding(start = 56.dp),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
+    }
+    needed = true
 }

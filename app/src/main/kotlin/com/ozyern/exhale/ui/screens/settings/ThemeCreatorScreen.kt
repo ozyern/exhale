@@ -244,7 +244,7 @@ fun ThemeCreatorScreen(
                     LiquidBackButton(
                         onClick = navController::navigateUp,
                         onLongClick = navController::backToMain,
-                        icon = R.drawable.arrow_back,
+                        icon = R.drawable.chevron_back,
                     )
                 },
                 actions = {
@@ -714,7 +714,7 @@ private fun ThemeRichPreview(
                                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 ) {
                                     Icon(
-                                        painter = painterResource(R.drawable.arrow_back),
+                                        painter = painterResource(R.drawable.chevron_back),
                                         contentDescription = null,
                                         modifier = Modifier.padding(10.dp).size(18.dp),
                                     )

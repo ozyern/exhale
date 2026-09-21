@@ -90,7 +90,8 @@ constructor(
                         downloadUtil.downloads
                     ) { songs, downloads ->
                         songs.filter {
-                            downloads[it.id]?.state == Download.STATE_COMPLETED
+                            downloads[it.id]?.state == Download.STATE_COMPLETED ||
+                                com.ozyern.exhale.export.SavedFiles.has(it.id)
                         }.let { filteredSongs ->
                             when (songSortType) {
                                 SongSortType.CREATE_DATE -> filteredSongs.sortedBy {

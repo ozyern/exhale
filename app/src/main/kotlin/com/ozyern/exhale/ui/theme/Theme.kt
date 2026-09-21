@@ -53,6 +53,31 @@ data class ThemeSeedPalette(
     val neutral: Color,
 )
 
+/**
+ * The one preset that uses all four seeds.
+ *
+ * Every palette in the picker sets primary, secondary, tertiary and neutral to the same colour,
+ * which reduces a four-seed system to an accent swap: the surfaces stay the same grey they always
+ * were and only the buttons move. This one spends all four, and the one that does the real work is
+ * `neutral` — M3 builds background, surface and every container tier off it, so a warm seed there
+ * is what turns the whole app cream in light and warm near-black in dark rather than repainting a
+ * few controls pink.
+ *
+ * Colours only. No artwork, no likeness, no shipped assets — a pastel palette named after the
+ * sound it goes with.
+ */
+val SabrinaSeedPalette = ThemeSeedPalette(
+    // Blush, for everything that is meant to be pressed.
+    primary = Color(0xFFF08DAE),
+    // Butter, so the second tier reads warm instead of reading as a second pink.
+    secondary = Color(0xFFE7C08A),
+    // Lilac, the only cool note in the set — without it three warm seeds average out to beige.
+    tertiary = Color(0xFFB6A4E4),
+    // Espresso. Low enough in chroma that M3's neutral ramp stays legible, high enough that the
+    // surfaces are visibly warm rather than the usual blue-grey.
+    neutral = Color(0xFF7A4E45),
+)
+
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ExhaleTheme(

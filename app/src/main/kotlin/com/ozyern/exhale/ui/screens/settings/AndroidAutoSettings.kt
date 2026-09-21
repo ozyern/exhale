@@ -125,7 +125,7 @@ fun AndroidAutoSettings(
                         com.ozyern.exhale.ui.component.LiquidBackButton(
                             onClick = navController::navigateUp,
                             onLongClick = navController::backToMain,
-                            icon = R.drawable.arrow_back,
+                            icon = R.drawable.chevron_back,
                         )
                     },
                     colors = TopAppBarDefaults.largeTopAppBarColors(

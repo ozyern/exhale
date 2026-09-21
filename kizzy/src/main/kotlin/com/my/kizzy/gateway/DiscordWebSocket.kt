@@ -117,7 +117,7 @@ open class DiscordWebSocket(
     }
 
     private suspend fun onMessage(payload: Payload) {
-        Logger.getLogger("Kizzy").log(INFO, "Gateway: Received op:${payload.op}, seq:${payload.s}, event :${payload.t}")
+        Logger.getLogger("Kizzy").log(Level.FINE, "Gateway: Received op:${payload.op}, seq:${payload.s}, event :${payload.t}")
 
         payload.s?.let {
             sequence = it
@@ -171,7 +171,7 @@ open class DiscordWebSocket(
     }
 
     private suspend fun sendHeartBeat() {
-        Logger.getLogger("Kizzy").log(INFO, "Gateway: Sending $HEARTBEAT with seq: $sequence")
+        Logger.getLogger("Kizzy").log(Level.FINE, "Gateway: Sending $HEARTBEAT with seq: $sequence")
         send(
             op = HEARTBEAT,
             d = if (sequence == 0) "null" else sequence.toString(),

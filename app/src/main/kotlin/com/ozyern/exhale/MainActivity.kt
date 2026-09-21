@@ -209,6 +209,7 @@ import com.ozyern.exhale.constants.NavigationBarAnimationSpec
 import com.ozyern.exhale.constants.PauseSearchHistoryKey
 import com.ozyern.exhale.constants.PureBlackKey
 import com.ozyern.exhale.constants.RemindAfterKey
+import com.ozyern.exhale.constants.SabrinaThemeKey
 import com.ozyern.exhale.constants.SongPreferencesCompletedKey
 import com.ozyern.exhale.constants.SYSTEM_DEFAULT
 import com.ozyern.exhale.constants.SearchSource
@@ -253,6 +254,7 @@ import com.ozyern.exhale.ui.component.FloatingNavigationToolbar
 import com.ozyern.exhale.ui.component.LiquidGlassBottomBar
 import com.ozyern.exhale.ui.component.SearchBottomBar
 import com.ozyern.exhale.ui.component.LiquidBackground
+import com.ozyern.exhale.ui.component.SabrinaCharmField
 import com.ozyern.exhale.ui.component.LiquidGlassIconButton
 import com.ozyern.exhale.ui.component.NewVersionSheet
 import com.ozyern.exhale.ui.component.liquid.LocalAppBackdrop
@@ -289,6 +291,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import com.ozyern.exhale.ui.theme.ColorSaver
 import com.ozyern.exhale.ui.theme.DefaultThemeColor
+import com.ozyern.exhale.ui.theme.SabrinaSeedPalette
 import com.ozyern.exhale.ui.theme.ThemeSeedPalette
 import com.ozyern.exhale.ui.theme.ThemeSeedPaletteCodec
 import com.ozyern.exhale.ui.theme.extractThemeColor
@@ -476,6 +479,21 @@ class MainActivity : ComponentActivity() {
 
     @RequiresApi(Build.VERSION_CODES.R)
     @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
+    /**
+     * Ask for the panel's fastest mode at the current resolution. ColorOS, OxygenOS and MIUI run apps
+     * that don't ask at 60 Hz on a 120 Hz screen, which halves how smooth every spring and scroll in
+     * the app can possibly look. The system still drops the rate for power saving or heat.
+     */
+    private fun requestHighestRefreshRate() {
+        val display = display ?: return
+        val current = display.mode
+        val fastest = display.supportedModes
+            .filter { it.physicalWidth == current.physicalWidth && it.physicalHeight == current.physicalHeight }
+            .maxByOrNull { it.refreshRate } ?: return
+        if (fastest.modeId == window.attributes.preferredDisplayModeId) return
+        window.attributes = window.attributes.also { it.preferredDisplayModeId = fastest.modeId }
+    }
+
     @OptIn(
         ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class,
         ExperimentalTextApi::class
@@ -492,6 +510,7 @@ class MainActivity : ComponentActivity() {
         )
         window.decorView.layoutDirection = View.LAYOUT_DIRECTION_LTR
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        requestHighestRefreshRate()
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             val initialLocale = PreferenceStore.get(AppLanguageKey)
@@ -571,6 +590,7 @@ class MainActivity : ComponentActivity() {
             val menuState = remember { MenuState() }
             val uriHandler = LocalUriHandler.current
             val releaseNotesState = remember { mutableStateOf<String?>(null) }
+            val sabrinaTheme by rememberPreference(SabrinaThemeKey, defaultValue = false)
             val enableDynamicTheme by rememberPreference(DynamicThemeKey, defaultValue = true)
             val customThemeColorValue by rememberPreference(CustomThemeColorKey, defaultValue = "default")
             val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
@@ -585,10 +605,14 @@ class MainActivity : ComponentActivity() {
                 setSystemBarAppearance(useDarkTheme)
             }
             val pureBlackEnabled by rememberPreference(PureBlackKey, defaultValue = false)
-            val pureBlack = pureBlackEnabled && useDarkTheme
+            // Pure black yields to Sabrina: forcing surface and background to #000 would
+            // erase the warm neutral that is the entire point of that palette.
+            val pureBlack = pureBlackEnabled && useDarkTheme && !sabrinaTheme
 
-            val customThemeSeedPalette = remember(customThemeColorValue) {
-                if (customThemeColorValue.startsWith("#")) {
+            val customThemeSeedPalette = remember(customThemeColorValue, sabrinaTheme) {
+                if (sabrinaTheme) {
+                    SabrinaSeedPalette
+                } else if (customThemeColorValue.startsWith("#")) {
                     null
                 } else if (customThemeColorValue.startsWith("seedPalette:")) {
                     ThemeSeedPaletteCodec.decodeFromPreference(customThemeColorValue)
@@ -606,8 +630,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            val customThemeColor = remember(customThemeColorValue, customThemeSeedPalette) {
-                if (customThemeColorValue.startsWith("#")) {
+            val customThemeColor = remember(customThemeColorValue, customThemeSeedPalette, sabrinaTheme) {
+                if (sabrinaTheme) {
+                    SabrinaSeedPalette.primary
+                } else if (customThemeColorValue.startsWith("#")) {
                     try {
                         val colorString = customThemeColorValue.removePrefix("#")
                         Color("#$colorString".toColorInt())
@@ -623,10 +649,12 @@ class MainActivity : ComponentActivity() {
                 mutableStateOf(DefaultThemeColor)
             }
 
-            LaunchedEffect(playerConnection, enableDynamicTheme, isSystemInDarkTheme, customThemeColor) {
+            LaunchedEffect(playerConnection, enableDynamicTheme, sabrinaTheme, isSystemInDarkTheme, customThemeColor) {
                 val playerConnection = playerConnection
-                if (!enableDynamicTheme || playerConnection == null) {
-                    themeColor = if (!enableDynamicTheme) customThemeColor else DefaultThemeColor
+                // Sabrina is a fixed palette, so the artwork extraction below is skipped entirely
+                // rather than allowed to run and be overwritten a frame later.
+                if (sabrinaTheme || !enableDynamicTheme || playerConnection == null) {
+                    themeColor = if (sabrinaTheme || !enableDynamicTheme) customThemeColor else DefaultThemeColor
                     return@LaunchedEffect
                 }
                 playerConnection.service.currentMediaMetadata.collectLatest { song ->
@@ -665,7 +693,7 @@ class MainActivity : ComponentActivity() {
                 pureBlack = pureBlack,
                 motionScheme = MotionScheme.expressive(),
                 themeColor = themeColor,
-                seedPalette = if (!enableDynamicTheme) customThemeSeedPalette else null,
+                seedPalette = if (sabrinaTheme || !enableDynamicTheme) customThemeSeedPalette else null,
                 useSystemFont = useSystemFont,
             ) {
                 BoxWithConstraints(
@@ -704,13 +732,64 @@ class MainActivity : ComponentActivity() {
                         // first so it sits behind every other layer; theme colors keep it
                         // album-art reactive.
                         if (liquidGlassNavBar) {
-                            LiquidBackground(
+                            // What's playing, moving slowly under every page — the same background the
+                            // Windows app puts behind Home. It is drawn into the layer the glass chrome
+                            // samples, so the dock and the top bar bend it as they move over it. With
+                            // nothing playing there is no artwork to move, so the colour field stands in.
+                            val ground = if (pureBlack) Color.Black else MaterialTheme.colorScheme.surface
+                            val ambientArtwork by remember(playerConnection) {
+                                playerConnection?.mediaMetadata ?: MutableStateFlow(null)
+                            }.collectAsState()
+                            val artworkUrl = ambientArtwork?.thumbnailUrl
+                            if (artworkUrl != null) {
+                                com.ozyern.exhale.ui.component.FluidArtworkBackground(
+                                    url = artworkUrl,
+                                    brightness = 0.5f,
+                                    modifier = Modifier.matchParentSize(),
+                                )
+                                // Pages are read over this, so it is held back under a scrim that
+                                // deepens down the screen — bright enough to see, quiet enough to read on.
+                                Box(
+                                    Modifier
+                                        .matchParentSize()
+                                        .background(
+                                            Brush.verticalGradient(
+                                                listOf(ground.copy(alpha = 0.30f), ground.copy(alpha = 0.72f)),
+                                            ),
+                                        ),
+                                )
+                            } else {
+                                LiquidBackground(
+                                    colors = listOf(
+                                        MaterialTheme.colorScheme.primary,
+                                        MaterialTheme.colorScheme.tertiary,
+                                        MaterialTheme.colorScheme.secondary,
+                                    ),
+                                    baseColor = ground,
+                                    modifier = Modifier.matchParentSize(),
+                                )
+                            }
+                        }
+
+                        // Bows, hearts and sparkles, in the layer the glass chrome samples.
+                        //
+                        // Here rather than over the content on purpose: everything frosted in this
+                        // app — the floating top bar, the navigation bar, the mini-player pill,
+                        // every sheet — is a lens onto this backdrop, so the charms refract through
+                        // them and bend as those surfaces move. Painted above the content instead,
+                        // they would have had to be faint enough not to disturb reading, which is
+                        // another way of saying invisible.
+                        if (sabrinaTheme) {
+                            SabrinaCharmField(
                                 colors = listOf(
                                     MaterialTheme.colorScheme.primary,
-                                    MaterialTheme.colorScheme.tertiary,
                                     MaterialTheme.colorScheme.secondary,
+                                    MaterialTheme.colorScheme.tertiary,
                                 ),
-                                baseColor = if (pureBlack) Color.Black else MaterialTheme.colorScheme.surface,
+                                // Lower in light: M3 puts light-mode primary down at tone 40, so
+                                // the same charm is a deep rose on cream rather than a pastel on
+                                // near-black, and carries much further at the same alpha.
+                                alpha = if (useDarkTheme) 0.42f else 0.34f,
                                 modifier = Modifier.matchParentSize(),
                             )
                         }
@@ -783,7 +862,9 @@ class MainActivity : ComponentActivity() {
 
                     // fetch release notes and show sheet when a new version is detected
                     LaunchedEffect(latestVersionName) {
-                        if (!Updater.isSameVersion(latestVersionName, BuildConfig.VERSION_NAME)) {
+                        // Only for a release that is actually newer. "Not the same" also matched an
+                        // older release, which offered 1.0.203 as an update to 1.0.304 on every launch.
+                        if (Updater.hasUpdate(latestVersionName, BuildConfig.VERSION_NAME)) {
                             Updater.getLatestReleaseNotes().onSuccess {
                                 releaseNotesState.value = it
                             }.onFailure {
@@ -1694,7 +1775,7 @@ class MainActivity : ComponentActivity() {
                                                         Icon(
                                                             painterResource(
                                                                 if (!navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route }) {
-                                                                    R.drawable.arrow_back
+                                                                    R.drawable.chevron_back
                                                                 } else {
                                                                     R.drawable.search
                                                                 },
@@ -1924,6 +2005,7 @@ class MainActivity : ComponentActivity() {
                                             active,
                                             shouldShowNavigationBar,
                                             useRail,
+                                            nowPlayingMetadata,
                                         ) {
                                             derivedStateOf {
                                                 shouldShowNavigationBar &&
@@ -1932,6 +2014,11 @@ class MainActivity : ComponentActivity() {
                                                         !isSearchScreen &&
                                                         !isSearchResultsRoute &&
                                                         !active &&
+                                                        // Nothing playing, nothing to collapse into: the
+                                                        // compact dock is a place for the mini player, and
+                                                        // without one it was a Home circle beside an empty
+                                                        // pill that said "Home" again.
+                                                        nowPlayingMetadata != null &&
                                                         collapsedLatch
                                             }
                                         }
@@ -2196,6 +2283,11 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
+                                // Scaffold paints the theme's background by default, and that background
+                                // is opaque — which put a solid sheet over the moving artwork drawn at the
+                                // back of the window, so every page showed the flat colour instead. With the
+                                // ambient background on, the pages have to be see-through down to it.
+                                containerColor = if (liquidGlassNavBar) Color.Transparent else MaterialTheme.colorScheme.background,
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .nestedScroll(searchBarScrollBehavior.nestedScrollConnection)

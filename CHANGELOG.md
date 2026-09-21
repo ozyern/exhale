@@ -7,6 +7,45 @@ Release notes for the build you are running are also bundled into the app itself
 **Settings → Updates → Changelog**. Every later version's notes are pulled from this repository's
 [GitHub releases](https://github.com/ozyern/Exhale/releases).
 
+## [1.0.304] — 2026-09-11
+
+One palette that spends all four seeds instead of one.
+
+### Added
+
+**A Sabrina Carpenter theme** — Settings → Appearance → Theme.
+
+- Blush, butter and lilac over warm cream. In dark mode the surfaces go warm near-black rather
+  than blue-grey.
+- It is the only palette in the app that uses all four theme seeds. Every entry in the palette
+  picker sets primary, secondary, tertiary and neutral to the same colour, which turns a four-seed
+  system into an accent swap — the buttons change and the app underneath stays the grey it was.
+  This one puts a separate warm seed on `neutral`, which is the seed Material builds background,
+  surface and every container tier from, so the whole app moves rather than a few controls.
+- Colours only. No artwork, no likeness, nothing shipped in the APK but four hex values and three
+  vector paths.
+
+**Charms** — the decorative half, and the reason the theme is more than a repaint.
+
+- Ribbon bows, hearts and four-point sparkles, drifting and twinkling across a layer *behind* the
+  app. That layer is the one every frosted surface samples, so the charms are refracted through the
+  floating top bar, the navigation bar, the mini-player pill and every sheet, bending as those
+  surfaces move.
+- A bow tied to the end of every section header, and a bow on the corner of the player's album
+  cover with sparkles caught on the other three.
+- Drawn as vector paths rather than shipped as images: no APK weight, sharp at any density, and
+  tinted from the live colour scheme. All of it inert — nothing is clickable and nothing takes up
+  space that content needed.
+
+### Changed
+
+- The Sabrina palette overrides dynamic color, the palette picker and true blacks while it is on,
+  and those three controls are hidden rather than left switchable and inert. True blacks in
+  particular has to yield: forcing surface to `#000` erases the warm neutral the palette is built
+  on.
+- Random theme on startup no longer fires while Sabrina is on. It could not have changed what you
+  saw, but it would have quietly overwritten the palette you had saved underneath.
+
 ## [1.0.203] — 2026-09-05
 
 The interface at your size, a library shaped like a library, a sleep timer you can read half

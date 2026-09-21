@@ -1,0 +1,14 @@
+{
+  "name": "exhale-together-relay",
+  "version": "1.0.0",
+  "description": "The meeting point for Exhale Music Together across the internet.",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test.mjs"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": { "ws": "^8.18.0" },
+  "license": "GPL-3.0-only"
+}

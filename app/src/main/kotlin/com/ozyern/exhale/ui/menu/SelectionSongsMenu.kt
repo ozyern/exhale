@@ -8,6 +8,12 @@
 
 package com.ozyern.exhale.ui.menu
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.foundation.layout.Column
+import com.ozyern.exhale.ui.component.Next
+import com.ozyern.exhale.ui.component.MenuDividers
+import com.ozyern.exhale.ui.component.MenuSurfaceSection
 import android.annotation.SuppressLint
 import android.widget.Toast
 import androidx.compose.foundation.clickable
@@ -271,7 +277,15 @@ fun SelectionSongMenu(
             )
         }
         item {
+            Spacer(Modifier.height(14.dp))
+            MenuSurfaceSection {
+                Column {
+                    val dividers = MenuDividers()
+
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = { Text(text = stringResource(R.string.play)) },
                 leadingContent = {
                     Icon(
@@ -291,8 +305,10 @@ fun SelectionSongMenu(
                 }
             )
         }
-        item {
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = { Text(text = stringResource(R.string.shuffle)) },
                 leadingContent = {
                     Icon(
@@ -312,8 +328,10 @@ fun SelectionSongMenu(
                 }
             )
         }
-        item {
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = { Text(text = stringResource(R.string.add_to_queue)) },
                 leadingContent = {
                     Icon(
@@ -328,8 +346,10 @@ fun SelectionSongMenu(
                 }
             )
         }
-        item {
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = { Text(text = stringResource(R.string.add_to_playlist)) },
                 leadingContent = {
                     Icon(
@@ -342,8 +362,10 @@ fun SelectionSongMenu(
                 }
             )
         }
-        item {
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = {
                     Text(
                         text = stringResource(
@@ -379,10 +401,12 @@ fun SelectionSongMenu(
                 }
             )
         }
-        item {
+        run { dividers.Next()
+
             when (downloadState) {
                 Download.STATE_COMPLETED -> {
                     ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         headlineContent = {
                             Text(
                                 text = stringResource(R.string.remove_download),
@@ -402,6 +426,7 @@ fun SelectionSongMenu(
                 }
                 Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
                     ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         headlineContent = { Text(text = stringResource(R.string.downloading)) },
                         leadingContent = {
                             CircularProgressIndicator(
@@ -416,6 +441,7 @@ fun SelectionSongMenu(
                 }
                 else -> {
                     ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         headlineContent = { Text(text = stringResource(R.string.action_download)) },
                         leadingContent = {
                             Icon(
@@ -443,8 +469,14 @@ fun SelectionSongMenu(
                 }
             }
         }
-        item {
+        run { dividers.Next()
+
+            SaveToDeviceItem(songs = { songSelection.map { it.toMediaMetadata() } }, onDismiss = onDismiss)
+        }
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = {
                     Text(
                         text = stringResource(
@@ -476,8 +508,10 @@ fun SelectionSongMenu(
             )
         }
         if (songPosition?.size != 0) {
-            item {
+            run { dividers.Next()
+
                 ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     headlineContent = { Text(text = stringResource(R.string.delete)) },
                     leadingContent = {
                         Icon(
@@ -502,6 +536,10 @@ fun SelectionSongMenu(
                         }
                     }
                 )
+            }
+        }
+    
+                }
             }
         }
     }
@@ -626,9 +664,17 @@ fun SelectionMediaMetadataMenu(
             bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
         ),
     ) {
+        item {
+            Spacer(Modifier.height(14.dp))
+            MenuSurfaceSection {
+                Column {
+                    val dividers = MenuDividers()
+
         if (currentItems.isNotEmpty()) {
-            item {
+            run { dividers.Next()
+
                 ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     headlineContent = { Text(text = stringResource(R.string.delete)) },
                     leadingContent = {
                         Icon(
@@ -649,8 +695,10 @@ fun SelectionMediaMetadataMenu(
                 )
             }
         }
-        item {
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = { Text(text = stringResource(R.string.play)) },
                 leadingContent = {
                     Icon(
@@ -670,8 +718,10 @@ fun SelectionMediaMetadataMenu(
                 }
             )
         }
-        item {
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = { Text(text = stringResource(R.string.shuffle)) },
                 leadingContent = {
                     Icon(
@@ -691,8 +741,10 @@ fun SelectionMediaMetadataMenu(
                 }
             )
         }
-        item {
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = { Text(text = stringResource(R.string.add_to_queue)) },
                 leadingContent = {
                     Icon(
@@ -707,8 +759,10 @@ fun SelectionMediaMetadataMenu(
                 }
             )
         }
-        item {
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = { Text(text = stringResource(R.string.add_to_playlist)) },
                 leadingContent = {
                     Icon(
@@ -721,8 +775,10 @@ fun SelectionMediaMetadataMenu(
                 }
             )
         }
-        item {
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = {
                     Text(
                         text = stringResource(R.string.like_all)
@@ -751,10 +807,12 @@ fun SelectionMediaMetadataMenu(
                 }
             )
         }
-        item {
+        run { dividers.Next()
+
             when (downloadState) {
                 Download.STATE_COMPLETED -> {
                     ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         headlineContent = {
                             Text(
                                 text = stringResource(R.string.remove_download),
@@ -774,6 +832,7 @@ fun SelectionMediaMetadataMenu(
                 }
                 Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
                     ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         headlineContent = { Text(text = stringResource(R.string.downloading)) },
                         leadingContent = {
                             CircularProgressIndicator(
@@ -788,6 +847,7 @@ fun SelectionMediaMetadataMenu(
                 }
                 else -> {
                     ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         headlineContent = { Text(text = stringResource(R.string.action_download)) },
                         leadingContent = {
                             Icon(
@@ -812,6 +872,14 @@ fun SelectionMediaMetadataMenu(
                             }
                         }
                     )
+                }
+            }
+        }
+        run { dividers.Next()
+
+            SaveToDeviceItem(songs = { songSelection }, onDismiss = onDismiss)
+        }
+    
                 }
             }
         }

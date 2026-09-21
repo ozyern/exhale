@@ -428,7 +428,7 @@ fun Lyrics(
     val lyricsLineSpacing by rememberPreference(LyricsLineSpacingKey, 1.3f)
     val useSystemFont by rememberPreference(UseSystemFontKey, false)
     val lyricsFontFamily = remember(useSystemFont) {
-        if (useSystemFont) null else FontFamily(Font(R.font.sfprodisplaybold))
+        if (useSystemFont) null else FontFamily(Font(R.font.linotte))
     }
 
     val verticalLineSpacing = with(LocalDensity.current) {

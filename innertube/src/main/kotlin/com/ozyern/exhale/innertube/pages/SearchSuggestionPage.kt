@@ -14,6 +14,7 @@ import com.ozyern.exhale.innertube.models.MusicResponsiveListItemRenderer
 import com.ozyern.exhale.innertube.models.SongItem
 import com.ozyern.exhale.innertube.models.YTItem
 import com.ozyern.exhale.innertube.models.oddElements
+import com.ozyern.exhale.innertube.models.artistGroupRuns
 import com.ozyern.exhale.innertube.models.splitBySeparator
 
 object SearchSuggestionPage {
@@ -37,8 +38,7 @@ object SearchSuggestionPage {
                             ?.text
                             ?.runs
                             ?.splitBySeparator()
-                            ?.getOrNull(1)
-                            ?.oddElements()
+                            ?.artistGroupRuns()
                             ?.map {
                                 Artist(
                                     name = it.text,

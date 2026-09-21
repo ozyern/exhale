@@ -10,6 +10,14 @@
 
 package com.ozyern.exhale.ui.player
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.unit.Dp
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -121,8 +129,13 @@ import kotlin.math.roundToInt
 
 
 /**
- * Current Song Header shown at the top of the queue
- * Displays album art, song info, and control buttons
+ * The top of the queue, as Apple Music's "Playing Next" lays it out: what is playing as one compact
+ * row, then the queue's switches as labelled capsules that fill with the accent when they are on.
+ *
+ * It used to be three stacked plates — a status pill holding a lock, a menu and a count, a row of
+ * Material toggle blocks with no labels, and a "Continue Playing" heading with a rule under it — which
+ * is a settings panel, not the top of a list of songs. The count now lives in the "Up Next" heading
+ * right above the songs it counts.
  */
 @Composable
 fun CurrentSongHeader(
@@ -151,232 +164,194 @@ fun CurrentSongHeader(
             .background(backgroundColor)
             .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
             .bottomSheetDraggable(sheetState)
-            .padding(horizontal = 16.dp)
-            .padding(top = 20.dp, bottom = 8.dp)
+            .padding(horizontal = 18.dp)
+            .padding(top = 10.dp, bottom = 6.dp)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp),
+                .padding(bottom = 18.dp),
             contentAlignment = Alignment.Center
         ) {
             Box(
                 modifier = Modifier
-                    .width(48.dp)
+                    .width(38.dp)
                     .height(5.dp)
                     .clip(RoundedCornerShape(2.5.dp))
-                    .background(onBackgroundColor.copy(alpha = 0.4f))
+                    .background(onBackgroundColor.copy(alpha = 0.28f))
             )
         }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             AsyncImage(
                 model = mediaMetadata?.thumbnailUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(64.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(10.dp))
                     .background(onBackgroundColor.copy(alpha = 0.06f))
             )
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = mediaMetadata?.title ?: "",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     color = onBackgroundColor
                 )
-                Text(
-                    text = mediaMetadata?.artists?.joinToString(", ") { it.name } ?: "",
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = onBackgroundColor.copy(alpha = 0.6f)
-                )
+                val artists = mediaMetadata?.artists?.joinToString(", ") { it.name }.orEmpty()
+                if (artists.isNotBlank()) {
+                    Text(
+                        text = artists,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = onBackgroundColor.copy(alpha = 0.6f)
+                    )
+                }
             }
-
-            IconButton(
+            Spacer(Modifier.width(10.dp))
+            HeaderRoundButton(
+                icon = if (mediaMetadata?.liked == true) R.drawable.favorite else R.drawable.favorite_border,
+                description = stringResource(R.string.action_like),
+                tint = if (mediaMetadata?.liked == true) MaterialTheme.colorScheme.primary else onBackgroundColor,
+                wash = onBackgroundColor,
                 onClick = onToggleLike,
-                modifier = Modifier.size(44.dp),
-                colors = IconButtonDefaults.iconButtonColors(
-                    contentColor = if (mediaMetadata?.liked == true)
-                        MaterialTheme.colorScheme.primary
-                    else onBackgroundColor
-                )
-            ) {
-                Icon(
-                    painter = painterResource(
-                        if (mediaMetadata?.liked == true) R.drawable.favorite
-                        else R.drawable.favorite_border
-                    ),
-                    contentDescription = stringResource(R.string.action_like),
-                    modifier = Modifier.size(26.dp)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(24.dp))
-                .background(onBackgroundColor.copy(alpha = 0.06f))
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(0.dp)
-            ) {
-                IconButton(
-                    onClick = onLockClick,
-                    modifier = Modifier.size(40.dp),
-                    colors = IconButtonDefaults.iconButtonColors(
-                        contentColor = onBackgroundColor.copy(alpha = 0.7f)
-                    )
-                ) {
-                    Icon(
-                        painter = painterResource(if (locked) R.drawable.lock else R.drawable.lock_open),
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                IconButton(
-                    onClick = onMenuClick,
-                    modifier = Modifier.size(40.dp),
-                    colors = IconButtonDefaults.iconButtonColors(
-                        contentColor = onBackgroundColor.copy(alpha = 0.7f)
-                    )
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.more_vert),
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-
-            Text(
-                text = pluralStringResource(R.plurals.n_song, songCount, songCount)
-                        + "  •  " + makeTimeString(queueDuration * 1000L),
-                style = MaterialTheme.typography.labelMedium,
-                color = onBackgroundColor.copy(alpha = 0.55f),
-                modifier = Modifier.padding(end = 14.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            HeaderRoundButton(
+                icon = R.drawable.more_horiz,
+                description = null,
+                tint = onBackgroundColor,
+                wash = onBackgroundColor,
+                onClick = onMenuClick,
             )
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(18.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val uncheckedColors = ToggleButtonDefaults.toggleButtonColors(
-                containerColor = onBackgroundColor.copy(alpha = 0.12f),
-                contentColor = onBackgroundColor,
+            QueueSwitch(
+                icon = R.drawable.shuffle,
+                label = "Shuffle",
+                on = shuffleModeEnabled,
+                foreground = onBackgroundColor,
+                onClick = onShuffleClick,
+                modifier = Modifier.weight(1f),
             )
-            val checkedColors = ToggleButtonDefaults.toggleButtonColors(
-                checkedContainerColor = onBackgroundColor.copy(alpha = 0.22f),
-                checkedContentColor = onBackgroundColor,
+            QueueSwitch(
+                icon = when (repeatMode) {
+                    Player.REPEAT_MODE_ONE -> R.drawable.repeat_one_on
+                    Player.REPEAT_MODE_ALL -> R.drawable.repeat_on
+                    else -> R.drawable.repeat
+                },
+                label = if (repeatMode == Player.REPEAT_MODE_ONE) "Repeat 1" else "Repeat",
+                on = repeatMode != Player.REPEAT_MODE_OFF,
+                foreground = onBackgroundColor,
+                onClick = onRepeatClick,
+                modifier = Modifier.weight(1f),
             )
-            val infiniteCheckedColors = ToggleButtonDefaults.toggleButtonColors(
-                checkedContainerColor = MaterialTheme.colorScheme.primary,
-                checkedContentColor = MaterialTheme.colorScheme.onPrimary,
-                containerColor = onBackgroundColor.copy(alpha = 0.12f),
-                contentColor = onBackgroundColor.copy(alpha = 0.5f),
+            QueueSwitch(
+                icon = R.drawable.all_inclusive,
+                label = "Autoplay",
+                on = infiniteQueueEnabled,
+                foreground = onBackgroundColor,
+                onClick = onInfiniteQueueClick,
+                modifier = Modifier.weight(1f),
             )
-
-            ToggleButton(
-                checked = shuffleModeEnabled,
-                onCheckedChange = { onShuffleClick() },
-                modifier = Modifier
-                    .weight(1f)
-                    .size(48.dp),
-                shapes = ButtonGroupDefaults.connectedLeadingButtonShapes(),
-                colors = if (shuffleModeEnabled) checkedColors else uncheckedColors,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.shuffle),
-                    contentDescription = stringResource(R.string.action_shuffle_on),
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-
-            ToggleButton(
-                checked = repeatMode != Player.REPEAT_MODE_OFF,
-                onCheckedChange = { onRepeatClick() },
-                modifier = Modifier
-                    .weight(1f)
-                    .size(48.dp),
-                shapes = ButtonGroupDefaults.connectedMiddleButtonShapes(),
-                colors = if (repeatMode != Player.REPEAT_MODE_OFF) checkedColors else uncheckedColors,
-            ) {
-                Icon(
-                    painter = painterResource(
-                        when (repeatMode) {
-                            Player.REPEAT_MODE_ONE -> R.drawable.repeat_one_on
-                            Player.REPEAT_MODE_ALL -> R.drawable.repeat_on
-                            else -> R.drawable.repeat
-                        }
-                    ),
-                    contentDescription = null,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-
-            ToggleButton(
-                checked = infiniteQueueEnabled,
-                onCheckedChange = { onInfiniteQueueClick() },
-                modifier = Modifier
-                    .weight(1f)
-                    .size(48.dp),
-                shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
-                colors = infiniteCheckedColors,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.all_inclusive),
-                    contentDescription = stringResource(R.string.similar_content),
-                    modifier = Modifier.size(22.dp)
-                )
-            }
+            // Reordering and swipe-to-remove are off while this is locked; unlocking is the list's "Edit".
+            QueueSwitch(
+                icon = if (locked) R.drawable.lock else R.drawable.lock_open,
+                label = if (locked) "Edit" else "Done",
+                on = !locked,
+                foreground = onBackgroundColor,
+                onClick = onLockClick,
+                modifier = Modifier.weight(1f),
+            )
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        AnimatedVisibility(
+            visible = infiniteQueueEnabled,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+        ) {
+            Text(
+                text = stringResource(R.string.queue_autoplaying_similar),
+                style = MaterialTheme.typography.bodySmall,
+                color = onBackgroundColor.copy(alpha = 0.5f),
+                modifier = Modifier.padding(top = 10.dp, start = 4.dp),
+            )
+        }
+    }
+}
 
-        Text(
-            text = stringResource(R.string.queue_continue_playing),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = onBackgroundColor
-        )
+/** A small round button on a faint wash of the page's own foreground colour. */
+@Composable
+private fun HeaderRoundButton(
+    icon: Int,
+    description: String?,
+    tint: Color,
+    wash: Color,
+    onClick: () -> Unit,
+    size: Dp = 36.dp,
+) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(wash.copy(alpha = 0.10f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(painterResource(icon), contentDescription = description, tint = tint, modifier = Modifier.size(size * 0.52f))
+    }
+}
 
-        Spacer(modifier = Modifier.height(2.dp))
-
-        Text(
-            text = stringResource(R.string.queue_autoplaying_similar),
-            style = MaterialTheme.typography.bodySmall,
-            color = onBackgroundColor.copy(alpha = 0.5f)
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        HorizontalDivider(
-            color = onBackgroundColor.copy(alpha = 0.08f),
-            thickness = 1.dp
-        )
+/**
+ * One of the queue's switches, labelled: a capsule that fills with the accent when on. The label is
+ * the point — a row of bare glyphs made "which of these is on" a thing you had to decode.
+ */
+@Composable
+private fun QueueSwitch(
+    icon: Int,
+    label: String,
+    on: Boolean,
+    foreground: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // Glass on the song's colour: faint when off, brighter when on — Apple's queue buttons, which never
+    // turn a solid accent because the row sits on artwork that already has a colour of its own.
+    val fill by animateColorAsState(foreground.copy(alpha = if (on) 0.34f else 0.12f), tween(220), label = "queueSwitchFill")
+    val ink by animateColorAsState(if (on) foreground else foreground.copy(alpha = 0.72f), tween(220), label = "queueSwitchInk")
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.95f else 1f, spring(dampingRatio = 0.6f, stiffness = 700f), label = "queueSwitchPress")
+    Row(
+        modifier = modifier
+            .height(36.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(CircleShape)
+            .background(fill)
+            .clickable(interactionSource = source, indication = null, onClick = onClick)
+            .semantics { contentDescription = label },
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(painterResource(icon), contentDescription = null, tint = ink, modifier = Modifier.size(20.dp))
     }
 }
 

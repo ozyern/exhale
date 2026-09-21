@@ -151,7 +151,7 @@ fun YouTubePlaylistMenu(
 
     Surface(
         shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        color = Color.Transparent,
         modifier = Modifier.fillMaxWidth(),
     ) {
         YouTubeListItem(
@@ -446,7 +446,7 @@ fun YouTubePlaylistMenu(
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            Column(modifier = Modifier.padding(vertical = 6.dp)) {
                 NewActionGrid(
                     actions = primaryActions,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
@@ -741,6 +741,7 @@ fun YouTubePlaylistMenu(
                         )
                     }
                 }
+                SaveToDeviceItem(songs = { songs.map { it.toMediaMetadata() } }, onDismiss = onDismiss)
             }
         }
 

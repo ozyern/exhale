@@ -7,6 +7,28 @@
 package com.ozyern.exhale.ui.screens.settings
 
 import android.annotation.SuppressLint
+import androidx.compose.ui.graphics.isSpecified
+import com.ozyern.exhale.ui.component.SettingsGroupCornerRadius
+import com.ozyern.exhale.ui.component.SwitchPreference
+import com.ozyern.exhale.ui.component.PreferenceGroupTitle
+import com.ozyern.exhale.ui.component.PreferenceEntry
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import com.ozyern.exhale.ui.component.settingsGlassGroup
+import com.ozyern.exhale.ui.component.settingsIconPuck
 import android.content.Intent
 import android.os.Build
 import android.widget.Toast
@@ -85,6 +107,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import kotlinx.coroutines.flow.MutableStateFlow
 import com.ozyern.exhale.LocalPlayerAwareWindowInsets
@@ -95,16 +118,22 @@ import com.ozyern.exhale.constants.TogetherAllowGuestsToControlPlaybackKey
 import com.ozyern.exhale.constants.TogetherDefaultPortKey
 import com.ozyern.exhale.constants.TogetherDisplayNameKey
 import com.ozyern.exhale.constants.TogetherLastJoinLinkKey
+import com.ozyern.exhale.constants.TogetherRelayUrlKey
 import com.ozyern.exhale.constants.TogetherRequireHostApprovalToJoinKey
 import com.ozyern.exhale.constants.TogetherWelcomeShownKey
 import com.ozyern.exhale.together.TogetherLink
+import com.ozyern.exhale.together.TogetherOnlineEndpoint
 import com.ozyern.exhale.together.TogetherRole
 import com.ozyern.exhale.together.TogetherRoomSettings
 import com.ozyern.exhale.together.TogetherSessionState
 import com.ozyern.exhale.ui.component.IconButton as AtIconButton
 import com.ozyern.exhale.ui.component.TextFieldDialog
 import com.ozyern.exhale.ui.utils.backToMain
+import com.ozyern.exhale.utils.dataStore
 import com.ozyern.exhale.utils.rememberPreference
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @SuppressLint("LocalContextGetResourceValueCall")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -123,13 +152,10 @@ fun MusicTogetherScreen(
     val showWelcome = !welcomeShown && !welcomeDismissedThisSession
 
     if (showWelcome) {
-        WelcomeDialog(
-            onGotIt = { dontShowAgain ->
-                welcomeDismissedThisSession = true
-                if (dontShowAgain) setWelcomeShown(true)
-            },
-            onDismiss = { welcomeDismissedThisSession = true },
-        )
+        TogetherWelcomeSheet(onContinue = {
+            welcomeDismissedThisSession = true
+            setWelcomeShown(true)
+        })
     }
 
     val (displayName, setDisplayName) = rememberPreference(
@@ -155,14 +181,16 @@ fun MusicTogetherScreen(
     }
     val sessionState by sessionStateFlow.collectAsState()
 
-    val isHosting = sessionState is TogetherSessionState.Hosting
-    val isJoining = sessionState is TogetherSessionState.Joining
+    val isHosting = sessionState is TogetherSessionState.Hosting || sessionState is TogetherSessionState.HostingOnline
+    val isJoining = sessionState is TogetherSessionState.Joining || sessionState is TogetherSessionState.JoiningOnline
     val isHostRole = when (val state = sessionState) {
-        is TogetherSessionState.Hosting -> true
+        is TogetherSessionState.Hosting, is TogetherSessionState.HostingOnline -> true
         is TogetherSessionState.Joined  -> state.role is TogetherRole.Host
         else -> false
     }
-    val isCreatingSessionLoading = (sessionState as? TogetherSessionState.Hosting)?.roomState == null && isHosting
+    val isCreatingSessionLoading =
+        ((sessionState as? TogetherSessionState.Hosting)?.roomState == null && sessionState is TogetherSessionState.Hosting) ||
+            ((sessionState as? TogetherSessionState.HostingOnline)?.roomState == null && sessionState is TogetherSessionState.HostingOnline)
     val isJoinedAsGuest = (sessionState as? TogetherSessionState.Joined)?.role is TogetherRole.Guest
     val isWaitingApproval = run {
         val joined = sessionState as? TogetherSessionState.Joined ?: return@run false
@@ -177,7 +205,8 @@ fun MusicTogetherScreen(
     var showJoinDialog by rememberSaveable { mutableStateOf(false) }
 
     val hostingLan = sessionState as? TogetherSessionState.Hosting
-    val lanParticipants = hostingLan?.roomState?.participants.orEmpty()
+    val hostingOnline = sessionState as? TogetherSessionState.HostingOnline
+    val lanParticipants = (hostingLan?.roomState ?: hostingOnline?.roomState)?.participants.orEmpty()
     var confirmKickParticipantId by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmBanParticipantId  by rememberSaveable { mutableStateOf<String?>(null) }
     val confirmKickName = lanParticipants.firstOrNull { it.id == confirmKickParticipantId }?.name
@@ -255,72 +284,60 @@ fun MusicTogetherScreen(
         )
     }
 
-    // Kick / Ban dialogs
+    // Kick / Ban: iOS alerts, Cancel on the left and the red action on the right.
     if (confirmKickParticipantId != null) {
-        AlertDialog(
-            onDismissRequest = { confirmKickParticipantId = null },
-            shape = RoundedCornerShape(28.dp),
-            containerColor = MaterialTheme.colorScheme.surface,
-            title = { Text(stringResource(R.string.together_kick)) },
-            text = {
-                Text(
-                    stringResource(R.string.together_kick_confirm, confirmKickName ?: stringResource(R.string.unknown)),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        IosAlert(
+            title = stringResource(R.string.together_kick),
+            message = stringResource(R.string.together_kick_confirm, confirmKickName ?: stringResource(R.string.unknown)),
+            confirmText = stringResource(R.string.together_kick),
+            destructive = true,
+            onConfirm = {
+                val pid = confirmKickParticipantId
+                confirmKickParticipantId = null
+                if (pid != null) playerConnection?.service?.kickTogetherParticipant(pid)
             },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val pid = confirmKickParticipantId ?: return@Button
-                        confirmKickParticipantId = null
-                        playerConnection?.service?.kickTogetherParticipant(pid)
-                    },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                ) { Text(stringResource(R.string.together_kick), fontWeight = FontWeight.SemiBold) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmKickParticipantId = null }, shape = RoundedCornerShape(16.dp)) {
-                    Text(stringResource(R.string.dismiss))
-                }
-            },
+            onDismiss = { confirmKickParticipantId = null },
         )
     }
 
     if (confirmBanParticipantId != null) {
-        AlertDialog(
-            onDismissRequest = { confirmBanParticipantId = null },
-            shape = RoundedCornerShape(28.dp),
-            containerColor = MaterialTheme.colorScheme.surface,
-            title = { Text(stringResource(R.string.together_ban)) },
-            text = {
-                Text(
-                    stringResource(R.string.together_ban_confirm, confirmBanName ?: stringResource(R.string.unknown)),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        IosAlert(
+            title = stringResource(R.string.together_ban),
+            message = stringResource(R.string.together_ban_confirm, confirmBanName ?: stringResource(R.string.unknown)),
+            confirmText = stringResource(R.string.together_ban),
+            destructive = true,
+            onConfirm = {
+                val pid = confirmBanParticipantId
+                confirmBanParticipantId = null
+                if (pid != null) playerConnection?.service?.banTogetherParticipant(pid)
             },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val pid = confirmBanParticipantId ?: return@Button
-                        confirmBanParticipantId = null
-                        playerConnection?.service?.banTogetherParticipant(pid)
-                    },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                ) { Text(stringResource(R.string.together_ban), fontWeight = FontWeight.SemiBold) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmBanParticipantId = null }, shape = RoundedCornerShape(16.dp)) {
-                    Text(stringResource(R.string.dismiss))
-                }
-            },
+            onDismiss = { confirmBanParticipantId = null },
         )
     }
 
     // ── Screen content ────────────────────────────────────────────────────────
+
+    var mode by rememberSaveable { mutableStateOf(TogetherMode.Nearby) }
+    var onlineCode by rememberSaveable { mutableStateOf("") }
+    val idle = sessionState is TogetherSessionState.Idle || sessionState is TogetherSessionState.Error
+    val hostSettings = hostingLan?.settings ?: hostingOnline?.settings
+
+    val copy: (String) -> Unit = { text ->
+        clipboard.setText(AnnotatedString(text))
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        Toast.makeText(context, R.string.copied, Toast.LENGTH_SHORT).show()
+    }
+    val share: (String) -> Unit = { text ->
+        context.startActivity(
+            Intent.createChooser(
+                Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, text)
+                },
+                null,
+            )
+        )
+    }
 
     Column(
         Modifier
@@ -337,878 +354,674 @@ fun MusicTogetherScreen(
             )
         )
 
-        // Status card
-        StatusCard(
+        val joinedState = sessionState as? TogetherSessionState.Joined
+        val roomPeople = when {
+            isHostRole -> lanParticipants.filterNot { it.isPending && hostSettings?.requireHostApprovalToJoin == true }
+            joinedState != null -> joinedState.roomState.participants.filterNot { it.isPending }
+            else -> emptyList()
+        }
+        TogetherHeader(
             state = sessionState,
-            onCopyLink = { link ->
-                clipboard.setText(AnnotatedString(link))
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                Toast.makeText(context, R.string.copied, Toast.LENGTH_SHORT).show()
-            },
-            onShareLink = { link ->
-                context.startActivity(
-                    Intent.createChooser(
-                        Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, link)
-                        },
-                        null,
-                    )
-                )
-            },
-            onLeave = { playerConnection?.service?.leaveTogether() },
-            modifier = Modifier
-                .padding(horizontal = 16.dp)
-                .padding(top = 4.dp, bottom = 12.dp),
+            listeners = roomPeople.count { !it.isHost },
+            people = roomPeople.map { it.name },
+            hostIndex = roomPeople.indexOfFirst { it.isHost }.takeIf { it >= 0 },
+            onDismissError = { playerConnection?.service?.leaveTogether() },
         )
 
-        // Participants card (LAN host only)
-        if (hostingLan?.roomState != null && isHostRole) {
-            OnlineParticipantsCard(
-                participants = hostingLan.roomState.participants,
-                hostApprovalEnabled = hostingLan.settings.requireHostApprovalToJoin,
-                onApprove = { pid, approved ->
-                    playerConnection?.service?.approveTogetherParticipant(pid, approved)
-                },
-                onKick = { confirmKickParticipantId = it },
-                onBan  = { confirmBanParticipantId  = it },
-                modifier = Modifier
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 12.dp),
-            )
-        }
+        if (idle) {
+            ModeSwitch(mode = mode, onMode = { mode = it })
 
-        // Host section (LAN only)
-        if (!isJoinedAsGuest) {
-            HostSectionCard(
-                displayName = displayName,
-                port = port,
+            CapsuleButton(
+                text = if (mode == TogetherMode.Nearby) "Start Session" else "Start Online Session",
+                icon = if (mode == TogetherMode.Nearby) R.drawable.wifi else R.drawable.language,
+                onClick = {
+                    val settings = TogetherRoomSettings(
+                        allowGuestsToAddTracks = allowAddTracks,
+                        allowGuestsToControlPlayback = allowControlPlayback,
+                        requireHostApprovalToJoin = requireApproval,
+                    )
+                    if (mode == TogetherMode.Online) {
+                        playerConnection?.service?.startTogetherOnlineHost(displayName = displayName, settings = settings)
+                    } else {
+                        playerConnection?.service?.startTogetherHost(port = port, displayName = displayName, settings = settings)
+                    }
+                },
+                enabled = !isCreatingSessionLoading && !isJoining && !isHosting,
+                loading = isCreatingSessionLoading,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 18.dp),
+            )
+
+            if (mode == TogetherMode.Nearby) {
+                TogetherCard {
+                    TogetherTip(
+                        icon = R.drawable.wifi,
+                        tint = Color(0xFF34C759),
+                        title = "No Wi-Fi? Use a hotspot",
+                        body = "Turn on your hotspot, have the other phone join it, then start the session. Two phones are all it takes. No router needed.",
+                        modifier = Modifier.padding(16.dp),
+                        action = {
+                            Text(
+                                "Open Hotspot Settings",
+                                color = MaterialTheme.colorScheme.primary,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.clickable { openHotspotSettings(context) },
+                            )
+                        },
+                    )
+                }
+            }
+
+            val nearbyValid = canJoin
+            val onlineValid = onlineCode.length >= 4
+            JoinCard(
+                mode = mode,
+                input = if (mode == TogetherMode.Online) onlineCode else joinInput,
+                onInput = { if (mode == TogetherMode.Online) onlineCode = it else joinInput = it },
+                valid = if (mode == TogetherMode.Online) onlineValid else nearbyValid,
+                enabled = !disableJoinUi && !isJoining,
+                onPaste = {
+                    val text = clipboard.getText()?.text?.trim().orEmpty()
+                    if (text.isNotBlank()) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        if (mode == TogetherMode.Online) onlineCode = text.uppercase().filter { it.isLetterOrDigit() }.take(8) else joinInput = text
+                    }
+                },
+                onJoin = {
+                    if (mode == TogetherMode.Online) {
+                        playerConnection?.service?.joinTogetherOnline(onlineCode, displayName)
+                    } else {
+                        val trimmed = joinInput.trim()
+                        setLastJoinLink(trimmed)
+                        playerConnection?.service?.joinTogether(trimmed, displayName)
+                    }
+                },
+            )
+
+            TogetherSection("You", footer = "This is the name everyone else in the room sees.") {
+                PuckRow(R.drawable.person, "Your name", subtitle = displayName, onClick = { showNameDialog = true })
+            }
+
+            RulesCard(
                 allowAddTracks = allowAddTracks,
                 allowControlPlayback = allowControlPlayback,
                 requireApproval = requireApproval,
-                onShowNameDialog = { showNameDialog = true },
-                onShowPortDialog = { showPortDialog = true },
-                onAllowAddTracksChange = setAllowAddTracks,
-                onAllowControlPlaybackChange = setAllowControlPlayback,
-                onRequireApprovalChange = setRequireApproval,
-                isStartEnabled = !isCreatingSessionLoading && !isJoining && !isHosting &&
-                        sessionState !is TogetherSessionState.Joined,
-                isLoading = isCreatingSessionLoading,
-                onStartSession = {
-                    playerConnection?.service?.startTogetherHost(
-                        port = port,
-                        displayName = displayName,
-                        settings = TogetherRoomSettings(
-                            allowGuestsToAddTracks = allowAddTracks,
-                            allowGuestsToControlPlayback = allowControlPlayback,
-                            requireHostApprovalToJoin = requireApproval,
-                        ),
-                    )
-                },
-                modifier = Modifier
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 12.dp),
+                onAllowAddTracks = setAllowAddTracks,
+                onAllowControlPlayback = setAllowControlPlayback,
+                onRequireApproval = setRequireApproval,
+            )
+
+            if (mode == TogetherMode.Online) RelayCard()
+        } else {
+            // A room is running (or being joined): the way in, who is in, and what they may do.
+            if (hostingOnline != null) {
+                InviteCode(code = hostingOnline.code, onCopy = copy, onShare = share)
+            } else if (hostingLan != null) {
+                InviteQr(
+                    link = hostingLan.joinLink,
+                    addressHint = hostingLan.localAddressHint?.let { "$it:${hostingLan.port}" },
+                    onCopy = copy,
+                    onShare = share,
+                )
+            }
+
+            if (isHostRole && lanParticipants.isNotEmpty()) {
+                OnlineParticipantsCard(
+                    participants = lanParticipants,
+                    hostApprovalEnabled = hostSettings?.requireHostApprovalToJoin == true,
+                    onApprove = { pid, approved -> playerConnection?.service?.approveTogetherParticipant(pid, approved) },
+                    onKick = { confirmKickParticipantId = it },
+                    onBan = { confirmBanParticipantId = it },
+                )
+            }
+
+            if (joinedState != null && joinedState.role is TogetherRole.Guest) {
+                ParticipantsCard(joinedState.roomState.participants.map { it.name })
+            }
+
+            if (isHostRole) {
+                RulesCard(
+                    allowAddTracks = hostSettings?.allowGuestsToAddTracks ?: allowAddTracks,
+                    allowControlPlayback = hostSettings?.allowGuestsToControlPlayback ?: allowControlPlayback,
+                    requireApproval = hostSettings?.requireHostApprovalToJoin ?: requireApproval,
+                    onAllowAddTracks = setAllowAddTracks,
+                    onAllowControlPlayback = setAllowControlPlayback,
+                    onRequireApproval = setRequireApproval,
+                )
+            }
+
+            CapsuleButton(
+                text = if (isHostRole) "End Session" else "Leave Session",
+                icon = R.drawable.leave,
+                destructive = true,
+                filled = false,
+                onClick = { playerConnection?.service?.leaveTogether() },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 24.dp),
             )
         }
 
-        // Join section
-        JoinSectionCard(
-            joinInput = joinInput,
-            onJoinInputChange = { joinInput = it },
-            canJoin = canJoin,
-            disableJoinUi = disableJoinUi,
-            isJoined = isJoinedAsAcceptedGuest,
-            isWaitingApproval = isWaitingApproval,
-            isJoining = isJoining,
-            onShowJoinDialog = { showJoinDialog = true },
-            onPasteFromClipboard = {
-                val text = clipboard.getText()?.text?.trim() ?: ""
-                if (text.isNotBlank()) {
-                    joinInput = text
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    // Auto-join if valid
-                    if (TogetherLink.decode(text) != null) {
-                        setLastJoinLink(text)
-                        playerConnection?.service?.joinTogether(text, displayName)
-                    }
-                }
-            },
-            onJoin = {
-                val trimmed = joinInput.trim()
-                setLastJoinLink(trimmed)
-                playerConnection?.service?.joinTogether(trimmed, displayName)
-            },
-            modifier = Modifier
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 16.dp),
-        )
+        Spacer(Modifier.height(24.dp))
     }
 
     SettingsTopAppBar(
         title = { Text(stringResource(R.string.music_together)) },
         navigationIcon = {
-            AtIconButton(
+            com.ozyern.exhale.ui.component.LiquidBackButton(
                 onClick = navController::navigateUp,
                 onLongClick = navController::backToMain,
-            ) {
-                Icon(painterResource(R.drawable.arrow_back), null)
-            }
+            )
         },
         scrollBehavior = scrollBehavior,
     )
 }
 
-// ── Host Section Card (LAN only, no mode selector) ─────────────────────────
+
+// ── The screen's parts ───────────────────────────────────────────────────────
+//
+// Built from the same pieces as every other settings page — the frosted inset group, the quiet
+// section header above it, the icon puck, hairline dividers between rows, a footer under it — so
+// Together reads as part of the app rather than a screen that arrived from somewhere else. Actions
+// are rows in the accent colour, the way a grouped list asks for them, not Material buttons laid
+// on top of glass.
+
+private enum class TogetherMode { Nearby, Online }
 
 @Composable
-private fun HostSectionCard(
-    displayName: String,
-    port: Int,
+private fun TogetherSection(
+    title: String?,
+    modifier: Modifier = Modifier,
+    footer: String? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(modifier.fillMaxWidth()) {
+        if (title != null) PreferenceGroupTitle(title)
+        Column(Modifier.fillMaxWidth().animateContentSize(spring(stiffness = Spring.StiffnessMediumLow)), content = content)
+        if (footer != null) {
+            Text(
+                footer,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 2.dp, bottom = 4.dp),
+            )
+        }
+    }
+}
+
+/** One glass card with the same margins and shape a settings entry has, for things that aren't one row. */
+/** One glass card with the same margins and shape a settings entry has, for things that aren't one row. */
+@Composable
+private fun TogetherCard(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 5.dp)
+            .settingsGlassGroup(RoundedCornerShape(SettingsGroupCornerRadius))
+            .animateContentSize(spring(stiffness = Spring.StiffnessMediumLow)),
+        content = content,
+    )
+}
+
+@Composable
+private fun GroupDivider(indent: androidx.compose.ui.unit.Dp = SettingsDimensions.DividerStartIndent) = HorizontalDivider(
+    modifier = Modifier.padding(start = indent),
+    thickness = SettingsDimensions.DividerThickness,
+    color = SettingsDimensions.dividerColor(),
+)
+
+/** A pressed row fills with a neutral grey edge to edge and does not move, as on every other settings page. */
+@Composable
+private fun Modifier.rowPress(onClick: (() -> Unit)?): Modifier {
+    if (onClick == null) return this
+    val haptic = LocalHapticFeedback.current
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val wash by animateFloatAsState(if (pressed) 0.09f else 0f, SettingsAnimations.pressSpring(), label = "togetherRowPress")
+    return this
+        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = wash))
+        .clickable(interactionSource = source, indication = null) {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            onClick()
+        }
+}
+
+@Composable
+private fun PuckRow(
+    icon: Int,
+    title: String,
+    subtitle: String? = null,
+    accent: Color = Color.Unspecified,
+    onClick: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    PreferenceEntry(
+        title = { Text(title) },
+        description = subtitle,
+        icon = {
+            Icon(
+                painterResource(icon),
+                null,
+                tint = if (accent.isSpecified) accent else androidx.compose.material3.LocalContentColor.current,
+            )
+        },
+        trailingContent = trailing,
+        onClick = onClick,
+    )
+}
+
+
+/** An action as a grouped list writes one: a row whose label is the accent colour, centred. */
+@Composable
+private fun BareAction(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    loading: Boolean = false,
+    destructive: Boolean = false,
+    prominent: Boolean = false,
+) {
+    val color = when {
+        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+        destructive -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.primary
+    }
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .rowPress(if (enabled && !loading) onClick else null)
+            .padding(horizontal = SettingsDimensions.RowHorizontalPadding, vertical = 15.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (loading) {
+            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = color)
+        } else {
+            Text(
+                text,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = if (prominent) FontWeight.SemiBold else FontWeight.Medium,
+                color = color,
+            )
+        }
+    }
+}
+
+/**
+ * The top of the page, centred the way SharePlay and AirDrop are: the orb, the state in a large
+ * title, one line under it, and the faces of everyone in the room once there is a room.
+ */
+@Composable
+private fun TogetherHeader(
+    state: TogetherSessionState,
+    listeners: Int,
+    people: List<String>,
+    hostIndex: Int?,
+    onDismissError: () -> Unit,
+) {
+    val isError = state is TogetherSessionState.Error
+    val busy = state is TogetherSessionState.Joining || state is TogetherSessionState.JoiningOnline
+    val isActive = state !is TogetherSessionState.Idle && !isError
+    val waiting = (state as? TogetherSessionState.Joined)?.let { joined ->
+        joined.role is TogetherRole.Guest && joined.roomState.participants.firstOrNull { it.id == joined.selfParticipantId }?.isPending == true
+    } == true
+    val title = when (state) {
+        TogetherSessionState.Idle -> "Music Together"
+        is TogetherSessionState.Hosting, is TogetherSessionState.HostingOnline -> "You're Hosting"
+        is TogetherSessionState.Joining, is TogetherSessionState.JoiningOnline -> "Joining…"
+        is TogetherSessionState.Joined -> if (waiting) "Waiting for the Host" else "Listening Together"
+        is TogetherSessionState.Error -> "That Didn't Work"
+    }
+    val subtitle = when (state) {
+        TogetherSessionState.Idle -> "Every phone plays the same song, at the same second."
+        is TogetherSessionState.Hosting, is TogetherSessionState.HostingOnline -> when {
+            listeners <= 0 -> "Waiting for someone to join"
+            listeners == 1 -> "1 person listening with you"
+            else -> "$listeners people listening with you"
+        }
+        is TogetherSessionState.Joining, is TogetherSessionState.JoiningOnline -> "Connecting to the room"
+        is TogetherSessionState.Joined -> if (waiting) "You'll hear the music the moment you're let in" else "In sync with the host"
+        is TogetherSessionState.Error -> state.message
+    }
+    Column(
+        Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp).animateContentSize(spring(stiffness = Spring.StiffnessMediumLow)),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        TogetherOrb(active = isActive && !waiting, error = isError, busy = busy)
+        Text(
+            title,
+            fontSize = 30.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 24.dp),
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            subtitle,
+            fontSize = 16.sp,
+            lineHeight = 21.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 32.dp),
+        )
+        if (people.isNotEmpty()) {
+            Spacer(Modifier.height(16.dp))
+            AvatarStack(people, hostIndex)
+        }
+        if (isError) {
+            Spacer(Modifier.height(16.dp))
+            CapsuleButton("Dismiss", onClick = onDismissError, filled = false, height = 40.dp)
+        }
+    }
+}
+
+/** Nearby or Online as a segmented control: a thumb that slides, not two buttons that light up. */
+@Composable
+private fun ModeSwitch(mode: TogetherMode, onMode: (TogetherMode) -> Unit, modifier: Modifier = Modifier) {
+    val dark = isSystemInDarkTheme()
+    val haptic = LocalHapticFeedback.current
+    Column(modifier.fillMaxWidth()) {
+        PreferenceGroupTitle("Where your friends are")
+        androidx.compose.foundation.layout.BoxWithConstraints(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .height(38.dp)
+                .clip(RoundedCornerShape(11.dp))
+                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = if (dark) 0.10f else 0.07f))
+                .padding(3.dp),
+        ) {
+            val half = maxWidth / 2
+            val offset by animateDpAsState(
+                if (mode == TogetherMode.Nearby) 0.dp else half,
+                spring(dampingRatio = 0.78f, stiffness = 520f),
+                label = "togetherModeThumb",
+            )
+            Box(
+                Modifier
+                    .offset(x = offset)
+                    .width(half)
+                    .fillMaxHeight()
+                    .shadow(if (dark) 0.dp else 2.dp, RoundedCornerShape(9.dp), clip = false)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(if (dark) Color.White.copy(alpha = 0.20f) else Color.White),
+            )
+            Row(Modifier.fillMaxSize()) {
+                for ((value, label) in listOf(TogetherMode.Nearby to "Nearby", TogetherMode.Online to "Online")) {
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                if (mode != value) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onMode(value)
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = if (mode == value) FontWeight.SemiBold else FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+        }
+        Text(
+            if (mode == TogetherMode.Nearby) "Phones on the same Wi-Fi. No server, nothing leaves the network."
+            else "Friends anywhere join with a short code, through a relay server.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp),
+        )
+    }
+}
+
+@Composable
+private fun RulesCard(
     allowAddTracks: Boolean,
     allowControlPlayback: Boolean,
     requireApproval: Boolean,
-    onShowNameDialog: () -> Unit,
-    onShowPortDialog: () -> Unit,
-    onAllowAddTracksChange: (Boolean) -> Unit,
-    onAllowControlPlaybackChange: (Boolean) -> Unit,
-    onRequireApprovalChange: (Boolean) -> Unit,
-    isStartEnabled: Boolean,
-    isLoading: Boolean,
-    onStartSession: () -> Unit,
+    onAllowAddTracks: (Boolean) -> Unit,
+    onAllowControlPlayback: (Boolean) -> Unit,
+    onRequireApproval: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .animateContentSize(spring(stiffness = Spring.StiffnessMediumLow)),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Column(modifier = Modifier.padding(vertical = 8.dp)) {
-            // Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(
-                            Brush.linearGradient(
-                                listOf(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                                )
-                            )
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        painterResource(R.drawable.fire),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.together_host_section),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        stringResource(R.string.together_lan),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-
-                // LAN badge
-                Surface(
-                    shape = RoundedCornerShape(50.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.wifi),
-                            contentDescription = null,
-                            modifier = Modifier.size(13.dp),
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                        )
-                        Text(
-                            "LAN",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        )
-                    }
-                }
-            }
-
-            SettingsItemRow(
-                icon = R.drawable.person,
-                title = stringResource(R.string.together_display_name),
-                subtitle = displayName,
-                onClick = onShowNameDialog,
-            )
-            Divider()
-            SettingsItemRow(
-                icon = R.drawable.link,
-                title = stringResource(R.string.together_port),
-                subtitle = port.toString(),
-                onClick = onShowPortDialog,
-            )
-            Divider()
-            ToggleRow(
-                icon = R.drawable.playlist_add,
-                title = stringResource(R.string.together_allow_guests_add),
-                checked = allowAddTracks,
-                onCheckedChange = onAllowAddTracksChange,
-            )
-            Divider()
-            ToggleRow(
-                icon = R.drawable.play,
-                title = stringResource(R.string.together_allow_guests_control),
-                checked = allowControlPlayback,
-                onCheckedChange = onAllowControlPlaybackChange,
-            )
-            Divider()
-            ToggleRow(
-                icon = R.drawable.lock,
-                title = stringResource(R.string.together_require_approval),
-                checked = requireApproval,
-                onCheckedChange = onRequireApprovalChange,
-            )
-
-            Spacer(Modifier.height(8.dp))
-
-            val interactionSource = remember { MutableInteractionSource() }
-            val isPressed by interactionSource.collectIsPressedAsState()
-            val scale by animateFloatAsState(
-                targetValue = if (isPressed) 0.97f else 1f,
-                animationSpec = spring(stiffness = Spring.StiffnessMedium),
-                label = "scale",
-            )
-
-            Button(
-                enabled = isStartEnabled,
-                onClick = onStartSession,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp)
-                    .padding(bottom = 10.dp)
-                    .scale(scale),
-                shape = RoundedCornerShape(18.dp),
-                interactionSource = interactionSource,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text(stringResource(R.string.loading), fontWeight = FontWeight.SemiBold)
-                } else {
-                    Icon(painterResource(R.drawable.fire), null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.start_session), fontWeight = FontWeight.SemiBold)
-                }
-            }
-        }
+    TogetherSection("Guests", modifier, footer = "Changes reach everyone in the room straight away.") {
+        SwitchPreference(
+            title = { Text("Can add songs") },
+            icon = { Icon(painterResource(R.drawable.playlist_add), null) },
+            checked = allowAddTracks,
+            onCheckedChange = onAllowAddTracks,
+        )
+        SwitchPreference(
+            title = { Text("Can play, pause and skip") },
+            icon = { Icon(painterResource(R.drawable.play), null) },
+            checked = allowControlPlayback,
+            onCheckedChange = onAllowControlPlayback,
+        )
+        SwitchPreference(
+            title = { Text("Ask before letting someone in") },
+            icon = { Icon(painterResource(R.drawable.lock), null) },
+            checked = requireApproval,
+            onCheckedChange = onRequireApproval,
+        )
     }
 }
 
-// ── Join Section Card (improved paste + link preview) ──────────────────────
-
 @Composable
-private fun JoinSectionCard(
-    joinInput: String,
-    onJoinInputChange: (String) -> Unit,
-    canJoin: Boolean,
-    disableJoinUi: Boolean,
-    isJoined: Boolean,
-    isWaitingApproval: Boolean,
-    isJoining: Boolean,
-    onShowJoinDialog: () -> Unit,
-    onPasteFromClipboard: () -> Unit,
+private fun JoinCard(
+    mode: TogetherMode,
+    input: String,
+    onInput: (String) -> Unit,
+    valid: Boolean,
+    enabled: Boolean,
+    onPaste: () -> Unit,
     onJoin: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val parsedLink = remember(joinInput) { TogetherLink.decode(joinInput.trim()) }
-
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .animateContentSize(spring(stiffness = Spring.StiffnessMediumLow)),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    val online = mode == TogetherMode.Online
+    TogetherSection(
+        "Join",
+        modifier,
+        footer = if (online) "Ask the host for their room code." else "Scan the host's QR code with your camera, or paste their invite link.",
     ) {
-        Column(modifier = Modifier.padding(vertical = 8.dp)) {
-
-            // Header
-            Row(
-                modifier = Modifier
+        TogetherCard {
+            Box(
+                Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    .padding(horizontal = SettingsDimensions.RowHorizontalPadding, vertical = if (online) 18.dp else 14.dp),
+                contentAlignment = if (online) Alignment.Center else Alignment.CenterStart,
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(
-                            Brush.linearGradient(
-                                listOf(
-                                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.18f),
-                                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.08f),
-                                )
-                            )
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        painterResource(R.drawable.multi_user),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.tertiary,
-                        modifier = Modifier.size(22.dp),
+                val style = if (online) {
+                    MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 8.sp,
+                        fontFamily = FontFamily.Monospace,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
+                } else {
+                    MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface, fontFamily = FontFamily.Monospace)
                 }
-                Column(modifier = Modifier.weight(1f)) {
+                if (input.isEmpty()) {
                     Text(
-                        stringResource(R.string.together_join_section),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        stringResource(R.string.join_session),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        if (online) "ABC123" else "Exhale://together?…",
+                        style = style.copy(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)),
+                        modifier = if (online) Modifier.fillMaxWidth() else Modifier,
                     )
                 }
-            }
-
-            // Link input row with paste button
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp)
-                    .padding(bottom = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // Input display — click to edit
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .clickable(
-                            enabled = !disableJoinUi && !isJoining && !isJoined && !isWaitingApproval,
-                            onClick = onShowJoinDialog,
-                        ),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.link),
-                            contentDescription = null,
-                            tint = if (canJoin)
-                                MaterialTheme.colorScheme.primary
-                            else
-                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Text(
-                            text = if (joinInput.isBlank())
-                                stringResource(R.string.together_join_link_hint)
-                            else
-                                joinInput.trim(),
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontFamily = if (joinInput.isNotBlank()) FontFamily.Monospace
-                                else FontFamily.Default
-                            ),
-                            color = if (joinInput.isNotBlank())
-                                MaterialTheme.colorScheme.onSurface
-                            else
-                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        // Clear button
-                        if (joinInput.isNotBlank() && !disableJoinUi) {
-                            Icon(
-                                painterResource(R.drawable.close),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                modifier = Modifier
-                                    .size(16.dp)
-                                    .clip(CircleShape)
-                                    .clickable { onJoinInputChange("") },
-                            )
-                        }
-                    }
-                }
-
-                // Paste button
-                if (!disableJoinUi && !isJoining && !isJoined && !isWaitingApproval) {
-                    FilledTonalButton(
-                        onClick = onPasteFromClipboard,
-                        shape = RoundedCornerShape(16.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            horizontal = 14.dp, vertical = 12.dp
-                        ),
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.copy),
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            stringResource(R.string.paste),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                }
-            }
-
-            // Parsed link preview (animated)
-            AnimatedVisibility(
-                visible = parsedLink != null && !isJoined && !isWaitingApproval,
-                enter = fadeIn(tween(200)) + expandVertically(tween(250)),
-                exit  = fadeOut(tween(150)) + shrinkVertically(tween(200)),
-            ) {
-                if (parsedLink != null) {
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 18.dp)
-                            .padding(top = 4.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            // IP badge
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                            ) {
-                                Text(
-                                    text = "${parsedLink.host}:${parsedLink.port}",
-                                    style = MaterialTheme.typography.labelMedium.copy(
-                                        fontFamily = FontFamily.Monospace
-                                    ),
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                )
-                            }
-                            // Session ID snippet
-                            Text(
-                                text = "Session: ${parsedLink.sessionId.take(8)}…",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(Modifier.weight(1f))
-                            Icon(
-                                painterResource(R.drawable.check),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(10.dp))
-
-            // Join button
-            val interactionSource = remember { MutableInteractionSource() }
-            val isPressed by interactionSource.collectIsPressedAsState()
-            val scale by animateFloatAsState(
-                targetValue = if (isPressed) 0.97f else 1f,
-                animationSpec = spring(stiffness = Spring.StiffnessMedium),
-                label = "joinBtnScale",
-            )
-
-            FilledTonalButton(
-                enabled = canJoin && !disableJoinUi && !isJoining && !isJoined && !isWaitingApproval,
-                onClick = onJoin,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp)
-                    .padding(bottom = 10.dp)
-                    .scale(scale),
-                shape = RoundedCornerShape(18.dp),
-                interactionSource = interactionSource,
-            ) {
-                when {
-                    isJoining -> {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Text(stringResource(R.string.connecting), fontWeight = FontWeight.SemiBold)
-                    }
-                    isWaitingApproval -> {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Text(stringResource(R.string.together_waiting_approval), fontWeight = FontWeight.SemiBold)
-                    }
-                    isJoined -> {
-                        Icon(painterResource(R.drawable.check), null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.joined), fontWeight = FontWeight.SemiBold)
-                    }
-                    else -> {
-                        Icon(painterResource(R.drawable.join), null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.join), fontWeight = FontWeight.SemiBold)
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ── Status Card ────────────────────────────────────────────────────────────
-
-@Composable
-private fun StatusCard(
-    state: TogetherSessionState,
-    onCopyLink: (String) -> Unit,
-    onShareLink: (String) -> Unit,
-    onLeave: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val isActive = state !is TogetherSessionState.Idle
-    val isError  = state is TogetherSessionState.Error
-    val isWaitingApproval = run {
-        val joined = state as? TogetherSessionState.Joined ?: return@run false
-        joined.role is TogetherRole.Guest &&
-                joined.roomState.participants
-                    .firstOrNull { it.id == joined.selfParticipantId }?.isPending == true
-    }
-    val statusColor = when {
-        isError  -> MaterialTheme.colorScheme.error
-        isActive -> MaterialTheme.colorScheme.primary
-        else     -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .animateContentSize(spring(stiffness = Spring.StiffnessMediumLow)),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.horizontalGradient(
-                        if (isActive && !isError)
-                            listOf(
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
-                                MaterialTheme.colorScheme.surfaceContainerLow,
-                            )
-                        else if (isError)
-                            listOf(
-                                MaterialTheme.colorScheme.error.copy(alpha = 0.14f),
-                                MaterialTheme.colorScheme.surfaceContainerLow,
-                            )
-                        else
-                            listOf(
-                                MaterialTheme.colorScheme.surfaceContainerLow,
-                                MaterialTheme.colorScheme.surfaceContainerLow,
-                            )
-                    )
-                )
-                .padding(18.dp),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                // Status row
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(
-                                        statusColor.copy(alpha = 0.18f),
-                                        statusColor.copy(alpha = 0.08f),
-                                    )
-                                )
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            painterResource(if (isError) R.drawable.error else R.drawable.fire),
-                            contentDescription = null,
-                            tint = statusColor,
-                            modifier = Modifier.size(24.dp),
-                        )
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Text(
-                                stringResource(R.string.together_status),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = statusColor,
-                            )
-                            if (isActive && !isError) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.primary),
-                                )
-                            }
-                        }
-                        Text(
-                            text = when (state) {
-                                TogetherSessionState.Idle          -> stringResource(R.string.together_idle)
-                                is TogetherSessionState.Hosting    -> stringResource(R.string.together_hosting)
-                                is TogetherSessionState.HostingOnline -> stringResource(R.string.together_hosting)
-                                is TogetherSessionState.Joining    -> stringResource(R.string.together_joining)
-                                is TogetherSessionState.JoiningOnline -> stringResource(R.string.together_joining)
-                                is TogetherSessionState.Joined     ->
-                                    if (isWaitingApproval) stringResource(R.string.together_waiting_approval)
-                                    else stringResource(R.string.together_connected)
-                                is TogetherSessionState.Error      -> stringResource(R.string.together_error_state)
-                            },
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                    if (isActive) {
-                        FilledTonalButton(onClick = onLeave, shape = RoundedCornerShape(14.dp)) {
-                            Icon(painterResource(R.drawable.leave), null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(stringResource(R.string.leave), fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
-
-                // Inline content
-                when (state) {
-                    is TogetherSessionState.Hosting -> {
-                        LanSessionLinkCard(
-                            link = state.joinLink,
-                            localAddressHint = state.localAddressHint,
-                            port = state.port,
-                            onCopy  = { onCopyLink(state.joinLink) },
-                            onShare = { onShareLink(state.joinLink) },
-                        )
-                    }
-                    is TogetherSessionState.Joined -> {
-                        if (!isWaitingApproval) {
-                            ParticipantsCard(
-                                participants = state.roomState.participants.map { it.name }
-                            )
-                        }
-                    }
-                    is TogetherSessionState.Error -> {
-                        Card(
-                            shape = RoundedCornerShape(18.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)
-                            ),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                        ) {
-                            Text(
-                                text = state.message,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.padding(14.dp),
-                            )
-                        }
-                    }
-                    else -> Unit
-                }
-            }
-        }
-    }
-}
-
-// ── LAN Session Link Card ──────────────────────────────────────────────────
-
-@Composable
-private fun LanSessionLinkCard(
-    link: String,
-    localAddressHint: String?,
-    port: Int,
-    onCopy: () -> Unit,
-    onShare: () -> Unit,
-) {
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            // IP:port badge
-            if (localAddressHint != null) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(50.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                painterResource(R.drawable.wifi),
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(13.dp),
-                            )
-                            Text(
-                                text = "$localAddressHint:$port",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontFamily = FontFamily.Monospace
-                                ),
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            )
-                        }
-                    }
-
-                    Text(
-                        stringResource(R.string.session_link),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-            }
-
-            // Link display — scrollable code block
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                // Solid grouped-list card colour: `surface` is the settings page itself, so a
-                // 60%-alpha wash of it left this code block invisible against its own screen.
-                color = SettingsDimensions.groupSurfaceColor(),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                ) {
-                    Text(
-                        text = link,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontFamily = FontFamily.Monospace
-                        ),
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 2,
-                    )
-                }
-            }
-
-            // Action buttons
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                // Copy — primary action
-                Button(
-                    onClick = onCopy,
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
+                androidx.compose.foundation.text.BasicTextField(
+                    value = input,
+                    onValueChange = { raw -> onInput(if (online) raw.uppercase().filter { it.isLetterOrDigit() }.take(8) else raw) },
+                    enabled = enabled,
+                    singleLine = online,
+                    maxLines = if (online) 1 else 4,
+                    textStyle = style,
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        capitalization = if (online) androidx.compose.ui.text.input.KeyboardCapitalization.Characters
+                        else androidx.compose.ui.text.input.KeyboardCapitalization.None,
                     ),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(
-                        painterResource(R.drawable.copy),
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        stringResource(R.string.copy_link),
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-
-                // Share
-                FilledTonalButton(
-                    onClick = onShare,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(
-                        painterResource(R.drawable.share),
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        stringResource(R.string.share),
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 8.dp, bottom = 4.dp)) {
+            CapsuleButton("Paste", onClick = onPaste, filled = false, enabled = enabled, height = 46.dp, modifier = Modifier.weight(1f))
+            Spacer(Modifier.width(12.dp))
+            CapsuleButton("Join", onClick = onJoin, enabled = enabled && valid, height = 46.dp, modifier = Modifier.weight(1f))
         }
     }
 }
 
-// ── Reused composables (identical to original) ────────────────────────────
+/** Which relay Online uses, and whether it answers — so a dead server is seen here, not guessed at. */
+@Composable
+private fun RelayCard(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val (custom, setCustom) = rememberPreference(TogetherRelayUrlKey, defaultValue = "")
+    var editing by rememberSaveable { mutableStateOf(false) }
+    var result by rememberSaveable { mutableStateOf<String?>(null) }
+    var healthy by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    var testing by rememberSaveable { mutableStateOf(false) }
+
+    if (editing) {
+        TextFieldDialog(
+            title = { Text("Relay server") },
+            placeholder = { Text("relay.example.com — blank for the shared one") },
+            initialTextFieldValue = androidx.compose.ui.text.input.TextFieldValue(custom),
+            isInputValid = { it.isBlank() || TogetherOnlineEndpoint.normalizedRelayUrlOrNull(it) != null },
+            onDone = {
+                setCustom(it.trim())
+                result = null
+                healthy = null
+            },
+            onDismiss = { editing = false },
+        )
+    }
+
+    TogetherSection(
+        "Relay server",
+        modifier,
+        footer = "Online rooms meet on a small server that relays timing, never music. Run your own from the together-relay folder.",
+    ) {
+        PuckRow(
+            icon = R.drawable.language,
+            title = if (custom.isBlank()) "Shared relay" else custom,
+            subtitle = result ?: "Tap to use your own",
+            accent = when (healthy) {
+                true -> Color(0xFF34C759)
+                false -> MaterialTheme.colorScheme.error
+                null -> MaterialTheme.colorScheme.primary
+            },
+            onClick = { editing = true },
+        )
+        ActionRow(
+            text = "Test connection",
+            icon = R.drawable.sync,
+            loading = testing,
+            onClick = {
+                testing = true
+                result = null
+                scope.launch {
+                    val (ok, message) = withContext(Dispatchers.IO) { testRelay(context, custom) }
+                    healthy = ok
+                    result = message
+                    testing = false
+                }
+            },
+        )
+    }
+}
+
+/** Asks the relay's own health address, and says in words what came back. */
+private suspend fun testRelay(context: android.content.Context, custom: String): Pair<Boolean, String> {
+    val base = TogetherOnlineEndpoint.normalizedRelayUrlOrNull(custom)
+        ?: TogetherOnlineEndpoint.baseUrlOrNull(context.dataStore)
+        ?: return false to "No relay is configured"
+    return runCatching {
+        val connection = java.net.URL(base.trimEnd('/') + "/health").openConnection() as java.net.HttpURLConnection
+        connection.connectTimeout = 8_000
+        connection.readTimeout = 8_000
+        val code = connection.responseCode
+        connection.disconnect()
+        if (code in 200..299) true to "Working" else false to "Not responding (HTTP $code)"
+    }.getOrElse { false to "Can't be reached (${it.javaClass.simpleName})" }
+}
+
+/**
+ * The way in on a nearby session: the invite as a QR code. The other phone's camera reads it and
+ * opens Exhale straight into the room, which is also the easy way to pair over a hotspot.
+ */
+@Composable
+private fun InviteQr(link: String, addressHint: String?, onCopy: (String) -> Unit, onShare: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        TogetherQrCard(link)
+        Spacer(Modifier.height(14.dp))
+        Text(
+            "Scan with the other phone's camera",
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            addressHint?.let { "Both phones on the same Wi-Fi or hotspot · $it" } ?: "Both phones on the same Wi-Fi or hotspot",
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 32.dp, vertical = 2.dp),
+        )
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 14.dp)) {
+            CapsuleButton("Copy Link", onClick = { onCopy(link) }, icon = R.drawable.link, filled = false, modifier = Modifier.weight(1f))
+            Spacer(Modifier.width(12.dp))
+            CapsuleButton("Share", onClick = { onShare(link) }, icon = R.drawable.share, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+/** The way in on an online session: the room code, large, with the same two buttons. */
+@Composable
+private fun InviteCode(code: String, onCopy: (String) -> Unit, onShare: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        TogetherCard {
+            Text(
+                code.chunked(3).joinToString(" "),
+                fontSize = 40.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = 6.sp,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().rowPress { onCopy(code) }.padding(vertical = 26.dp),
+            )
+        }
+        Text(
+            "Anyone with this code can ask to join.",
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 14.dp)) {
+            CapsuleButton("Copy Code", onClick = { onCopy(code) }, filled = false, modifier = Modifier.weight(1f))
+            Spacer(Modifier.width(12.dp))
+            CapsuleButton("Share", onClick = { onShare("Join my Exhale session with the code $code") }, icon = R.drawable.share, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun SmallRoundAction(icon: Int, description: String, tint: Color, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .background(tint.copy(alpha = 0.14f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(painterResource(icon), contentDescription = description, tint = tint, modifier = Modifier.size(17.dp))
+    }
+}
 
 @Composable
 private fun OnlineParticipantsCard(
@@ -1219,138 +1032,51 @@ private fun OnlineParticipantsCard(
     onBan: (participantId: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .animateContentSize(spring(stiffness = Spring.StiffnessMediumLow)),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Column(modifier = Modifier.padding(vertical = 8.dp)) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(
-                            Brush.linearGradient(
-                                listOf(
-                                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.18f),
-                                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.08f),
-                                )
-                            )
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        painterResource(R.drawable.list),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.tertiary,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.together_participants),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        stringResource(R.string.together_connected_count, participants.size),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+    val waiting = participants.filter { it.isPending && hostApprovalEnabled }
+    val inRoom = participants.filterNot { it.isPending && hostApprovalEnabled }
 
-            participants.forEachIndexed { index, participant ->
-                key(participant.id) {
-                    if (index != 0) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = 76.dp, end = 18.dp),
-                            thickness = 0.5.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SettingsDimensions.SectionSpacing)) {
+        if (waiting.isNotEmpty()) {
+            TogetherSection("Waiting to join") {
+                waiting.forEachIndexed { index, person ->
+                    key(person.id) {
+                        if (index > 0) GroupDivider()
+                        PreferenceEntry(
+                            title = { Text(person.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            description = "Wants to join",
+                            icon = { TogetherAvatar(person.name, host = false) },
+                            trailingContent = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    SmallRoundAction(R.drawable.close, "Decline", MaterialTheme.colorScheme.error) { onApprove(person.id, false) }
+                                    Spacer(Modifier.width(8.dp))
+                                    SmallRoundAction(R.drawable.check, "Let in", Color(0xFF34C759)) { onApprove(person.id, true) }
+                                }
+                            },
                         )
                     }
-                    val accent = if (participant.isHost)
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.secondary
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 18.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(accent.copy(alpha = 0.14f)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                painterResource(
-                                    if (participant.isHost) R.drawable.fire else R.drawable.person
-                                ),
-                                contentDescription = null,
-                                tint = accent,
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(
-                                participant.name,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = when {
-                                    participant.isHost -> stringResource(R.string.together_role_host)
-                                    participant.isPending && hostApprovalEnabled ->
-                                        stringResource(R.string.together_pending_approval)
-                                    else -> stringResource(R.string.together_role_guest)
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        if (!participant.isHost) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                if (participant.isPending && hostApprovalEnabled) {
-                                    AtIconButton(onClick = { onApprove(participant.id, true) }, onLongClick = {}) {
-                                        Icon(painterResource(R.drawable.check), null)
-                                    }
-                                    AtIconButton(onClick = { onApprove(participant.id, false) }, onLongClick = {}) {
-                                        Icon(painterResource(R.drawable.close), null)
-                                    }
-                                }
-                                AtIconButton(onClick = { onKick(participant.id) }, onLongClick = {}) {
-                                    Icon(painterResource(R.drawable.kick), null)
-                                }
-                                AtIconButton(onClick = { onBan(participant.id) }, onLongClick = {}) {
-                                    Icon(painterResource(R.drawable.block), null)
+                }
+            }
+        }
+        TogetherSection(if (inRoom.size == 1) "In the room" else "In the room · ${inRoom.size}") {
+            inRoom.forEachIndexed { index, person ->
+                key(person.id) {
+                    if (index > 0) GroupDivider()
+                    PreferenceEntry(
+                        title = { Text(person.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        description = if (person.isHost) "Host" else "Listening",
+                        icon = { TogetherAvatar(person.name, host = person.isHost) },
+                        trailingContent = if (person.isHost) {
+                            null
+                        } else {
+                            {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    SmallRoundAction(R.drawable.kick, "Remove", MaterialTheme.colorScheme.onSurfaceVariant) { onKick(person.id) }
+                                    Spacer(Modifier.width(8.dp))
+                                    SmallRoundAction(R.drawable.block, "Ban", MaterialTheme.colorScheme.error) { onBan(person.id) }
                                 }
                             }
-                        }
-                    }
+                        },
+                    )
                 }
             }
         }
@@ -1359,291 +1085,47 @@ private fun OnlineParticipantsCard(
 
 @Composable
 private fun ParticipantsCard(participants: List<String>) {
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(
-                    painterResource(R.drawable.person),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp),
-                )
-                Text(
-                    stringResource(R.string.participants),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-            Text(
-                text = participants.joinToString(" · "),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
+    TogetherSection(if (participants.size == 1) "In the room" else "In the room · ${participants.size}") {
+        participants.forEachIndexed { index, name ->
+            if (index > 0) GroupDivider()
+            PreferenceEntry(
+                title = { Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                description = if (index == 0) "Host" else null,
+                icon = { TogetherAvatar(name, host = index == 0) },
             )
         }
     }
 }
 
+/** A standalone action, as its own settings card: the label in the accent colour (red when destructive). */
 @Composable
-private fun WelcomeDialog(
-    onGotIt: (dontShowAgain: Boolean) -> Unit,
-    onDismiss: () -> Unit,
+private fun ActionRow(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    loading: Boolean = false,
+    destructive: Boolean = false,
+    prominent: Boolean = false,
+    icon: Int? = null,
 ) {
-    var dontShowAgain by rememberSaveable { mutableStateOf(true) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(28.dp),
-        containerColor = MaterialTheme.colorScheme.surface,
+    val color = when {
+        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+        destructive -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.primary
+    }
+    PreferenceEntry(
+        modifier = modifier,
         title = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(
-                            Brush.linearGradient(
-                                listOf(
-                                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f),
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                                )
-                            )
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        painterResource(R.drawable.fire),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-                Text(
-                    stringResource(R.string.together_welcome_title),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
+            Text(text, color = color, fontWeight = if (prominent) FontWeight.SemiBold else FontWeight.Medium)
         },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    stringResource(R.string.together_welcome_body),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Card(
-                    shape = RoundedCornerShape(22.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
-                    ) {
-                        InstructionRow(R.drawable.fire, MaterialTheme.colorScheme.primary,
-                            stringResource(R.string.together_welcome_host_title),
-                            stringResource(R.string.together_welcome_host_body))
-                        InstructionRow(R.drawable.link, MaterialTheme.colorScheme.tertiary,
-                            stringResource(R.string.together_welcome_join_title),
-                            stringResource(R.string.together_welcome_join_body))
-                        InstructionRow(R.drawable.lock, MaterialTheme.colorScheme.secondary,
-                            stringResource(R.string.together_welcome_permissions_title),
-                            stringResource(R.string.together_welcome_permissions_body))
-                    }
-                }
-                CheckboxRow(
-                    checked = dontShowAgain,
-                    onCheckedChange = { dontShowAgain = it },
-                    label = stringResource(R.string.together_dont_show_again),
-                )
-            }
+        icon = icon?.let { res -> { Icon(painterResource(res), null, tint = color) } },
+        trailingContent = if (loading) {
+            { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = color) }
+        } else {
+            null
         },
-        confirmButton = {
-            Button(
-                onClick = { onGotIt(dontShowAgain) },
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-            ) {
-                Icon(painterResource(R.drawable.check), null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.got_it), fontWeight = FontWeight.SemiBold)
-            }
-        },
+        onClick = if (enabled && !loading) onClick else null,
+        isEnabled = enabled,
     )
-}
-
-@Composable
-private fun InstructionRow(
-    icon: Int,
-    accentColor: androidx.compose.ui.graphics.Color,
-    title: String,
-    body: String,
-) {
-    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        Box(
-            modifier = Modifier
-                .size(38.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(accentColor.copy(alpha = 0.14f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(painterResource(icon), null, tint = accentColor, modifier = Modifier.size(20.dp))
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-// ── Shared row primitives ─────────────────────────────────────────────────
-
-@Composable
-private fun Divider() = HorizontalDivider(
-    modifier = Modifier.padding(start = 76.dp, end = 18.dp),
-    thickness = 0.5.dp,
-    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-)
-
-@Composable
-private fun SettingsItemRow(
-    icon: Int,
-    title: String,
-    subtitle: String,
-    subtitleMaxLines: Int = 1,
-    onClick: (() -> Unit)? = null,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val alpha by animateFloatAsState(
-        targetValue = if (isPressed) 0.7f else 1f,
-        animationSpec = tween(100),
-        label = "itemAlpha",
-    )
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .then(
-                if (onClick != null) Modifier.clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = onClick,
-                ) else Modifier
-            )
-            .graphicsLayer { this.alpha = alpha }
-            .padding(horizontal = 18.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(painterResource(icon), null, tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f), modifier = Modifier.size(22.dp))
-        }
-        Spacer(Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(2.dp))
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = subtitleMaxLines,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (onClick != null) {
-            Spacer(Modifier.width(8.dp))
-            Icon(
-                painterResource(R.drawable.navigate_next),
-                null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.size(20.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun ToggleRow(
-    icon: Int,
-    title: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = 18.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(painterResource(icon), null, tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.9f), modifier = Modifier.size(22.dp))
-        }
-        Spacer(Modifier.width(16.dp))
-        Text(
-            title,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.weight(1f),
-        )
-        LiquidToggle(
-            checked = checked,
-            onCheckedChange = onCheckedChange
-        )
-    }
-}
-
-// ── Checkbox row helper ───────────────────────────────────────────────────
-
-@Composable
-private fun CheckboxRow(
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    label: String,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = 4.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        androidx.compose.material3.Checkbox(checked = checked, onCheckedChange = null)
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-    }
 }

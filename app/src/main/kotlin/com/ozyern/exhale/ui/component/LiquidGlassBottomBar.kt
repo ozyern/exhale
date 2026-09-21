@@ -8,7 +8,14 @@
 
 package com.ozyern.exhale.ui.component
 
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.runtime.withFrameNanos
+import kotlin.math.exp
+import kotlinx.coroutines.Job
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.animateColor
@@ -308,6 +315,11 @@ fun LiquidGlassBottomBar(
                     }
 
                     FrostedPill(
+                        // Frostier than the rest of the dock when it carries the now-playing row:
+                        // a page heading sliding under the song title at 13dp of blur stays
+                        // legible and the two lines of type read as one collision.
+                        extraTint = if (hasNowPlaying) MiniPlayerGlassExtraTint else DockGlassExtraTint,
+                        blurRadius = if (hasNowPlaying) MiniPlayerGlassBlurRadius else DockGlassBlurRadius,
                         modifier = Modifier
                             .weight(1f)
                             // Out from behind the home circle, and back in behind it.
@@ -443,6 +455,14 @@ private fun AnimatedVisibilityScope.morphShape(label: String): State<Float> =
 private const val DockGlassExtraTint = 0.07f
 private val DockGlassBlurRadius = 68.dp
 
+/**
+ * The now-playing pill's glass. Text lives on it that page text must never be read through, so it
+ * is frosted to the point where a heading passing under it is colour, not letters (the radius is
+ * quartered by the chrome modifier, so this is ~28dp of real blur).
+ */
+internal const val MiniPlayerGlassExtraTint = 0.12f
+internal val MiniPlayerGlassBlurRadius = 112.dp
+
 @Composable
 private fun frostedGlassModifier(
     shape: androidx.compose.ui.graphics.Shape,
@@ -541,12 +561,15 @@ private fun FrostedCircle(
 
 @Composable
 private fun NavGlyph(iconRes: Int, contentDescription: String?, tint: Color) {
-    Icon(
-        painter = painterResource(iconRes),
-        contentDescription = contentDescription,
-        tint = tint,
-        modifier = Modifier.size(24.dp),
-    )
+    // Outlined to solid is a change of state, so it is watched happening rather than swapped on a frame.
+    Crossfade(targetState = iconRes, animationSpec = tween(170), label = "navGlyph") { res ->
+        Icon(
+            painter = painterResource(res),
+            contentDescription = contentDescription,
+            tint = tint,
+            modifier = Modifier.size(26.dp),
+        )
+    }
 }
 
 /* ----------------------------------------------------------------------- */
@@ -687,6 +710,12 @@ private fun LiquidTabBar(
     val dragValue = remember { mutableFloatStateOf(capsuleIndex.toFloat()) }
     val dragVelocity = remember { mutableFloatStateOf(0f) }
     val overscrollPx = remember { mutableFloatStateOf(0f) }
+    // Where the finger says the capsule should be. The capsule itself (`dragValue`) chases this
+    // with a ~30ms lag from one frame loop per gesture: that is what lets a press anywhere on the
+    // bar *glide* the glass over to the finger instead of teleporting it, and gives the drag the
+    // faint liquid lag of iOS's lens.
+    val fingerValue = remember { mutableFloatStateOf(capsuleIndex.toFloat()) }
+    val chaseJob = remember { arrayOfNulls<Job>(1) }
 
     val rubberBandPx = with(density) { 6.dp.toPx() }
     val panelOffset: () -> Float = {
@@ -722,14 +751,42 @@ private fun LiquidTabBar(
             // top and bottom edges of the dock while held, which is what sells it as a blob of
             // liquid sitting on the bar rather than a rectangle cut into it.
             pressedScale = 78f / 56f,
-            onDragStarted = {
+            onDragStarted = { position ->
                 moved.floatValue = 0f
                 dragVelocity.floatValue = 0f
                 dragValue.floatValue = value
+                // Pressed on the capsule: it follows from where it is. Pressed anywhere else: the
+                // finger's tab becomes the target and the capsule flows across to it.
+                val fromStart = if (isLtr) position.x else totalWidthPx - position.x
+                val under = if (tabWidthPx > 0f) (fromStart - insetPx) / tabWidthPx - 0.5f else value
+                fingerValue.floatValue =
+                    if (abs(under - value) < 0.5f) value else under.fastCoerceIn(0f, lastIndex.toFloat())
                 dragging.value = true
+                chaseJob[0]?.cancel()
+                chaseJob[0] = scope.launch {
+                    var last = 0L
+                    while (dragging.value) {
+                        withFrameNanos { now ->
+                            val dt = if (last == 0L) 1f / 120f else ((now - last) / 1e9f).coerceIn(0f, 0.05f)
+                            last = now
+                            val before = dragValue.floatValue
+                            val after = before + (fingerValue.floatValue - before) * (1f - exp(-dt * 32f))
+                            // Haptic on crossing, while still travelling, not on the commit.
+                            if (after.fastRoundToInt() != before.fastRoundToInt()) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            }
+                            dragValue.floatValue = after
+                            // Smoothed per-frame travel, the scale the squish was tuned on.
+                            dragVelocity.floatValue = dragVelocity.floatValue * 0.72f + (after - before) * 2.4f
+                        }
+                    }
+                }
             },
             onDragStopped = {
                 val ended = dragValue.floatValue
+                // What the gesture meant is where the finger was, not where the lagging glass had
+                // got to: a quick tap on another tab lands there though the glass barely set off.
+                val aimed = fingerValue.floatValue
 
                 // Land where the gesture was HEADING, not merely where the finger stopped.
                 //
@@ -744,12 +801,13 @@ private fun LiquidTabBar(
                 // what makes the constant safe: `dragVelocity` is an exponentially smoothed
                 // figure in tab-units, not a calibrated velocity, so the clamp is doing the real
                 // work and the multiplier only decides how little of a flick counts.
-                val projected = ended +
+                val projected = aimed +
                     (dragVelocity.floatValue * FlingProjection).fastCoerceIn(-0.5f, 0.5f)
                 val landed = projected.fastRoundToInt().fastCoerceIn(0, lastIndex)
 
                 // One coroutine for the whole settle: snap to where the finger left it, hand
                 // drawing back to the animation, then spring onto the tab.
+                chaseJob[0]?.cancel()
                 settleFrom(ended, landed.toFloat()) { dragging.value = false }
 
                 // Two more, once per gesture, to unwind the two decorative floats. Both are
@@ -789,22 +847,10 @@ private fun LiquidTabBar(
                 if (tabWidthPx > 0f) {
                     moved.floatValue += abs(dragAmount.x)
                     val delta = dragAmount.x / tabWidthPx * if (isLtr) 1f else -1f
-                    val next = dragValue.floatValue + delta
-                    val clamped = next.fastCoerceIn(0f, lastIndex.toFloat())
-
-                    // Haptic on crossing, not on landing: the tick has to arrive while the finger
-                    // is still travelling or it reads as lag on the commit rather than as
-                    // feedback on the movement.
-                    if (clamped.fastRoundToInt() != dragValue.floatValue.fastRoundToInt()) {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    }
-                    dragValue.floatValue = clamped
-
-                    // Exponential smoothing rather than a VelocityTracker: only the capsule's
-                    // squish reads this, and it is clamped to ±0.2 before it reaches a scale, so
-                    // a least-squares fit over a sample history would be paying for precision
-                    // that is thrown away two lines later.
-                    dragVelocity.floatValue = dragVelocity.floatValue * 0.72f + delta * 2.4f
+                    val next = fingerValue.floatValue + delta
+                    // The capsule, its haptic ticks and its squish all follow from the chase loop
+                    // started on press; the pointer only moves the target.
+                    fingerValue.floatValue = next.fastCoerceIn(0f, lastIndex.toFloat())
 
                     // Only what the capsule could not absorb becomes overscroll; anything within
                     // range pulls the panel back towards centre instead of accumulating.
@@ -833,7 +879,10 @@ private fun LiquidTabBar(
     val containerGlass = frostedGlassModifier(shape)
 
     Box(
-        modifier = modifier.height(height),
+        // The gesture belongs to the whole bar, as on iOS: press any tab and the glass comes to
+        // your finger and rides it. Taps are resolved in `onDragStopped` too, so the tabs carry
+        // semantics for accessibility but no click handlers of their own to race it.
+        modifier = modifier.height(height).then(dampedDragAnimation.modifier),
         contentAlignment = Alignment.CenterStart,
     ) {
         // ---- 1 + 2. the plate, and the row you can see on it ------------------------
@@ -880,6 +929,7 @@ private fun LiquidTabBar(
                         showLabel = showLabels,
                         scaleProvider = { 1f },
                         onClick = { onItemClick(screen, index == selectedIndex) },
+                        gestureOwnedByBar = true,
                     )
                 }
             }
@@ -925,7 +975,6 @@ private fun LiquidTabBar(
                     val travel = capsuleAt() * tabWidthPx
                     translationX = (if (isLtr) travel else -travel) + panelOffset()
                 }
-                .then(dampedDragAnimation.modifier)
 
             if (glassy) {
                 Box(
@@ -940,10 +989,12 @@ private fun LiquidTabBar(
                                 // visibly bending the label underneath it before anyone touches
                                 // it. The press deepens the bend rather than switching it on.
                                 val progress = dampedDragAnimation.pressProgress
-                                val depth = 0.4f + 0.6f * progress
+                                // At rest it should already look like a lens sitting on the bar,
+                                // as the reference's does, so the resting bend is half the pressed one.
+                                val depth = 0.55f + 0.45f * progress
                                 lens(
-                                    9f.dp.toPx() * depth,
-                                    14f.dp.toPx() * depth,
+                                    10f.dp.toPx() * depth,
+                                    18f.dp.toPx() * depth,
                                     true,
                                     // The extra sample cost of the colour fringe only buys
                                     // anything while the thing is moving.
@@ -951,8 +1002,10 @@ private fun LiquidTabBar(
                                 )
                             },
                             highlight = {
+                                // A rim you can see at rest: it is what makes the pill read as a
+                                // raised piece of glass rather than a darker patch of the bar.
                                 Highlight.Ambient.copy(
-                                    alpha = 0.4f + 0.6f * dampedDragAnimation.pressProgress,
+                                    alpha = 0.62f + 0.38f * dampedDragAnimation.pressProgress,
                                 )
                             },
                             innerShadow = {
@@ -971,14 +1024,24 @@ private fun LiquidTabBar(
                                 val velocity = dragVelocity.floatValue
                                 scaleX /= 1f - (velocity * 0.75f).fastCoerceIn(-0.2f, 0.2f)
                                 scaleY *= 1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f)
+                                // Travelling after a tap or a route change, with no finger down:
+                                // the glass stretches with its own speed and lifts a little, then
+                                // recovers as the spring lands. iOS's jelly, not a sliding tile.
+                                if (!dragging.value) {
+                                    val travel = abs(dampedDragAnimation.travelVelocity)
+                                    val stretch = (travel * 0.028f).fastCoerceIn(0f, 0.26f)
+                                    val lift = 1f + (travel * 0.012f).fastCoerceIn(0f, 0.08f)
+                                    scaleX *= (1f + stretch) * lift
+                                    scaleY *= (1f - stretch * 0.35f) * lift
+                                }
                             },
                             onDrawSurface = {
                                 // A wash at rest so the capsule is still legible as a selected
                                 // slot on a busy backdrop, fading out as the lens takes over.
                                 val progress = dampedDragAnimation.pressProgress
                                 drawRect(
-                                    color = if (isDark) Color.White.copy(alpha = 0.13f)
-                                    else Color.Black.copy(alpha = 0.09f),
+                                    color = if (isDark) Color.White.copy(alpha = 0.16f)
+                                    else Color.Black.copy(alpha = 0.07f),
                                     alpha = 1f - progress * 0.7f,
                                 )
                                 drawRect(Color.Black.copy(alpha = 0.03f * progress))
@@ -1039,12 +1102,19 @@ private fun RowScope.LiquidTabItem(
     showLabel: Boolean,
     scaleProvider: () -> Float,
     onClick: (() -> Unit)?,
+    gestureOwnedByBar: Boolean = false,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     Column(
         modifier = Modifier
             .then(
-                if (onClick != null) {
+                if (onClick != null && gestureOwnedByBar) {
+                    // Touch is the bar's; this is only what TalkBack and switch access see.
+                    Modifier.semantics {
+                        role = Role.Tab
+                        onClick { onClick(); true }
+                    }
+                } else if (onClick != null) {
                     Modifier.clickable(
                         interactionSource = interactionSource,
                         indication = null,
@@ -1062,21 +1132,21 @@ private fun RowScope.LiquidTabItem(
                 scaleX = scale
                 scaleY = scale
             },
-        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
+        verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
             painter = painterResource(if (filled) screen.iconIdActive else screen.iconIdInactive),
             contentDescription = stringResource(screen.titleId),
             tint = tint,
-            modifier = Modifier.size(24.dp),
+            modifier = Modifier.size(26.dp),
         )
         if (showLabel) {
             Text(
                 text = stringResource(screen.titleId),
                 color = tint,
                 style = MaterialTheme.typography.labelSmall,
-                fontSize = 10.sp,
+                fontSize = 11.sp,
                 fontWeight = if (filled) FontWeight.SemiBold else FontWeight.Medium,
                 maxLines = 1,
                 softWrap = false,
@@ -1151,18 +1221,24 @@ private fun TabButton(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(
-            painter = painterResource(if (selected) screen.iconIdActive else screen.iconIdInactive),
-            contentDescription = stringResource(screen.titleId),
-            tint = contentColor,
-            modifier = Modifier.size(24.dp).scale(iconScale),
-        )
+        Crossfade(
+            targetState = if (selected) screen.iconIdActive else screen.iconIdInactive,
+            animationSpec = tween(170),
+            label = "tabGlyph",
+        ) { res ->
+            Icon(
+                painter = painterResource(res),
+                contentDescription = stringResource(screen.titleId),
+                tint = contentColor,
+                modifier = Modifier.size(26.dp).scale(iconScale),
+            )
+        }
         Spacer(Modifier.size(3.dp))
         Text(
             text = stringResource(screen.titleId),
             color = contentColor,
             style = MaterialTheme.typography.labelSmall,
-            fontSize = 10.sp,
+            fontSize = 11.sp,
             fontWeight = FontWeight(labelWeight.fastRoundToInt().coerceIn(1, 1000)),
             maxLines = 1,
             softWrap = false,
@@ -1274,64 +1350,18 @@ private fun MiniPlayerPill(
             }
         }
 
-        // Play / pause — instant press feedback, clean circle.
-        var pressed by remember { mutableStateOf(false) }
-        val pressScale by animateFloatAsState(
-            targetValue = if (pressed) 0.86f else 1f,
-            animationSpec = spring(dampingRatio = 0.55f, stiffness = 900f),
-            label = "playPress",
+        // Play / pause, as glass: the same lens the dock is made of, holding the accent inside it
+        // rather than sitting on it as a coloured chip. Shape carries the state — a rounded square
+        // while playing, a circle when paused — so the pill reads at a glance without a label.
+        LiquidPlayPauseButton(
+            isPlaying = isPlaying,
+            isLoading = false,
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                playerConnection.player.togglePlayPause()
+            },
+            size = 44.dp,
         )
-        val interactionSource = remember { MutableInteractionSource() }
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .scale(pressScale)
-                .clip(CircleShape)
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                        pressed = true
-                        waitForUpOrCancellation(pass = PointerEventPass.Initial)
-                        pressed = false
-                    }
-                }
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    role = Role.Button,
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        playerConnection.player.togglePlayPause()
-                    },
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            // The glyph swap is the confirmation.
-            //
-            // The press scale fires on ACTION_DOWN, before anything has happened — it acknowledges
-            // the touch, not the result. The bar and the triangle used to replace each other on a
-            // single frame some time later, so the only feedback that the command actually *took*
-            // was instantaneous and therefore easy to miss on a slow connection. Popping the new
-            // glyph in from small gives that moment a shape, and it lasts about as long as a
-            // transport control should be allowed to.
-            AnimatedContent(
-                targetState = isPlaying,
-                transitionSpec = {
-                    val glyph = spring<Float>(dampingRatio = 0.6f, stiffness = 1400f)
-                    (scaleIn(glyph, 0.55f) + fadeIn(tween(90))) togetherWith
-                        (scaleOut(glyph, 0.55f) + fadeOut(tween(90))) using
-                        SizeTransform(clip = false) { _, _ -> snap() }
-                },
-                label = "miniPillPlayPause",
-            ) { playing ->
-                Icon(
-                    painter = painterResource(if (playing) R.drawable.pause else R.drawable.play),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.size(28.dp),
-                )
-            }
-        }
     }
 }
 
@@ -1409,7 +1439,7 @@ fun SearchBottomBar(
         ) {
             Icon(
                 painter = painterResource(
-                    if (leadingIsBack) R.drawable.arrow_back else R.drawable.home_outlined,
+                    if (leadingIsBack) R.drawable.chevron_back else R.drawable.home_outlined,
                 ),
                 contentDescription = stringResource(
                     if (leadingIsBack) R.string.back else R.string.home,

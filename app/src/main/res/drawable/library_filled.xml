@@ -3,11 +3,21 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-  <!-- Apple-style Library: stacked album cards with a music note (Library tab, active). -->
-  <path
-      android:fillColor="@android:color/white"
-      android:pathData="M4,6H2v14c0,1.1 0.9,2 2,2h14v-2H4V6z"/>
-  <path
-      android:fillColor="@android:color/white"
-      android:pathData="M20,2H8C6.9,2 6,2.9 6,4v12c0,1.1 0.9,2 2,2h12c1.1,0 2,-0.9 2,-2V4C22,2.9 21.1,2 20,2zM13,15c-1.1,0 -2,-0.9 -2,-2s0.9,-2 2,-2c0.37,0 0.71,0.11 1,0.28V6h4v2h-3v5C15,14.1 14.1,15 13,15z"/>
+    <!-- Library, selected: the same stack, the front card solid with the note cut out of it. -->
+    <path
+        android:pathData="M7.2,3.2 H16.8"
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M4.9,6.3 H19.1"
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M5.6,9.6 H18.4 A3,3 0 0 1 21.4,12.6 V17.8 A3,3 0 0 1 18.4,20.8 H5.6 A3,3 0 0 1 2.6,17.8 V12.6 A3,3 0 0 1 5.6,9.6 Z M9.1,16.7 a1.7,1.7 0 1,0 3.4,0 a1.7,1.7 0 1,0 -3.4,0 z M11.1,16.7 V11.9 h1.4 V16.7 z M12.5,11.9 l2.8,1.1 v1.7 l-2.8,-1.1 z"
+        android:fillColor="@android:color/white"
+        android:fillType="evenOdd" />
 </vector>

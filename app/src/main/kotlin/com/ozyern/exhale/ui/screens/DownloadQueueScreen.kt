@@ -52,7 +52,7 @@ fun DownloadQueueScreen(
                 navigationIcon = {
                     LiquidBackButton(
                         onClick = { navController.popBackStack() },
-                        icon = R.drawable.arrow_back,
+                        icon = R.drawable.chevron_back,
                     )
                 },
                 actions = {

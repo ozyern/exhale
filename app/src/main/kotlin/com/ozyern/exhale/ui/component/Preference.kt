@@ -210,48 +210,28 @@ fun <T> ListPreference(
     onValueSelected: (T) -> Unit,
     isEnabled: Boolean = true,
 ) {
-    var showDialog by remember {
+    var showMenu by remember {
         mutableStateOf(false)
     }
-    if (showDialog) {
-        ListDialog(
-            onDismiss = { showDialog = false },
-        ) {
-            items(values, key = { it.hashCode() }) { value ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                showDialog = false
-                                onValueSelected(value)
-                            }
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                ) {
-                    RadioButton(
-                        selected = value == selectedValue,
-                        onClick = null,
-                    )
 
-                    Text(
-                        text = valueText(value),
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.padding(start = 16.dp),
-                    )
-                }
-            }
-        }
+    // The choice opens as a pull-down from this row, as iOS does it — not a dialog over the page.
+    Box(modifier = modifier) {
+        PreferenceEntry(
+            title = title,
+            description = valueText(selectedValue),
+            icon = icon,
+            onClick = { showMenu = true },
+            isEnabled = isEnabled,
+        )
+        PullDownMenu(
+            expanded = showMenu,
+            onDismiss = { showMenu = false },
+            options = values,
+            selected = selectedValue,
+            label = valueText,
+            onSelect = onValueSelected,
+        )
     }
-
-    PreferenceEntry(
-        modifier = modifier,
-        title = title,
-        description = valueText(selectedValue),
-        icon = icon,
-        onClick = { showDialog = true },
-        isEnabled = isEnabled,
-    )
 }
 
 @Composable

@@ -669,6 +669,21 @@ fun ColumnScope.PlayerMenu(
                         },
                     )
 
+                    // A tagged .m4a in Music/Exhale. Songs already on the phone have nothing to save.
+                    if (!com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaMetadata.id)) {
+                        Divider()
+                        PlayerMenuRow(
+                            icon = R.drawable.save_to_device,
+                            title = stringResource(R.string.save_to_device),
+                            onClick = {
+                                onDismiss()
+                                if (com.ozyern.exhale.export.SongExporter.get(context).enqueue(listOf(mediaMetadata)) > 0) {
+                                    Toast.makeText(context, context.getString(R.string.save_to_device_started), Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                        )
+                    }
+
                     if (externalDownloaderEnabled) {
                         Divider()
                         PlayerMenuRow(

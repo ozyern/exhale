@@ -133,6 +133,7 @@ class TogetherOnlineApi(
             403 -> "Forbidden"
             404 -> "Session not found"
             429 -> "Too many requests, please try again later"
+            502, 503, 504 -> "The Together server isn't responding right now ($status). Try again in a little while, or use a relay of your own from Together settings."
             in 500..599 -> "Server error ($status)"
             else -> "Unexpected response ($status)"
         }
@@ -145,7 +146,7 @@ class TogetherOnlineApi(
         settings: TogetherRoomSettings,
     ): TogetherOnlineCreateSessionResponse =
         withRetry {
-            val token = normalizedBearerTokenOrNull() ?: throw TogetherOnlineApiException("Together token is missing")
+            val token = normalizedBearerTokenOrNull()
             val payload =
                 json.encodeToString(
                     TogetherOnlineCreateSessionRequest.serializer(),
@@ -156,7 +157,7 @@ class TogetherOnlineApi(
                 )
             val resp =
                 client.post("$v1BaseUrl/together/sessions") {
-                    header("Authorization", "Bearer $token")
+                    if (token != null) header("Authorization", "Bearer $token")
                     contentType(ContentType.Application.Json)
                     setBody(payload)
                 }
@@ -170,7 +171,7 @@ class TogetherOnlineApi(
         code: String,
     ): TogetherOnlineResolveResponse =
         withRetry {
-            val token = normalizedBearerTokenOrNull() ?: throw TogetherOnlineApiException("Together token is missing")
+            val token = normalizedBearerTokenOrNull()
             val payload =
                 json.encodeToString(
                     TogetherOnlineResolveRequest.serializer(),
@@ -178,7 +179,7 @@ class TogetherOnlineApi(
                 )
             val resp =
                 client.post("$v1BaseUrl/together/sessions/resolve") {
-                    header("Authorization", "Bearer $token")
+                    if (token != null) header("Authorization", "Bearer $token")
                     contentType(ContentType.Application.Json)
                     setBody(payload)
                 }

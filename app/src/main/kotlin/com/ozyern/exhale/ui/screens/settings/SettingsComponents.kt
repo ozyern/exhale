@@ -6,6 +6,7 @@
 
 package com.ozyern.exhale.ui.screens.settings
 
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -256,7 +257,7 @@ fun SettingsProfileHeader(
                 }
             )
             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = bgAlpha))
-            .padding(horizontal = 18.dp, vertical = 18.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         // 64dp, and with a live accent behind it. At 56dp on a flat tint this card was a settings
         // row with a slightly larger glyph — the most prominent thing on the page was carrying no
@@ -277,8 +278,8 @@ fun SettingsProfileHeader(
 
         Box(
             modifier = Modifier
-                .size(64.dp)
-                .clip(RoundedCornerShape(20.dp))
+                .size(60.dp)
+                .clip(CircleShape)
                 .background(
                     Brush.linearGradient(
                         colors = listOf(
@@ -320,8 +321,8 @@ fun SettingsProfileHeader(
         ) {
             Text(
                 text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
@@ -329,8 +330,10 @@ fun SettingsProfileHeader(
                     R.string.settings_hero_subtitle,
                     BuildConfig.VERSION_NAME,
                 ),
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
 
@@ -548,9 +551,7 @@ fun SettingsSectionHeader(
 ) {
     Text(
         text = title,
-        style = MaterialTheme.typography.labelLarge,
-        fontWeight = FontWeight.SemiBold,
-        letterSpacing = 0.4.sp,
+        style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier.padding(
             start = SettingsDimensions.SectionHeaderHorizontalPadding + 8.dp,
@@ -625,11 +626,11 @@ fun SettingsRow(
     showDivider: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val effectiveAccent = if (item.accentColor.isSpecified) {
-        item.accentColor
-    } else {
-        MaterialTheme.colorScheme.primary
-    }
+    // Every row gets a colour, as every row in iOS Settings does: its own if it has one, otherwise a
+    // system colour picked from its title so it is the same colour every time.
+    // iOS paints every row icon in a saturated system colour; the theme's pastel accents read as
+    // disabled next to them. Picked from the title, so a row keeps its colour.
+    val effectiveAccent = IosSystemColors[(item.title.hashCode() and 0x7fffffff) % IosSystemColors.size]
 
     // Subtle premium haptic tick on row taps — routed through the app-wide custom
     // LocalHapticFeedback provider, which already respects the user's haptics preference.
@@ -660,19 +661,14 @@ fun SettingsRow(
                         item.onClick()
                     },
                 )
-                .padding(
-                    horizontal = SettingsDimensions.RowHorizontalPadding,
-                    vertical = SettingsDimensions.RowVerticalPadding,
-                ),
+                .padding(horizontal = 16.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
-                    .size(SettingsDimensions.RowIconSize)
-                    .settingsIconPuck(
-                        effectiveAccent,
-                        RoundedCornerShape(SettingsDimensions.RowIconCornerRadius),
-                    ),
+                    .size(30.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Brush.verticalGradient(listOf(effectiveAccent, effectiveAccent.copy(alpha = 0.86f).compositeOver(Color.Black)))),
                 contentAlignment = Alignment.Center,
             ) {
                 if (item.showUpdateIndicator) {
@@ -687,16 +683,16 @@ fun SettingsRow(
                         Icon(
                             painter = item.icon,
                             contentDescription = null,
-                            tint = effectiveAccent,
-                            modifier = Modifier.size(SettingsDimensions.RowIconInnerSize),
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp),
                         )
                     }
                 } else {
                     Icon(
                         painter = item.icon,
                         contentDescription = null,
-                        tint = effectiveAccent,
-                        modifier = Modifier.size(SettingsDimensions.RowIconInnerSize),
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp),
                     )
                 }
             }
@@ -707,8 +703,9 @@ fun SettingsRow(
                 Text(
                     text = item.title,
                     style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 item.subtitle?.let { subtitle ->
                     Spacer(modifier = Modifier.height(1.dp))
@@ -884,3 +881,16 @@ fun SettingsLargeTopAppBar(
         )
     }
 }
+
+/** iOS's system colours, the ones Settings paints its row icons with. */
+internal val IosSystemColors = listOf(
+    Color(0xFF0A84FF), // blue
+    Color(0xFF30D158), // green
+    Color(0xFFFF9F0A), // orange
+    Color(0xFFFF375F), // pink
+    Color(0xFFBF5AF2), // purple
+    Color(0xFF5E5CE6), // indigo
+    Color(0xFFFF453A), // red
+    Color(0xFF64D2FF), // cyan
+    Color(0xFF8E8E93), // grey
+)

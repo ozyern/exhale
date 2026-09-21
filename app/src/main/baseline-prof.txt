@@ -1,0 +1,12 @@
+# Ahead-of-time compile Exhale's own code at install time (profileinstaller applies this).
+#
+# Without a profile, every screen, spring and gesture runs interpreted/JIT-compiled the first few
+# times it's used — that's the stutter on a cold start, the first open of the player, the first
+# swipe of the dock. Compose and AndroidX already ship their own profiles; this covers the app and
+# the glass libraries it draws with. Costs some install time and a few MB of storage.
+HSPLcom/ozyern/exhale/**->**(**)**
+Lcom/ozyern/exhale/**;
+HSPLcom/kyant/**->**(**)**
+Lcom/kyant/**;
+HSPLdev/chrisbanes/haze/**->**(**)**
+Ldev/chrisbanes/haze/**;

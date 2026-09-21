@@ -128,6 +128,7 @@ import com.ozyern.exhale.constants.PlayerStreamClientKey
 import com.ozyern.exhale.constants.PlayerVolumeKey
 import com.ozyern.exhale.constants.RepeatModeKey
 import com.ozyern.exhale.constants.SkipSilenceKey
+import com.ozyern.exhale.constants.PreferLocalLosslessKey
 import com.ozyern.exhale.constants.SpatialAudioKey
 import com.ozyern.exhale.constants.MaxSongCacheSizeKey
 import com.ozyern.exhale.constants.SmartTrimmerKey
@@ -299,6 +300,9 @@ class MusicService :
         PlayerStreamClient.ANDROID_VR
     )
     private val playbackUrlCache = ConcurrentHashMap<String, Pair<String, Long>>()
+    /** Read on the loader thread for every stream, so kept here rather than asked of the datastore. */
+    @Volatile
+    private var preferLocalLossless = true
     private var streamPrefetchJob: Job? = null
     @Volatile
     private var streamPrefetchMediaId: String? = null
@@ -347,8 +351,6 @@ class MusicService :
     @Volatile
     private var suppressAutoPlayback = false
     private var lastPresenceToken: String? = null
-    @Volatile
-    private var lastPresenceUpdateTime = 0L
     @Volatile
     private var lastLoginRecoveryPrompt: Pair<String, Long>? = null
 
@@ -826,6 +828,14 @@ class MusicService :
             }
 
         dataStore.data
+            .map { it[PreferLocalLosslessKey] ?: true }
+            .distinctUntilChanged()
+            .collectLatest(scope) {
+                preferLocalLossless = it
+                com.ozyern.exhale.utils.LocalLossless.invalidate()
+            }
+
+        dataStore.data
             .map { it[SkipSilenceKey] ?: false }
             .distinctUntilChanged()
             .collectLatest(scope) {
@@ -940,7 +950,7 @@ class MusicService :
                                 val song = if (mediaId != null) withContext(Dispatchers.IO) { database.song(mediaId).first() } else null
                                 val finalSong = song ?: metadata?.let { createTransientSongFromMedia(it) }
 
-                                if (canUpdatePresence()) {
+                                run {
                                     DiscordPresenceManager.updateNow(
                                         context = this@MusicService,
                                         token = token,
@@ -1285,13 +1295,24 @@ class MusicService :
         }
     }
 
-    private fun canUpdatePresence(): Boolean {
+    private var lastPlayingNowId: String? = null
+    private var lastPlayingNowAt = 0L
+
+    /**
+     * ListenBrainz's "playing now", at most once a song per quarter minute. Every play, pause, seek and
+     * skip lands here, and the old gate that spread these out also sat in front of Discord — where it
+     * silently dropped a skip made inside the window, leaving the wrong song showing.
+     */
+    private fun canSubmitPlayingNow(song: Song?): Boolean {
+        val id = song?.song?.id
         val now = System.currentTimeMillis()
         synchronized(this) {
-            return if (now - lastPresenceUpdateTime > MIN_PRESENCE_UPDATE_INTERVAL) {
-                lastPresenceUpdateTime = now
-                true
-            } else false
+            val fresh = id != lastPlayingNowId || now - lastPlayingNowAt > 15_000L
+            if (fresh) {
+                lastPlayingNowId = id
+                lastPlayingNowAt = now
+            }
+            return fresh
         }
     }
 
@@ -1513,6 +1534,31 @@ class MusicService :
             unregisterReceiver(bluetoothReceiver)
         } catch (_: Exception) {}
         bluetoothReceiverRegistered = false
+    }
+
+    /** Moves to the next queue item that plays offline. False when nothing ahead of here does. */
+    private fun skipToNextPlayableOffline(): Boolean {
+        val count = player.mediaItemCount
+        val from = player.currentMediaItemIndex
+        if (count <= 0 || from < 0) return false
+        val shuffled = player.shuffleModeEnabled
+        var index = from
+        repeat(count - 1) {
+            index = if (shuffled) {
+                player.currentTimeline.getNextWindowIndex(index, Player.REPEAT_MODE_ALL, true)
+            } else {
+                (index + 1) % count
+            }
+            if (index == C.INDEX_UNSET || index == from) return false
+            val id = runCatching { player.getMediaItemAt(index).mediaId }.getOrNull() ?: return@repeat
+            if (isPlayableOffline(id)) {
+                player.seekTo(index, 0L)
+                player.prepare()
+                player.playWhenReady = true
+                return true
+            }
+        }
+        return false
     }
 
     private fun waitOnNetworkError() {
@@ -1998,14 +2044,53 @@ class MusicService :
             .onFailure { reportException(it) }
     }
 
+    /**
+     * Swaps the metadata a queued song carries for [metadata], wherever it is in the queue, keeping
+     * everything else about the item. If it is the one playing, what the app shows follows at once.
+     */
+    private fun replaceQueuedMetadata(mediaId: String, metadata: com.ozyern.exhale.models.MediaMetadata) {
+        for (index in 0 until player.mediaItemCount) {
+            val item = player.getMediaItemAt(index)
+            if (item.mediaId != mediaId) continue
+            val names = metadata.artists.joinToString { it.name }
+            player.replaceMediaItem(
+                index,
+                item.buildUpon()
+                    .setTag(metadata)
+                    .setMediaMetadata(item.mediaMetadata.buildUpon().setArtist(names).setSubtitle(names).build())
+                    .build(),
+            )
+        }
+        if (currentMediaMetadata.value?.id == mediaId) currentMediaMetadata.value = metadata
+    }
+
     private suspend fun recoverSong(
         mediaId: String,
         playbackData: YTPlayerUtils.PlaybackData? = null
     ) {
         val song = database.song(mediaId).first()
-        val mediaMetadata = withContext(Dispatchers.Main) {
+        val queued = withContext(Dispatchers.Main) {
             player.findNextMediaItemById(mediaId)?.metadata
         } ?: return
+        // Some rows (an upload in the search suggestions, a remix channel's video) carry no artist at
+        // all, and the song would play with a blank where the artist belongs, everywhere in the app,
+        // until someone happened to open the artist's page. The player's own answer always names who
+        // published it, so a song that arrives without an artist gets that name before anything else.
+        val mediaMetadata = if (queued.artists.isNotEmpty()) {
+            queued
+        } else {
+            val details = playbackData?.videoDetails ?: YTPlayerUtils.playerResponseForMetadata(mediaId).getOrNull()?.videoDetails
+            val author = details?.author?.removeSuffix(" - Topic")?.trim()?.takeIf { it.isNotBlank() }
+            if (author == null) {
+                queued
+            } else {
+                val filled = queued.copy(
+                    artists = listOf(com.ozyern.exhale.models.MediaMetadata.Artist(id = details.channelId.takeIf { it.isNotBlank() }, name = author)),
+                )
+                withContext(Dispatchers.Main) { replaceQueuedMetadata(mediaId, filled) }
+                filled
+            }
+        }
         val duration = song?.song?.duration?.takeIf { it != -1 }
             ?: mediaMetadata.duration.takeIf { it != -1 }
             ?: (playbackData?.videoDetails ?: YTPlayerUtils.playerResponseForMetadata(mediaId)
@@ -2671,7 +2756,8 @@ class MusicService :
             stopTogetherInternal()
             togetherIsOnlineSession = false
 
-            val localIp = getLocalIpv4Address()
+            val localIps = getLocalIpv4Candidates()
+            val localIp = localIps.firstOrNull()
             val sessionId = java.util.UUID.randomUUID().toString()
             val sessionKey = java.util.UUID.randomUUID().toString()
             val joinInfo =
@@ -2680,6 +2766,7 @@ class MusicService :
                     port = port,
                     sessionId = sessionId,
                     sessionKey = sessionKey,
+                    altHosts = localIps.drop(1),
                 )
             val joinLink = com.ozyern.exhale.together.TogetherLink.encode(joinInfo)
 
@@ -2781,17 +2868,8 @@ class MusicService :
                 return@launch
             }
 
+            // A relay that asks for a token gets the one this build was given; one that doesn't is used as it is.
             val togetherToken = com.ozyern.exhale.BuildConfig.TOGETHER_BEARER_TOKEN.trim().takeIf { it.isNotBlank() }
-            if (togetherToken == null) {
-                scope.launch(SilentHandler) {
-                    togetherSessionState.value =
-                        com.ozyern.exhale.together.TogetherSessionState.Error(
-                            message = getString(R.string.together_token_missing),
-                            recoverable = true,
-                        )
-                }
-                return@launch
-            }
 
             val api = com.ozyern.exhale.together.TogetherOnlineApi(baseUrl = baseUrl, bearerToken = togetherToken)
             val hostName = displayName.trim().ifBlank { getString(R.string.app_name) }
@@ -2926,6 +3004,7 @@ class MusicService :
                 com.ozyern.exhale.together.TogetherClient(
                     ioScope,
                     clientId = getOrCreateTogetherClientId(),
+                    socketFactory = wifiSocketFactoryOrNull(),
                 )
             togetherClient = client
             togetherClock = com.ozyern.exhale.together.TogetherClock()
@@ -3116,17 +3195,8 @@ class MusicService :
                 return@launch
             }
 
+            // A relay that asks for a token gets the one this build was given; one that doesn't is used as it is.
             val togetherToken = com.ozyern.exhale.BuildConfig.TOGETHER_BEARER_TOKEN.trim().takeIf { it.isNotBlank() }
-            if (togetherToken == null) {
-                scope.launch(SilentHandler) {
-                    togetherSessionState.value =
-                        com.ozyern.exhale.together.TogetherSessionState.Error(
-                            message = getString(R.string.together_token_missing),
-                            recoverable = true,
-                        )
-                }
-                return@launch
-            }
 
             val api = com.ozyern.exhale.together.TogetherOnlineApi(baseUrl = baseUrl, bearerToken = togetherToken)
             val resolved =
@@ -3352,16 +3422,24 @@ class MusicService :
     }
 
     fun kickTogetherParticipant(participantId: String, reason: String? = null) {
-        val onlineHost = togetherOnlineHost ?: return
+        val server = togetherServer
+        val onlineHost = togetherOnlineHost
+        if (server == null && onlineHost == null) return
         ioScope.launch(SilentHandler) {
-            onlineHost.kickParticipant(participantId, reason)
+            // Whichever kind of room this is; the other is null. It used to reach only the online host,
+            // so on a same-Wi-Fi session the button did nothing.
+            server?.removeParticipant(participantId, reason, ban = false)
+            onlineHost?.kickParticipant(participantId, reason)
         }
     }
 
     fun banTogetherParticipant(participantId: String, reason: String? = null) {
-        val onlineHost = togetherOnlineHost ?: return
+        val server = togetherServer
+        val onlineHost = togetherOnlineHost
+        if (server == null && onlineHost == null) return
         ioScope.launch(SilentHandler) {
-            onlineHost.banParticipant(participantId, reason)
+            server?.removeParticipant(participantId, reason, ban = true)
+            onlineHost?.banParticipant(participantId, reason)
         }
     }
 
@@ -3761,17 +3839,47 @@ class MusicService :
         )
     }
 
-    private fun getLocalIpv4Address(): String? {
-        return runCatching {
+    /**
+     * This phone's LAN addresses, best first, for a guest to dial.
+     *
+     * "The first IPv4 address", which this used to return, is the carrier's on most phones: with
+     * the hotspot on and mobile data up, `rmnet_data0` enumerates before `ap0`, and the join link
+     * sent the guest to an address on the operator's network. Now the hotspot interface ranks
+     * first, a Wi-Fi the phone joined next, and cellular, VPN and IMS interfaces are never offered.
+     */
+    private fun getLocalIpv4Candidates(): List<String> =
+        runCatching {
+            val cellularOrTunnel = Regex("^(rmnet|r_rmnet|ccmni|pdp|radio|clat|v4-|tun|ppp|ipsec|ims|dummy|seth|umts|lo)")
+            val secondaryWlan = Regex("^wlan[1-9]")
+            fun rank(name: String): Int = when {
+                name.startsWith("ap") || name.startsWith("swlan") || name.startsWith("softap") ||
+                    name.startsWith("wigig") || secondaryWlan.containsMatchIn(name) -> 0
+                name.startsWith("wlan") -> 1
+                name.startsWith("rndis") || name.startsWith("usb") || name.startsWith("eth") || name.startsWith("bt-pan") -> 2
+                name.startsWith("p2p") -> 3
+                else -> 4
+            }
             java.net.NetworkInterface.getNetworkInterfaces().toList()
-                .asSequence()
-                .filter { it.isUp && !it.isLoopback }
-                .flatMap { it.inetAddresses.toList().asSequence() }
-                .filterIsInstance<java.net.Inet4Address>()
-                .map { it.hostAddress }
-                .firstOrNull { it.isNotBlank() && it != "127.0.0.1" }
+                .filter { it.isUp && !it.isLoopback && !cellularOrTunnel.containsMatchIn(it.name.lowercase()) }
+                .sortedBy { rank(it.name.lowercase()) }
+                .flatMap { nic ->
+                    nic.inetAddresses.toList().filterIsInstance<java.net.Inet4Address>()
+                        .filter { it.isSiteLocalAddress }
+                        .mapNotNull { it.hostAddress }
+                }
+                .distinct()
+        }.getOrDefault(emptyList())
+
+    /** A socket factory on the Wi-Fi network, when there is one; see TogetherClient.socketFactory. */
+    @Suppress("DEPRECATION")
+    private fun wifiSocketFactoryOrNull(): javax.net.SocketFactory? =
+        runCatching {
+            val cm = getSystemService(android.net.ConnectivityManager::class.java) ?: return null
+            cm.allNetworks.firstOrNull { network ->
+                cm.getNetworkCapabilities(network)
+                    ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
+            }?.socketFactory
         }.getOrNull()
-    }
 
     private fun toggleLibrary() {
         database.query {
@@ -4272,7 +4380,7 @@ class MusicService :
                 val song = if (mediaId != null) withContext(Dispatchers.IO) { database.song(mediaId).first() } else null
                 val finalSong = song ?: player.currentMetadata?.let { createTransientSongFromMedia(it) }
 
-                if (canUpdatePresence()) {
+                run {
                     val success = withContext(Dispatchers.IO) {
                         DiscordPresenceManager.updateNow(
                             context = this@MusicService,
@@ -4298,7 +4406,7 @@ class MusicService :
                     try {
                         val lbEnabled = withContext(Dispatchers.IO) { dataStore.get(ListenBrainzEnabledKey, false) }
                         val lbToken = withContext(Dispatchers.IO) { dataStore.get(ListenBrainzTokenKey, "") }
-                        if (lbEnabled && !lbToken.isNullOrBlank()) {
+                        if (lbEnabled && !lbToken.isNullOrBlank() && canSubmitPlayingNow(finalSong)) {
                             scope.launch(Dispatchers.IO) {
                                 try {
                                     ListenBrainzManager.submitPlayingNow(this@MusicService, lbToken, finalSong, player.currentPosition)
@@ -4419,7 +4527,7 @@ class MusicService :
                         val song = if (mediaId != null) withContext(Dispatchers.IO) { database.song(mediaId).first() } else null
                         val finalSong = song ?: player.currentMetadata?.let { createTransientSongFromMedia(it) }
 
-                        if (canUpdatePresence()) {
+                        run {
                             val success = DiscordPresenceManager.updateNow(
                                 context = this@MusicService,
                                 token = token,
@@ -4434,7 +4542,7 @@ class MusicService :
                             try {
                                 val lbEnabled = dataStore.get(ListenBrainzEnabledKey, false)
                                 val lbToken = dataStore.get(ListenBrainzTokenKey, "")
-                                if (lbEnabled && !lbToken.isNullOrBlank()) {
+                                if (lbEnabled && !lbToken.isNullOrBlank() && canSubmitPlayingNow(finalSong)) {
                                     scope.launch(Dispatchers.IO) {
                                         try {
                                             ListenBrainzManager.submitPlayingNow(this@MusicService, lbToken, finalSong, player.currentPosition)
@@ -4472,7 +4580,7 @@ class MusicService :
                         val song = if (currentMediaId != null) withContext(Dispatchers.IO) { database.song(currentMediaId).first() } else null
                         val finalSong = song ?: currentMetadata?.let { createTransientSongFromMedia(it) }
 
-                        if (canUpdatePresence()) {
+                        run {
                             // Run update on IO if possible, assuming updateNow is thread-safe or handles its own threading correctly
                             // If updateNow touches Views, this might break. Assuming it's network/logic.
                             val success = withContext(Dispatchers.IO) {
@@ -4493,7 +4601,7 @@ class MusicService :
                             try {
                                 val lbEnabled = withContext(Dispatchers.IO) { dataStore.get(ListenBrainzEnabledKey, false) }
                                 val lbToken = withContext(Dispatchers.IO) { dataStore.get(ListenBrainzTokenKey, "") }
-                                if (lbEnabled && !lbToken.isNullOrBlank()) {
+                                if (lbEnabled && !lbToken.isNullOrBlank() && canSubmitPlayingNow(finalSong)) {
                                     scope.launch(Dispatchers.IO) {
                                         try {
                                             ListenBrainzManager.submitPlayingNow(this@MusicService, lbToken, finalSong, currentPosition)
@@ -4593,6 +4701,9 @@ class MusicService :
                 (error.cause?.cause as PlaybackException).errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
 
         if (!isNetworkConnected.value || isConnectionError) {
+            // A local music player doesn't stop at a song it can't reach: offline, move on to the
+            // next one in the queue that is on the phone, and only wait when there is none.
+            if (!isNetworkConnected.value && skipToNextPlayableOffline()) return
             waitOnNetworkError()
             return
         }
@@ -4756,9 +4867,83 @@ class MusicService :
             ).setCacheWriteDataSinkFactory(null)
             .setFlags(FLAG_IGNORE_CACHE_ON_ERROR)
 
+    /**
+     * The FLAC/WAV/AIFF on this phone that is this song, or null. The song's title, artists and length
+     * come from the database, or from the queue when it has only just been added — songs are written
+     * to the database after their stream resolves, not before. A match is also written as this song's
+     * format, so the player's badge says Lossless for what is actually playing.
+     */
+    private fun losslessCopyOf(mediaId: String): com.ozyern.exhale.utils.LocalLossless.Track? {
+        // Every chunk of a stream comes through here; only the first one does any work.
+        if (com.ozyern.exhale.utils.LocalLossless.known(mediaId)) return com.ozyern.exhale.utils.LocalLossless.cached(mediaId)
+        if (!com.ozyern.exhale.utils.LocalMediaScanner.hasPermission(this)) return null
+        val metadata = runCatching {
+            runBlocking(Dispatchers.IO) { database.song(mediaId).first() }?.toMediaMetadata()
+                ?: runBlocking(Dispatchers.Main) { player.findNextMediaItemById(mediaId)?.metadata }
+        }.getOrNull() ?: return null
+        val track = com.ozyern.exhale.utils.LocalLossless.find(
+            this,
+            songId = mediaId,
+            title = metadata.title,
+            artists = metadata.artists.map { it.name },
+            durationSeconds = metadata.duration.takeIf { it > 0 },
+        ) ?: return null
+        val seconds = metadata.duration.takeIf { it > 0 } ?: track.durationSeconds?.toInt() ?: 0
+        database.query {
+            upsert(
+                FormatEntity(
+                    id = mediaId,
+                    itag = -1,
+                    mimeType = track.mimeType,
+                    codecs = track.codec,
+                    bitrate = if (seconds > 0) (track.size * 8 / seconds).toInt() else 0,
+                    sampleRate = track.sampleRate,
+                    contentLength = track.size,
+                    loudnessDb = null,
+                    playbackUrl = null,
+                ),
+            )
+        }
+        return track
+    }
+
     private fun createDataSourceFactory(): DataSource.Factory {
         return ResolvingDataSource.Factory(createCacheDataSource()) { dataSpec ->
             val mediaId = dataSpec.key ?: error("No media id")
+
+            // Music from this phone is the file itself: nothing to look up, cache or fetch.
+            com.ozyern.exhale.utils.LocalMediaScanner.uriFor(mediaId)?.let { return@Factory dataSpec.withUri(it) }
+
+            // A lossless copy of this song on the phone beats YouTube's stream. Decided once per song,
+            // so every later chunk of the same stream is a map lookup. Played under its own cache key:
+            // the file's bytes must never be mixed into YouTube's cached copy of the same song.
+            if (preferLocalLossless) {
+                losslessCopyOf(mediaId)?.let { track ->
+                    return@Factory dataSpec.buildUpon()
+                        .setUri(track.uri)
+                        .setKey("lossless:$mediaId")
+                        .build()
+                }
+            }
+
+            // A finished download plays from disk, whatever has been streamed since.
+            //
+            // The check below sized "fully cached" from the song's format row, and that row is
+            // rewritten every time the song is streamed: stream it again at another bitrate and the
+            // row describes a file the download is not, the check fails, and a downloaded song asks
+            // the network for itself — which offline is an error. The download cache knows its own
+            // file's length; ask it first.
+            if (dataSpec.length < 0 && isDownloadedLocally(mediaId)) {
+                return@Factory dataSpec
+            }
+
+            // Saved to the phone (Music/Exhale): play the file, the way a local music player would.
+            // Its own cache key, so the file's bytes are never mixed into a streamed copy.
+            com.ozyern.exhale.export.SavedFiles.uriFor(this, mediaId)?.let { saved ->
+                if (!playerCacheHasWhole(mediaId)) {
+                    return@Factory dataSpec.buildUpon().setUri(saved).setKey("saved:$mediaId").build()
+                }
+            }
 
             val requiredCachedLength =
                 if (dataSpec.length >= 0) {
@@ -4948,6 +5133,21 @@ class MusicService :
             }
         }
     }
+
+    /** True when the play cache holds the whole of what it last recorded for [mediaId]. */
+    private fun playerCacheHasWhole(mediaId: String): Boolean {
+        val contentLength = runCatching {
+            playerCache.getContentMetadata(mediaId).get(ContentMetadata.KEY_CONTENT_LENGTH, -1L)
+        }.getOrNull()?.takeIf { it > 0L } ?: return false
+        return playerCache.isCached(mediaId, 0, contentLength)
+    }
+
+    /** Whether [mediaId] can play with no network at all: on the phone, saved, downloaded or fully cached. */
+    private fun isPlayableOffline(mediaId: String): Boolean =
+        com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaId) ||
+            com.ozyern.exhale.export.SavedFiles.has(this, mediaId) ||
+            isDownloadedLocally(mediaId) ||
+            playerCacheHasWhole(mediaId)
 
     /** True when [mediaId] is complete in the download cache, so playback never asks the network. */
     private fun isDownloadedLocally(mediaId: String): Boolean {
@@ -5666,6 +5866,5 @@ class MusicService :
         const val PERSISTENT_AUTOMIX_FILE = "persistent_automix.data"
         const val PERSISTENT_PLAYER_STATE_FILE = "persistent_player_state.data"
         const val MAX_CONSECUTIVE_ERR = 5
-        const val MIN_PRESENCE_UPDATE_INTERVAL = 20_000L
     }
 }

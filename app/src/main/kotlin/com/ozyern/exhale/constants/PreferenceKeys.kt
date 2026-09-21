@@ -21,6 +21,17 @@ val CustomThemeColorKey = stringPreferencesKey("customThemeColor")
 val RandomThemeOnStartupKey = booleanPreferencesKey("randomThemeOnStartup")
 val DarkModeKey = stringPreferencesKey("darkMode")
 val PureBlackKey = booleanPreferencesKey("pureBlack")
+
+/**
+ * The Sabrina Carpenter palette, on or off.
+ *
+ * A boolean rather than another entry in the palette picker because it does not behave like one:
+ * it overrides dynamic theme, it overrides the picker's selection, and it overrides pure black —
+ * a palette built on warm cream surfaces has nothing left once #000 wins. Sitting it in the picker
+ * would put a choice that silently beats three other settings in the same grid as ninety that do
+ * not. See `SabrinaSeedPalette`.
+ */
+val SabrinaThemeKey = booleanPreferencesKey("sabrinaTheme")
 val UseSystemFontKey = booleanPreferencesKey("useSystemFont")
 val DefaultOpenTabKey = stringPreferencesKey("defaultOpenTab")
 val SlimNavBarKey = booleanPreferencesKey("slimNavBar")
@@ -192,6 +203,9 @@ enum class PlayerStreamClient {
 val PersistentQueueKey = booleanPreferencesKey("persistentQueue")
 val PermanentShuffleKey = booleanPreferencesKey("permanentShuffle")
 val SkipSilenceKey = booleanPreferencesKey("skipSilence")
+
+/** Play a matching FLAC/WAV/AIFF already on the phone in place of YouTube's stream. */
+val PreferLocalLosslessKey = booleanPreferencesKey("preferLocalLossless")
 val AudioNormalizationKey = booleanPreferencesKey("audioNormalization")
 val SpatialAudioKey = booleanPreferencesKey("spatialAudio") // Cavern-style Atmos/spatial upscaling
 val AudioOffload = booleanPreferencesKey("audioOffload")
@@ -324,7 +338,8 @@ enum class LibraryViewType {
 enum class SongFilter {
     LIBRARY,
     LIKED,
-    DOWNLOADED
+    DOWNLOADED,
+    LOCAL,
 }
 
 enum class ArtistFilter {
@@ -482,6 +497,7 @@ enum class PlayerBackgroundStyle {
     BLUR_GRADIENT,
     GLOW,
     GLOW_ANIMATED,
+    FLUID,
 }
 
 // Keys for customized background
@@ -708,6 +724,8 @@ val GitHubReleasesJsonKey = stringPreferencesKey("github_releases_json_exhale")
 val GitHubReleasesLastCheckedAtKey = longPreferencesKey("github_releases_last_checked_at_exhale")
 val GitHubReleasesFingerprintKey = stringPreferencesKey("github_releases_fingerprint_exhale")
 
+/** A relay the listener runs (or was given) themselves; when set, it is used instead of the shared list. */
+val TogetherRelayUrlKey = stringPreferencesKey("togetherRelayUrl")
 val TogetherOnlineEndpointCacheKey = stringPreferencesKey("together_online_endpoint_cache")
 val TogetherOnlineEndpointLastCheckedAtKey = longPreferencesKey("together_online_endpoint_last_checked_at")
 

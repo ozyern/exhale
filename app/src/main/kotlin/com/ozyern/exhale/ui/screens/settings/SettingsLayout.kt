@@ -1,5 +1,7 @@
 package com.ozyern.exhale.ui.screens.settings
 
+import com.ozyern.exhale.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -184,19 +186,9 @@ private fun CompactSettingsLayout(
                     WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
                 )
             ),
-        contentPadding = PaddingValues(top = topPadding, bottom = 32.dp),
+        contentPadding = PaddingValues(top = topPadding, bottom = SettingsBottomSearchClearance),
     ) {
-        if (!state.isSearchActive) {
-            item(key = "search") {
-                SettingsSearchPill(
-                    onClick = state.onSearchClick,
-                    modifier = Modifier
-                        .padding(horizontal = pad)
-                        .padding(top = 2.dp, bottom = spacing),
-                )
-            }
-        }
-
+        // Search lives at the bottom of the screen now, as it does in iOS Settings.
         item(key = "hero") {
             AnimatedVisibility(
                 visible = heroVisible,
@@ -250,9 +242,12 @@ private fun CompactSettingsLayout(
                     visible = quickActionsVisible,
                     enter = fadeIn(SettingsAnimations.entranceSpring()),
                 ) {
-                    SettingsQuickActionsSection(
-                        actions = state.quickActions,
-                        columns = quickActionColumns,
+                    // Rows in a group, as iOS Settings lists everything — never a wall of tiles.
+                    SettingsGroupCard(
+                        group = SettingsGroup(
+                            title = stringResource(R.string.settings_group_essentials),
+                            items = state.quickActions.map { SettingsItem(icon = it.icon, title = it.label, onClick = it.onClick) },
+                        ),
                         modifier = Modifier
                             .padding(horizontal = pad)
                             .padding(bottom = spacing),
@@ -267,8 +262,11 @@ private fun CompactSettingsLayout(
                     visible = integrationsVisible,
                     enter = fadeIn(SettingsAnimations.entranceSpring()),
                 ) {
-                    SettingsIntegrationsSection(
-                        integrations = state.integrations,
+                    SettingsGroupCard(
+                        group = SettingsGroup(
+                            title = stringResource(R.string.integrations),
+                            items = state.integrations.map { SettingsItem(icon = it.icon, title = it.label, onClick = it.onClick) },
+                        ),
                         modifier = Modifier
                             .padding(horizontal = pad)
                             .padding(bottom = spacing),
@@ -348,7 +346,7 @@ private fun MediumSettingsLayout(
             modifier = Modifier
                 .weight(SettingsDimensions.MediumPaneLeftWeight)
                 .fillMaxHeight(),
-            contentPadding = PaddingValues(top = topPadding, bottom = 32.dp),
+            contentPadding = PaddingValues(top = topPadding, bottom = SettingsBottomSearchClearance),
         ) {
             item(key = "hero") {
                 AnimatedVisibility(
@@ -425,7 +423,7 @@ private fun MediumSettingsLayout(
             modifier = Modifier
                 .weight(SettingsDimensions.MediumPaneRightWeight)
                 .fillMaxHeight(),
-            contentPadding = PaddingValues(top = topPadding, bottom = 32.dp),
+            contentPadding = PaddingValues(top = topPadding, bottom = SettingsBottomSearchClearance),
         ) {
             if (state.isSearchActive && !state.hasSearchResults) {
                 item(key = "empty") {
@@ -486,7 +484,7 @@ private fun ExpandedSettingsLayout(
             modifier = Modifier
                 .width(SettingsDimensions.ExpandedListPaneWidth)
                 .fillMaxHeight(),
-            contentPadding = PaddingValues(top = topPadding, bottom = 32.dp),
+            contentPadding = PaddingValues(top = topPadding, bottom = SettingsBottomSearchClearance),
         ) {
             item(key = "hero") {
                 AnimatedVisibility(
@@ -563,7 +561,7 @@ private fun ExpandedSettingsLayout(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight(),
-            contentPadding = PaddingValues(top = topPadding, bottom = 32.dp),
+            contentPadding = PaddingValues(top = topPadding, bottom = SettingsBottomSearchClearance),
         ) {
             if (state.isSearchActive && !state.hasSearchResults) {
                 item(key = "empty") {
@@ -593,3 +591,6 @@ private fun ExpandedSettingsLayout(
         }
     }
 }
+
+/** Space under the last group so the floating search field never covers it. */
+internal val SettingsBottomSearchClearance = 104.dp

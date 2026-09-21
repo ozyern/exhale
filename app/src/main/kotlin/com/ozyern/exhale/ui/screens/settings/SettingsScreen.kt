@@ -16,6 +16,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -71,11 +72,6 @@ fun SettingsScreen(
     var query by remember { mutableStateOf(TextFieldValue()) }
     val focusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(isSearching) {
-        if (isSearching) {
-            focusRequester.requestFocus()
-        }
-    }
 
     val storagePermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
@@ -177,115 +173,53 @@ fun SettingsScreen(
         },
         onUpdateClick = { navController.navigate("settings/update") },
         onAboutClick = { navController.navigate("settings/about") },
-        onSearchClick = { isSearching = true },
+        onSearchClick = { focusRequester.requestFocus() },
     )
 
     Scaffold(
         topBar = {
-            if (!showSearchBar) {
-                // Every settings page with a large title now takes the same bar, so the root
-                // screen is no longer the only one made of the page rather than laid on top of
-                // it. See SettingsLargeTopAppBar.
-                SettingsLargeTopAppBar(
-                    title = {
-                        Text(
-                            text = stringResource(R.string.settings),
-                            // iOS large-title weight. The type scale supplies the geometric face
-                            // and tight tracking; the header just asks for the heavy cut.
-                            fontWeight = FontWeight.Bold,
-                        )
-                    },
-                    navigationIcon = {
-                        LiquidBackButton(
-                            onClick = navController::navigateUp,
-                            onLongClick = navController::backToMain,
-                            icon = R.drawable.arrow_back,
-                        )
-                    },
-                    actions = {
-                        // Same disc of glass as the back arrow opposite it. A bare Material icon
-                        // here was the tell that the glass was decoration rather than the app's
-                        // control surface: one side of the bar an object, the other a glyph.
-                        LiquidGlassIconButton(
-                            onClick = { isSearching = true },
-                            icon = R.drawable.search,
-                            contentDescription = stringResource(R.string.search),
-                        )
-                    },
-                    scrollBehavior = scrollBehavior,
-                )
-            }
+            SettingsLargeTopAppBar(
+                title = {
+                    Text(
+                        text = stringResource(R.string.settings),
+                        // iOS large-title weight. The type scale supplies the geometric face
+                        // and tight tracking; the header just asks for the heavy cut.
+                        fontWeight = FontWeight.Bold,
+                    )
+                },
+                navigationIcon = {
+                    LiquidBackButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                        icon = R.drawable.chevron_back,
+                    )
+                },
+                scrollBehavior = scrollBehavior,
+            )
         },
         // Transparent, so the album-art wash `SettingsPage` lays down is what you see behind
-        // the groups. The app bar above stays opaque on purpose: the large title has rows
-        // sliding under it as the list scrolls, and a translucent bar there would show them.
+        // the groups.
         containerColor = Color.Transparent,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         modifier = Modifier.fillMaxSize(),
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-            if (!showSearchBar) {
-                AdaptiveSettingsLayout(
-                    state = contentState,
-                    listState = listState,
-                    topPadding = innerPadding.calculateTopPadding(),
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+            // One list, filtered where it stands as you type — iOS Settings doesn't open a
+            // separate search screen, it narrows the page you're on.
+            AdaptiveSettingsLayout(
+                state = contentState,
+                listState = listState,
+                topPadding = innerPadding.calculateTopPadding(),
+                modifier = Modifier.fillMaxSize(),
+            )
 
-            AnimatedVisibility(
-                visible = showSearchBar,
-                enter = fadeIn(tween(durationMillis = 220)),
-                exit = fadeOut(tween(durationMillis = 160)),
-            ) {
-                TopSearch(
-                    query = query,
-                    onQueryChange = { query = it },
-                    onSearch = { focusManager.clearFocus() },
-                    active = showSearchBar,
-                    onActiveChange = { active ->
-                        if (active) {
-                            isSearching = true
-                        } else {
-                            resetSearch()
-                        }
-                    },
-                    placeholder = { Text(text = stringResource(R.string.search)) },
-                    leadingIcon = {
-                        LiquidBackButton(
-                            onClick = { resetSearch() },
-                            onLongClick = {
-                                if (queryText.isBlank()) {
-                                    navController.backToMain()
-                                }
-                            },
-                            icon = R.drawable.arrow_back,
-                        )
-                    },
-                    trailingIcon = {
-                        Row {
-                            if (query.text.isNotBlank()) {
-                                LiquidGlassIconButton(
-                                    onClick = { query = TextFieldValue() },
-                                    icon = R.drawable.close,
-                                    diameter = 32.dp,
-                                    iconSize = 16.dp,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    },
-                    focusRequester = focusRequester,
-                ) {
-                    val searchState = contentState.copy(
-                        isSearchActive = true,
-                    )
-                    AdaptiveSettingsLayout(
-                        state = searchState,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
+            SettingsBottomSearch(
+                query = query,
+                onQueryChange = { query = it; isSearching = true },
+                onClear = { resetSearch() },
+                focusRequester = focusRequester,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         }
     }
 }

@@ -72,7 +72,7 @@ constructor(
     private val avoidStreamCodecs: Set<String> by lazy {
         if (deviceSupportsMimeType("audio/opus")) emptySet() else setOf("opus")
     }
-    private val mediaOkHttpClient: OkHttpClient by lazy {
+    internal val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
             .proxy(YouTube.streamProxy)

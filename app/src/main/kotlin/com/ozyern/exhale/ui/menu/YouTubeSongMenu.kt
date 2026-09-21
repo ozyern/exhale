@@ -8,6 +8,12 @@
 
 package com.ozyern.exhale.ui.menu
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.foundation.layout.Column
+import com.ozyern.exhale.ui.component.Next
+import com.ozyern.exhale.ui.component.MenuDividers
+import com.ozyern.exhale.ui.component.MenuSurfaceSection
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.widget.Toast
@@ -354,7 +360,15 @@ fun YouTubeSongMenu(
             )
         }
         item {
+            Spacer(Modifier.height(14.dp))
+            MenuSurfaceSection {
+                Column {
+                    val dividers = MenuDividers()
+
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = { Text(text = stringResource(R.string.start_radio)) },
                 leadingContent = {
                     Icon(
@@ -368,8 +382,10 @@ fun YouTubeSongMenu(
                 }
             )
         }
-        item {
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = { Text(text = stringResource(R.string.add_to_queue)) },
                 leadingContent = {
                     Icon(
@@ -383,8 +399,10 @@ fun YouTubeSongMenu(
                 }
             )
         }
-        item {
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = { 
                     Text(text = if (librarySong?.song?.inLibrary != null) stringResource(R.string.remove_from_library) else stringResource(R.string.add_to_library))
                 },
@@ -408,10 +426,12 @@ fun YouTubeSongMenu(
                 }
             )
         }
-        item {
+        run { dividers.Next()
+
             when (download?.state) {
                 Download.STATE_COMPLETED -> {
                     ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         headlineContent = { 
                             Text(
                                 text = stringResource(R.string.remove_download),
@@ -436,6 +456,7 @@ fun YouTubeSongMenu(
                 }
                 Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
                     ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         headlineContent = { Text(text = stringResource(R.string.downloading)) },
                         leadingContent = {
                             CircularProgressIndicator(
@@ -455,6 +476,7 @@ fun YouTubeSongMenu(
                 }
                 else -> {
                     ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         headlineContent = { Text(text = stringResource(R.string.action_download)) },
                         leadingContent = {
                             Icon(
@@ -482,9 +504,15 @@ fun YouTubeSongMenu(
                 }
             }
         }
+        run { dividers.Next()
+
+            SaveToDeviceItem(songs = { listOf(song.toMediaMetadata()) }, onDismiss = onDismiss)
+        }
         if (splitArtists.isNotEmpty()) {
-            item {
+            run { dividers.Next()
+
                 ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     headlineContent = { Text(text = stringResource(R.string.view_artist)) },
                     leadingContent = {
                         Icon(
@@ -504,8 +532,10 @@ fun YouTubeSongMenu(
             }
         }
         song.album?.let { album ->
-            item {
+            run { dividers.Next()
+
                 ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     headlineContent = { Text(text = stringResource(R.string.view_album)) },
                     leadingContent = {
                         Icon(
@@ -520,8 +550,10 @@ fun YouTubeSongMenu(
                 )
             }
         }
-        item {
+        run { dividers.Next()
+
              ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                  headlineContent = { Text(text = stringResource(R.string.details)) },
                  leadingContent = {
                      Icon(
@@ -538,8 +570,10 @@ fun YouTubeSongMenu(
              )
         }
         if (externalDownloaderEnabled) {
-            item {
+            run { dividers.Next()
+
                 ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     headlineContent = { Text(text = stringResource(R.string.open_with_downloader)) },
                     leadingContent = {
                         Icon(
@@ -566,6 +600,10 @@ fun YouTubeSongMenu(
                         }
                     }
                 )
+            }
+        }
+    
+                }
             }
         }
     }

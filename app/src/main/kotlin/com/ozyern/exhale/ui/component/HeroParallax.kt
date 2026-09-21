@@ -38,6 +38,8 @@ fun Modifier.heroParallax(
     listState: LazyListState,
     travel: Dp = 220.dp,
     drift: Float = 0.34f,
+    /** Recede by shrinking as it scrolls. Off for full-bleed photos, which Apple scrolls whole. */
+    shrink: Boolean = true,
 ): Modifier = graphicsLayer {
     // Only the first item can be the header. Once the list has scrolled past it entirely the
     // index jumps and its own offset stops being meaningful, so pin the ramp at its end value.
@@ -53,9 +55,9 @@ fun Modifier.heroParallax(
     // Shrinks from the top edge, so the artwork appears to recede under the app bar rather than
     // to contract toward a point in the middle of the page.
     transformOrigin = TransformOrigin(0.5f, 0f)
-    val shrink = 1f - 0.14f * progress
-    scaleX = shrink
-    scaleY = shrink
+    val scale = if (shrink) 1f - 0.14f * progress else 1f
+    scaleX = scale
+    scaleY = scale
     // Faster than the shrink, and not all the way to zero: the artwork should be gone before the
     // header's last pixel leaves, but a hero that blinks out at the halfway mark reads as a bug.
     alpha = 1f - progress * 0.92f

@@ -32,6 +32,10 @@ internal class DampedDragAnimation(
     val onDrag: DampedDragAnimation.(size: IntSize, dragAmount: Offset) -> Unit,
 ) {
     private val valueAnimationSpec = spring(1f, 1000f, visibilityThreshold)
+
+    // Settling onto a tab is iOS's lens spring: a touch under-damped, so the glass arrives with a
+    // small overshoot and recoil instead of stopping dead like a cursor.
+    private val settleAnimationSpec = spring(0.72f, 420f, visibilityThreshold)
     private val velocityAnimationSpec = spring(0.5f, 300f, visibilityThreshold * 10f)
     private val pressProgressAnimationSpec = spring(1f, 1000f, 0.001f)
     private val scaleXAnimationSpec = spring(0.6f, 250f, 0.001f)
@@ -64,6 +68,9 @@ internal class DampedDragAnimation(
     val scaleX: Float get() = scaleXAnimation.value
     val scaleY: Float get() = scaleYAnimation.value
     val velocity: Float get() = velocityAnimation.value
+
+    /** Live speed of the settle spring, in value units per second — what a tap's travel stretches by. */
+    val travelVelocity: Float get() = valueAnimation.velocity
 
     val modifier: Modifier = Modifier.pointerInput(Unit) {
         inspectDragGestures(
@@ -152,7 +159,7 @@ internal class DampedDragAnimation(
         valueJob = animationScope.launch {
             valueAnimation.snapTo(from.coerceIn(valueRange))
             onSnapped()
-            valueAnimation.animateTo(to.coerceIn(valueRange), valueAnimationSpec)
+            valueAnimation.animateTo(to.coerceIn(valueRange), settleAnimationSpec)
         }
     }
 
@@ -185,7 +192,7 @@ internal class DampedDragAnimation(
         if (valueAnimation.targetValue == targetValue && value == valueAnimation.value) return
         valueJob?.cancel()
         valueJob = animationScope.launch {
-            valueAnimation.animateTo(targetValue, valueAnimationSpec) { updateVelocity() }
+            valueAnimation.animateTo(targetValue, settleAnimationSpec)
         }
     }
 

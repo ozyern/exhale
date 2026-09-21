@@ -8,6 +8,12 @@
 
 package com.ozyern.exhale.ui.menu
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.foundation.layout.Column
+import com.ozyern.exhale.ui.component.Next
+import com.ozyern.exhale.ui.component.MenuDividers
+import com.ozyern.exhale.ui.component.MenuSurfaceSection
 import android.content.Intent
 import android.content.res.Configuration
 import androidx.compose.foundation.clickable
@@ -149,10 +155,18 @@ fun YouTubeArtistMenu(
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 16.dp)
             )
         }
+        item {
+            Spacer(Modifier.height(14.dp))
+            MenuSurfaceSection {
+                Column {
+                    val dividers = MenuDividers()
+
 
         // Subscribe/Subscribed button
-        item {
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = {
                     Text(text = if (libraryArtist?.artist?.bookmarkedAt != null) stringResource(R.string.subscribed) else stringResource(R.string.subscribe))
                 },
@@ -186,6 +200,10 @@ fun YouTubeArtistMenu(
                     }
                 }
             )
+        }
+    
+                }
+            }
         }
     }
 }

@@ -84,8 +84,8 @@ android {
         applicationId = "com.ozyern.exhale"
         minSdk = 33
         targetSdk = 36
-        versionCode = 203
-        versionName = "1.0.203"
+        versionCode = 304
+        versionName = "1.0.304"
 //        versionName = "3.0.2-$gitCommit"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -269,6 +269,7 @@ dependencies {
     implementation(libs.hilt.navigation)
     implementation(libs.datastore)
     implementation(libs.work.runtime)
+    implementation(libs.zxing.core)
 
     implementation(libs.compose.runtime)
     implementation(libs.compose.foundation)

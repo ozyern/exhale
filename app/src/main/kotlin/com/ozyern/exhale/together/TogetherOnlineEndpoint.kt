@@ -16,6 +16,7 @@ import io.ktor.client.statement.bodyAsText
 import java.net.URI
 import java.util.concurrent.TimeUnit
 import com.ozyern.exhale.constants.TogetherOnlineEndpointCacheKey
+import com.ozyern.exhale.constants.TogetherRelayUrlKey
 import com.ozyern.exhale.constants.TogetherOnlineEndpointLastCheckedAtKey
 import com.ozyern.exhale.utils.getAsync
 
@@ -40,6 +41,9 @@ object TogetherOnlineEndpoint {
     suspend fun baseUrlOrNull(
         dataStore: DataStore<Preferences>,
     ): String? {
+        // A relay the listener chose beats whatever the shared list says.
+        normalizedRelayUrlOrNull(dataStore.getAsync(TogetherRelayUrlKey))?.let { return it }
+
         val now = System.currentTimeMillis()
         val cached = dataStore.getAsync(TogetherOnlineEndpointCacheKey)?.trim().orEmpty()
         val lastCheckedAt = dataStore.getAsync(TogetherOnlineEndpointLastCheckedAtKey, 0L)
@@ -66,6 +70,18 @@ object TogetherOnlineEndpoint {
             prefs[TogetherOnlineEndpointLastCheckedAtKey] = now
         }
         return null
+    }
+
+    /** "my-relay.example.com" or "https://my-relay.example.com/" into a base URL, or null if it isn't one. */
+    fun normalizedRelayUrlOrNull(raw: String?): String? {
+        var text = raw?.trim().orEmpty().trimEnd('/')
+        if (text.isBlank()) return null
+        if (!text.contains("://")) text = "https://$text"
+        val uri = runCatching { URI(text) }.getOrNull() ?: return null
+        val scheme = uri.scheme?.lowercase()
+        if (scheme != "http" && scheme != "https") return null
+        if (uri.host.isNullOrBlank()) return null
+        return text
     }
 
     private suspend fun fetchEndpointFromSourceOrNull(): String? {

@@ -134,8 +134,8 @@ val NavigationBarAnimationSpec = spring<Dp>(
  * type arguments (`Dp`, `Float`, `IntSize`, `IntOffset`) and Kotlin cannot infer those through a
  * shared `AnimationSpec` value.
  */
-const val AquamorphicDampingRatio = 0.75f
-const val AquamorphicStiffness = 250f
+const val AquamorphicDampingRatio = 0.8f
+const val AquamorphicStiffness = 330f
 
 /**
  * The spring every bottom sheet settles on, and therefore the curve the Dynamic-Island morph is

@@ -80,8 +80,8 @@ import javax.inject.Inject
 class LibrarySongsViewModel
 @Inject
 constructor(
-    @ApplicationContext context: Context,
-    database: MusicDatabase,
+    @ApplicationContext private val context: Context,
+    private val database: MusicDatabase,
     downloadUtil: DownloadUtil,
     private val syncUtils: SyncUtils,
 ) : ViewModel() {
@@ -106,13 +106,24 @@ constructor(
                 when (filter) {
                     SongFilter.LIBRARY -> database.songs(sortType, descending, hideVideo).map { it.filterExplicit(hideExplicit) }
                     SongFilter.LIKED -> database.likedSongs(sortType, descending, hideVideo).map { it.filterExplicit(hideExplicit) }
+                    SongFilter.LOCAL ->
+                        database.allSongs().flowOn(Dispatchers.IO).map { songs ->
+                            val local = songs.filter { it.song.isLocal }
+                            when (sortType) {
+                                SongSortType.CREATE_DATE -> local.sortedBy { it.song.inLibrary ?: it.song.dateDownload ?: java.time.LocalDateTime.MIN }
+                                SongSortType.NAME -> local.sortedBy { it.song.title.lowercase() }
+                                SongSortType.ARTIST -> local.sortedBy { song -> song.artists.joinToString("") { it.name }.lowercase() }
+                                SongSortType.PLAY_TIME -> local.sortedBy { it.song.totalPlayTime }
+                            }.reversed(descending).filterExplicit(hideExplicit)
+                        }
                     SongFilter.DOWNLOADED ->
                         combine(
                             database.allSongs().flowOn(Dispatchers.IO),
                             downloadUtil.downloads
                         ) { songs, downloads ->
                             songs.filter {
-                                downloads[it.id]?.state == Download.STATE_COMPLETED
+                                downloads[it.id]?.state == Download.STATE_COMPLETED ||
+                                    com.ozyern.exhale.export.SavedFiles.has(it.id)
                             }.let { filteredSongs ->
                                 when (sortType) {
                                     SongSortType.CREATE_DATE -> filteredSongs.sortedBy {
@@ -143,6 +154,7 @@ constructor(
                 when (filter) {
                     SongFilter.LIKED -> syncUtils.syncLikedSongs()
                     SongFilter.LIBRARY -> syncUtils.syncLibrarySongs()
+                    SongFilter.LOCAL -> com.ozyern.exhale.utils.LocalMediaScanner.scan(context, database)
                     SongFilter.DOWNLOADED -> Unit
                 }
             } catch (e: Exception) {
@@ -159,6 +171,11 @@ constructor(
 
     fun syncLibrarySongs() {
         refresh(SongFilter.LIBRARY)
+    }
+
+    /** Reads the music on this phone into the Library. */
+    fun scanLocal() {
+        refresh(SongFilter.LOCAL)
     }
 }
 
@@ -262,7 +279,7 @@ constructor(
                             database.allSongs().flowOn(Dispatchers.IO),
                             downloadUtil.downloads
                         ) { songs, downloads ->
-                            songs.filter { downloads[it.id]?.state == Download.STATE_COMPLETED }
+                            songs.filter { downloads[it.id]?.state == Download.STATE_COMPLETED || com.ozyern.exhale.export.SavedFiles.has(it.id) }
                                 .mapNotNull { it.song.albumId }.toSet()
                         }.flatMapLatest { downloadedAlbumIds ->
                             database.albumsByIds(downloadedAlbumIds, sortType, descending)
@@ -274,7 +291,7 @@ constructor(
                             database.allSongs().flowOn(Dispatchers.IO),
                             downloadUtil.downloads
                         ) { songs, downloads ->
-                            songs.filter { downloads[it.id]?.state == Download.STATE_COMPLETED }
+                            songs.filter { downloads[it.id]?.state == Download.STATE_COMPLETED || com.ozyern.exhale.export.SavedFiles.has(it.id) }
                                 .mapNotNull { song -> song.song.albumId?.let { it to song } }
                                 .groupBy({ it.first }, { it.second })
                                 .mapValues { it.value.size }

@@ -22,16 +22,24 @@ import javax.inject.Inject
 class MoodAndGenresViewModel
 @Inject
 constructor() : ViewModel() {
-    val moodAndGenres = MutableStateFlow<List<MoodAndGenres.Item>?>(null)
+    /**
+     * The whole catalogue, in YouTube's own sections ("Moods & moments", "Genres"). Explore's shelf
+     * — what this used to read — is a fifth of it with the sections flattened away; that is kept only
+     * as the fallback when the full page can't be had.
+     */
+    val sections = MutableStateFlow<List<MoodAndGenres>?>(null)
 
     init {
         viewModelScope.launch {
             YouTube
-                .explore()
-                .onSuccess {
-                    moodAndGenres.value = it.moodAndGenres
-                }.onFailure {
-                    reportException(it)
+                .moodAndGenres()
+                .onSuccess { found ->
+                    sections.value = found.filter { it.items.isNotEmpty() }
+                }.onFailure { error ->
+                    reportException(error)
+                    YouTube.explore().onSuccess { page ->
+                        sections.value = listOf(MoodAndGenres(title = "", items = page.moodAndGenres))
+                    }
                 }
         }
     }

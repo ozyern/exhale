@@ -117,6 +117,14 @@ fun PlayerSettings(
         SkipSilenceKey,
         defaultValue = false
     )
+    val (preferLocalLossless, onPreferLocalLosslessChange) = rememberPreference(
+        com.ozyern.exhale.constants.PreferLocalLosslessKey,
+        defaultValue = true
+    )
+    val losslessContext = androidx.compose.ui.platform.LocalContext.current
+    val askForAudio = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { granted -> if (granted) com.ozyern.exhale.utils.LocalLossless.invalidate() }
     val (audioNormalization, onAudioNormalizationChange) = rememberPreference(
         AudioNormalizationKey,
         defaultValue = true
@@ -346,6 +354,19 @@ fun PlayerSettings(
         )
 
         SwitchPreference(
+            title = { Text("Prefer lossless files") },
+            description = "Plays a FLAC, WAV or AIFF of the same song from this phone instead of streaming it, when there is one.",
+            icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+            checked = preferLocalLossless,
+            onCheckedChange = { on ->
+                onPreferLocalLosslessChange(on)
+                if (on && !com.ozyern.exhale.utils.LocalMediaScanner.hasPermission(losslessContext)) {
+                    askForAudio.launch(com.ozyern.exhale.utils.LocalMediaScanner.PermissionName)
+                }
+            },
+        )
+
+        SwitchPreference(
             title = { Text(stringResource(R.string.skip_silence)) },
             icon = { Icon(painterResource(R.drawable.fast_forward), null) },
             checked = skipSilence,
@@ -497,7 +518,7 @@ fun PlayerSettings(
             LiquidBackButton(
                 onClick = navController::navigateUp,
                 onLongClick = navController::backToMain,
-                icon = R.drawable.arrow_back,
+                icon = R.drawable.chevron_back,
             )
         }
     )

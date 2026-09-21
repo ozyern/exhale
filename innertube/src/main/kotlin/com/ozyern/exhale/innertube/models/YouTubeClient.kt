@@ -47,17 +47,26 @@ data class YouTubeClient(
         ),
     )
 
+    /**
+     * Where this client's player request belongs: the site it ships with. Only the three music
+     * clients are music.youtube.com's; asking that endpoint on any other client's behalf is answered
+     * with a 400, or with formats whose URLs are quietly withheld.
+     */
+    fun apiUrl(): String =
+        if (clientName.uppercase(Locale.US) in MUSIC_HOSTED) API_URL_YOUTUBE_MUSIC else API_URL_YOUTUBE
+
     fun requestOrigin(): String {
         return when (clientName.uppercase(Locale.US)) {
-            "TVHTML5", "TVHTML5_SIMPLY_EMBEDDED_PLAYER", "TVHTML5_SIMPLY" -> ORIGIN_YOUTUBE
-            else -> ORIGIN_YOUTUBE_MUSIC
+            in MUSIC_HOSTED -> ORIGIN_YOUTUBE_MUSIC
+            else -> ORIGIN_YOUTUBE
         }
     }
 
     fun requestReferer(): String {
         return when (clientName.uppercase(Locale.US)) {
             "TVHTML5", "TVHTML5_SIMPLY_EMBEDDED_PLAYER", "TVHTML5_SIMPLY" -> REFERER_YOUTUBE_TV
-            else -> REFERER_YOUTUBE_MUSIC
+            in MUSIC_HOSTED -> REFERER_YOUTUBE_MUSIC
+            else -> "$ORIGIN_YOUTUBE/"
         }
     }
 
@@ -70,6 +79,14 @@ data class YouTubeClient(
 
         const val ORIGIN_YOUTUBE = "https://www.youtube.com"
         const val REFERER_YOUTUBE_TV = "$ORIGIN_YOUTUBE/tv"
+        const val API_URL_YOUTUBE = "$ORIGIN_YOUTUBE/youtubei/v1/"
+
+        /**
+         * The only clients that belong to music.youtube.com. Every other client ships with YouTube
+         * proper, and asking the music endpoint on its behalf is answered with a 400 or with formats
+         * whose URLs are withheld — so they go to youtube.com, where they were meant to ask.
+         */
+        private val MUSIC_HOSTED = setOf("WEB_REMIX", "ANDROID_MUSIC", "IOS_MUSIC")
 
         val WEB = YouTubeClient(
             clientName = "WEB",
@@ -118,12 +135,20 @@ data class YouTubeClient(
             isEmbedded = true,
         )
 
+        /**
+         * The one client that still hands over plain URLs: no cipher to unscramble, no proof token to
+         * produce, and every rendition the video has, up to 2160p, without an account.
+         *
+         * The version has to be a current one. YouTube refuses a retired client outright — the request
+         * fails rather than coming back with anything to read — which is indistinguishable from a video
+         * that needs signing in unless you try a newer version against the same video.
+         */
         val IOS = YouTubeClient(
             clientName = "IOS",
-            clientVersion = "19.29.1",
+            clientVersion = "20.10.4",
             clientId = "5",
-            userAgent = "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)",
-            osVersion = "17.5.1.21F90",
+            userAgent = "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
+            osVersion = "18.3.2.22D82",
         )
 
         val MOBILE = YouTubeClient(
@@ -219,9 +244,9 @@ data class YouTubeClient(
 
         val IPADOS = YouTubeClient(
             clientName = "IOS",
-            clientVersion = "19.22.3",
+            clientVersion = "20.10.4",
             clientId = "5",
-            userAgent = "com.google.ios.youtube/19.22.3 (iPad7,6; U; CPU iPadOS 17_7_10 like Mac OS X; en-US)",
+            userAgent = "com.google.ios.youtube/20.10.4 (iPad7,6; U; CPU iPadOS 18_3_2 like Mac OS X; en-US)",
             osName = "iPadOS",
             osVersion = "17.7.10.21H450",
             deviceMake = "Apple",

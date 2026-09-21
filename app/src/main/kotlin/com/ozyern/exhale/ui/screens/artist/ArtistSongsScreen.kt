@@ -195,7 +195,7 @@ fun ArtistSongsScreen(
                 LiquidBackButton(
                     onClick = navController::navigateUp,
                     onLongClick = navController::backToMain,
-                    icon = R.drawable.arrow_back,
+                    icon = R.drawable.chevron_back,
                 )
             },
         )

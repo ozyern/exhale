@@ -16,9 +16,18 @@ data class TogetherJoinInfo(
     val port: Int,
     val sessionId: String,
     val sessionKey: String,
+    /**
+     * The host's other LAN addresses, tried in order after [host]. A phone can sit on several
+     * networks at once (its own hotspot, a Wi-Fi it joined, USB tethering) and the right one is
+     * whichever the guest is on, which the host cannot know.
+     */
+    val altHosts: List<String> = emptyList(),
 ) {
     fun toWebSocketUrl(): String =
         "ws://$host:$port/together"
+
+    fun candidateUrls(): List<String> =
+        (listOf(host) + altHosts).distinct().map { "ws://$it:$port/together" }
 
     fun toDeepLink(): String {
         val charset = StandardCharsets.UTF_8.name()
@@ -28,10 +37,13 @@ data class TogetherJoinInfo(
                 "port" to port.toString(),
                 "sid" to sessionId,
                 "key" to sessionKey,
-            ).joinToString("&") { (k, v) ->
+            ).let { if (altHosts.isEmpty()) it else it + ("alt" to altHosts.joinToString(",")) }
+                .joinToString("&") { (k, v) ->
                 "${URLEncoder.encode(k, charset)}=${URLEncoder.encode(v, charset)}"
             }
-        return "Exhale://together?$q"
+        // Lowercase: Android matches intent-filter schemes case-sensitively, and the manifest says
+        // `exhale`. A link written `Exhale://` could be scanned or tapped without opening the app.
+        return "exhale://together?$q"
     }
 }
 
@@ -65,8 +77,9 @@ object TogetherLink {
 
         if (host.isBlank() || port == null || sid.isBlank() || key.isBlank()) return null
         if (port !in 1..65535) return null
+        val alt = params["alt"].orEmpty().split(',').map { it.trim() }.filter { it.isNotBlank() && it != host }
 
-        return TogetherJoinInfo(host = host, port = port, sessionId = sid, sessionKey = key)
+        return TogetherJoinInfo(host = host, port = port, sessionId = sid, sessionKey = key, altHosts = alt)
     }
 
     private fun decodeWsUrl(uri: URI): TogetherJoinInfo? {

@@ -75,6 +75,8 @@ open class KizzyRPC(private val token: String, private val injectedLogger: Kizzy
         smallImage: RpcImage?,
         largeText: String? = null,
         smallText: String? = null,
+        largeUrl: String? = null,
+        smallUrl: String? = null,
         buttons: List<Pair<String, String>>? = null,
         startTime: Long? = null,
         endTime: Long? = null,
@@ -106,7 +108,9 @@ open class KizzyRPC(private val token: String, private val injectedLogger: Kizzy
                         largeImage = resolvedLarge,
                         smallImage = resolvedSmall,
                         largeText = largeText,
-                        smallText = smallText
+                        smallText = smallText,
+                        largeUrl = largeUrl,
+                        smallUrl = smallUrl,
                     ),
                     type = type.value,
                     platform = platform?.sanitize(),
@@ -134,6 +138,8 @@ open class KizzyRPC(private val token: String, private val injectedLogger: Kizzy
         smallImage: RpcImage?,
         largeText: String? = null,
         smallText: String? = null,
+        largeUrl: String? = null,
+        smallUrl: String? = null,
         buttons: List<Pair<String, String>>? = null,
         startTime: Long? = null,
         endTime: Long? = null,
@@ -163,10 +169,26 @@ open class KizzyRPC(private val token: String, private val injectedLogger: Kizzy
 
         val success = discordWebSocket.sendActivity(
             makePresence(
-                name, state, stateUrl, details, detailsUrl,
-                largeImage, smallImage, largeText, smallText,
-                buttons, startTime, endTime, type, statusDisplayType,
-                streamUrl, applicationId, status, since
+                name = name,
+                state = state,
+                stateUrl = stateUrl,
+                details = details,
+                detailsUrl = detailsUrl,
+                largeImage = largeImage,
+                smallImage = smallImage,
+                largeText = largeText,
+                smallText = smallText,
+                largeUrl = largeUrl,
+                smallUrl = smallUrl,
+                buttons = buttons,
+                startTime = startTime,
+                endTime = endTime,
+                type = type,
+                statusDisplayType = statusDisplayType,
+                streamUrl = streamUrl,
+                applicationId = applicationId,
+                status = status,
+                since = since
             )
         )
         if (!success) {
@@ -184,6 +206,8 @@ open class KizzyRPC(private val token: String, private val injectedLogger: Kizzy
         smallImage: RpcImage?,
         largeText: String? = null,
         smallText: String? = null,
+        largeUrl: String? = null,
+        smallUrl: String? = null,
         buttons: List<Pair<String, String>>? = null,
         startTime: Long? = null,
         endTime: Long? = null,
@@ -200,10 +224,26 @@ open class KizzyRPC(private val token: String, private val injectedLogger: Kizzy
         }
         return discordWebSocket.sendActivity(
             makePresence(
-                name, state, stateUrl, details, detailsUrl,
-                largeImage, smallImage, largeText, smallText,
-                buttons, startTime, endTime, type, statusDisplayType,
-                streamUrl, applicationId, status, since
+                name = name,
+                state = state,
+                stateUrl = stateUrl,
+                details = details,
+                detailsUrl = detailsUrl,
+                largeImage = largeImage,
+                smallImage = smallImage,
+                largeText = largeText,
+                smallText = smallText,
+                largeUrl = largeUrl,
+                smallUrl = smallUrl,
+                buttons = buttons,
+                startTime = startTime,
+                endTime = endTime,
+                type = type,
+                statusDisplayType = statusDisplayType,
+                streamUrl = streamUrl,
+                applicationId = applicationId,
+                status = status,
+                since = since
             )
         )
     }
@@ -218,6 +258,8 @@ open class KizzyRPC(private val token: String, private val injectedLogger: Kizzy
         smallImage: RpcImage?,
         largeText: String? = null,
         smallText: String? = null,
+        largeUrl: String? = null,
+        smallUrl: String? = null,
         buttons: List<Pair<String, String>>? = null,
         startTime: Long? = null,
         endTime: Long? = null,
@@ -230,26 +272,74 @@ open class KizzyRPC(private val token: String, private val injectedLogger: Kizzy
     ) {
         if (discordWebSocket.isFullyConnected()) {
             val success = updateActivity(
-                name, state, stateUrl, details, detailsUrl,
-                largeImage, smallImage, largeText, smallText,
-                buttons, startTime, endTime, type, statusDisplayType,
-                streamUrl, applicationId, status, since
+                name = name,
+                state = state,
+                stateUrl = stateUrl,
+                details = details,
+                detailsUrl = detailsUrl,
+                largeImage = largeImage,
+                smallImage = smallImage,
+                largeText = largeText,
+                smallText = smallText,
+                largeUrl = largeUrl,
+                smallUrl = smallUrl,
+                buttons = buttons,
+                startTime = startTime,
+                endTime = endTime,
+                type = type,
+                statusDisplayType = statusDisplayType,
+                streamUrl = streamUrl,
+                applicationId = applicationId,
+                status = status,
+                since = since
             )
             if (!success) {
                 logger.warning("refreshRPC: updateActivity failed, trying buildActivity")
                 buildActivity(
-                    name, state, stateUrl, details, detailsUrl,
-                    largeImage, smallImage, largeText, smallText,
-                    buttons, startTime, endTime, type, statusDisplayType,
-                    streamUrl, applicationId, status, since
+                    name = name,
+                    state = state,
+                    stateUrl = stateUrl,
+                    details = details,
+                    detailsUrl = detailsUrl,
+                    largeImage = largeImage,
+                    smallImage = smallImage,
+                    largeText = largeText,
+                    smallText = smallText,
+                    largeUrl = largeUrl,
+                    smallUrl = smallUrl,
+                    buttons = buttons,
+                    startTime = startTime,
+                    endTime = endTime,
+                    type = type,
+                    statusDisplayType = statusDisplayType,
+                    streamUrl = streamUrl,
+                    applicationId = applicationId,
+                    status = status,
+                    since = since,
                 )
             }
         } else {
             buildActivity(
-                name, state, stateUrl, details, detailsUrl,
-                largeImage, smallImage, largeText, smallText,
-                buttons, startTime, endTime, type, statusDisplayType,
-                streamUrl, applicationId, status, since
+                name = name,
+                state = state,
+                stateUrl = stateUrl,
+                details = details,
+                detailsUrl = detailsUrl,
+                largeImage = largeImage,
+                smallImage = smallImage,
+                largeText = largeText,
+                smallText = smallText,
+                largeUrl = largeUrl,
+                smallUrl = smallUrl,
+                buttons = buttons,
+                startTime = startTime,
+                endTime = endTime,
+                type = type,
+                statusDisplayType = statusDisplayType,
+                streamUrl = streamUrl,
+                applicationId = applicationId,
+                status = status,
+                since = since
             )
         }
     }

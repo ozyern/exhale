@@ -64,7 +64,7 @@ internal val LyricsCardCorner     = 24.dp
 internal fun rememberLyricsFontFamily(): FontFamily? {
     val (useSystemFont) = rememberPreference(UseSystemFontKey, defaultValue = false)
     return remember(useSystemFont) {
-        if (useSystemFont) null else FontFamily(Font(R.font.sfprodisplaybold))
+        if (useSystemFont) null else FontFamily(Font(R.font.linotte))
     }
 }
 

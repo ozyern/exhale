@@ -344,7 +344,7 @@ fun SongMenu(
 
     Surface(
         shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        color = Color.Transparent,
         modifier = Modifier.fillMaxWidth(),
     ) {
         SongListItem(
@@ -504,7 +504,7 @@ fun SongMenu(
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            Column(modifier = Modifier.padding(vertical = 6.dp)) {
                 NewActionGrid(
                     actions = primaryActions,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
@@ -779,6 +779,7 @@ fun SongMenu(
                             )
                         }
                     }
+                    SaveToDeviceItem(songs = { listOf(song.toMediaMetadata()) }, onDismiss = onDismiss)
                     if (externalDownloaderEnabled) {
                         HorizontalDivider(
                             modifier = Modifier.padding(start = 56.dp),

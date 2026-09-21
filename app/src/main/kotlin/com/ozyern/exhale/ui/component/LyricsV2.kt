@@ -12,11 +12,13 @@ import android.os.Build
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -167,7 +169,12 @@ private const val VISUAL_TUNING_OFFSET_MS = 150L
  * single object the eye reads at once, and not so much that the letters start to touch at the
  * largest user size.
  */
-private val LyricTracking = (-0.022).em
+// Windows' tracking for Linotte: tight enough to read as a headline, loose enough that the rounded
+// letterforms don't touch at lyric sizes.
+/** One jump of the lyrics column: how far it went, to which line, and when. */
+private class LineShift(val delta: Float, val target: Int, val at: Long)
+
+private val LyricTracking = (-0.015).em
 
 /**
  * How far ahead of the highlight the *scroll* runs, in milliseconds of track.
@@ -224,7 +231,7 @@ fun LyricsV2(
     val (romanizeKorean) = rememberPreference(LyricsRomanizeKoreanKey, defaultValue = true)
     val (useSystemFont) = rememberPreference(UseSystemFontKey, defaultValue = false)
     val lyricsFontFamily = remember(useSystemFont) {
-        if (useSystemFont) null else FontFamily(Font(R.font.sfprodisplaybold))
+        if (useSystemFont) null else FontFamily(Font(R.font.linotte))
     }
     // ── Text colour ──
     // LyricsV2 only ever renders inside LyricsScreen, whose backdrop is ALWAYS the dark
@@ -449,6 +456,15 @@ fun LyricsV2(
     // row below the fold also fails.
     var lastTrackedIndex by remember { mutableIntStateOf(-1) }
 
+    // The Apple Music follow, as the Windows app does it.
+    //
+    // A line change used to scroll the column as one rigid sheet. Now the list jumps to where it is
+    // going in one frame and publishes how far it went; every line on screen takes that distance
+    // back as its own offset and springs home, each starting ~34ms after the line above it. The
+    // sung line moves first and the verse below arrives in a wave behind it, which is the motion
+    // that makes Apple's lyrics feel like they flow rather than scroll.
+    var lineShift by remember { mutableStateOf<LineShift?>(null) }
+
     // ── Auto-scroll ──
     //
     // Driven by `scrollLineIndex`, which runs SCROLL_LEAD_MS ahead of the highlight, so the
@@ -485,11 +501,8 @@ fun LyricsV2(
                 // Measured and on screen: glide its centre onto the anchor.
                 val delta = itemInfo.offset + itemInfo.size / 2f - anchorY
                 if (abs(delta) > 4f) {
-                    try {
-                        listState.animateScrollBy(value = delta, animationSpec = glide)
-                    } catch (_: Exception) {
-                        // A newer line interrupted this scroll — the new effect takes over.
-                    }
+                    val moved = listState.scrollBy(delta)
+                    lineShift = LineShift(delta = moved, target = target, at = System.nanoTime())
                 }
             }
 
@@ -717,6 +730,18 @@ fun LyricsV2(
 
 
 
+                val waveOffset = remember { Animatable(0f) }
+                LaunchedEffect(lineShift) {
+                    val shift = lineShift ?: return@LaunchedEffect
+                    // Only a shift that just happened. A line composed later (scrolled into view by
+                    // hand) must not replay an old one and drift in from nowhere.
+                    if (System.nanoTime() - shift.at > 120_000_000L) return@LaunchedEffect
+                    waveOffset.snapTo(waveOffset.value + shift.delta)
+                    val lag = (index - shift.target + 1).coerceIn(0, 12)
+                    delay(lag * 34L)
+                    waveOffset.animateTo(0f, spring(dampingRatio = 0.86f, stiffness = 120f))
+                }
+
                 // Background vocal detection
                 val hasBackgroundWords = item.words?.any { it.isBackground } == true
                 val isAllBackground = item.words?.all { it.isBackground || it.text.isBlank() } == true
@@ -743,7 +768,7 @@ fun LyricsV2(
                             alpha = animatedLineAlpha
                             scaleX = animatedLineScale
                             scaleY = animatedLineScale
-                            translationY = animatedLineLift.dp.toPx()
+                            translationY = animatedLineLift.dp.toPx() + waveOffset.value
                             transformOrigin = lineTransformOrigin
                         }
                         .then(
@@ -809,7 +834,9 @@ fun LyricsV2(
                             text = item.text,
                             style = MaterialTheme.typography.headlineMedium.copy(
                                 fontSize = if (isAllBackground) (lyricsTextSize * 0.82f).sp else lyricsTextSize.sp,
-                                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+                                // One weight for every line, as on Windows: brightness says which line is
+                                // sung. Swapping Medium for Bold on the active line re-wrapped it mid-glide.
+                                fontWeight = FontWeight.Bold,
                                 fontStyle = if (isAllBackground) FontStyle.Italic else FontStyle.Normal,
                                 lineHeight = (lyricsTextSize * lyricsLineSpacing).sp,
                                 fontFamily = lyricsFontFamily ?: MaterialTheme.typography.headlineMedium.fontFamily,
@@ -1536,7 +1563,7 @@ private fun AnimatedWordV2(
     }
 
     val actualFontSize = if (isBackground) fontSize * 0.85f else fontSize
-    val fontWeight = FontWeight.SemiBold // Consistent weight — no thin→bold jump
+    val fontWeight = FontWeight.Bold // Same weight as every other line, so nothing re-wraps as it lights
 
     // ── Two-layer rendering: dim base + liquid fill overlay ──
     Box(

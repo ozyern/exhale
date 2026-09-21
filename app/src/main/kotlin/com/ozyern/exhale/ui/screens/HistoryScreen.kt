@@ -457,7 +457,7 @@ fun HistoryScreen(
                         navController.backToMain()
                     }
                 },
-                icon = if (selection) R.drawable.close else R.drawable.arrow_back,
+                icon = if (selection) R.drawable.close else R.drawable.chevron_back,
             )
         },
         actions = {

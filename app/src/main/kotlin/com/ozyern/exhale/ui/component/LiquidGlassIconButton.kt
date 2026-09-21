@@ -86,8 +86,9 @@ fun LiquidGlassIconButton(
     enabled: Boolean = true,
     contentDescription: String? = null,
     tint: Color = MaterialTheme.colorScheme.onSurface,
-    diameter: Dp = 40.dp,
-    iconSize: Dp = 20.dp,
+    // 44: the size iOS gives every round control in a bar, and the size a thumb lands on first time.
+    diameter: Dp = 44.dp,
+    iconSize: Dp = 22.dp,
     /** Pixels to refract. Chrome passes `LocalAppBackdrop.current`; content leaves it null. */
     backdrop: Backdrop? = null,
 ) {
@@ -101,10 +102,11 @@ fun LiquidGlassIconButton(
         rememberChromeGlassModifier(
             shape = CircleShape,
             dark = dark,
-            // The search pill's values verbatim. See the class doc: near-miss is worse than
-            // deliberate contrast.
-            tintAlpha = if (dark) 0.42f else 0.38f,
-            blurRadius = 56.dp,
+            // A light film and a short blur, so the page behind shows *through* the disc and bends
+            // at its rim. At 42% and 56dp it was a dark, smeared disc — a button painted grey
+            // rather than a piece of glass, which is the one thing this control has to read as.
+            tintAlpha = if (dark) 0.16f else 0.20f,
+            blurRadius = 20.dp,
             backdrop = source,
             layerBlock = {
                 val progress = press.pressProgress

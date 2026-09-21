@@ -10,6 +10,7 @@ package com.ozyern.exhale.ui.screens.library
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -41,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -105,6 +107,16 @@ fun LibrarySongsScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsState()
 
     var filter by rememberEnumPreference(SongFilterKey, SongFilter.LIKED)
+
+    // Music on this phone needs the audio permission, asked for here, when it is first wanted.
+    val screenContext = androidx.compose.ui.platform.LocalContext.current
+    var localAllowed by remember { mutableStateOf(com.ozyern.exhale.utils.LocalMediaScanner.hasPermission(screenContext)) }
+    val askForLocal = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { granted -> localAllowed = granted }
+    LaunchedEffect(filter, localAllowed) {
+        if (filter == SongFilter.LOCAL && localAllowed) viewModel.scanLocal()
+    }
 
     LaunchedEffect(Unit) {
         if (ytmSync) {
@@ -173,6 +185,7 @@ fun LibrarySongsScreen(
                             SongFilter.LIKED to stringResource(R.string.filter_liked),
                             SongFilter.LIBRARY to stringResource(R.string.filter_library),
                             SongFilter.DOWNLOADED to stringResource(R.string.filter_downloaded),
+                            SongFilter.LOCAL to stringResource(R.string.filter_local),
                         ),
                         currentValue = filter,
                         onValueUpdate = {
@@ -180,6 +193,35 @@ fun LibrarySongsScreen(
                         },
                         modifier = Modifier.weight(1f),
                     )
+                }
+            }
+
+            if (filter == SongFilter.LOCAL && !localAllowed) {
+                item(key = "local_permission", contentType = CONTENT_TYPE_HEADER) {
+                    androidx.compose.foundation.layout.Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                            .padding(20.dp),
+                        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(
+                            "Play the music on this phone",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        )
+                        Text(
+                            "Exhale needs to see your audio files to list them here. They stay on your phone.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        androidx.compose.material3.Button(
+                            onClick = { askForLocal.launch(com.ozyern.exhale.utils.LocalMediaScanner.PermissionName) },
+                            shape = RoundedCornerShape(16.dp),
+                        ) { Text("Allow access") }
+                    }
                 }
             }
 

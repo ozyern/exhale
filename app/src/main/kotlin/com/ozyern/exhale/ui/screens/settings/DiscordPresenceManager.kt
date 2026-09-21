@@ -22,6 +22,8 @@ import com.ozyern.exhale.utils.DiscordRPC
 import com.ozyern.exhale.utils.DiscordImageResolver
 import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.abs
 
 object DiscordPresenceManager {
     private val started = AtomicBoolean(false)
@@ -41,8 +43,27 @@ object DiscordPresenceManager {
     private var lastPositionProvider: (() -> Long)? = null
     private var lastIsPausedProvider: (() -> Boolean)? = null
     private var lastIntervalProvider: (() -> Long)? = null
-    private var lastPresenceUpdateTime = 0L
-    private const val MIN_PRESENCE_UPDATE_INTERVAL = 20_000L // 20 seconds debounce
+    /**
+     * What Discord is showing right now, so it is only told about a real change. The timer and every
+     * player event both call [updatePresence]; without this each of them re-sent the same activity, and
+     * a debounce in front of them dropped the genuine changes along with the repeats.
+     */
+    private var shownSongId: String? = null
+    private var shownPaused = false
+    private var shownStartMs = 0L
+    private var sentAtMs = 0L
+
+    /** Newest request wins: a request that waited its turn behind a newer one has nothing left to say. */
+    private val requestVersion = AtomicLong(0)
+
+    /** Songs whose artwork has already been looked up, so a pause or a seek doesn't repeat the lookup. */
+    private val artworkResolved = LinkedHashSet<String>()
+
+    /** How close together two sends may be. Discord drops the ones past its allowance. */
+    private const val MIN_SEND_GAP = 3_000L
+
+    /** Below this a change of start time is measurement noise, not a seek. */
+    private const val SEEK_TOLERANCE = 3_000L
     private var consecutiveFailures = 0
     private const val MAX_CONSECUTIVE_FAILURES = 3
     private var lastRestartTime = 0L
@@ -83,6 +104,8 @@ object DiscordPresenceManager {
 
             rpcInstance = DiscordRPC(context, token)
             rpcToken = token
+            shownSongId = null
+            sentAtMs = 0L
         }
         return rpcInstance!!
     }
@@ -96,34 +119,65 @@ object DiscordPresenceManager {
         song: Song?,
         positionMs: Long,
         isPaused: Boolean,
-    ): Boolean = withContext(Dispatchers.IO) {
+    ): Boolean {
+        val mine = requestVersion.incrementAndGet()
+        val calledAt = System.currentTimeMillis()
+        val startMs = calledAt - positionMs
+        return withContext(Dispatchers.IO) {
         rpcMutex.withLock {
             try {
                 if (token.isBlank()) {
                     Timber.tag(logTag).w("updatePresence skipped (token missing)")
                     return@withLock false
                 }
+                // A newer state was asked for while this one waited its turn; that one carries the truth.
+                if (mine != requestVersion.get()) return@withLock true
 
                 if (song == null) {
                     val rpc = getOrCreateRpc(context, token)
                     rpc.stopActivity()
                     Timber.tag(logTag).d("cleared presence (no song)")
                     consecutiveFailures = 0
+                    shownSongId = null
                     return@withLock true
                 }
 
-                try {
-                    withTimeout(8_000L) {
-                        DiscordImageResolver.resolveImagesForSong(context, song)
+                val changed = song.song.id != shownSongId || isPaused != shownPaused
+                val seeked = !isPaused && abs(startMs - shownStartMs) > SEEK_TOLERANCE
+                if (!changed && !seeked && rpcInstance != null) return@withLock true
+
+                // Leave a gap after the last send, then look again: if something newer arrived in the
+                // meantime, this one is stale and the newer one will send.
+                val wait = MIN_SEND_GAP - (System.currentTimeMillis() - sentAtMs)
+                if (wait > 0) {
+                    delay(wait)
+                    if (mine != requestVersion.get()) return@withLock true
+                }
+
+                // Once per song: the lookup can take seconds, and a pause or a seek needs none of it.
+                if (artworkResolved.add(song.song.id)) {
+                    if (artworkResolved.size > 64) artworkResolved.remove(artworkResolved.first())
+                    try {
+                        withTimeout(8_000L) {
+                            DiscordImageResolver.resolveImagesForSong(context, song)
+                        }
+                    } catch (e: Exception) {
+                        artworkResolved.remove(song.song.id)
+                        Timber.tag(logTag).v(e, "image resolution for presence failed or timed out")
                     }
-                } catch (e: Exception) {
-                    Timber.tag(logTag).v(e, "image resolution for presence failed or timed out")
+                    if (mine != requestVersion.get()) return@withLock true
                 }
 
                 val rpc = getOrCreateRpc(context, token)
-                val result = rpc.updateSong(song, positionMs, isPaused)
+                // The position was read when the change happened; by now it is a little further on.
+                val nowPosition = if (isPaused) positionMs else positionMs + (System.currentTimeMillis() - calledAt)
+                val result = rpc.updateSong(song, nowPosition, isPaused)
                 if (result.isSuccess) {
                     consecutiveFailures = 0
+                    shownSongId = song.song.id
+                    shownPaused = isPaused
+                    shownStartMs = startMs
+                    sentAtMs = System.currentTimeMillis()
                     Timber.tag(logTag).d(
                         "updatePresence success (song=%s, paused=%s)",
                         song.song.title,
@@ -143,10 +197,12 @@ object DiscordPresenceManager {
                     false
                 }
             } catch (ex: Exception) {
+                if (ex is CancellationException) throw ex
                 consecutiveFailures++
                 Timber.tag(logTag).e(ex, "updatePresence failed (consecutive=%d)", consecutiveFailures)
                 false
             }
+        }
         }
     }
 
@@ -309,6 +365,8 @@ object DiscordPresenceManager {
         val rpcToClose = rpcInstance
         rpcInstance = null
         rpcToken = null
+        shownSongId = null
+        sentAtMs = 0L
         
         job?.cancel()
         job = null

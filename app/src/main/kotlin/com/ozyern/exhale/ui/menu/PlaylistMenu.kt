@@ -8,6 +8,7 @@
 
 package com.ozyern.exhale.ui.menu
 
+import com.ozyern.exhale.models.toMediaMetadata
 import android.content.Intent
 import android.content.res.Configuration
 import androidx.compose.foundation.clickable
@@ -268,7 +269,7 @@ fun PlaylistMenu(
 
     Surface(
         shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        color = Color.Transparent,
         modifier = Modifier.fillMaxWidth(),
     ) {
         PlaylistListItem(
@@ -399,7 +400,7 @@ fun PlaylistMenu(
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            Column(modifier = Modifier.padding(vertical = 6.dp)) {
                 NewActionGrid(
                     actions = primaryActions,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
@@ -601,6 +602,7 @@ fun PlaylistMenu(
                             )
                         }
                     }
+                    SaveToDeviceItem(songs = { songs.map { it.toMediaMetadata() } }, onDismiss = onDismiss)
                 }
             }
         }

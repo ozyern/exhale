@@ -260,8 +260,12 @@ class App : Application(), SingletonImageLoader.Factory {
                     YouTube.useLoginForBrowse = true
                 }
                 
-                // Apply random theme on startup if enabled
-                if (prefs[RandomThemeOnStartupKey] == true) {
+                // Apply random theme on startup if enabled.
+                //
+                // Skipped while the Sabrina palette is on. Sabrina already wins at render time, so
+                // this would not change what you see — it would quietly overwrite the palette you
+                // had saved, and you would find it gone the moment you switched Sabrina back off.
+                if (prefs[RandomThemeOnStartupKey] == true && prefs[SabrinaThemeKey] != true) {
                     val randomPalette = ThemePalettes.generateRandomPalette()
                     val seedPalette = ThemeSeedPalette(
                         primary = randomPalette.primary,

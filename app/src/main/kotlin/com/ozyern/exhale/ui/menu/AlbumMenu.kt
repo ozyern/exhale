@@ -8,6 +8,13 @@
 
 package com.ozyern.exhale.ui.menu
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.foundation.layout.Column
+import com.ozyern.exhale.ui.component.Next
+import com.ozyern.exhale.ui.component.MenuDividers
+import com.ozyern.exhale.ui.component.MenuSurfaceSection
+import com.ozyern.exhale.models.toMediaMetadata
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.res.Configuration
@@ -412,7 +419,15 @@ fun AlbumMenu(
             )
         }
         item {
+            Spacer(Modifier.height(14.dp))
+            MenuSurfaceSection {
+                Column {
+                    val dividers = MenuDividers()
+
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = { Text(text = stringResource(R.string.play_next)) },
                 leadingContent = {
                     Icon(
@@ -426,8 +441,10 @@ fun AlbumMenu(
                 }
             )
         }
-        item {
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = { Text(text = stringResource(R.string.add_to_queue)) },
                 leadingContent = {
                     Icon(
@@ -441,8 +458,10 @@ fun AlbumMenu(
                 }
             )
         }
-        item {
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = { Text(text = stringResource(R.string.add_to_playlist)) },
                 leadingContent = {
                     Icon(
@@ -455,10 +474,12 @@ fun AlbumMenu(
                 }
             )
         }
-        item {
+        run { dividers.Next()
+
             when (downloadState) {
                 STATE_COMPLETED -> {
                     ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         headlineContent = {
                             Text(
                                 text = stringResource(R.string.remove_download),
@@ -485,6 +506,7 @@ fun AlbumMenu(
                 }
                 STATE_QUEUED, STATE_DOWNLOADING -> {
                     ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         headlineContent = { Text(text = stringResource(R.string.downloading)) },
                         leadingContent = {
                             CircularProgressIndicator(
@@ -506,6 +528,7 @@ fun AlbumMenu(
                 }
                 else -> {
                     ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         headlineContent = { Text(text = stringResource(R.string.action_download)) },
                         leadingContent = {
                             Icon(
@@ -533,8 +556,14 @@ fun AlbumMenu(
                 }
             }
         }
-        item {
+        run { dividers.Next()
+
+            SaveToDeviceItem(songs = { songs.map { it.toMediaMetadata() } }, onDismiss = onDismiss)
+        }
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = { Text(text = stringResource(R.string.view_artist)) },
                 leadingContent = {
                     Icon(
@@ -552,8 +581,10 @@ fun AlbumMenu(
                 }
             )
         }
-        item {
+        run { dividers.Next()
+
             ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 headlineContent = { Text(text = stringResource(R.string.refetch)) },
                 leadingContent = {
                     Icon(
@@ -575,5 +606,9 @@ fun AlbumMenu(
             )
         }
 
+    
+                }
+            }
+        }
     }
 }

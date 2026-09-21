@@ -8,6 +8,7 @@
 
 package com.ozyern.exhale.ui.component
 
+import androidx.compose.ui.unit.sp
 import android.widget.Toast
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedVisibility
@@ -194,7 +195,7 @@ fun ListItem(
     subtitle = {
         badges()
         if (!subtitle.isNullOrEmpty()) {
-            Text(text = subtitle, color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     },
     thumbnailContent = thumbnailContent,
@@ -741,10 +742,11 @@ fun GridItem(
 ) = GridItem(
     modifier = modifier,
     title = {
+        // Apple Music's shelf captions: a quiet 14pt title under the artwork, not a bold headline.
         Text(
             text = title,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 18.sp),
+            fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Start,
@@ -754,8 +756,8 @@ fun GridItem(
     subtitle = {
         Text(
             text = subtitle,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -805,7 +807,7 @@ fun SongListItem(
     swipeContentBackgroundColor: Color? = null,
     trailingContent: @Composable RowScope.() -> Unit = {},
 ) {
-    val swipeEnabled by rememberPreference(SwipeToSongKey, defaultValue = false)
+    val swipeEnabled by rememberPreference(SwipeToSongKey, defaultValue = true)
     val resolvedSwipeContentBackgroundColor = swipeContentBackgroundColor ?: MaterialTheme.colorScheme.surface
 
     val content: @Composable () -> Unit = {
@@ -895,7 +897,7 @@ fun SongGridItem(
                 makeTimeString(song.song.duration * 1000L)
             ),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
@@ -1122,7 +1124,7 @@ fun AlbumGridItem(
         Text(
             text = album.artists.joinToString { it.name },
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -1303,7 +1305,7 @@ fun OverlayPlaylistListItem(
                     }
                     Text(
                         text = subtitle,
-                        color = MaterialTheme.colorScheme.secondary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -1378,7 +1380,7 @@ fun PlaylistGridItem(
         Text(
             text = subtitle,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
@@ -1423,6 +1425,8 @@ fun MediaMetadataListItem(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     shouldLoadImage: Boolean = true,
+    /** False where the caller draws its own highlight for the playing row, so there is only one. */
+    highlightActive: Boolean = true,
     trailingContent: @Composable RowScope.() -> Unit = {},
 ) {
     ListItem(
@@ -1445,7 +1449,7 @@ fun MediaMetadataListItem(
         },
         trailingContent = trailingContent,
         modifier = modifier,
-        isActive = isActive
+        isActive = isActive && highlightActive
     )
 }
 
@@ -1489,7 +1493,7 @@ fun YouTubeListItem(
         }
     },
 ) {
-    val swipeEnabled by rememberPreference(SwipeToSongKey, defaultValue = false)
+    val swipeEnabled by rememberPreference(SwipeToSongKey, defaultValue = true)
 
     val content: @Composable () -> Unit = {
         ListItem(
@@ -1572,8 +1576,8 @@ fun YouTubeGridItem(
     title = {
         Text(
             text = item.title,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 18.sp),
+            fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = if (item is ArtistItem) TextAlign.Center else TextAlign.Start,
@@ -1592,9 +1596,9 @@ fun YouTubeGridItem(
         if (subtitle != null) {
             Text(
                 text = subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.secondary,
-                maxLines = 2,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
@@ -2109,6 +2113,14 @@ fun BoxScope.AlbumPlayButton(
     }
 }
 
+/**
+ * Spotify's gesture on a song row: pull it left to add it to the queue, right to play it next.
+ *
+ * The row follows the finger one-to-one up to the trigger point, then stretches with resistance
+ * past it. A disc under the row grows with the pull and fills with the accent the moment letting go
+ * would act — with a haptic tick right then, so you feel the commit before you make it — and the
+ * row springs home either way.
+ */
 @Composable
 fun SwipeToSongBox(
     modifier: Modifier = Modifier,
@@ -2117,12 +2129,29 @@ fun SwipeToSongBox(
 ) {
     val ctx = LocalContext.current
     val player = LocalPlayerConnection.current
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    val offset = remember { mutableStateOf(0f) }
-    val threshold = 300f
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val trigger = with(density) { 76.dp.toPx() }
+    val offset = remember { androidx.compose.animation.core.Animatable(0f) }
+    var armed by remember { mutableStateOf(false) }
+    var raw by remember { mutableStateOf(0f) }
+
+    // Past the trigger the row keeps moving, but at a third of the finger's speed.
+    fun shaped(x: Float): Float {
+        val over = kotlin.math.abs(x) - trigger
+        return if (over <= 0f) x else kotlin.math.sign(x) * (trigger + over / 3f)
+    }
 
     val dragState = rememberDraggableState { delta ->
-        offset.value = (offset.value + delta).coerceIn(-threshold, threshold)
+        raw += delta
+        val shapedValue = shaped(raw)
+        scope.launch { offset.snapTo(shapedValue) }
+        val nowArmed = kotlin.math.abs(raw) >= trigger
+        if (nowArmed != armed) {
+            armed = nowArmed
+            if (nowArmed) haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+        }
     }
 
     Box(
@@ -2131,78 +2160,66 @@ fun SwipeToSongBox(
             .draggable(
                 orientation = Orientation.Horizontal,
                 state = dragState,
+                onDragStarted = { raw = offset.value; armed = false },
                 onDragStopped = {
-                    when {
-                        offset.value >= threshold -> {
-                            player?.playNext(listOf(mediaItem))
-                            Toast.makeText(ctx, R.string.play_next, Toast.LENGTH_SHORT).show()
-                            reset(offset, scope)
-                        }
-
-                        offset.value <= -threshold -> {
+                    if (armed) {
+                        if (raw < 0) {
                             player?.addToQueue(listOf(mediaItem))
                             Toast.makeText(ctx, R.string.add_to_queue, Toast.LENGTH_SHORT).show()
-                            reset(offset, scope)
+                        } else {
+                            player?.playNext(listOf(mediaItem))
+                            Toast.makeText(ctx, R.string.play_next, Toast.LENGTH_SHORT).show()
                         }
-
-                        else -> reset(offset, scope)
+                    }
+                    armed = false
+                    raw = 0f
+                    scope.launch {
+                        offset.animateTo(0f, androidx.compose.animation.core.spring(dampingRatio = 0.62f, stiffness = 420f))
                     }
                 }
             )
     ) {
-        if (offset.value != 0f) {
-            val (iconRes, bg, tint, align) = if (offset.value > 0)
-                Quadruple(
-                    R.drawable.playlist_play,
-                    MaterialTheme.colorScheme.secondary,
-                    MaterialTheme.colorScheme.onSecondary,
-                    Alignment.CenterStart
-                ) else
-                Quadruple(
-                    R.drawable.queue_music,
-                    MaterialTheme.colorScheme.primary,
-                    MaterialTheme.colorScheme.onPrimary,
-                    Alignment.CenterEnd
-                )
-
+        val x = offset.value
+        if (x != 0f) {
+            val progress = (kotlin.math.abs(x) / trigger).coerceIn(0f, 1f)
+            val fill = if (armed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+            val ink = if (armed) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(60.dp)
-                    .align(Alignment.Center)
-                    .background(bg),
-                contentAlignment = align
+                    .matchParentSize()
+                    .padding(horizontal = 22.dp),
+                contentAlignment = if (x < 0) Alignment.CenterEnd else Alignment.CenterStart,
             ) {
-                Icon(
-                    painter = painterResource(id = iconRes),
-                    contentDescription = null,
+                Box(
                     modifier = Modifier
-                        .padding(horizontal = 24.dp)
-                        .size(30.dp)
-                        .alpha(0.9f),
-                    tint = tint
-                )
+                        .size(40.dp)
+                        .graphicsLayer {
+                            val s = 0.4f + 0.6f * progress + if (armed) 0.08f else 0f
+                            scaleX = s
+                            scaleY = s
+                            alpha = progress
+                        }
+                        .clip(CircleShape)
+                        .background(fill),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(if (x < 0) R.drawable.queue_music else R.drawable.playlist_play),
+                        contentDescription = null,
+                        tint = ink,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
             }
         }
 
         Box(
             modifier = Modifier
                 .offset { IntOffset(offset.value.roundToInt(), 0) }
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface),
+                // Transparent: the row slides over the live background, not on a slab of its own.
+                .fillMaxWidth(),
             content = content
         )
-    }
-}
-
-// Helper to animate reset of swipe offset
-private fun reset(offset: MutableState<Float>, scope: CoroutineScope) {
-    scope.launch {
-        animate(
-            initialValue = offset.value,
-            targetValue = 0f,
-            animationSpec = tween(durationMillis = 300)
-        ) { value, _ -> offset.value = value }
     }
 }
 

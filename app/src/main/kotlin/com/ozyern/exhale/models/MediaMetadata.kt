@@ -83,6 +83,33 @@ private fun resolveAlbum(
     }
 
 
+/**
+ * "1.2M plays", "340K views", "3:45" — a subtitle's tail, not a name.
+ *
+ * Songs saved before the parser learned to drop these kept them as artists, and the mini player showed
+ * a play count where the artist belonged. Filtering on the way out of the database mends those rows as
+ * they are read, so nobody has to re-fetch a library to get their artist names back. A name that is
+ * simply numeric ("21 Savage", "50 Cent") has neither a magnitude nor a colon and is left alone.
+ */
+private val CountOrRuntime = Regex("""^\s*\d[\d.,   ]*(?:[KMBkmb]|Mio\.?|Mrd\.?|Mil|lakh|crore|万|億|억|만|천)?\+?(?:\s+\S+)?\s*$""")
+
+private fun looksLikeCountOrRuntime(name: String): Boolean {
+    val text = name.trim()
+    if (text.isEmpty()) return true
+    // A runtime: digits and colons only.
+    if (text.all { it.isDigit() || it == ':' } && ':' in text) return true
+    if (!text.first().isDigit()) return false
+    // A bare number with a magnitude, optionally followed by one word ("plays", "views", "Aufrufe").
+    return CountOrRuntime.matches(text) && (text.any { it.isLetter() } || text.all { it.isDigit() || it in ".,   " })
+}
+
+/** Artists as they should be shown: whatever in the list is really a name. */
+private fun List<MediaMetadata.Artist>.withoutCounts(): List<MediaMetadata.Artist> {
+    val names = filterNot { it.id == null && looksLikeCountOrRuntime(it.name) }
+    // Never leave a song with no artist at all when every entry looked like a count.
+    return names.ifEmpty { this }
+}
+
 fun Song.toMediaMetadata() =
     MediaMetadata(
         id = song.id,
@@ -93,7 +120,7 @@ fun Song.toMediaMetadata() =
                 name = it.name,
                 thumbnailUrl = it.thumbnailUrl,
             )
-        },
+        }.withoutCounts(),
         duration = song.duration,
         thumbnailUrl = song.thumbnailUrl,
         album =

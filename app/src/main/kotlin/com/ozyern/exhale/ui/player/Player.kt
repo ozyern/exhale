@@ -460,6 +460,7 @@ fun BottomSheetPlayer(
             PlayerBackgroundStyle.BLUR_GRADIENT -> Color.White
             PlayerBackgroundStyle.GLOW -> Color.White
             PlayerBackgroundStyle.GLOW_ANIMATED -> Color.White
+            PlayerBackgroundStyle.FLUID -> Color.White
             PlayerBackgroundStyle.CUSTOM -> Color.White
         }
 
@@ -473,6 +474,7 @@ fun BottomSheetPlayer(
             PlayerBackgroundStyle.BLUR_GRADIENT -> Color.Black
             PlayerBackgroundStyle.GLOW -> Color.Black
             PlayerBackgroundStyle.GLOW_ANIMATED -> Color.Black
+            PlayerBackgroundStyle.FLUID -> Color.Black
             PlayerBackgroundStyle.CUSTOM -> Color.Black
         }
 
@@ -1260,6 +1262,7 @@ fun BottomSheetPlayer(
                     MaterialTheme.colorScheme.surfaceContainer
                 },
             onBackgroundColor = queueOnBackgroundColor,
+            artworkColors = if (useBlackBackground) emptyList() else gradientColors,
             TextBackgroundColor = TextBackgroundColor,
             textButtonColor = textButtonColor,
             iconButtonColor = iconButtonColor,

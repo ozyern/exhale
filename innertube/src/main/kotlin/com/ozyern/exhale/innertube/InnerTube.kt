@@ -331,7 +331,7 @@ class InnerTube {
         setLogin: Boolean,
         authState: PlaybackAuthState,
         includeDataSyncId: Boolean,
-    ) = httpClient.post("player") {
+    ) = httpClient.post("${client.apiUrl()}player") {
         ytClient(client, setLogin = setLogin, authState = authState)
         setBody(
             PlayerBody(

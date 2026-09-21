@@ -194,7 +194,7 @@ fun LocalPlaylistScreen(
         true
     )
     var locked by rememberPreference(PlaylistEditLockKey, defaultValue = true)
-    val swipeToSongEnabled by rememberPreference(SwipeToSongKey, defaultValue = false)
+    val swipeToSongEnabled by rememberPreference(SwipeToSongKey, defaultValue = true)
     val (disableBlur) = rememberPreference(DisableBlurKey, false)
     var showAssignTagsDialog by remember { mutableStateOf(false) }
 
@@ -1448,7 +1448,7 @@ fun LocalPlaylistScreen(
                             navController.backToMain()
                         }
                     },
-                    icon = if (selection) R.drawable.close else R.drawable.arrow_back,
+                    icon = if (selection) R.drawable.close else R.drawable.chevron_back,
                 )
             },
             actions = {

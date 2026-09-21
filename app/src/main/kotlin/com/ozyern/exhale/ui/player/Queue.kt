@@ -8,6 +8,16 @@
 
 package com.ozyern.exhale.ui.player
 
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import coil3.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import com.ozyern.exhale.ui.component.PlayingIndicatorBox
 import androidx.activity.compose.BackHandler
 import android.annotation.SuppressLint
 import android.content.Context
@@ -65,6 +75,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -121,6 +136,8 @@ fun Queue(
     modifier: Modifier = Modifier,
     backgroundColor: Color,
     onBackgroundColor: Color,
+    /** The artwork's colours, as the player draws its background from. Empty for a plain surface. */
+    artworkColors: List<Color> = emptyList(),
     TextBackgroundColor: Color,
     textButtonColor: Color,
     iconButtonColor: Color,
@@ -443,6 +460,7 @@ fun Queue(
 
         val headerItems = 1
         val lazyListState = rememberLazyListState()
+
         var dragInfo by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
         var shouldScrollToCurrent by remember { mutableStateOf(false) }
@@ -452,6 +470,12 @@ fun Queue(
             if (currentWindowIndex in queueWindows.indices) {
                 queueWindows[currentWindowIndex].uid
             } else null
+        }
+
+        // Where the playing song sits in the list as it is drawn (shuffle reorders it), so the songs
+        // already heard can step back and the ones to come can be named.
+        val activeListIndex by remember {
+            derivedStateOf { mutableQueueWindows.indexOfFirst { it.uid == currentPlayingUid } }
         }
 
         val reorderableState = rememberReorderableLazyListState(
@@ -553,11 +577,27 @@ fun Queue(
             }
         }
 
+        val tinted = artworkColors.isNotEmpty()
+        val ink = if (tinted) Color.White else onBackgroundColor
+        val queueBrush = remember(artworkColors, backgroundColor) {
+            if (tinted) {
+                val top = artworkColors.first()
+                val bottom = artworkColors.getOrNull(1) ?: top
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    listOf(
+                        androidx.compose.ui.graphics.lerp(top, Color.Black, 0.40f),
+                        androidx.compose.ui.graphics.lerp(bottom, Color.Black, 0.62f),
+                    ),
+                )
+            } else {
+                androidx.compose.ui.graphics.SolidColor(backgroundColor)
+            }
+        }
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .background(backgroundColor),
+                    .background(queueBrush),
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 CurrentSongHeader(
@@ -570,8 +610,8 @@ fun Queue(
                     songCount = queueWindows.size,
                     queueDuration = queueLength,
                     infiniteQueueEnabled = infiniteQueueEnabled,
-                    backgroundColor = backgroundColor,
-                    onBackgroundColor = onBackgroundColor,
+                    backgroundColor = Color.Transparent,
+                    onBackgroundColor = ink,
                     onToggleLike = {
                         playerConnection.service.toggleLike()
                     },
@@ -689,153 +729,103 @@ fun Queue(
                                 }
                             }
 
-                            val content: @Composable () -> Unit = {
-                                Row(
-                                    horizontalArrangement = Arrangement.Center,
-                                    modifier = Modifier.graphicsLayer {
-                                        // Enable hardware acceleration for smoother dragging
-                                        compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
-                                    }
-                                ) {
-                                    val shouldLoadImages by remember {
-                                        derivedStateOf {
-                                            state.value > state.collapsedBound + 80.dp
-                                        }
-                                    }
-
-                                    val trackMetadata = window.mediaItem.metadata ?: return@Row
-                                    MediaMetadataListItem(
+                            val heard = activeListIndex >= 0 && index < activeListIndex
+                            val openMenu: (MediaMetadata) -> Unit = { trackMetadata ->
+                                menuState.show {
+                                    PlayerMenu(
                                         mediaMetadata = trackMetadata,
-                                        isSelected = selection && trackMetadata in selectedSongs,
-                                        isActive = isActive,
-                                        isPlaying = isPlaying && isActive,
-                                        shouldLoadImage = shouldLoadImages,
-                                        trailingContent = {
-                                            IconButton(
-                                                onClick = {
-                                                    menuState.show {
-                                                        PlayerMenu(
-                                                            mediaMetadata = trackMetadata,
-                                                            navController = navController,
-                                                            playerBottomSheetState = playerBottomSheetState,
-                                                            isQueueTrigger = true,
-                                                            onShowDetailsDialog = {
-                                                                window.mediaItem.mediaId.let {
-                                                                    bottomSheetPageState.show {
-                                                                        ShowMediaInfo(it)
-                                                                    }
-                                                                }
-                                                            },
-                                                            onDismiss = menuState::dismiss,
-                                                        )
-                                                    }
-                                                },
-                                            ) {
-                                                Icon(
-                                                    painter = painterResource(R.drawable.more_vert),
-                                                    contentDescription = null,
-                                                )
-                                            }
-                                            if (!effectiveLocked) {
-                                                IconButton(
-                                                    onClick = { },
-                                                    modifier = Modifier
-                                                        .draggableHandle()
-                                                        .graphicsLayer {
-                                                            // Improve touch response
-                                                            alpha = 0.99f
-                                                        }
-                                                ) {
-                                                    Icon(
-                                                        painter = painterResource(R.drawable.drag_handle),
-                                                        contentDescription = null,
-                                                    )
-                                                }
+                                        navController = navController,
+                                        playerBottomSheetState = playerBottomSheetState,
+                                        isQueueTrigger = true,
+                                        onShowDetailsDialog = {
+                                            window.mediaItem.mediaId.let {
+                                                bottomSheetPageState.show { ShowMediaInfo(it) }
                                             }
                                         },
-                                        modifier =
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .background(backgroundColor)
-                                                .combinedClickable(
-                                                    onClick = {
-                                                        if (selection) {
-                                                            if (trackMetadata in selectedSongs) {
-                                                                selectedSongs.remove(trackMetadata)
-                                                                selectedItems.remove(currentItem)
-                                                            } else {
-                                                                selectedSongs.add(trackMetadata)
-                                                                selectedItems.add(currentItem)
-                                                            }
-                                                        } else {
-                                                            if (index == currentWindowIndex) {
-                                                                playerConnection.player.togglePlayPause()
-                                                            } else {
-                                                                val joined =
-                                                                    togetherSessionState as? com.ozyern.exhale.together.TogetherSessionState.Joined
-                                                                val isGuest =
-                                                                    joined?.role is com.ozyern.exhale.together.TogetherRole.Guest
-                                                                if (isGuest) {
-                                                                    if (joined?.roomState?.settings?.allowGuestsToControlPlayback != true) {
-                                                                        Toast.makeText(
-                                                                            context,
-                                                                            R.string.not_allowed,
-                                                                            Toast.LENGTH_SHORT
-                                                                        ).show()
-                                                                        return@combinedClickable
-                                                                    }
-                                                                    val trackId =
-                                                                        window.mediaItem.metadata?.id?.trim()
-                                                                            .orEmpty().ifBlank {
-                                                                            window.mediaItem.mediaId.trim()
-                                                                        }
-                                                                    if (trackId.isBlank()) return@combinedClickable
-                                                                    Toast.makeText(
-                                                                        context,
-                                                                        R.string.together_requesting_song_change,
-                                                                        Toast.LENGTH_SHORT
-                                                                    ).show()
-                                                                    playerConnection.service.requestTogetherControl(
-                                                                        com.ozyern.exhale.together.ControlAction.SeekToTrack(
-                                                                            trackId = trackId,
-                                                                            positionMs = 0L,
-                                                                        ),
-                                                                    )
-                                                                    shouldScrollToCurrent = false
-                                                                } else {
-                                                                    playerConnection.player.seekToDefaultPosition(
-                                                                        window.firstPeriodIndex,
-                                                                    )
-                                                                    playerConnection.player.playWhenReady =
-                                                                        true
-                                                                    shouldScrollToCurrent = false
-                                                                }
-                                                            }
-                                                        }
-                                                    },
-                                                    onLongClick = {
-                                                        haptic.performHapticFeedback(
-                                                            HapticFeedbackType.LongPress
-                                                        )
-                                                        if (!selection) {
-                                                            selection = true
-                                                        }
-                                                        selectedSongs.clear() // Clear all selections
-                                                        selectedSongs.add(trackMetadata) // Select current item
-                                                    },
-                                                ),
+                                        onDismiss = menuState::dismiss,
+                                    )
+                                }
+                            }
+                            val onRowClick: () -> Unit = onRowClick@{
+                                if (index == currentWindowIndex) {
+                                    playerConnection.player.togglePlayPause()
+                                    return@onRowClick
+                                }
+                                val joined = togetherSessionState as? com.ozyern.exhale.together.TogetherSessionState.Joined
+                                if (joined?.role is com.ozyern.exhale.together.TogetherRole.Guest) {
+                                    if (joined.roomState.settings.allowGuestsToControlPlayback != true) {
+                                        Toast.makeText(context, R.string.not_allowed, Toast.LENGTH_SHORT).show()
+                                        return@onRowClick
+                                    }
+                                    val trackId = window.mediaItem.metadata?.id?.trim().orEmpty().ifBlank { window.mediaItem.mediaId.trim() }
+                                    if (trackId.isBlank()) return@onRowClick
+                                    Toast.makeText(context, R.string.together_requesting_song_change, Toast.LENGTH_SHORT).show()
+                                    playerConnection.service.requestTogetherControl(
+                                        com.ozyern.exhale.together.ControlAction.SeekToTrack(trackId = trackId, positionMs = 0L),
+                                    )
+                                } else {
+                                    playerConnection.player.seekToDefaultPosition(window.firstPeriodIndex)
+                                    playerConnection.player.playWhenReady = true
+                                }
+                                shouldScrollToCurrent = false
+                            }
+                            val content: @Composable () -> Unit = {
+                                val trackMetadata = window.mediaItem.metadata
+                                if (trackMetadata != null) {
+                                    QueueRow(
+                                        metadata = trackMetadata,
+                                        active = isActive,
+                                        playing = isPlaying && isActive,
+                                        heard = heard && !isActive,
+                                        ink = ink,
+                                        editable = !effectiveLocked,
+                                        handle = { Modifier.draggableHandle() },
+                                        onClick = onRowClick,
+                                        onLongClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            openMenu(trackMetadata)
+                                        },
                                     )
                                 }
                             }
 
-                            if (effectiveLocked) {
-                                content()
-                            } else {
-                                SwipeToDismissBox(
-                                    state = dismissBoxState,
-                                    backgroundContent = {},
-                                ) {
+                            Column {
+                                if (index == activeListIndex + 1 && activeListIndex >= 0 && !reorderableState.isAnyItemDragging) {
+                                    UpNextHeader(
+                                        remaining = mutableQueueWindows.size - index,
+                                        seconds = mutableQueueWindows.drop(index).sumOf { it.mediaItem.metadata?.duration?.coerceAtLeast(0) ?: 0 },
+                                        shuffled = playerConnection.player.shuffleModeEnabled,
+                                        source = queueTitle,
+                                        color = ink,
+                                    )
+                                }
+                                if (effectiveLocked) {
                                     content()
+                                } else {
+                                    SwipeToDismissBox(
+                                        state = dismissBoxState,
+                                        // What a swipe is about to do, under the card as it slides: it used
+                                        // to be nothing at all, so a row could be sent away without any sign
+                                        // that sending it away was what was happening.
+                                        backgroundContent = {
+                                            val toEnd = dismissBoxState.dismissDirection == SwipeToDismissBoxValue.StartToEnd
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(Color(0xFFFF3B30)),
+                                                contentAlignment = if (toEnd) Alignment.CenterStart else Alignment.CenterEnd,
+                                            ) {
+                                                Icon(
+                                                    painter = painterResource(R.drawable.delete),
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.padding(horizontal = 22.dp),
+                                                )
+                                            }
+                                        },
+                                    ) {
+                                        content()
+                                    }
                                 }
                             }
                         }
@@ -1004,6 +994,132 @@ fun Queue(
                             .align(Alignment.BottomCenter),
                 )
             }
+        }
+    }
+}
+
+/**
+ * Apple Music's heading over what is still to come: "Continue Playing", and under it where the
+ * songs come from — the album, playlist or radio that started the queue — or that they are shuffled.
+ */
+@Composable
+private fun UpNextHeader(remaining: Int, seconds: Int, shuffled: Boolean, source: String?, color: Color) {
+    val minutes = seconds / 60
+    val length = buildString {
+        append(if (remaining == 1) "1 song" else "$remaining songs")
+        if (minutes > 0) append(if (minutes >= 60) " · ${minutes / 60} hr ${minutes % 60} min" else " · $minutes min")
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 6.dp),
+    ) {
+        Text(
+            text = "Continue Playing",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            color = color,
+        )
+        Text(
+            text = when {
+                shuffled -> "Shuffled · $length"
+                !source.isNullOrBlank() -> "From $source · $length"
+                else -> length
+            },
+            fontSize = 13.sp,
+            color = color.copy(alpha = 0.6f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * One song in the queue as Apple lays it out: flat on the song's colour, artwork, title and artist,
+ * and a grab handle at the end. The song playing wears the equaliser over its artwork; songs already
+ * heard step back. Tap plays it, a long press opens its menu.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun QueueRow(
+    metadata: MediaMetadata,
+    active: Boolean,
+    playing: Boolean,
+    heard: Boolean,
+    ink: Color,
+    editable: Boolean,
+    handle: @Composable () -> Modifier,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(ink.copy(alpha = if (pressed) 0.08f else 0f))
+            .combinedClickable(interactionSource = source, indication = null, onClick = onClick, onLongClick = onLongClick)
+            .graphicsLayer { alpha = if (heard) 0.45f else 1f }
+            .padding(start = 20.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(7.dp))
+                .background(ink.copy(alpha = 0.08f)),
+        ) {
+            AsyncImage(
+                model = metadata.thumbnailUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            if (active) {
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.40f)))
+                PlayingIndicatorBox(
+                    isActive = true,
+                    playWhenReady = playing,
+                    color = Color.White,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                metadata.title,
+                fontSize = 15.sp,
+                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                color = ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val artists = metadata.artists.joinToString(", ") { it.name }
+            if (artists.isNotBlank()) {
+                Text(
+                    artists,
+                    fontSize = 13.sp,
+                    color = ink.copy(alpha = 0.6f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (editable) {
+            Box(
+                modifier = handle().size(44.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.drag_handle),
+                    contentDescription = null,
+                    tint = ink.copy(alpha = 0.45f),
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        } else {
+            Spacer(Modifier.width(12.dp))
         }
     }
 }

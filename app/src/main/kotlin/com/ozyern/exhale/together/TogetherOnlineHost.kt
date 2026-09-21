@@ -101,10 +101,6 @@ class TogetherOnlineHost(
         val urls = listOfNotNull(trimmed, alternateWebSocketSchemeOrNull(trimmed)).distinct()
 
         val token = normalizedBearerToken
-        if (token == null) {
-            onEvent?.invoke(TogetherServerEvent.Error("Together token is missing"))
-            return
-        }
 
         var lastError: Throwable? = null
         for (candidate in urls) {
@@ -112,7 +108,7 @@ class TogetherOnlineHost(
                 client.webSocket(
                     urlString = candidate,
                     request = {
-                        header("Authorization", "Bearer $token")
+                        if (token != null) header("Authorization", "Bearer $token")
                     },
                 ) {
                     session = this

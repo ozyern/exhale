@@ -2553,6 +2553,10 @@ fun PlayerBackground(
                 }
             }
 
+            PlayerBackgroundStyle.FLUID -> {
+                com.ozyern.exhale.ui.component.FluidArtworkBackground(url = mediaMetadata?.thumbnailUrl)
+            }
+
             PlayerBackgroundStyle.GLOW_ANIMATED -> {
                 AnimatedContent(
                     targetState = gradientColors,
