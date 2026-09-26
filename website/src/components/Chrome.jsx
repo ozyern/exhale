@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Link } from '../router.jsx'
 import { MAINTAINER, RELEASES, REPO, TELEGRAM } from '../content.js'
-import { RELEASE } from '../release.js'
+import { RELEASE_304 as RELEASE } from '../release304.js'
 import { DownloadIcon, GithubIcon, Mark } from '../icons.jsx'
 
 export const RELEASE_PATH = `/release/${RELEASE.version}`
@@ -27,8 +27,8 @@ export function AnnounceBar() {
     <Link className="announce" to={RELEASE_PATH}>
       <span className="announce-tag">New</span>
       <span className="announce-text">
-        Exhale {RELEASE.version} — interface scale, a rebuilt library, and a
-        sleep timer you can read half asleep
+        Exhale {RELEASE.version} — Apple Music’s shape across the whole app,
+        offline playback, and updates that install themselves
       </span>
       <span className="announce-go" aria-hidden="true">
         ›

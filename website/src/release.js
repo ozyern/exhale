@@ -20,10 +20,15 @@
  * Everything below is a commit. Nothing here is a plan.
  */
 
-import { SHOT, SHOT203 } from './content.js'
+import { SHOT, SHOT203, SHOTS, SHOTS_203 } from './content.js'
 
 export const RELEASE = {
   version: '1.0.203',
+  /** Which hero the page draws. See `BreathField`. */
+  field: 'breath',
+  /** The hero's phones, and the set the chapters index into. */
+  heroShots: SHOTS,
+  shots: SHOTS_203,
   code: 203,
   date: 'September 5, 2026',
   dateISO: '2026-09-05',

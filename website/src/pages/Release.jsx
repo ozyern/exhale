@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { RELEASE_PATH, SiteFooter, TopBar } from '../components/Chrome.jsx'
+import { SiteFooter, TopBar } from '../components/Chrome.jsx'
 import { Link } from '../router.jsx'
 import { RELEASE } from '../release.js'
-import { RELEASES, REPO, SHOTS, SHOTS_203 } from '../content.js'
+import { RELEASES, REPO } from '../content.js'
 import { useReveals } from '../hooks.js'
 import { ArrowLeftIcon, LinkIcon, ReplayIcon } from '../icons.jsx'
 import BreathField from '../components/BreathField.jsx'
+import GlassField from '../components/GlassField.jsx'
 
 /*
  * The release announcement.
@@ -66,7 +67,7 @@ function Word({ text, from = 'start' }) {
  * It carries the h1, so the article below does not repeat the name at poster
  * size two screens running.
  */
-function SplitTitle({ onReplay }) {
+function SplitTitle({ release, onReplay }) {
   const [key, setKey] = useState(0)
   const [tall, setTall] = useState(false)
   const box = useRef(null)
@@ -109,8 +110,16 @@ function SplitTitle({ onReplay }) {
   }
 
   return (
-    <div className="rh" ref={box} data-tall={tall}>
-      <BreathField text={String(RELEASE.code)} tall={tall} replayKey={key} />
+    <div className="rh" ref={box} data-tall={tall} data-field={release.field}>
+      {/* Each release brings its own field. 1.0.203 assembles its number out
+          of a star field; 1.0.304 prints it once and drags glass across it. A
+          site that opens every announcement on the same trick stops
+          announcing anything. */}
+      {release.field === 'glass' ? (
+        <GlassField text={String(release.code)} tall={tall} replayKey={key} />
+      ) : (
+        <BreathField text={String(release.code)} tall={tall} replayKey={key} />
+      )}
 
       {/* The build number in the middle is drawn on the canvas, which is
           aria-hidden, and the two words are split into per-letter spans — so
@@ -122,7 +131,7 @@ function SplitTitle({ onReplay }) {
           heading's real text is the one line in the middle. */}
       <h1 className="rh-type" key={key}>
         <Word text="Exhale" from="end" />{' '}
-        <span className="rh-said">Exhale {RELEASE.version}, Universal</span>{' '}
+        <span className="rh-said">Exhale {release.version}, Universal</span>{' '}
         <Word text="Universal" />
       </h1>
 
@@ -144,7 +153,7 @@ function SplitTitle({ onReplay }) {
  * The object above is the release; this is the app. Announcing a version with
  * nothing but generative artwork is a poster, and a poster is not evidence.
  */
-function ReleaseShots({ hero }) {
+function ReleaseShots({ hero, shots }) {
   return (
     <figure className="rl-hero reveal">
       {/* The stage clips; the caption sits outside it, so the phones can run
@@ -160,8 +169,8 @@ function ReleaseShots({ hero }) {
           {hero.shots.map((index, i) => (
             <div className="rl-hero-slot" key={index} data-slot={i}>
               <img
-                src={SHOTS[index].src}
-                alt={i === 1 ? SHOTS[index].alt : ''}
+                src={shots[index].src}
+                alt={i === 1 ? shots[index].alt : ''}
                 aria-hidden={i !== 1}
                 width="592"
                 height="1322"
@@ -191,7 +200,7 @@ function ReleaseShots({ hero }) {
  * The image is the argument. Everything here that could have been a paragraph
  * explaining a screenshot is a screenshot.
  */
-function Chapter({ chapter, index }) {
+function Chapter({ chapter, index, shots }) {
   const wide = chapter.tone === 'wide'
 
   return (
@@ -206,8 +215,8 @@ function Chapter({ chapter, index }) {
         <figure className="rl-chap-fig reveal" style={{ '--d': '120ms' }}>
           <div className="rl-chap-stage">
             <img
-              src={SHOTS_203[chapter.shot].src}
-              alt={SHOTS_203[chapter.shot].alt}
+              src={shots[chapter.shot].src}
+              alt={shots[chapter.shot].alt}
               width="780"
               height="1390"
               loading={index === 0 ? 'eager' : 'lazy'}
@@ -229,10 +238,10 @@ function Chapter({ chapter, index }) {
  * length someone scanning a diff wants rather than at the length someone
  * deciding whether to install wants.
  */
-function Everything({ groups }) {
+function Everything({ groups, version }) {
   return (
     <section className="rl-all reveal" id="everything">
-      <h2 className="rl-all-h">Everything in {RELEASE.version}</h2>
+      <h2 className="rl-all-h">Everything in {version}</h2>
       <div className="rl-all-grid">
         {groups.map((group) => (
           <div className="rl-all-col" key={group.group}>
@@ -249,7 +258,7 @@ function Everything({ groups }) {
   )
 }
 
-function CopyLink() {
+function CopyLink({ version }) {
   const [done, setDone] = useState(false)
 
   useEffect(() => {
@@ -259,7 +268,7 @@ function CopyLink() {
   }, [done])
 
   const copy = async () => {
-    const url = `https://exhale.ozyern.me${RELEASE_PATH}`
+    const url = `https://exhale.ozyern.me/release/${version}`
     try {
       await navigator.clipboard.writeText(url)
       setDone(true)
@@ -279,7 +288,8 @@ function CopyLink() {
 
 /* ------------------------------------------------------------------- page */
 
-export default function Release() {
+export default function Release({ release = RELEASE }) {
+  const shots = release.shots
   const barRef = useRef(null)
 
   useReveals()
@@ -330,7 +340,7 @@ export default function Release() {
 
       <main>
         <article>
-          <SplitTitle />
+          <SplitTitle release={release} />
 
           <header className="rl-head">
             <div className="rl-measure">
@@ -342,27 +352,27 @@ export default function Release() {
               </Link>
 
               <p className="rl-eyebrow reveal">
-                <span>{RELEASE.kicker}</span>
-                <time dateTime={RELEASE.dateISO}>{RELEASE.date}</time>
-                <span className="rl-read">{RELEASE.read}</span>
+                <span>{release.kicker}</span>
+                <time dateTime={release.dateISO}>{release.date}</time>
+                <span className="rl-read">{release.read}</span>
               </p>
 
               <p className="rl-dek reveal" style={{ '--d': '90ms' }}>
-                {RELEASE.dek}
+                {release.dek}
               </p>
 
               <div className="rl-actions reveal" style={{ '--d': '180ms' }}>
                 <a className="btn" href={RELEASES} target="_blank" rel="noreferrer">
-                  Download {RELEASE.version}
+                  Download {release.version}
                 </a>
                 <a className="btn btn-ghost" href={REPO} target="_blank" rel="noreferrer">
                   Read the source
                 </a>
-                <CopyLink />
+                <CopyLink version={release.version} />
               </div>
 
               <dl className="rl-facts reveal" style={{ '--d': '260ms' }}>
-                {RELEASE.facts.map((fact) => (
+                {release.facts.map((fact) => (
                   <div key={fact.label}>
                     <dt>{fact.label}</dt>
                     <dd>{fact.value}</dd>
@@ -371,15 +381,15 @@ export default function Release() {
               </dl>
             </div>
 
-            <ReleaseShots hero={RELEASE.hero} />
+            <ReleaseShots hero={release.hero} shots={release.heroShots} />
           </header>
 
           <div className="rl-story">
-            {RELEASE.story.map((chapter, index) => (
-              <Chapter chapter={chapter} index={index} key={chapter.id} />
+            {release.story.map((chapter, index) => (
+              <Chapter chapter={chapter} index={index} shots={shots} key={chapter.id} />
             ))}
 
-            <Everything groups={RELEASE.everything} />
+            <Everything groups={release.everything} version={release.version} />
 
             <div className="rl-tail">
               <h2 className="rl-all-h">More</h2>

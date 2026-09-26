@@ -8,7 +8,7 @@
 
 export const REPO = 'https://github.com/ozyern/Exhale'
 export const RELEASES = `${REPO}/releases/latest`
-export const VERSION = '1.0.203'
+export const VERSION = '1.0.304'
 
 /**
  * Palettes. `rose` is the app's DefaultThemeColor; the other two are what
@@ -86,6 +86,24 @@ export const SHOTS_203 = [
 ]
 
 export const SHOT203 = { home: 0, about: 1, menu: 2 }
+
+/**
+ * Captures from the 1.0.304 build.
+ *
+ * Same rule as the 203 set: a release's screenshots belong to that release. The landing page's
+ * own shots are replaced when the app changes; these stay as the record of what this version
+ * looked like on the day it shipped.
+ */
+export const SHOTS_304 = [
+  { src: '/shots/304-home.jpg', alt: 'Home in 1.0.304: Top Picks for You, learned from what you listen to, over the glass dock.' },
+  { src: '/shots/304-player.jpg', alt: 'The player in 1.0.304, the cover filling the screen behind the controls.' },
+  { src: '/shots/304-lyrics.jpg', alt: 'Lyrics lighting word by word, the lines further away falling out of focus.' },
+  { src: '/shots/304-downloads.jpg', alt: 'Downloaded songs: the cover edge to edge, then Play and Shuffle as glass capsules.' },
+  { src: '/shots/304-settings.jpg', alt: 'Settings as grouped glass tables with coloured glyphs on every row.' },
+  { src: '/shots/304-about.jpg', alt: 'About: the gold release poster, the Exhale wordmark and the build you are on.' },
+]
+
+export const SHOT304 = { home: 0, player: 1, lyrics: 2, downloads: 3, settings: 4, about: 5 }
 
 /** Screen capture, re-encoded for the web: 30fps, no audio track, ~230KB. */
 export const LYRICS_VIDEO = {

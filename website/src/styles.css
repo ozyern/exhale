@@ -3629,6 +3629,32 @@ html:has(.release) {
   height: 100%;
 }
 
+/* The 1.0.304 field sits on warm ground rather than on night.
+
+   The navy above is the 203 hero's atmosphere - a sky for a star field. This
+   release's object is glass over gold, and gold on navy is a different release
+   than the one being announced. Same rule as up there: it lands on #000 at the
+   bottom edge, so the article below is a black page and not a tinted one. */
+.rh[data-field='glass'] {
+  background:
+    radial-gradient(
+      120% 86% at 50% 30%,
+      #201607 0%,
+      #170f06 36%,
+      #0d0904 62%,
+      #050302 82%,
+      #000 100%
+    ),
+    #000;
+}
+
+.gf {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
 .rh-type {
   position: absolute;
   inset: 0;
