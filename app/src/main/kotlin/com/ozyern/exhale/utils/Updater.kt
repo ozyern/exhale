@@ -459,22 +459,35 @@ object Updater {
      * - NIGHTLY: Consulta el JSON remoto de Cloudflare R2.
      * - Devuelve `null` dentro del [Result] cuando ya se tiene la versión más
      *   reciente instalada.
+     *
+     * [forceRefresh] skips the six-hour release cache. A check someone asked for
+     * has to ask GitHub: answered from the cache, a release published after the
+     * last background check stays invisible for up to six hours, and "Exhale is up
+     * to date" is the wrong thing to tell someone looking at the release page. It
+     * costs little — the cached ETag goes with it, so an unchanged list comes back
+     * as a 304 with no body.
      */
-    suspend fun checkForUpdate(currentVersionName: String): Result<UpdateInfo?> =
+    suspend fun checkForUpdate(
+        currentVersionName: String,
+        forceRefresh: Boolean = false,
+    ): Result<UpdateInfo?> =
         runCatching {
             when (getCurrentUpdateChannel()) {
-                UpdateChannel.STABLE -> checkForUpdateStable(currentVersionName)
+                UpdateChannel.STABLE -> checkForUpdateStable(currentVersionName, forceRefresh)
                 UpdateChannel.NIGHTLY -> checkForUpdateNightly(currentVersionName)
             }
         }
 
-    private suspend fun checkForUpdateStable(currentVersionName: String): UpdateInfo? {
+    private suspend fun checkForUpdateStable(
+        currentVersionName: String,
+        forceRefresh: Boolean,
+    ): UpdateInfo? {
         // A repository with no release in this major line is not an error — there is
         // simply nothing newer, which is the same answer as "you are up to date". It
         // was being reported as "update check failed", which reads as a broken app to
         // anyone who installed before the first release was published, and to anyone
         // whose network let the request through to an empty list.
-        val releases = getAllReleases().getOrThrow()
+        val releases = getAllReleases(forceRefresh = forceRefresh).getOrThrow()
         val latest = findLatestRelease(releases) ?: return null
         lastCheckTime = System.currentTimeMillis()
 

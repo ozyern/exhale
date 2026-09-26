@@ -205,7 +205,8 @@ fun UpdateScreen(
         coroutineScope.launch {
             updateCheckState = UpdateCheckState.Loading
             onLastCheckedAtChange(System.currentTimeMillis())
-            Updater.checkForUpdate(BuildConfig.VERSION_NAME)
+            // Always from the network: this screen is someone asking. See Updater.checkForUpdate.
+            Updater.checkForUpdate(BuildConfig.VERSION_NAME, forceRefresh = true)
                 .onSuccess { info ->
                     if (info == null) {
                         updateCheckState = UpdateCheckState.UpToDate
