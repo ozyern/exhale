@@ -5171,6 +5171,8 @@ class MusicService :
             Timber.tag("AudioNormalization").w("No loudness data available from YouTube for video: $mediaId")
         }
 
+        dropCachedBytesOfOtherFile(mediaId, format)
+
         database.query {
             upsert(
                 FormatEntity(
@@ -5193,6 +5195,41 @@ class MusicService :
         playbackUrlCache[mediaId] =
             streamUrl to System.currentTimeMillis() + (playbackData.streamExpiresInSeconds * 1000L)
         return streamUrl
+    }
+
+    /**
+     * Empties the play cache for [mediaId] when what is in it came from a different file than [format].
+     *
+     * The play cache is keyed by song, not by file, and a song is more than one file: YouTube serves
+     * it in several renditions, and which one wins depends on the client that answered, the codec
+     * preference and the quality setting. Cached bytes of one rendition followed by network bytes of
+     * another, at the same offset, is not a stream — the extractor reads a header from the first file
+     * and frames from the second, and the song loads and then stops. An update that changes how the
+     * rendition is picked turns every partly cached song into exactly that.
+     *
+     * The song's format row says which file the cached bytes belong to: it is written each time the
+     * song resolves, and the bytes cached since came from that resolution. So a new rendition that
+     * differs from the row, while the cache holds anything for the song, means the cache is the other
+     * file's. It is dropped before any byte of it is read; the song then streams clean.
+     */
+    private fun dropCachedBytesOfOtherFile(
+        mediaId: String,
+        format: com.ozyern.exhale.innertube.models.response.PlayerResponse.StreamingData.Format,
+    ) {
+        val previous = runCatching {
+            runBlocking(Dispatchers.IO) { database.format(mediaId).first() }
+        }.getOrNull() ?: return
+        val sameFile = previous.itag == format.itag && previous.contentLength == format.contentLength
+        if (sameFile) return
+        runCatching {
+            if (playerCache.getCachedSpans(mediaId).isNotEmpty()) {
+                Timber.tag("PlayerCache").i(
+                    "Dropping cached $mediaId: itag ${previous.itag} (${previous.contentLength}B) " +
+                        "is now itag ${format.itag} (${format.contentLength}B)",
+                )
+                playerCache.removeResource(mediaId)
+            }
+        }
     }
 
     /**
