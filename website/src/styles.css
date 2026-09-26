@@ -152,6 +152,14 @@ svg {
   transform: translateX(3px);
 }
 
+.linkrow {
+  display: flex;
+  gap: 34px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 26px;
+}
+
 .center {
   text-align: center;
 }
@@ -344,6 +352,214 @@ svg {
     width 0.5s var(--settle);
 }
 
+/* ================================================================= hero */
+
+.ribbon-wrap {
+  position: relative;
+  /* Minus the chrome. Centring in 100vh when 110px of bars sit above it puts
+     the object visibly below the middle of the screen. */
+  min-height: calc(min(100vh, 900px) - var(--bar-h) - var(--seg-h));
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+/* The object.
+   ---------------------------------------------------------------------------
+   Drawn on canvas; see Ribbon.jsx for why it can't be CSS. What lives here
+   is only the frame it occupies and the light treatment on top of it.
+*/
+.ribbon {
+  position: relative;
+  isolation: isolate;
+  width: min(1020px, 78vw);
+  /* Flat. The reference sits near 5:1, and the temptation to make it taller is
+     the single thing that stops it looking like the real one. */
+  aspect-ratio: 4.4 / 1;
+  max-height: 46vh;
+  /* The hero reacts to the scroll rather than sitting still while the page
+     moves past it. Set from JS as you leave the section. */
+  transform: scale(var(--hero-scale, 1));
+  opacity: var(--hero-fade, 1);
+  will-change: transform, opacity;
+}
+
+.ribbon-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* The blur belongs on the element, not in the 2D context: `ctx.filter` runs
+     a CPU convolution per path per frame, this is one GPU pass on a layer that
+     is already composited. Saturate/brightness bring the app's UI palette up
+     to emitter strength without hard-coding a second set of colors. */
+  filter: blur(var(--ribbon-blur, 9px)) saturate(1.5) brightness(1.02);
+}
+
+/* Eats the outer edges into black so the light tapers into a room instead of
+   ending at a boundary. */
+.ribbon::after {
+  content: '';
+  position: absolute;
+  inset: -40% -10%;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 48% 62% at 50% 50%,
+    transparent 56%,
+    #000 92%
+  );
+}
+
+/* Apple puts one of these bottom-right on every animated page. It is also
+   the reduced-motion escape hatch, so it earns its place twice. */
+.ambient-toggle {
+  position: absolute;
+  right: clamp(18px, 3vw, 40px);
+  bottom: clamp(18px, 3vw, 40px);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.13);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  transition: background 0.25s var(--ease), transform 0.35s var(--settle);
+}
+
+.ambient-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.ambient-toggle:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.ambient-toggle:active {
+  transform: scale(0.92);
+}
+
+/* =============================================================== blocks */
+
+.block {
+  padding-block: clamp(80px, 11vw, 150px);
+}
+
+.block-tight {
+  padding-block: clamp(48px, 7vw, 92px);
+}
+
+.statement {
+  max-width: 900px;
+  margin-inline: auto;
+}
+
+.statement .headline {
+  margin-top: 14px;
+}
+
+.statement .lede {
+  margin-top: 22px;
+  /* Narrower than the headline and balanced, so the two lines come out even
+     instead of leaving one orphaned word on the last line. */
+  max-width: 46ch;
+  margin-inline: auto;
+  text-wrap: balance;
+}
+
+/* The phone is 660px in layout and scaled in the draw phase, so the wrapper
+   has to reserve the SCALED height or narrow screens get a column of dead
+   space under it. */
+.hero-fan {
+  position: relative;
+  margin-top: clamp(52px, 8vw, 96px);
+  height: calc(660px * var(--phone-scale));
+  display: flex;
+  justify-content: center;
+}
+
+.device-hero {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  justify-content: center;
+}
+
+.fan {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  /* Parallax against the phone in front of it (see useHeroScroll). One custom
+     property, so scrolling only ever re-composites a transform. */
+  transform: translateY(calc(var(--fan, 0) * -24px))
+    scale(calc(1 + var(--fan, 0) * 0.045));
+  will-change: transform;
+}
+
+/* Offsets are multiples of a card's own size: a percentage in `translate`
+   resolves against the element, not its container, so the arrangement scales
+   with the phone instead of drifting apart on a wide screen. */
+.fan-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  margin: 0;
+  width: calc(238px * var(--phone-scale));
+  aspect-ratio: 3 / 5;
+  border-radius: calc(24px * var(--phone-scale));
+  overflow: hidden;
+  background: #0a0a0c;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 50px 90px -42px rgba(0, 0, 0, 1);
+  opacity: 0;
+  /* They start stacked behind the phone and fan outwards, which is the only
+     entrance that explains the arrangement: six cards sliding in from the
+     edges would read as six unrelated things arriving. */
+  transform: translate(-50%, -50%) scale(0.62);
+  transition:
+    opacity 0.9s var(--ease),
+    transform 1.15s var(--settle);
+  transition-delay: var(--d, 0ms);
+}
+
+.hero-fan.in .fan-card {
+  opacity: var(--o);
+  transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y)))
+    rotate(var(--r)) scale(var(--s));
+}
+
+.fan-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: var(--crop, top center);
+}
+
+/* The ones furthest out sit deepest, so they read as behind rather than
+   merely smaller. */
+.fan-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.fan-card:nth-child(2)::after,
+.fan-card:nth-child(5)::after {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.fan-card:nth-child(3)::after,
+.fan-card:nth-child(4)::after {
+  background: rgba(0, 0, 0, 0.08);
+}
+
 /* ============================================================ dock demo */
 
 /* The dock needs something with detail behind it or the blur proves nothing —
@@ -401,9 +617,83 @@ svg {
   z-index: 1;
 }
 
+/* ================================================================= tour */
+
+/* Everything after the hero is panels on black: one wide one for lyrics, then
+   a grid of tiles, each with a real screen rising out of its bottom edge.
+   Panels rather than a pinned phone beside three paragraphs, because a pinned
+   phone leaves two thirds of every screen as dimmed text waiting its turn. */
+.tour {
+  /* The overview above ends on the phone fan and its own bottom padding;
+     that is already the break between the two. */
+  margin-top: calc(clamp(80px, 11vw, 150px) * -0.45);
+}
+
+.tour-lyrics {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(24px, 4vw, 64px);
+  padding: clamp(40px, 6vw, 84px) clamp(28px, 5vw, 72px) 0;
+  border-radius: 36px;
+  background:
+    radial-gradient(60% 80% at 78% 100%, color-mix(in oklab, var(--iris) 30%, transparent), transparent 70%),
+    radial-gradient(50% 70% at 60% 20%, color-mix(in oklab, var(--rose) 18%, transparent), transparent 72%),
+    var(--tile);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.tour-copy {
+  padding-bottom: clamp(40px, 6vw, 84px);
+}
+
+.tour-copy .headline,
+.tour-head .headline,
 .getit .headline {
   font-size: clamp(34px, 4.6vw, 64px);
   margin-top: 12px;
+}
+
+.tour-copy .lede {
+  margin-top: 20px;
+  max-width: 34ch;
+}
+
+.tour-note {
+  margin-top: 22px;
+  font-size: 13px;
+  color: var(--grey-dim);
+}
+
+/* The phone is 660px in layout and scaled at paint, so the box reserves the
+   scaled height of the part that shows — the rest runs under the panel's
+   bottom edge, which is what makes it rise out of the page. */
+.tour-lyrics-device {
+  align-self: end;
+  display: flex;
+  justify-content: center;
+  height: calc(560px * var(--phone-scale));
+}
+
+.tour-lyrics-device .phone {
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.14),
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 -30px 120px -40px color-mix(in oklab, var(--iris) 60%, transparent);
+}
+
+.tour-design {
+  padding-top: clamp(96px, 12vw, 168px);
+}
+
+.tour-head {
+  text-align: center;
+  margin-bottom: clamp(36px, 5vw, 64px);
 }
 
 .ft-grid {
@@ -624,9 +914,19 @@ svg {
 }
 
 @media (max-width: 999px) {
+  .tour-lyrics,
   .ft-wide,
   .open {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tour-lyrics {
+    padding-top: 40px;
+    border-radius: 28px;
+  }
+
+  .tour-copy {
+    padding-bottom: 0;
   }
 
   .ft-grid {
@@ -651,6 +951,10 @@ svg {
 
   .fx-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tour-head {
+    text-align: left;
   }
 }
 
@@ -1844,6 +2148,22 @@ video.phone-shot {
     --phone-scale: 0.62;
   }
 
+  /* Centred text is a wide-screen luxury. In a 342px column a centred
+     paragraph gives every line a different start, so the eye has to re-find
+     the left edge on every line. */
+  .statement.center {
+    text-align: left;
+  }
+
+  .statement .lede {
+    margin-inline: 0;
+    max-width: none;
+  }
+
+  .statement.center .linkrow {
+    justify-content: flex-start;
+  }
+
   /* Pills are a touch target before they are a label. */
   .segment {
     height: 38px;
@@ -1857,6 +2177,25 @@ video.phone-shot {
   .segments {
     max-width: calc(100% - 20px);
     scroll-behavior: smooth;
+  }
+
+  /* The hero is the object on this page, and at 78vw by 4.4:1 it was 304 by 69
+     CSS pixels on a phone: a hairline that reads as a progress bar. Wider and
+     much less flat, so it is something to look at. */
+  .ribbon {
+    width: 92vw;
+    aspect-ratio: 2.5 / 1;
+    max-height: 34vh;
+  }
+
+  /* The outer pair of the fan are off the screen entirely by this width, and
+     the next pair are mostly off it, which leaves a crowded edge rather than
+     an arrangement. Two cards, closer in. */
+  .fan-card:nth-child(1),
+  .fan-card:nth-child(2),
+  .fan-card:nth-child(5),
+  .fan-card:nth-child(6) {
+    display: none;
   }
 
   /* Narrow: the project row keeps the mark, the two things anyone actually
@@ -3377,36 +3716,23 @@ html:has(.release) {
   }
 }
 
-/* ================================================================= home */
+/* ============================================================ gold release */
 
-/* The landing page, in the app's own materials: the mark's gold, the About
-   screen's key art, and backgrounds lit by the artwork that is playing. The
-   accent every older rule reads (--rose) is the gold here, so links, kickers,
-   glyphs and the code prompt follow it without being restyled one by one. */
-.home {
+/* 1.0.304's own dress: the gold key art, mark and wordmark from its About
+   screen. Scoped to that release's page (data-theme on the page root), so the
+   landing page and every other release keep their own palette. The page's
+   older rules all read the three palette tokens, so re-pointing them here
+   turns every kicker, link, tag and the reading bar gold in one place. */
+.release[data-theme='gold'] {
   --gold: #ffc21a;
   --gold-hot: #ffe08a;
   --gold-deep: #e58600;
   --rose: var(--gold);
+  --ember: #ff9a1f;
+  --iris: #ffdd7a;
 }
 
-.display {
-  font-size: clamp(40px, 6vw, 84px);
-  font-weight: 600;
-  line-height: 1.04;
-  letter-spacing: -0.032em;
-  text-wrap: balance;
-}
-
-.home .kicker {
-  color: var(--gold);
-}
-
-.home .display {
-  margin-top: 10px;
-}
-
-.btn-gold {
+.release[data-theme='gold'] .btn {
   color: #1c1100;
   font-weight: 600;
   background: linear-gradient(180deg, var(--gold-hot), var(--gold) 52%, var(--gold-deep));
@@ -3415,9 +3741,8 @@ html:has(.release) {
     inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
-/* The app's glass, as a button: what is behind it shows through, bent and
-   brightened, with a lit rim. */
-.btn-glass {
+/* The app's glass, as the second button. */
+.release[data-theme='gold'] .btn-ghost {
   color: #fff;
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(22px) saturate(1.7);
@@ -3427,328 +3752,82 @@ html:has(.release) {
     inset 0 1px 0 rgba(255, 255, 255, 0.3);
 }
 
-.btn-glass:hover {
+.release[data-theme='gold'] .btn-ghost:hover {
   background: rgba(255, 255, 255, 0.16);
   filter: none;
 }
 
-/* ------------------------------------------------------------------ hero */
+/* The three phones stand on the key art instead of the blurred blobs. */
+.release[data-theme='gold'] .rl-hero-stage {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.55) 100%),
+    url('/media/keyart.jpg') center 30% / cover no-repeat;
+  border-color: rgba(255, 200, 80, 0.22);
+}
 
-.hx {
+.release[data-theme='gold'] .rl-hero-ground {
+  display: none;
+}
+
+/* Each screenshot sits on a warm stage, lit from one corner the way the key
+   art is, rather than on the blue-to-rose sweep the other releases use. */
+.release[data-theme='gold'] .rl-chap-stage {
+  background:
+    radial-gradient(90% 70% at 0% 0%, rgba(255, 194, 26, 0.34), transparent 62%),
+    radial-gradient(80% 70% at 100% 100%, rgba(229, 134, 0, 0.28), transparent 64%),
+    #120c03;
+  box-shadow: inset 0 0 0 1px rgba(255, 200, 80, 0.16);
+}
+
+.release[data-theme='gold'] .rl-more-card:hover {
+  border-color: rgba(255, 200, 80, 0.35);
+}
+
+/* The About screen's poster, closing the page. */
+.rl-poster {
   position: relative;
   overflow: hidden;
   isolation: isolate;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  margin-top: clamp(56px, 8vw, 104px);
+  padding: clamp(48px, 7vw, 88px) 24px;
+  border-radius: clamp(26px, 3vw, 36px);
   text-align: center;
-  padding: clamp(56px, 10vh, 120px) 24px 0;
-}
-
-/* The About screen's key art, darkened toward the bottom so the phone and the
-   page below it meet on black rather than on a seam. */
-.hx-art {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
   background:
-    radial-gradient(70% 55% at 50% 38%, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.45) 100%),
-    linear-gradient(180deg, rgba(0, 0, 0, 0.2) 0%, rgba(0, 0, 0, 0.35) 45%, #000 88%),
-    url('/media/keyart.jpg') center 22% / cover no-repeat;
+    radial-gradient(60% 50% at 50% 40%, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.35) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.05) 0%, rgba(0, 0, 0, 0.5) 100%),
+    url('/media/keyart.jpg') center 40% / cover no-repeat;
+  box-shadow: inset 0 0 0 1px rgba(255, 200, 80, 0.2);
 }
 
-.hx-kicker {
-  font-size: clamp(17px, 1.6vw, 21px);
-  font-weight: 600;
-  color: var(--gold-hot);
-}
-
-.hx-title {
-  margin: 14px 0 0;
-  line-height: 0;
-}
-
-.hx-title img {
-  width: min(720px, 78vw);
+.rl-poster-mark {
+  display: block;
+  width: clamp(80px, 9vw, 104px);
   height: auto;
-  filter: drop-shadow(0 10px 50px rgba(0, 0, 0, 0.45));
+  margin: 0 auto;
+  border-radius: 24px;
+  filter: drop-shadow(0 18px 44px rgba(0, 0, 0, 0.45));
 }
 
-.hx-lede {
-  margin-top: clamp(16px, 2vw, 24px);
-  font-size: clamp(21px, 2.4vw, 30px);
-  font-weight: 500;
-  line-height: 1.25;
-  letter-spacing: -0.02em;
-  color: rgba(255, 255, 255, 0.92);
-  text-wrap: balance;
+.rl-poster-word {
+  display: block;
+  width: min(420px, 70%);
+  height: auto;
+  margin: clamp(22px, 3vw, 30px) auto 0;
+  filter: drop-shadow(0 8px 30px rgba(0, 0, 0, 0.4));
 }
 
-.hx-actions {
-  margin-top: 32px;
+.rl-poster-ver {
+  margin-top: 10px;
+  font-size: clamp(20px, 2.2vw, 26px);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #fff;
+}
+
+.rl-poster-actions {
+  margin-top: clamp(26px, 3.4vw, 36px);
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 12px;
-}
-
-.hx-meta {
-  margin-top: 18px;
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.62);
-}
-
-/* The phone rises out of the hero as the page scrolls: it starts lower and a
-   little smaller, and the section's bottom edge cuts it, so the next section
-   reads as where it is going. */
-.hx-device {
-  margin-top: clamp(48px, 8vh, 88px);
-  height: calc(560px * var(--phone-scale));
-  display: flex;
-  justify-content: center;
-  transform:
-    translateY(calc((1 - var(--p, 1)) * 70px))
-    scale(calc(0.93 + var(--p, 1) * 0.07));
-  transform-origin: 50% 100%;
-}
-
-.hx-device .phone {
-  box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, 0.14),
-    0 0 0 1px rgba(255, 255, 255, 0.06),
-    0 -20px 140px -30px rgba(255, 170, 20, 0.55);
-}
-
-.hx::after {
-  content: '';
-  position: absolute;
-  inset: auto 0 0;
-  height: 90px;
-  background: linear-gradient(transparent, #000);
-  pointer-events: none;
-}
-
-/* ------------------------------------------------------------- statement */
-
-/* Tall, with the sentence pinned inside it: the reader scrolls through the
-   sentence rather than past it, and each word lights as its turn comes. */
-.say {
-  position: relative;
-  height: 230vh;
-}
-
-.say-text {
-  position: sticky;
-  top: 0;
-  min-height: 100vh;
-  width: var(--shell);
-  margin-inline: auto;
-  display: flex;
-  flex-wrap: wrap;
-  align-content: center;
-  justify-content: center;
-  text-align: center;
-  font-size: clamp(36px, 6.2vw, 92px);
-  font-weight: 600;
-  line-height: 1.08;
-  letter-spacing: -0.034em;
-}
-
-.say-text span {
-  white-space: pre;
-  /* 0 until the section is nearly pinned, then one word per step. */
-  opacity: clamp(0.14, calc((var(--p, 1) - 0.52) / 0.44 * (var(--n) + 2) - var(--i)), 1);
-}
-
-/* ----------------------------------------------------------------- color */
-
-.hue {
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-  padding-block: clamp(96px, 12vw, 170px);
-}
-
-/* The cover, blown up and blurred until only its colour is left. */
-.hue-light {
-  position: absolute;
-  inset: -25%;
-  z-index: -2;
-  background-size: cover;
-  background-position: center 30%;
-  filter: blur(90px) saturate(1.8) brightness(0.62);
-}
-
-.hue::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: linear-gradient(#000, transparent 22%, transparent 78%, #000);
-}
-
-.hue-inner {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: center;
-  gap: clamp(32px, 5vw, 80px);
-}
-
-.hue-copy .lede,
-.ly-copy .lede {
-  margin-top: 22px;
-  max-width: 34ch;
-  color: rgba(255, 255, 255, 0.74);
-}
-
-.hue-device {
-  height: calc(660px * var(--phone-scale));
-  display: flex;
-  justify-content: center;
-}
-
-/* ---------------------------------------------------------------- lyrics */
-
-.ly {
-  padding-top: clamp(40px, 6vw, 80px);
-}
-
-.ly-panel {
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-  align-items: center;
-  gap: clamp(24px, 4vw, 64px);
-  padding: clamp(44px, 6vw, 88px) clamp(28px, 5vw, 76px) 0;
-  border-radius: 40px;
-  background: #140c0b;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-}
-
-/* The lyrics screen's own backdrop, which is the song's artwork. */
-.ly-light {
-  position: absolute;
-  inset: -25%;
-  z-index: -1;
-  background-size: cover;
-  background-position: center;
-  filter: blur(70px) saturate(1.5) brightness(0.7);
-}
-
-.ly-copy {
-  padding-bottom: clamp(44px, 6vw, 88px);
-}
-
-.ly-device {
-  align-self: end;
-  height: calc(580px * var(--phone-scale));
-  display: flex;
-  justify-content: center;
-  transform: translateY(calc((1 - var(--p, 1)) * 90px));
-}
-
-/* ---------------------------------------------------------------- design */
-
-.dz {
-  padding-top: clamp(110px, 13vw, 180px);
-}
-
-.dz-head {
-  text-align: center;
-  margin-bottom: clamp(36px, 5vw, 64px);
-}
-
-.home .ft { --glow: var(--gold); }
-.home .ft:nth-child(3) { --glow: #ff7a3d; }
-.home .ft:nth-child(4) { --glow: #a970ff; }
-.home .ft:nth-child(5) { --glow: #ff4f6d; }
-
-/* --------------------------------------------------------------- numbers */
-
-.nums {
-  padding-top: clamp(110px, 13vw, 180px);
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 32px 20px;
-  text-align: center;
-}
-
-.num b {
-  display: block;
-  font-size: clamp(72px, 10vw, 148px);
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.05em;
-  background: linear-gradient(180deg, #fff3c9 0%, var(--gold) 48%, var(--gold-deep) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.num span {
-  display: block;
-  margin-top: 12px;
-  font-size: clamp(15px, 1.4vw, 19px);
-  color: var(--grey);
-}
-
-/* ---------------------------------------------------------------- finale */
-
-.home .getit {
-  isolation: isolate;
-  background: #0b0703;
-}
-
-.getit-art {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0.7) 55%, rgba(0, 0, 0, 0.88) 100%),
-    url('/media/keyart.jpg') center 40% / cover no-repeat;
-}
-
-.home .getit-icon {
-  width: 112px;
-  height: 112px;
-  border-radius: 26px;
-  filter: drop-shadow(0 20px 50px rgba(255, 180, 0, 0.35));
-}
-
-.home .getit .lede {
-  color: rgba(255, 255, 255, 0.75);
-}
-
-.home .facts dt {
-  color: rgba(255, 255, 255, 0.55);
-}
-
-@media (max-width: 999px) {
-  .hue-inner,
-  .ly-panel {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .ly-panel {
-    border-radius: 30px;
-  }
-
-  .ly-copy {
-    padding-bottom: 0;
-  }
-
-  .hue-copy,
-  .dz-head {
-    text-align: left;
-  }
-
-  .nums {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .say {
-    height: 200vh;
-  }
 }

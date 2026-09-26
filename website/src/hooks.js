@@ -35,47 +35,64 @@ export function useReveals() {
 }
 
 /**
- * Scroll progress, handed to CSS.
+ * Links the hero object to the scroll.
  *
- * Every element marked `data-scroll` gets `--p`: 0 when its top edge meets
- * the bottom of the window, 1 when it has scrolled `data-scroll` window-heights
- * further (1 if the attribute is empty). The stylesheet does the rest — a phone
- * rising, a sentence filling in word by word — so a scroll never re-renders
- * React; one rAF-throttled handler writes a number per element.
- *
- * Reduced motion gets every value at 1: the finished state, with nothing
- * moving on the way there.
+ * The hero recedes as you scroll away from it. Two custom properties written
+ * from a rAF-throttled handler, so nothing here re-renders React — the browser
+ * only re-composites a transform and an opacity.
  */
-export function useScrollProgress() {
+export function useHeroScroll() {
   useEffect(() => {
-    const nodes = [...document.querySelectorAll('[data-scroll]')]
-    if (!nodes.length) return
-    if (reduced()) {
-      nodes.forEach((n) => n.style.setProperty('--p', '1'))
-      return
+    if (reduced()) return
+    const node = document.querySelector('.ribbon')
+    if (!node) return
+
+    // The fan below the statement drifts against the phone in front of it, so
+    // the group separates as it passes the middle of the screen.
+    const fan = document.querySelector('.fan')
+
+    // Measured on resize, not on scroll. getBoundingClientRect inside a scroll
+    // handler forces a layout every frame; the fan does not move in the
+    // document, so its position only changes when the page reflows.
+    let fanMid = 0
+    const measure = () => {
+      if (!fan) return
+      const rect = fan.getBoundingClientRect()
+      fanMid = rect.top + window.scrollY + rect.height / 2
     }
 
     let frame = 0
     const apply = () => {
       frame = 0
-      const vh = window.innerHeight
-      for (const node of nodes) {
-        const span = (parseFloat(node.dataset.scroll) || 1) * vh
-        const top = node.getBoundingClientRect().top
-        const p = Math.min(1, Math.max(0, (vh - top) / span))
-        node.style.setProperty('--p', p.toFixed(4))
+      const progress = Math.min(1, window.scrollY / (window.innerHeight * 0.9))
+      node.style.setProperty('--hero-scale', (1 + progress * 0.12).toFixed(3))
+      node.style.setProperty('--hero-fade', (1 - progress * 0.85).toFixed(3))
+
+      if (fan) {
+        const seen = window.scrollY + window.innerHeight / 2
+        const away = (seen - fanMid) / (window.innerHeight * 0.8)
+        fan.style.setProperty('--fan', Math.max(-1, Math.min(1, away)).toFixed(3))
       }
     }
     const onScroll = () => {
       if (!frame) frame = requestAnimationFrame(apply)
     }
 
+    const onResize = () => {
+      measure()
+      apply()
+    }
+
+    measure()
     apply()
     window.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('resize', onScroll)
+    window.addEventListener('resize', onResize)
+    // Images landing late change where the fan sits.
+    window.addEventListener('load', onResize)
     return () => {
       window.removeEventListener('scroll', onScroll)
-      window.removeEventListener('resize', onScroll)
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('load', onResize)
       if (frame) cancelAnimationFrame(frame)
     }
   }, [])

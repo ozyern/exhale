@@ -28,6 +28,14 @@ export const RELEASE_304 = {
   /** Which hero the page draws. See `GlassField`. */
   field: 'glass',
 
+  /**
+   * The page's palette. This release is the gold one — the key art, the wordmark
+   * and the gold mark on its About screen — so its page is dressed in them. The
+   * theme belongs to the release, not to the site: 1.0.203 and the landing page
+   * keep their own.
+   */
+  theme: 'gold',
+
   title: 'Exhale 1.0.304',
 
   dek: 'The whole app rebuilt in Apple Music’s shape, music that plays with no network at all, updates that install themselves, and a long list of things that had been quietly wrong.',

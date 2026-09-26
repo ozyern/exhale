@@ -258,6 +258,31 @@ function Everything({ groups, version }) {
   )
 }
 
+/**
+ * The About screen's release poster, at the end of the page it announced.
+ *
+ * Only for a release that has one: the gold key art, the mark and the
+ * wordmark are 1.0.304's own dress, so the page closes on the same card the
+ * app shows once it is installed.
+ */
+function Poster({ version, href }) {
+  return (
+    <section className="rl-poster reveal" aria-label={`Get Exhale ${version}`}>
+      <img className="rl-poster-mark" src="/media/icon.png" alt="" width="104" height="104" />
+      <img className="rl-poster-word" src="/media/wordmark.png" alt="Exhale" width="900" height="258" />
+      <p className="rl-poster-ver">{version}</p>
+      <div className="rl-poster-actions">
+        <a className="btn" href={href} target="_blank" rel="noreferrer">
+          Download {version}
+        </a>
+        <a className="btn btn-ghost" href={REPO} target="_blank" rel="noreferrer">
+          Read the source
+        </a>
+      </div>
+    </section>
+  )
+}
+
 function CopyLink({ version }) {
   const [done, setDone] = useState(false)
 
@@ -335,7 +360,7 @@ export default function Release({ release = LATEST_RELEASE }) {
   }, [])
 
   return (
-    <div id="top" className="release">
+    <div id="top" className="release" data-theme={release.theme}>
       <TopBar />
       <div className="rl-progress" ref={barRef} aria-hidden="true">
         <span />
@@ -414,6 +439,13 @@ export default function Release({ release = LATEST_RELEASE }) {
             ))}
 
             <Everything groups={release.everything} version={release.version} />
+
+            {release.theme === 'gold' && (
+              <Poster
+                version={release.version}
+                href={latest ? RELEASES : tagUrl(REPO, release)}
+              />
+            )}
 
             <div className="rl-tail">
               <h2 className="rl-all-h">More</h2>

@@ -33,7 +33,7 @@ const PANES = [
 const BLOBS = [
   { x: 0.24, y: 0.34, r: 0.62, hue: '255, 186, 74', speed: 0.05, phase: 0.4 },
   { x: 0.72, y: 0.28, r: 0.54, hue: '255, 138, 46', speed: -0.037, phase: 2.2 },
-  { x: 0.52, y: 0.78, r: 0.70, hue: '164, 92, 255', speed: 0.028, phase: 4.1 },
+  { x: 0.52, y: 0.78, r: 0.70, hue: '214, 110, 0', speed: 0.028, phase: 4.1 },
 ]
 
 function roundedRectPath(ctx, x, y, w, h, r) {
