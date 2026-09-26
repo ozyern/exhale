@@ -3,170 +3,191 @@ import Changelog from './components/Changelog.jsx'
 import { AnnounceBar, RELEASE_PATH, SiteFooter, TopBar } from './components/Chrome.jsx'
 import Dock from './components/Dock.jsx'
 import Features from './components/Features.jsx'
-import Words from './components/Words.jsx'
 import Phone from './components/Phone.jsx'
-import Ribbon from './components/Ribbon.jsx'
 import Segments from './components/Segments.jsx'
+import Words from './components/Words.jsx'
 import {
   ABOUT_FACTS,
   FEATURES,
-  LYRICS_VIDEO,
   OPEN_FACTS,
   RELEASES,
   REPO,
-  SHOT,
-  SHOTS,
   SHOTS_304,
   SHOT304,
   TAGLINE,
   VERSION,
 } from './content.js'
-import { useHeroScroll, useOnScreen, useReveals, prefersReducedMotion } from './hooks.js'
+import { useOnScreen, useReveals, useScrollProgress, prefersReducedMotion } from './hooks.js'
 import { Link } from './router.jsx'
+
+/*
+ * The landing page, built the way a product page is: a handful of full-width
+ * moments, each one thing said large, in the app's own materials.
+ *
+ * The materials are the point. Exhale has a look — the gold key art from its
+ * About screen, the gold mark, and a background lit by whatever is playing —
+ * and a page in neutral black and grey could be advertising any player. So the
+ * hero stands on the key art, the colour section is lit by an actual album
+ * cover, and the accent everywhere is the mark's gold.
+ */
 
 const SECTIONS = [
   { id: 'overview', label: 'Overview' },
+  { id: 'color', label: 'Color' },
   { id: 'lyrics', label: 'Lyrics' },
   { id: 'design', label: 'Design' },
-  { id: 'features', label: 'Features' },
   { id: 'download', label: 'Download' },
 ]
 
-/* ------------------------------------------------------------------ bars */
+/** The screens the hero phone cycles through, in order. */
+const HERO_CYCLE = [SHOT304.home, SHOT304.player, SHOT304.lyrics, SHOT304.about]
 
-function Bars({ active, onSelect }) {
-  return (
-    <>
-      {/* Three tiers, narrowing as they go: the release strip is news, the
-          topbar is the project, and the segmented control is this page. */}
-      <AnnounceBar />
-      <TopBar />
+/* ------------------------------------------------------------------- hero */
 
-      <div className="segbar">
-        <Segments items={SECTIONS} active={active} onSelect={onSelect} />
-      </div>
-    </>
-  )
-}
-
-/* ----------------------------------------------------------- hero device */
-
-/**
- * The screens either side of the phone.
- *
- * `x` and `y` are multiples of a card's own size rather than the container's,
- * so the arrangement keeps its proportions at any width instead of collapsing
- * on a laptop and flying apart on a desktop.
- *
- * The outer pair are the two screens least like a player. Five near-identical
- * now-playing screens would read as one screenshot printed five times.
- */
-const FAN = [
-  { shot: SHOT.about, x: '-186%', y: '10%', r: '-9deg', s: 0.58, o: 0.5, crop: 'top center', d: 620 },
-  { shot: SHOT.artist, x: '-130%', y: '3%', r: '-5.5deg', s: 0.76, o: 0.76, crop: '50% 18%', d: 540 },
-  { shot: SHOT.lyrics, x: '-72%', y: '-2%', r: '-2.5deg', s: 0.95, o: 0.96, crop: '50% 30%', d: 460 },
-  { shot: SHOT.player, x: '72%', y: '-2%', r: '2.5deg', s: 0.95, o: 0.96, crop: '50% 72%', d: 460 },
-  { shot: SHOT.home, x: '130%', y: '3%', r: '5.5deg', s: 0.76, o: 0.76, crop: '50% 78%', d: 540 },
-  { shot: SHOT.about, x: '186%', y: '10%', r: '9deg', s: 0.58, o: 0.5, crop: '50% 44%', d: 620 },
-]
-
-/**
- * The device under the headline, cycling on its own, flanked by the rest.
- *
- * One claim above, answered six ways at a glance before anyone has scrolled.
- * The phone cycles the screens; the cards hold them still.
- *
- * Answers the hero's pause button — someone who stopped the light at the top
- * of the page meant "stop moving", not "stop that one thing".
- */
-function HeroDevice({ running }) {
-  const [index, setIndex] = useState(0)
+function HeroPhone() {
+  const [step, setStep] = useState(0)
   const ref = useRef(null)
-  const live = useOnScreen(ref, '140px')
-  const awake = running && live && !prefersReducedMotion()
+  const live = useOnScreen(ref, '80px')
 
   useEffect(() => {
-    if (!awake) return
-    const id = window.setInterval(() => {
-      setIndex((current) => (current + 1) % SHOTS.length)
-    }, 3600)
+    if (!live || prefersReducedMotion()) return
+    const id = window.setInterval(() => setStep((s) => (s + 1) % HERO_CYCLE.length), 3400)
     return () => window.clearInterval(id)
-  }, [awake])
+  }, [live])
 
   return (
-    <div className="hero-fan reveal" ref={ref} style={{ '--d': '360ms' }}>
-      {/* Decorative: the phone in the middle carries all five of these in
-          turn, with the alt text, so announcing them again would read the
-          same app to a screen reader six times. */}
-      <div className="fan" aria-hidden="true">
-        {FAN.map((card, i) => (
-          <figure
-            className="fan-card"
-            key={`${card.shot}-${i}`}
-            style={{
-              '--x': card.x,
-              '--y': card.y,
-              '--r': card.r,
-              '--s': card.s,
-              '--o': card.o,
-              '--crop': card.crop,
-              '--d': `${card.d}ms`,
-            }}
-          >
-            <img src={SHOTS[card.shot].src} alt="" loading="lazy" decoding="async" />
-          </figure>
-        ))}
-      </div>
-
-      <div className="device-hero">
-        <Phone shots={SHOTS} index={index} />
-      </div>
+    <div className="hx-device" ref={ref} data-scroll="1.1">
+      <Phone shots={SHOTS_304} index={HERO_CYCLE[step]} />
     </div>
   )
 }
 
-/* ------------------------------------------------------------------ tour */
+function Hero({ onNotes }) {
+  return (
+    <section className="hx" id="overview">
+      <div className="hx-art" aria-hidden="true" />
+      <div className="hx-copy">
+        <p className="hx-kicker reveal">{TAGLINE}</p>
+        <h1 className="hx-title reveal" style={{ '--d': '80ms' }}>
+          <img src="/media/wordmark.png" alt="Exhale" width="900" height="258" />
+        </h1>
+        <p className="hx-lede reveal" style={{ '--d': '160ms' }}>
+          The music player for Android that breathes.
+        </p>
+        <div className="hx-actions reveal" style={{ '--d': '240ms' }}>
+          <a className="btn btn-gold" href={RELEASES} target="_blank" rel="noreferrer">
+            Download for Android
+          </a>
+          <button type="button" className="btn btn-glass" onClick={onNotes}>
+            What’s new in {VERSION}
+          </button>
+        </div>
+        <p className="hx-meta reveal" style={{ '--d': '300ms' }}>
+          Free and open source · Android 13 and newer · No account
+        </p>
+      </div>
+      <HeroPhone />
+    </section>
+  )
+}
+
+/* -------------------------------------------------------------- statement */
+
+const STATEMENT =
+  'Glass you can see through. Lyrics that land on the word. Color that comes from the song itself.'
 
 /**
- * Lyrics, as one wide panel.
+ * One sentence, lit a word at a time by the scroll.
  *
- * The claim is entirely in the timing, so this is the one place on the page
- * that plays the recording rather than showing a still — and it plays only
- * while the panel is on screen and the page has not been paused.
+ * The section is tall and its text is pinned, so the reader scrolls *through*
+ * it rather than past it. Each word's brightness is its own index against
+ * `--p`, so the fill is continuous and runs backwards when you scroll up.
  */
-function LyricsPanel({ running }) {
-  const ref = useRef(null)
-  const live = useOnScreen(ref, '0px')
-
+function Statement() {
+  const words = STATEMENT.split(' ')
   return (
-    <section className="tour-lyrics reveal" id="lyrics" ref={ref}>
-      <div className="tour-copy">
-        <p className="kicker">Lyrics</p>
-        <h2 className="headline">Every word, on time.</h2>
-        <p className="lede">
-          Synced lyrics that light a word at a time, with the lines you have
-          not reached falling out of focus behind them. Matched on title and
-          artist, not duration alone — this song’s words, not a same-length
-          stranger’s.
-        </p>
-        <p className="tour-note">A screen recording of the shipping build, at normal speed.</p>
-      </div>
-      <div className="tour-lyrics-device">
-        <Phone shots={SHOTS} index={SHOT.lyrics} video={{ ...LYRICS_VIDEO, on: true, running: running && live }} />
+    <section className="say" data-scroll="1.6">
+      <p className="say-text" style={{ '--n': words.length }}>
+        {words.map((word, i) => (
+          <span key={`${word}-${i}`} style={{ '--i': i }}>
+            {word}{' '}
+          </span>
+        ))}
+      </p>
+    </section>
+  )
+}
+
+/* ------------------------------------------------------------------ color */
+
+/**
+ * Lit by the cover, the way the player is.
+ *
+ * The section's background is the player screenshot itself, blown up and
+ * blurred until only its colour is left — which is exactly how the app builds
+ * the live background behind its own screens.
+ */
+function Color() {
+  const shot = SHOTS_304[SHOT304.player]
+  return (
+    <section className="hue" id="color">
+      <div className="hue-light" aria-hidden="true" style={{ backgroundImage: `url(${shot.src})` }} />
+      <div className="hue-inner shell">
+        <div className="hue-copy">
+          <p className="kicker reveal">Color</p>
+          <h2 className="display reveal" style={{ '--d': '80ms' }}>
+            The song brings its own color.
+          </h2>
+          <p className="lede reveal" style={{ '--d': '160ms' }}>
+            Open a track and the player takes its palette from the cover: the
+            artwork fills the screen, and the light behind every page drifts
+            with it. Nothing is picked by hand. It is the artwork, sampled.
+          </p>
+        </div>
+        <div className="hue-device reveal" style={{ '--d': '120ms' }}>
+          <Phone shots={SHOTS_304} index={SHOT304.player} />
+        </div>
       </div>
     </section>
   )
 }
 
+/* ----------------------------------------------------------------- lyrics */
+
+function Lyrics() {
+  const shot = SHOTS_304[SHOT304.lyrics]
+  return (
+    <section className="ly shell" id="lyrics">
+      <div className="ly-panel reveal">
+        <div className="ly-light" aria-hidden="true" style={{ backgroundImage: `url(${shot.src})` }} />
+        <div className="ly-copy">
+          <p className="kicker">Lyrics</p>
+          <h2 className="display">Every word, on time.</h2>
+          <p className="lede">
+            Synced lyrics that light a word at a time, with the lines you have
+            not reached falling out of focus behind them. Matched on title and
+            artist, not duration alone — this song’s words, not a same-length
+            stranger’s.
+          </p>
+        </div>
+        <div className="ly-device" data-scroll="1">
+          <Phone shots={SHOTS_304} index={SHOT304.lyrics} />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ----------------------------------------------------------------- design */
+
 /**
  * A tile with a real screen rising out of its bottom edge.
  *
  * No device frame: at this size a frame is a border around a screenshot that
- * spends its pixels on bezel. The screen is cropped by the tile instead, so it
- * reads as the app coming up through the page rather than a picture of a
- * phone lying on it.
+ * spends its pixels on bezel. The tile crops the screen instead, so it reads as
+ * the app coming up through the page.
  */
-function ShotTile({ kicker, title, body, shot, crop = 'top', delay = 0 }) {
+function ShotTile({ kicker, title, body, shot, delay = 0 }) {
   return (
     <article className="ft reveal" style={{ '--d': `${delay}ms` }}>
       <div className="ft-copy">
@@ -174,12 +195,12 @@ function ShotTile({ kicker, title, body, shot, crop = 'top', delay = 0 }) {
         <h3 className="ft-title">{title}</h3>
         <p className="ft-body">{body}</p>
       </div>
-      <div className="ft-shot" data-crop={crop}>
+      <div className="ft-shot">
         <img
           src={SHOTS_304[shot].src}
           alt={SHOTS_304[shot].alt}
           width="720"
-          height="1280"
+          height="1584"
           loading="lazy"
           decoding="async"
         />
@@ -192,13 +213,11 @@ function Design() {
   const [dock, setDock] = useState(0)
 
   return (
-    <section className="tour-design shell" id="design">
-      <div className="tour-head">
+    <section className="dz shell" id="design">
+      <div className="dz-head">
         <p className="kicker reveal">Design</p>
-        <h2 className="headline reveal" style={{ '--d': '80ms' }}>
-          Built like the phone
-          <br />
-          it runs on.
+        <h2 className="display reveal" style={{ '--d': '80ms' }}>
+          Built like the phone it runs on.
         </h2>
       </div>
 
@@ -228,11 +247,10 @@ function Design() {
         </article>
 
         <ShotTile
-          kicker="Color"
-          title="The song brings its own color."
-          body="The player takes its palette from the cover, with the artwork filling the screen behind the controls."
-          shot={SHOT304.player}
-          crop="middle"
+          kicker="Home"
+          title="It leads with what you play."
+          body="Top Picks for You, learned from your own listening, then Recently Played — at Apple Music’s rhythm."
+          shot={SHOT304.home}
         />
         <ShotTile
           kicker="Offline"
@@ -242,16 +260,16 @@ function Design() {
           delay={90}
         />
         <ShotTile
-          kicker="Home"
-          title="It leads with what you play."
-          body="Top Picks for You, learned from your own listening, then Recently Played — at Apple Music’s rhythm."
-          shot={SHOT304.home}
-        />
-        <ShotTile
           kicker="Settings"
           title="One material, everywhere."
           body="Grouped glass tables, hairlines inset to the label, and a coloured glyph on every row."
           shot={SHOT304.settings}
+        />
+        <ShotTile
+          kicker="About"
+          title="Every build, a poster."
+          body="The gold key art, the wordmark, the build you are on — and whether it is current. It updates itself."
+          shot={SHOT304.about}
           delay={90}
         />
       </div>
@@ -259,10 +277,31 @@ function Design() {
   )
 }
 
-/* ------------------------------------------------------------------ page */
+/* ---------------------------------------------------------------- numbers */
+
+const NUMBERS = [
+  { value: '0', label: 'ads, ever' },
+  { value: '0', label: 'accounts to make' },
+  { value: '1', label: 'APK for every phone' },
+  { value: '20', label: 'languages' },
+]
+
+function Numbers() {
+  return (
+    <section className="nums shell" aria-label="Exhale in numbers">
+      {NUMBERS.map((n, i) => (
+        <div className="num reveal" key={n.label} style={{ '--d': `${i * 80}ms` }}>
+          <b>{n.value}</b>
+          <span>{n.label}</span>
+        </div>
+      ))}
+    </section>
+  )
+}
+
+/* ------------------------------------------------------------------- page */
 
 export default function App() {
-  const [ambient, setAmbient] = useState(!prefersReducedMotion())
   const [section, setSection] = useState(0)
   const [notes, setNotes] = useState(false)
 
@@ -272,7 +311,7 @@ export default function App() {
   const openNotes = useCallback(() => setNotes(true), [])
 
   useReveals()
-  useHeroScroll()
+  useScrollProgress()
 
   // Scroll spy: the capsule tracks where you are, not only where you clicked.
   //
@@ -316,44 +355,22 @@ export default function App() {
   }
 
   return (
-    <div id="top">
-      <Bars active={section} onSelect={goToSection} />
+    <div id="top" className="home">
+      {/* Three tiers, narrowing as they go: the release strip is news, the
+          topbar is the project, and the segmented control is this page. */}
+      <AnnounceBar />
+      <TopBar />
+      <div className="segbar">
+        <Segments items={SECTIONS} active={section} onSelect={goToSection} />
+      </div>
 
       <main>
-        <Ribbon playing={ambient} onToggle={() => setAmbient((p) => !p)} />
-
-        <section className="block" id="overview">
-          <div className="shell statement center">
-            <p className="kicker reveal">{TAGLINE}</p>
-            <h1 className="headline reveal" style={{ '--d': '90ms' }}>
-              A music player
-              <br />
-              that breathes.
-            </h1>
-            <p className="lede reveal" style={{ '--d': '180ms' }}>
-              Live glass on every surface, lyrics that land on the beat, and
-              color that follows whatever is playing.
-              <br />
-              Open source, for Android 13 and newer.
-            </p>
-            <div className="linkrow reveal" style={{ '--d': '270ms' }}>
-              <a className="textlink" href={RELEASES} target="_blank" rel="noreferrer">
-                Get the APK <i>›</i>
-              </a>
-              <a className="textlink" href={REPO} target="_blank" rel="noreferrer">
-                Read the source <i>›</i>
-              </a>
-            </div>
-
-            <HeroDevice running={ambient} />
-          </div>
-        </section>
-
-        <div className="tour shell">
-          <LyricsPanel running={ambient} />
-        </div>
-
+        <Hero onNotes={openNotes} />
+        <Statement />
+        <Color />
+        <Lyrics />
         <Design />
+        <Numbers />
 
         <section className="tour-features shell" id="features">
           <h2 className="bigtitle">
@@ -364,8 +381,9 @@ export default function App() {
 
         <section className="finale shell" id="download">
           <div className="getit">
-            <img className="getit-icon reveal" src="/logo.png" alt="" width="96" height="96" />
-            <h2 className="headline">
+            <div className="getit-art" aria-hidden="true" />
+            <img className="getit-icon reveal" src="/media/icon.png" alt="" width="120" height="120" />
+            <h2 className="display">
               <Words text="Put it on your phone." />
             </h2>
             <p className="lede reveal" style={{ '--d': '160ms' }}>
@@ -374,10 +392,10 @@ export default function App() {
             </p>
 
             <div className="btnrow reveal" style={{ '--d': '240ms' }}>
-              <a className="btn" href={RELEASES} target="_blank" rel="noreferrer">
+              <a className="btn btn-gold" href={RELEASES} target="_blank" rel="noreferrer">
                 Download v{VERSION}
               </a>
-              <button type="button" className="btn btn-ghost" onClick={openNotes}>
+              <button type="button" className="btn btn-glass" onClick={openNotes}>
                 What&rsquo;s new
               </button>
             </div>
