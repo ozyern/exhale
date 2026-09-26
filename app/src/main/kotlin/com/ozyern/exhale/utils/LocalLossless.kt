@@ -70,6 +70,11 @@ object LocalLossless {
         decisions.clear()
     }
 
+    /** Builds the library index now, off the loader thread, so the first song does not wait for it. */
+    fun warm(context: Context) {
+        runCatching { index(context) }
+    }
+
     private fun index(context: Context): List<Track> {
         val now = System.currentTimeMillis()
         index?.takeIf { now - indexedAt < IndexTtlMs }?.let { return it }

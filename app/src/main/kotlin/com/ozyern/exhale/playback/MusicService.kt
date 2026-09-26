@@ -1197,6 +1197,9 @@ class MusicService :
             withContext(Dispatchers.Main) {
                 queueRestoreCompleted.value = true
             }
+            // Last, once the restored queue is on the song it will resume: that is the one warmed.
+            // Runs with or without a persisted queue — the player-code half helps any first song.
+            warmUpPlayback()
         }
 
         // Save queue periodically to prevent queue loss from crash or force kill
@@ -5282,6 +5285,57 @@ class MusicService :
         }
     }
 
+    /**
+     * Moves the first songs' one-time costs from the first presses of play to app start.
+     *
+     * After every cold start the first two or three songs were slow and everything after was
+     * quick: each launch pays once to fetch and compile YouTube's player code, and once to build
+     * the local-lossless index, and whatever is played first pays it. So all of it runs here, in
+     * the background, as soon as the queue is back:
+     *
+     *  1. the player code and its two deciphering functions ([NewPipeUtils.warmUp]);
+     *  2. the stream of the song the restored queue is sitting on, resolved exactly as playback
+     *     would resolve it — same function, same quality, codec and client settings — and stored
+     *     where the resolver looks first, so pressing play starts on a URL already in hand;
+     *  3. the lossless index, when that setting is on.
+     *
+     * Nothing here changes which stream is chosen; it only chooses it earlier. Every step is
+     * best-effort: a failure costs nothing, because playback will make the same call itself.
+     */
+    private fun warmUpPlayback() {
+        ioScope.launch {
+            val currentId = withContext(Dispatchers.Main) {
+                player.currentMediaItem?.mediaId?.trim()?.takeIf { it.isNotBlank() }
+            }
+            val streamable = currentId?.takeUnless { com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(it) }
+
+            runCatching {
+                com.ozyern.exhale.innertube.NewPipeUtils.warmUp(streamable ?: WARM_UP_VIDEO_ID)
+            }
+
+            if (preferLocalLossless && com.ozyern.exhale.utils.LocalMediaScanner.hasPermission(this@MusicService)) {
+                com.ozyern.exhale.utils.LocalLossless.warm(this@MusicService)
+            }
+
+            val mediaId = streamable ?: return@launch
+            if (playbackUrlCache[mediaId]?.second?.let { it > System.currentTimeMillis() } == true) return@launch
+            runCatching {
+                // Nothing to resolve for a song that plays from disk.
+                if (isDownloadedLocally(mediaId) || playerCacheHasWhole(mediaId)) return@runCatching
+                val playbackData = YTPlayerUtils.playerResponseForPlayback(
+                    mediaId,
+                    audioQuality = audioQuality,
+                    connectivityManager = connectivityManager,
+                    preferredStreamClient = preferredStreamClient,
+                    avoidCodecs = avoidStreamCodecs,
+                    preferredCodec = preferredAudioCodec,
+                ).getOrNull() ?: return@runCatching
+                storeResolvedStream(mediaId, playbackData)
+                Timber.tag("StreamPrefetch").d("Warmed stream for %s at launch", mediaId)
+            }
+        }
+    }
+
     /** True when the play cache holds the whole of what it last recorded for [mediaId]. */
     private fun playerCacheHasWhole(mediaId: String): Boolean {
         val contentLength = runCatching {
@@ -6043,6 +6097,12 @@ class MusicService :
         const val CHUNK_LENGTH = 4 * 1024 * 1024L
         const val LATER_CHUNK_LENGTH = 4 * 1024 * 1024L
         const val PERSISTENT_QUEUE_FILE = "persistent_queue.data"
+
+        /**
+         * Any public video: the player code is the same for all of them, so warming it needs only
+         * a valid id when there is no restored song to use.
+         */
+        const val WARM_UP_VIDEO_ID = "jNQXAC9IVRw"
         const val PERSISTENT_AUTOMIX_FILE = "persistent_automix.data"
         const val PERSISTENT_PLAYER_STATE_FILE = "persistent_player_state.data"
         const val MAX_CONSECUTIVE_ERR = 5

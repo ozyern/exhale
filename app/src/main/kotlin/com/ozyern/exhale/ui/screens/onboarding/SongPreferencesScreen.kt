@@ -36,7 +36,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
@@ -81,6 +88,11 @@ import com.ozyern.exhale.R
 import com.ozyern.exhale.innertube.YouTube
 import com.ozyern.exhale.innertube.models.ArtistItem
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import com.ozyern.exhale.constants.ContentLanguageKey
 import com.ozyern.exhale.constants.PreferredArtistsKey
@@ -113,6 +125,9 @@ fun SongPreferencesScreen(
     var step by rememberSaveable { mutableStateOf(0) }
     val selectedLanguages = remember { mutableStateListOf<String>() }
     val selectedArtists = remember { mutableStateListOf<String>() }
+    // Artists picked from search rather than from the curated roster. Kept here, not in the step,
+    // so they survive a trip back to Step 1 and are saved alongside the curated picks.
+    val searchedArtists = remember { mutableStateListOf<OnboardingArtist>() }
 
     // Artists contextual to the current language picks; drop any stale selections when languages change.
     val contextualArtists = remember(selectedLanguages.toList()) {
@@ -153,19 +168,33 @@ fun SongPreferencesScreen(
                         if (!selectedLanguages.remove(code)) selectedLanguages.add(code)
                     },
                     onContinue = { step = 1 },
+                    // Nothing saved but the fact that it was seen: the app works without either
+                    // preference, and a first launch should never be a form you cannot leave.
+                    onSkip = {
+                        setCompleted(true)
+                        onFinished()
+                    },
                 )
 
                 else -> ArtistStep(
                     artists = contextualArtists,
+                    searched = searchedArtists,
                     selected = selectedArtists,
-                    onToggle = { name ->
-                        if (!selectedArtists.remove(name)) selectedArtists.add(name)
+                    onToggle = { artist ->
+                        if (!selectedArtists.remove(artist.name)) {
+                            selectedArtists.add(artist.name)
+                            val curated = contextualArtists.any { it.name == artist.name }
+                            if (!curated && searchedArtists.none { it.name == artist.name }) {
+                                searchedArtists.add(artist)
+                            }
+                        }
                     },
                     onBack = { step = 0 },
                     onFinish = {
                         // Commit only artists still valid for the final language set, so backing
                         // out a language never persists an orphaned pick.
                         val validArtistNames = contextualArtists.mapTo(HashSet()) { it.name }
+                            .apply { searchedArtists.forEach { add(it.name) } }
                         val committedArtists = selectedArtists.filter { it in validArtistNames }
                         setLanguagesCsv(selectedLanguages.joinToString(","))
                         setArtistsCsv(committedArtists.joinToString(","))
@@ -197,6 +226,7 @@ private fun LanguageStep(
     selected: List<String>,
     onToggle: (String) -> Unit,
     onContinue: () -> Unit,
+    onSkip: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
         OnboardingHeader(
@@ -205,11 +235,14 @@ private fun LanguageStep(
             subtitle = "Choose your preferred audio languages. You can change these anytime in Settings.",
         )
 
+        // Scrolls: sixteen chips do not fit above the footer on a small phone, and a list that
+        // cannot scroll just hides its last row behind the button.
         FlowRow(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp),
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -227,6 +260,8 @@ private fun LanguageStep(
             primaryEnabled = selected.isNotEmpty(),
             onPrimary = onContinue,
             hint = if (selected.isEmpty()) "Pick at least one language" else "${selected.size} selected",
+            secondaryLabel = "Not now",
+            onSecondary = onSkip,
         )
     }
 }
@@ -268,6 +303,22 @@ private fun LanguageChip(
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
             color = content,
         )
+        // The language in its own script, so it is recognisable to the person who reads it.
+        if (language.nativeName != language.displayName) {
+            Text(
+                text = language.nativeName,
+                style = MaterialTheme.typography.bodyMedium,
+                color = content.copy(alpha = 0.7f),
+            )
+        }
+        if (selected) {
+            Icon(
+                painter = androidx.compose.ui.res.painterResource(R.drawable.check),
+                contentDescription = null,
+                tint = content,
+                modifier = Modifier.size(18.dp),
+            )
+        }
     }
 }
 
@@ -278,8 +329,9 @@ private fun LanguageChip(
 @Composable
 private fun ArtistStep(
     artists: List<OnboardingArtist>,
+    searched: List<OnboardingArtist>,
     selected: List<String>,
-    onToggle: (String) -> Unit,
+    onToggle: (OnboardingArtist) -> Unit,
     onBack: () -> Unit,
     onFinish: () -> Unit,
 ) {
@@ -299,26 +351,72 @@ private fun ArtistStep(
 
     // Fetch any still-unresolved artwork from InnerTube (artist search → first ArtistItem thumb).
     // Keyed on the artist name-set so a changed language selection re-triggers only the new names.
+    //
+    // Six at a time, not one after another: each is a search round trip, and in sequence a grid
+    // of two dozen artists filled in one circle at a time for most of a minute. Results land on
+    // the main thread, which is the only thread that touches the cache.
     LaunchedEffect(artists) {
-        for (artist in artists) {
-            val name = artist.name
-            if (artist.imageUrl != null || resolvedImages.containsKey(name)) continue
-            if (OnboardingArtistImageCache.contains(name)) {
-                OnboardingArtistImageCache.get(name)?.let { resolvedImages[name] = it }
-                continue
+        val gate = Semaphore(6)
+        coroutineScope {
+            for (artist in artists) {
+                val name = artist.name
+                if (artist.imageUrl != null || resolvedImages.containsKey(name)) continue
+                if (OnboardingArtistImageCache.contains(name)) {
+                    OnboardingArtistImageCache.get(name)?.let { resolvedImages[name] = it }
+                    continue
+                }
+                launch {
+                    val thumb = gate.withPermit {
+                        withContext(Dispatchers.IO) {
+                            runCatching {
+                                YouTube.search(name, YouTube.SearchFilter.FILTER_ARTIST).getOrNull()
+                                    ?.items?.filterIsInstance<ArtistItem>()
+                                    ?.firstOrNull()
+                                    ?.thumbnail
+                            }.getOrNull()
+                        }
+                    }
+                    OnboardingArtistImageCache.put(name, thumb)
+                    if (thumb != null) resolvedImages[name] = thumb
+                }
             }
-            val thumb = withContext(Dispatchers.IO) {
-                runCatching {
-                    YouTube.search(name, YouTube.SearchFilter.FILTER_ARTIST).getOrNull()
-                        ?.items?.filterIsInstance<ArtistItem>()
-                        ?.firstOrNull()
-                        ?.thumbnail
-                }.getOrNull()
-            }
-            OnboardingArtistImageCache.put(name, thumb)
-            if (thumb != null) resolvedImages[name] = thumb
         }
     }
+
+    // Search, for anyone the curated roster does not have. Debounced, so typing a name is one
+    // request rather than one per letter.
+    var query by rememberSaveable { mutableStateOf("") }
+    var results by remember { mutableStateOf<List<OnboardingArtist>>(emptyList()) }
+    var searching by remember { mutableStateOf(false) }
+    LaunchedEffect(query) {
+        val q = query.trim()
+        if (q.length < 2) {
+            results = emptyList()
+            searching = false
+            return@LaunchedEffect
+        }
+        searching = true
+        delay(350)
+        results = withContext(Dispatchers.IO) {
+            runCatching {
+                YouTube.search(q, YouTube.SearchFilter.FILTER_ARTIST).getOrNull()
+                    ?.items?.filterIsInstance<ArtistItem>()
+                    ?.take(12)
+                    ?.map { OnboardingArtist(name = it.title, imageUrl = it.thumbnail, languageCode = "") }
+                    // Names are the grid's keys and the saved value; two artists can share one.
+                    ?.distinctBy { it.name }
+            }.getOrNull().orEmpty()
+        }
+        searching = false
+    }
+
+    // While searching, the grid is the results. Otherwise it is the curated roster, with anything
+    // already picked from search at the front so those picks stay visible and can be undone.
+    val showingResults = query.trim().length >= 2
+    val curatedNames = remember(artists) { artists.mapTo(HashSet()) { it.name } }
+    val gridArtists =
+        if (showingResults) results
+        else searched.filter { it.name !in curatedNames } + artists
 
     Column(Modifier.fillMaxSize()) {
         OnboardingHeader(
@@ -328,10 +426,50 @@ private fun ArtistStep(
             onBack = onBack,
         )
 
-        if (artists.isEmpty()) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            singleLine = true,
+            placeholder = { Text("Search for an artist") },
+            leadingIcon = {
+                Icon(
+                    painter = androidx.compose.ui.res.painterResource(R.drawable.search),
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                )
+            },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    Icon(
+                        painter = androidx.compose.ui.res.painterResource(R.drawable.close),
+                        contentDescription = "Clear",
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clickable { query = "" },
+                    )
+                }
+            },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            shape = RoundedCornerShape(percent = 50),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                unfocusedBorderColor = Color.Transparent,
+                focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 4.dp),
+        )
+
+        if (gridArtists.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Text(
-                    text = "No trending artists for that selection yet.\nTap Done to continue.",
+                    text = when {
+                        showingResults && searching -> "Searching…"
+                        showingResults -> "No artists found for “${query.trim()}”."
+                        else -> "No trending artists for that selection yet.\nSearch above, or tap Done to continue."
+                    },
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -345,12 +483,23 @@ private fun ArtistStep(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                items(artists, key = { it.name }, contentType = { "artist_tile" }) { artist ->
+                if (showingResults) {
+                    item(span = { GridItemSpan(maxLineSpan) }, contentType = "label") {
+                        Text(
+                            text = if (searching) "Searching…" else "Results",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 4.dp),
+                        )
+                    }
+                }
+                items(gridArtists, key = { it.name }, contentType = { "artist_tile" }) { artist ->
                     ArtistTile(
                         artist = artist,
                         imageUrl = artist.imageUrl ?: resolvedImages[artist.name],
                         selected = artist.name in selected,
-                        onClick = { onToggle(artist.name) },
+                        onClick = { onToggle(artist) },
                     )
                 }
             }
@@ -515,11 +664,27 @@ private fun OnboardingHeader(
                 )
                 Spacer(Modifier.width(12.dp))
             }
+            // Two segments, filled up to this step: where you are and how much is left, at a glance.
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                repeat(2) { i ->
+                    Box(
+                        Modifier
+                            .width(28.dp)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(percent = 50))
+                            .background(
+                                if (i < step) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)
+                            ),
+                    )
+                }
+            }
+            Spacer(Modifier.width(10.dp))
             Text(
-                text = "STEP $step OF 2",
+                text = "Step $step of 2",
                 style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Spacer(Modifier.height(16.dp))
@@ -544,6 +709,8 @@ private fun OnboardingFooter(
     primaryEnabled: Boolean,
     onPrimary: () -> Unit,
     hint: String,
+    secondaryLabel: String? = null,
+    onSecondary: (() -> Unit)? = null,
 ) {
     Column(
         Modifier.fillMaxWidth().padding(24.dp),
@@ -570,6 +737,15 @@ private fun OnboardingFooter(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
+        }
+        if (secondaryLabel != null && onSecondary != null) {
+            TextButton(onClick = onSecondary, modifier = Modifier.padding(top = 4.dp)) {
+                Text(
+                    text = secondaryLabel,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

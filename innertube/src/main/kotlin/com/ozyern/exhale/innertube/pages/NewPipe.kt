@@ -93,6 +93,29 @@ object NewPipeUtils {
         YoutubeJavaScriptPlayerManager.getSignatureTimestamp(videoId)
     }
 
+    /**
+     * Does the player-code work that otherwise lands on the first songs after every launch.
+     *
+     * The first stream after a cold start pays to download YouTube's player code, and then to
+     * extract and compile two functions out of it — the signature decipher and the throttling
+     * (`n`) function — in the JavaScript engine. Each is done once and cached for the life of the
+     * process, which is why playback is slow for the first two or three songs and fine after.
+     * Running each once here, on throwaway input, moves that cost to app start.
+     *
+     * The inputs are dummies: only the side effect (the cached, compiled function) is wanted, so
+     * every result and every failure is ignored.
+     */
+    fun warmUp(videoId: String) {
+        runCatching { YoutubeJavaScriptPlayerManager.getSignatureTimestamp(videoId) }
+        runCatching { YoutubeJavaScriptPlayerManager.deobfuscateSignature(videoId, "0123456789abcdefghijklmnopqrstuvwxyzABCDEF") }
+        runCatching {
+            YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(
+                videoId,
+                "https://rr1---sn-warmup.googlevideo.com/videoplayback?n=abcdefghijklmnop",
+            )
+        }
+    }
+
     fun getStreamUrl(
         format: PlayerResponse.StreamingData.Format,
         videoId: String,
