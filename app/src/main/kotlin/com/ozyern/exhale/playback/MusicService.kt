@@ -4988,7 +4988,15 @@ class MusicService :
         if (!com.ozyern.exhale.utils.LocalMediaScanner.hasPermission(this)) return null
         val metadata = runCatching {
             runBlocking(Dispatchers.IO) { database.song(mediaId).first() }?.toMediaMetadata()
-                ?: runBlocking(Dispatchers.Main) { player.findNextMediaItemById(mediaId)?.metadata }
+                // Bounded: this runs on the loader thread, and nothing plays until it returns.
+                // An unbounded hop to Main waits out whatever the UI is doing (opening the
+                // player, a long list) before the song can start. Past the bound the lossless
+                // check is simply skipped for this play.
+                ?: runBlocking {
+                    kotlinx.coroutines.withTimeoutOrNull(300L) {
+                        withContext(Dispatchers.Main) { player.findNextMediaItemById(mediaId)?.metadata }
+                    }
+                }
         }.getOrNull() ?: return null
         val track = com.ozyern.exhale.utils.LocalLossless.find(
             this,
