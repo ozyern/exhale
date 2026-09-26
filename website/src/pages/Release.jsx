@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { SiteFooter, TopBar } from '../components/Chrome.jsx'
 import { Link } from '../router.jsx'
-import { RELEASE } from '../release.js'
+import { ALL_RELEASES, LATEST_RELEASE, releasePath, tagUrl } from '../releases.js'
 import { RELEASES, REPO } from '../content.js'
 import { useReveals } from '../hooks.js'
 import { ArrowLeftIcon, LinkIcon, ReplayIcon } from '../icons.jsx'
@@ -288,8 +288,11 @@ function CopyLink({ version }) {
 
 /* ------------------------------------------------------------------- page */
 
-export default function Release({ release = RELEASE }) {
+export default function Release({ release = LATEST_RELEASE }) {
   const shots = release.shots
+  const latest = release === LATEST_RELEASE
+  // Every other release with a page, for the cards at the bottom.
+  const others = ALL_RELEASES.filter((other) => other !== release)
   const barRef = useRef(null)
 
   useReveals()
@@ -357,12 +360,33 @@ export default function Release({ release = RELEASE }) {
                 <span className="rl-read">{release.read}</span>
               </p>
 
+              {/* An old announcement is still worth reading, but nobody who
+                  lands on one from a search result should leave thinking it is
+                  the version they would get. */}
+              {!latest && (
+                <Link
+                  className="textlink rl-newer reveal"
+                  to={releasePath(LATEST_RELEASE)}
+                  style={{ '--d': '45ms' }}
+                >
+                  A newer release is out: Exhale {LATEST_RELEASE.version} <i>&rsaquo;</i>
+                </Link>
+              )}
+
               <p className="rl-dek reveal" style={{ '--d': '90ms' }}>
                 {release.dek}
               </p>
 
               <div className="rl-actions reveal" style={{ '--d': '180ms' }}>
-                <a className="btn" href={RELEASES} target="_blank" rel="noreferrer">
+                {/* `releases/latest` is only honest on the latest page. An
+                    older one says "Download 1.0.203", so it links the file
+                    that was tagged 1.0.203. */}
+                <a
+                  className="btn"
+                  href={latest ? RELEASES : tagUrl(REPO, release)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   Download {release.version}
                 </a>
                 <a className="btn btn-ghost" href={REPO} target="_blank" rel="noreferrer">
@@ -402,6 +426,15 @@ export default function Release({ release = RELEASE }) {
                       and color that follows whatever is playing.
                     </span>
                   </Link>
+                  {others.map((other) => (
+                    <Link className="rl-more-card" to={releasePath(other)} key={other.version}>
+                      <span className="rl-more-tag">
+                        {other === LATEST_RELEASE ? 'Latest release' : 'Earlier release'}
+                      </span>
+                      <b>Exhale {other.version}</b>
+                      <span className="rl-more-body">{other.date}</span>
+                    </Link>
+                  ))}
                   <a
                     className="rl-more-card"
                     href={`${REPO}/blob/master/CHANGELOG.md`}

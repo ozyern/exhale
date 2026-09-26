@@ -3025,6 +3025,14 @@ html:has(.release) {
   font-weight: 600;
 }
 
+/* Only on an older release. A line, not a banner: the page is still that
+   release's announcement, and it should not read as an error. */
+.rl-newer {
+  display: inline-flex;
+  margin-top: 12px;
+  font-size: 15px;
+}
+
 .rl-eyebrow > * + *::before {
   content: '·';
   margin-right: 10px;

@@ -76,12 +76,21 @@ export default function GlassField({ text, tall = false, replayKey = 0 }) {
     }
 
     /** The number, drawn at whatever size the box can carry. */
+    const face = '"Linotte", ui-rounded, system-ui, sans-serif'
     const drawNumber = (alpha, blur, dx) => {
-      const size = Math.min(width * (tall ? 0.52 : 0.4), height * 0.72)
+      let size = Math.min(width * (tall ? 0.52 : 0.4), height * 0.72)
       ctx.save()
+      // Fitted to the ink, not guessed from the box. A size taken off the
+      // width alone sets "304" wider than the screen on a phone and over
+      // "Universal" on a laptop; the number has to stay inside the gap the two
+      // words leave it — the same share of the frame 203's field keeps to.
+      ctx.font = `700 ${size}px ${face}`
+      const room = width * (tall ? 0.86 : 0.54)
+      const ink = ctx.measureText(text).width
+      if (ink > room) size *= room / ink
       ctx.globalAlpha = alpha
       if (blur) ctx.filter = `blur(${blur}px)`
-      ctx.font = `700 ${size}px "Linotte", ui-rounded, system-ui, sans-serif`
+      ctx.font = `700 ${size}px ${face}`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
       ctx.fillStyle = '#fff'

@@ -9,7 +9,7 @@ import { FloatField } from '../components/ui/float-field.jsx'
 import { PaneStepper } from '../components/ui/pane-stepper.jsx'
 import { ShineBorder } from '../components/ui/shine-border.jsx'
 import { SupportHero } from '../components/ui/support-hero.jsx'
-import { RELEASE } from '../release.js'
+import { LATEST_RELEASE as RELEASE } from '../releases.js'
 
 /*
  * Support.

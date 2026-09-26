@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Link } from '../router.jsx'
 import { MAINTAINER, RELEASES, REPO, TELEGRAM } from '../content.js'
-import { RELEASE_304 as RELEASE } from '../release304.js'
+import { LATEST_RELEASE as RELEASE } from '../releases.js'
 import { DownloadIcon, GithubIcon, Mark } from '../icons.jsx'
 
 export const RELEASE_PATH = `/release/${RELEASE.version}`

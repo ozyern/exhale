@@ -2,8 +2,7 @@ import { useEffect } from 'react'
 import App from './App.jsx'
 import Release from './pages/Release.jsx'
 import Support from './pages/Support.jsx'
-import { RELEASE } from './release.js'
-import { RELEASE_304 } from './release304.js'
+import { releaseByVersion } from './releases.js'
 import { useRoute } from './router.jsx'
 
 /**
@@ -24,13 +23,8 @@ const isRelease = (path) => path === '/release' || path.startsWith('/release/')
  * unknown version falls through to the newest too: a typo should land on the
  * current release, not on a 404.
  */
-const RELEASES_BY_VERSION = { [RELEASE.version]: RELEASE, [RELEASE_304.version]: RELEASE_304 }
-const LATEST = RELEASE_304
-
-const releaseFor = (path) => {
-  const version = path.replace(/^\/release\/?/, '').replace(/\/+$/, '')
-  return RELEASES_BY_VERSION[version] ?? LATEST
-}
+const releaseFor = (path) =>
+  releaseByVersion(path.replace(/^\/release\/?/, '').replace(/\/+$/, ''))
 const isSupport = (path) => path === '/support' || path.startsWith('/support/')
 
 /**
@@ -83,7 +77,10 @@ export default function Site() {
     set('link[rel="canonical"]', 'href', `https://exhale.ozyern.me${head.path}`)
   }, [page, release])
 
-  if (page === 'release') return <Release release={release} />
+  // Keyed by version: moving from one release to another is a different page,
+  // so it starts at the top with its own hero and its own reveals, rather than
+  // swapping the text inside whatever the last one had scrolled to.
+  if (page === 'release') return <Release release={release} key={release.version} />
   if (page === 'support') return <Support />
   return <App />
 }

@@ -204,7 +204,7 @@ export const SPECS = [
 export const ABOUT_FACTS = [
   { label: 'Version', value: VERSION },
   { label: 'Architecture', value: 'Universal' },
-  { label: 'Size', value: '37 MB' },
+  { label: 'Size', value: '38 MB' },
   { label: 'Requires', value: 'Android 13' },
 ]
 
@@ -219,9 +219,113 @@ export const ABOUT_FACTS = [
  */
 export const RELEASE_NOTES = [
   {
+    version: '1.0.304',
+    date: 'September 26, 2026',
+    tag: 'Current release',
+    summary:
+      'The whole app in Apple Music’s shape, music that plays without a network, updates that install themselves, and a long list of things that had been quietly wrong.',
+    groups: [
+      {
+        title: 'New',
+        items: [
+          {
+            title: 'Offline, properly',
+            body: 'Downloaded songs play with no network at all, and the queue skips to what is actually on the phone instead of stalling on the first track that is not.',
+          },
+          {
+            title: 'Save to device',
+            body: 'A tagged .m4a in Music/Exhale, with its cover art and synced lyrics embedded, so the song is a file every other player on the phone can read.',
+          },
+          {
+            title: 'Prefer lossless files',
+            body: 'When a FLAC, WAV or AIFF of the same song is already on your storage, Exhale plays that instead of the stream. Settings → Player and audio.',
+          },
+          {
+            title: 'Updates without leaving the app',
+            body: 'Settings → Updates checks, downloads and hands the APK straight to the installer, with real byte progress. No browser, no fetching a file by hand.',
+          },
+          {
+            title: 'Spatial audio stages',
+            body: 'Natural, Wide and Cinema, with Cinema as the default. A phone has two speakers, so this is the width of the stage rather than a 5.1 switch with nothing to drive.',
+          },
+          {
+            title: 'App language (Beta)',
+            body: 'Twenty languages, named in their own scripts, through Android’s per-app locale API. Beta because several translations are partial and fall back to English. Settings → Appearance → Display.',
+          },
+          {
+            title: 'Music Together over a hotspot',
+            body: 'Two phones, one host, no router in between — a QR invite and a screen built like the rest of the app.',
+          },
+          {
+            title: 'A Sabrina Carpenter theme',
+            body: 'Blush, butter and lilac over warm cream, and the only palette that moves the surfaces as well as the buttons. Ribbon bows, hearts and sparkles drift behind the glass and are refracted through it.',
+          },
+        ],
+      },
+      {
+        title: 'Improved',
+        items: [
+          {
+            title: 'The Apple Music pass',
+            body: 'Home leads with Top Picks for You, then Recently Played. The queue, menus, artist page, charts, account sheet, search and every settings screen are grouped tables on glass plates, with a coloured glyph on every row.',
+          },
+          {
+            title: 'Album and Downloads open on their cover',
+            body: 'Edge to edge under the status bar, dissolving into the page — then the title, one grey line of facts, and Play and Shuffle as glass capsules.',
+          },
+          {
+            title: 'The player’s panels',
+            body: 'Equalizer, tempo and pitch, sleep timer and details use the app’s own sliders, capsules and segmented controls instead of Material’s.',
+          },
+          {
+            title: 'Outputs, like AirPlay',
+            body: 'Devices are named the way their makers name them — “OnePlus 13”, not “CPH2649” — with a volume bar you can drag.',
+          },
+          {
+            title: 'Lyrics',
+            body: 'Linotte and the staggered line motion from the Windows build, and only the line being sung reads the clock — the rest of the column no longer recomposes sixty times a second.',
+          },
+          {
+            title: 'Motion',
+            body: 'Tab changes are a 150ms fade. A tapped player expansion uses a softer spring than a flung one, and the dock fades out over the first half of it.',
+          },
+        ],
+      },
+      {
+        title: 'Fixed',
+        items: [
+          {
+            title: 'Songs stopped at about 0:29',
+            body: 'The first range asked for was 512 KB, which put a chunk boundary right there. A small first chunk does not start playback any sooner, so it bought nothing and cost a stall.',
+          },
+          {
+            title: 'Lyrics ran a line ahead on fast songs',
+            body: 'The highlight had a fixed 450ms lead, most of a line when lines are a second apart. It is smaller now, and capped at a quarter of the current line’s length.',
+          },
+          {
+            title: 'Lyrics flickered on every line change',
+            body: 'The lit copy of each word was added to and removed from the tree as it was sung, and the auto-scroll jumped the column and caught it a frame later. Both are gone.',
+          },
+          {
+            title: 'Opening Library crashed',
+            body: 'On devices with a runtime shader, two in-content chips were sampling the backdrop they were drawn into.',
+          },
+          {
+            title: 'Discord showed “Playing Exhale”',
+            body: 'With a stranger’s artwork. The presence is fixed to Listening, the song, the artist and the cover.',
+          },
+          {
+            title: 'The artist’s name went missing',
+            body: 'In the mini player and the full player, when a song was played from search rather than from an artist page.',
+          },
+        ],
+      },
+    ],
+  },
+  {
     version: '1.0.203',
     date: 'September 5, 2026',
-    tag: 'Current release',
+    tag: 'Previous release',
     summary:
       'Everything that moved since the first public release: the interface at your size, a library shaped like a library, a sleep timer you can read half asleep, and glass that bends the pixels actually behind it.',
     groups: [
