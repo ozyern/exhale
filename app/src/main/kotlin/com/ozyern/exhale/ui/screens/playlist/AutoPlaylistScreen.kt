@@ -7,6 +7,11 @@
 
 
 package com.ozyern.exhale.ui.screens.playlist
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.unit.sp
+import com.ozyern.exhale.ui.component.PlayerActionCircle
+import com.ozyern.exhale.ui.component.PlayShuffleButton
 import com.ozyern.exhale.ui.screens.Screens
 
 import androidx.activity.compose.BackHandler
@@ -485,7 +490,12 @@ fun AutoPlaylistScreen(
 
         LazyColumn(
             state = lazyListState,
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+            // No top inset: the cover runs under the status bar, with the back button floating on
+            // it - the chrome belongs *on* the artwork, not above it in a band of page colour.
+            contentPadding = PaddingValues(
+                bottom = LocalPlayerAwareWindowInsets.current.asPaddingValues()
+                    .calculateBottomPadding(),
+            ),
         ) {
             if (songs != null) {
                 if (songs!!.isEmpty()) {
@@ -503,37 +513,42 @@ fun AutoPlaylistScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(top = systemBarsTopPadding + 48.dp)
-                                    .padding(horizontal = 24.dp)
                                     .padding(bottom = 16.dp)
                             ) {
-                                // Large centered artwork with shadow
+                                // The cover is the header - see AlbumScreen. A downloaded
+                                // collection is read the same way an album is, so it is drawn the
+                                // same way: the art edge to edge, dissolving into the page, with
+                                // the name and the two buttons underneath it.
                                 Box(
                                     modifier = Modifier
-                                        .size(240.dp)
-                                        .shadow(
-                                            elevation = 24.dp,
-                                            shape = RoundedCornerShape(16.dp),
-                                            ambientColor = MaterialTheme.colorScheme.primary.copy(
-                                                alpha = 0.3f
-                                            ),
-                                            spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
-                                        )
+                                        .fillMaxWidth()
+                                        .aspectRatio(1f)
                                 ) {
                                     AsyncImage(
                                         model = songs!!.firstOrNull()?.song?.thumbnailUrl,
                                         contentDescription = null,
                                         contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                    Box(
                                         modifier = Modifier
-                                            .fillMaxSize()
-                                            .clip(RoundedCornerShape(16.dp))
+                                            .matchParentSize()
+                                            .background(
+                                                Brush.verticalGradient(
+                                                    0f to Color.Black.copy(alpha = 0.38f),
+                                                    0.22f to Color.Transparent,
+                                                    0.72f to Color.Transparent,
+                                                    1f to MaterialTheme.colorScheme.surface,
+                                                )
+                                            )
                                     )
                                 }
 
-                                Spacer(modifier = Modifier.height(24.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
 
                                 // Playlist title
                                 Text(
+                                    modifier = Modifier.padding(horizontal = 24.dp),
                                     text = playlist,
                                     style = MaterialTheme.typography.headlineMedium,
                                     fontWeight = FontWeight.Bold,
@@ -542,74 +557,57 @@ fun AutoPlaylistScreen(
                                     overflow = TextOverflow.Ellipsis
                                 )
 
-                                Spacer(modifier = Modifier.height(8.dp))
+                                Spacer(modifier = Modifier.height(5.dp))
 
-                                // Metadata chips row
+                                // One grey line, not two coloured chips.
+                                //
+                                // Apple Music states what a collection *is* in a single line of
+                                // secondary type under the title - "12 songs · 48 minutes". Two
+                                // filled pills give the same two facts the visual weight of
+                                // buttons, so the eye tries to press them.
+                                Text(
+                                    text = listOf(
+                                        pluralStringResource(
+                                            R.plurals.n_song,
+                                            songs!!.size,
+                                            songs!!.size
+                                        ),
+                                        makeTimeString(likeLength * 1000L),
+                                    ).joinToString("  \u00b7  "),
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                )
+
+                                Spacer(modifier = Modifier.height(22.dp))
+
+                                // Two words and two glyphs, in the shape the album page uses.
+                                //
+                                // This was four weighted slabs of three different shapes - a
+                                // leading connected button, two capsules, a trailing connected
+                                // button - so the two things you actually came to press were a
+                                // quarter of the row each and the same size as the two you didn't.
+                                // Play and Shuffle take the width now; the other two are discs.
                                 Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 24.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // Song count chip
-                                    Surface(
-                                        shape = RoundedCornerShape(16.dp),
-                                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
-                                    ) {
-                                        Text(
-                                            text = pluralStringResource(
-                                                R.plurals.n_song,
-                                                songs!!.size,
-                                                songs!!.size
-                                            ),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                        )
-                                    }
-
-                                    // Duration chip
-                                    Surface(
-                                        shape = RoundedCornerShape(16.dp),
-                                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
-                                    ) {
-                                        Text(
-                                            text = makeTimeString(likeLength * 1000L),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(20.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(
-                                        ButtonGroupDefaults.ConnectedSpaceBetween,
-                                        Alignment.CenterHorizontally
-                                    ),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Surface(
+                                    PlayerActionCircle(
+                                        iconRes = R.drawable.downloading,
+                                        contentDescription = null,
                                         onClick = { navController.navigate(Screens.DownloadQueue.route) },
-                                        shape = ButtonGroupDefaults.connectedLeadingButtonShapes().shape,
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                    )
+
+                                    PlayShuffleButton(
+                                        iconRes = R.drawable.play,
+                                        label = stringResource(R.string.play),
+                                        solid = true,
                                         modifier = Modifier
                                             .weight(1f)
-                                            .height(48.dp)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.downloading),
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
-                                    }
-
-                                    Button(
+                                            .height(50.dp),
                                         onClick = {
                                             playerConnection.playQueue(
                                                 ListQueue(
@@ -617,24 +615,16 @@ fun AutoPlaylistScreen(
                                                     items = songs!!.map { it.toMediaItem() },
                                                 ),
                                             )
-                                        },
-                                        shape = ButtonGroupDefaults.connectedMiddleButtonShapes().shape,
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.primary,
-                                            contentColor = MaterialTheme.colorScheme.onPrimary
-                                        ),
+                                            },
+                                    )
+
+                                    PlayShuffleButton(
+                                        iconRes = R.drawable.shuffle,
+                                        label = stringResource(R.string.shuffle),
+                                        solid = true,
                                         modifier = Modifier
                                             .weight(1f)
-                                            .height(48.dp)
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.play),
-                                            contentDescription = stringResource(R.string.play),
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
-
-                                    Button(
+                                            .height(50.dp),
                                         onClick = {
                                             playerConnection.playQueue(
                                                 ListQueue(
@@ -642,47 +632,18 @@ fun AutoPlaylistScreen(
                                                     items = songs!!.shuffled().map { it.toMediaItem() },
                                                 ),
                                             )
-                                        },
-                                        shape = ButtonGroupDefaults.connectedMiddleButtonShapes().shape,
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.primary,
-                                            contentColor = MaterialTheme.colorScheme.onPrimary
-                                        ),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(48.dp)
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.shuffle),
-                                            contentDescription = stringResource(R.string.shuffle),
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
+                                            },
+                                    )
 
-                                    Surface(
+                                    PlayerActionCircle(
+                                        iconRes = R.drawable.queue_music,
+                                        contentDescription = null,
                                         onClick = {
                                             playerConnection.addToQueue(
                                                 items = songs!!.map { it.toMediaItem() },
                                             )
                                         },
-                                        shape = ButtonGroupDefaults.connectedTrailingButtonShapes().shape,
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(48.dp)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.queue_music),
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
-                                    }
+                                    )
                                 }
 
                                 Spacer(modifier = Modifier.height(24.dp))

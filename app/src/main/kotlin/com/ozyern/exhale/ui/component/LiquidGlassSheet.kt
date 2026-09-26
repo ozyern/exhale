@@ -6,6 +6,8 @@
 
 package com.ozyern.exhale.ui.component
 
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import android.view.WindowManager
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
@@ -59,7 +61,22 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /** Top corner radius of every frosted sheet. Deep enough to read as iOS rather than Material. */
-private val SheetCornerRadius = 36.dp
+/**
+ * The sheet is an island, not a drawer.
+ *
+ * It used to be the standard bottom sheet: full width, welded to the bottom edge, square at the
+ * foot and rounded only at the head. That is Material's shape, and it is the one surface in the app
+ * that was still wearing it - the dock, the now-playing pill and the search row are all floating
+ * capsules with a margin of their own, and a sheet that runs into the screen edge underneath them
+ * reads as a different app's component borrowed for the occasion.
+ *
+ * So it sits inset, with all four corners equal and the same rim as the rest of the chrome.
+ */
+private val SheetCornerRadius = 34.dp
+
+/** How far the island holds off the screen edges. */
+private val SheetSideMargin = 12.dp
+private val SheetBottomMargin = 16.dp
 
 /**
  * Radius of the **real** blur applied to everything behind the sheet's window, in pixels.
@@ -116,7 +133,7 @@ fun LiquidGlassSheet(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     dismissible: Boolean = true,
-    maxHeightFraction: Float = 0.88f,
+    maxHeightFraction: Float = 0.86f,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -149,7 +166,7 @@ fun LiquidGlassSheet(
         ),
     ) {
         val scheme = MaterialTheme.colorScheme
-        val sheetShape = RoundedCornerShape(topStart = SheetCornerRadius, topEnd = SheetCornerRadius)
+        val sheetShape = RoundedCornerShape(SheetCornerRadius)
         val view = LocalView.current
         val window = (view.parent as? DialogWindowProvider)?.window
 
@@ -209,6 +226,12 @@ fun LiquidGlassSheet(
                 Column(
                     modifier = modifier
                         .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(
+                            start = SheetSideMargin,
+                            end = SheetSideMargin,
+                            bottom = SheetBottomMargin,
+                        )
                         .heightIn(max = maxHeight * maxHeightFraction)
                         .onSizeChanged { sheetHeightPx = it.height.toFloat() }
                         // Translate in the draw phase — animating an offset or padding here would

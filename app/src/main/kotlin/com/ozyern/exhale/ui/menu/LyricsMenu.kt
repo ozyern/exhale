@@ -61,6 +61,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import me.bush.translator.Translator
 import me.bush.translator.Language
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.utils.TranslatorLanguages
 import com.ozyern.exhale.utils.TranslatorLang
 import androidx.compose.runtime.produceState
@@ -77,7 +78,6 @@ import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.graphics.PaintingStyle.Companion.Stroke
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.graphics.shapes.RoundedPolygon
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -389,7 +389,7 @@ fun LyricsMenu(
                             .padding(24.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularWavyProgressIndicator()
+                        LoadingRing()
                     }
                 }
             }
@@ -459,13 +459,11 @@ fun LyricsMenu(
                 if (isTranslating) {
                     val density = LocalDensity.current
 
-                    CircularWavyProgressIndicator(
+                    LoadingRing(
                         modifier = Modifier
                             .size(20.dp)
                             .align(Alignment.CenterVertically),
-                        stroke = Stroke(
-                            width = with(density) { 2.dp.toPx() }
-                        )
+                        stroke = 2.dp
                     )
                 } else {
                     TextButton(onClick = {

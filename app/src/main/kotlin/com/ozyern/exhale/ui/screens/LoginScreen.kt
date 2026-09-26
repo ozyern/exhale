@@ -15,7 +15,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -32,6 +31,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavController
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.LocalPlayerAwareWindowInsets
 import com.ozyern.exhale.R
 import com.ozyern.exhale.constants.AccountChannelHandleKey
@@ -222,7 +222,7 @@ fun LoginScreen(
         )
 
         if (isFinalizingLogin) {
-            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            LoadingRing(modifier = Modifier.align(Alignment.Center))
         }
 
         TopAppBar(

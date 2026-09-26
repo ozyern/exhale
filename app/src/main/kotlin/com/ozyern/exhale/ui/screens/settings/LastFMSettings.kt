@@ -8,6 +8,8 @@
 
 package com.ozyern.exhale.ui.screens.settings
 
+import com.ozyern.exhale.ui.component.PreferenceGroupDivider
+import com.ozyern.exhale.ui.component.PreferenceGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,12 +24,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.ui.component.LiquidBackButton
 import com.ozyern.exhale.ui.component.liquid.LiquidSlider
 import androidx.compose.material3.Text
@@ -177,9 +179,9 @@ fun LastFMSettings(
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            CircularProgressIndicator(
+                            LoadingRing(
                                 modifier = Modifier.size(24.dp),
-                                strokeWidth = 2.dp
+                                stroke = 2.dp
                             )
                             Text(
                                 text = stringResource(R.string.logging_in),
@@ -287,234 +289,239 @@ fun LastFMSettings(
         PreferenceGroupTitle(
             title = stringResource(R.string.account),
         )
-
-        PreferenceEntry(
-            title = {
-                Text(
-                    text = if (isLoggedIn) lastfmUsername else stringResource(R.string.not_logged_in),
-                    modifier = Modifier.alpha(if (isLoggedIn) 1f else 0.5f),
-                )
-            },
-            description = null,
-            icon = { Icon(painterResource(R.drawable.token), null) },
-            trailingContent = {
-                if (isLoggedIn) {
-                    OutlinedButton(onClick = {
-                        lastfmSession = ""
-                        lastfmUsername = ""
-                        LastFM.sessionKey = null
-                        Timber.d("Last.fm session cleared")
-                    }) {
-                        Text(stringResource(R.string.action_logout))
+        PreferenceGroup {
+            PreferenceEntry(
+                title = {
+                    Text(
+                        text = if (isLoggedIn) lastfmUsername else stringResource(R.string.not_logged_in),
+                        modifier = Modifier.alpha(if (isLoggedIn) 1f else 0.5f),
+                    )
+                },
+                description = null,
+                icon = { Icon(painterResource(R.drawable.token), null) },
+                trailingContent = {
+                    if (isLoggedIn) {
+                        OutlinedButton(onClick = {
+                            lastfmSession = ""
+                            lastfmUsername = ""
+                            LastFM.sessionKey = null
+                            Timber.d("Last.fm session cleared")
+                        }) {
+                            Text(stringResource(R.string.action_logout))
+                        }
+                    } else {
+                        OutlinedButton(onClick = {
+                            showLoginDialog = true
+                        }) {
+                            Text(stringResource(R.string.action_login))
+                        }
                     }
-                } else {
-                    OutlinedButton(onClick = {
-                        showLoginDialog = true
-                    }) {
-                        Text(stringResource(R.string.action_login))
-                    }
-                }
-            },
-        )
+                },
+            )
+        }
 
         PreferenceGroupTitle(
             title = stringResource(R.string.options),
         )
+        PreferenceGroup {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.enable_scrobbling)) },
+                checked = lastfmScrobbling,
+                onCheckedChange = onlastfmScrobblingChange,
+                isEnabled = isLoggedIn,
+            )
 
-        SwitchPreference(
-            title = { Text(stringResource(R.string.enable_scrobbling)) },
-            checked = lastfmScrobbling,
-            onCheckedChange = onlastfmScrobblingChange,
-            isEnabled = isLoggedIn,
-        )
-
-        SwitchPreference(
-            title = { Text(stringResource(R.string.lastfm_now_playing)) },
-            checked = useNowPlaying,
-            onCheckedChange = onUseNowPlayingChange,
-            isEnabled = isLoggedIn && lastfmScrobbling,
-        )
+            PreferenceGroupDivider()
+            SwitchPreference(
+                title = { Text(stringResource(R.string.lastfm_now_playing)) },
+                checked = useNowPlaying,
+                onCheckedChange = onUseNowPlayingChange,
+                isEnabled = isLoggedIn && lastfmScrobbling,
+            )
+        }
 
         PreferenceGroupTitle(
             title = stringResource(R.string.scrobbling_configuration)
         )
+        PreferenceGroup {
+            var showMinTrackDurationDialog by rememberSaveable { mutableStateOf(false) }
 
-        var showMinTrackDurationDialog by rememberSaveable { mutableStateOf(false) }
+            if (showMinTrackDurationDialog) {
+                var tempMinTrackDuration by remember { mutableIntStateOf(minTrackDuration) }
 
-        if (showMinTrackDurationDialog) {
-            var tempMinTrackDuration by remember { mutableIntStateOf(minTrackDuration) }
+                AlertDialog(
+                    onDismissRequest = {
+                        tempMinTrackDuration = minTrackDuration
+                        showMinTrackDurationDialog = false
+                    },
+                    title = { Text(stringResource(R.string.scrobble_min_track_duration)) },
+                    text = {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(16.dp)
+                        ) {
+                            Text(
+                                text = "${tempMinTrackDuration}s",
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.padding(bottom = 16.dp)
+                            )
 
-            AlertDialog(
-                onDismissRequest = {
-                    tempMinTrackDuration = minTrackDuration
-                    showMinTrackDurationDialog = false
-                },
+                            LiquidSlider(
+                                value = tempMinTrackDuration.toFloat(),
+                                onValueChange = { tempMinTrackDuration = it.toInt() },
+                                valueRange = 10f..60f,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                onMinTrackDurationChange(tempMinTrackDuration)
+                                showMinTrackDurationDialog = false
+                            }
+                        ) {
+                            Text(stringResource(android.R.string.ok))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                tempMinTrackDuration = minTrackDuration
+                                showMinTrackDurationDialog = false
+                            }
+                        ) {
+                            Text(stringResource(android.R.string.cancel))
+                        }
+                    }
+                )
+            }
+
+            PreferenceEntry(
                 title = { Text(stringResource(R.string.scrobble_min_track_duration)) },
-                text = {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        Text(
-                            text = "${tempMinTrackDuration}s",
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
-
-                        LiquidSlider(
-                            value = tempMinTrackDuration.toFloat(),
-                            onValueChange = { tempMinTrackDuration = it.toInt() },
-                            valueRange = 10f..60f,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            onMinTrackDurationChange(tempMinTrackDuration)
-                            showMinTrackDurationDialog = false
-                        }
-                    ) {
-                        Text(stringResource(android.R.string.ok))
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            tempMinTrackDuration = minTrackDuration
-                            showMinTrackDurationDialog = false
-                        }
-                    ) {
-                        Text(stringResource(android.R.string.cancel))
-                    }
-                }
+                description = "${minTrackDuration}s",
+                onClick = { showMinTrackDurationDialog = true }
             )
-        }
 
-        PreferenceEntry(
-            title = { Text(stringResource(R.string.scrobble_min_track_duration)) },
-            description = "${minTrackDuration}s",
-            onClick = { showMinTrackDurationDialog = true }
-        )
+            var showScrobbleDelayPercentDialog by rememberSaveable { mutableStateOf(false) }
 
-        var showScrobbleDelayPercentDialog by rememberSaveable { mutableStateOf(false) }
+            if (showScrobbleDelayPercentDialog) {
+                var tempScrobbleDelayPercent by remember { mutableFloatStateOf(scrobbleDelayPercent) }
 
-        if (showScrobbleDelayPercentDialog) {
-            var tempScrobbleDelayPercent by remember { mutableFloatStateOf(scrobbleDelayPercent) }
+                AlertDialog(
+                    onDismissRequest = {
+                        tempScrobbleDelayPercent = scrobbleDelayPercent
+                        showScrobbleDelayPercentDialog = false
+                    },
+                    title = { Text(stringResource(R.string.scrobble_delay_percent)) },
+                    text = {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(16.dp)
+                        ) {
+                            Text(
+                                text = "${(tempScrobbleDelayPercent * 100).roundToInt()}%",
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.padding(bottom = 16.dp)
+                            )
 
-            AlertDialog(
-                onDismissRequest = {
-                    tempScrobbleDelayPercent = scrobbleDelayPercent
-                    showScrobbleDelayPercentDialog = false
-                },
+                            LiquidSlider(
+                                value = tempScrobbleDelayPercent,
+                                onValueChange = { tempScrobbleDelayPercent = it },
+                                valueRange = 0.3f..0.95f,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                onScrobbleDelayPercentChange(tempScrobbleDelayPercent)
+                                showScrobbleDelayPercentDialog = false
+                            }
+                        ) {
+                            Text(stringResource(android.R.string.ok))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                tempScrobbleDelayPercent = scrobbleDelayPercent
+                                showScrobbleDelayPercentDialog = false
+                            }
+                        ) {
+                            Text(stringResource(android.R.string.cancel))
+                        }
+                    }
+                )
+            }
+
+            PreferenceEntry(
                 title = { Text(stringResource(R.string.scrobble_delay_percent)) },
-                text = {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        Text(
-                            text = "${(tempScrobbleDelayPercent * 100).roundToInt()}%",
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
-
-                        LiquidSlider(
-                            value = tempScrobbleDelayPercent,
-                            onValueChange = { tempScrobbleDelayPercent = it },
-                            valueRange = 0.3f..0.95f,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            onScrobbleDelayPercentChange(tempScrobbleDelayPercent)
-                            showScrobbleDelayPercentDialog = false
-                        }
-                    ) {
-                        Text(stringResource(android.R.string.ok))
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            tempScrobbleDelayPercent = scrobbleDelayPercent
-                            showScrobbleDelayPercentDialog = false
-                        }
-                    ) {
-                        Text(stringResource(android.R.string.cancel))
-                    }
-                }
+                description = "${(scrobbleDelayPercent * 100).roundToInt()}%",
+                onClick = { showScrobbleDelayPercentDialog = true }
             )
-        }
 
-        PreferenceEntry(
-            title = { Text(stringResource(R.string.scrobble_delay_percent)) },
-            description = "${(scrobbleDelayPercent * 100).roundToInt()}%",
-            onClick = { showScrobbleDelayPercentDialog = true }
-        )
+            var showScrobbleDelaySecondsDialog by rememberSaveable { mutableStateOf(false) }
 
-        var showScrobbleDelaySecondsDialog by rememberSaveable { mutableStateOf(false) }
+            if (showScrobbleDelaySecondsDialog) {
+                var tempScrobbleDelaySeconds by remember { mutableIntStateOf(scrobbleDelaySeconds) }
 
-        if (showScrobbleDelaySecondsDialog) {
-            var tempScrobbleDelaySeconds by remember { mutableIntStateOf(scrobbleDelaySeconds) }
+                AlertDialog(
+                    onDismissRequest = {
+                        tempScrobbleDelaySeconds = scrobbleDelaySeconds
+                        showScrobbleDelaySecondsDialog = false
+                    },
+                    title = { Text(stringResource(R.string.scrobble_delay_minutes)) },
+                    text = {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(16.dp)
+                        ) {
+                            Text(
+                                text = "${tempScrobbleDelaySeconds}s",
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.padding(bottom = 16.dp)
+                            )
 
-            AlertDialog(
-                onDismissRequest = {
-                    tempScrobbleDelaySeconds = scrobbleDelaySeconds
-                    showScrobbleDelaySecondsDialog = false
-                },
+                            LiquidSlider(
+                                value = tempScrobbleDelaySeconds.toFloat(),
+                                onValueChange = { tempScrobbleDelaySeconds = it.toInt() },
+                                valueRange = 30f..360f,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                onScrobbleDelaySecondsChange(tempScrobbleDelaySeconds)
+                                showScrobbleDelaySecondsDialog = false
+                            }
+                        ) {
+                            Text(stringResource(android.R.string.ok))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                tempScrobbleDelaySeconds = scrobbleDelaySeconds
+                                showScrobbleDelaySecondsDialog = false
+                            }
+                        ) {
+                            Text(stringResource(android.R.string.cancel))
+                        }
+                    }
+                )
+            }
+
+            PreferenceEntry(
                 title = { Text(stringResource(R.string.scrobble_delay_minutes)) },
-                text = {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        Text(
-                            text = "${tempScrobbleDelaySeconds}s",
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
-
-                        LiquidSlider(
-                            value = tempScrobbleDelaySeconds.toFloat(),
-                            onValueChange = { tempScrobbleDelaySeconds = it.toInt() },
-                            valueRange = 30f..360f,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            onScrobbleDelaySecondsChange(tempScrobbleDelaySeconds)
-                            showScrobbleDelaySecondsDialog = false
-                        }
-                    ) {
-                        Text(stringResource(android.R.string.ok))
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            tempScrobbleDelaySeconds = scrobbleDelaySeconds
-                            showScrobbleDelaySecondsDialog = false
-                        }
-                    ) {
-                        Text(stringResource(android.R.string.cancel))
-                    }
-                }
+                description = "${scrobbleDelaySeconds}s",
+                onClick = { showScrobbleDelaySecondsDialog = true }
             )
         }
 
-        PreferenceEntry(
-            title = { Text(stringResource(R.string.scrobble_delay_minutes)) },
-            description = "${scrobbleDelaySeconds}s",
-            onClick = { showScrobbleDelaySecondsDialog = true }
-        )
     }
 
     SettingsTopAppBar(

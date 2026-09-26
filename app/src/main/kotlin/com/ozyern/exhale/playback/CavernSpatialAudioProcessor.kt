@@ -99,10 +99,18 @@ class CavernSpatialAudioProcessor : BaseAudioProcessor() {
         @Volatile
         var hiResUpsamplingEnabled: Boolean = true
 
-        // Tuning constants (Cavern defaults scaled for a subtle, safe upscale).
-        private const val WIDTH = 1.35f          // mid/side expansion factor
-        private const val CROSSFEED = 0.38f      // opposite-ear feed level
-        private const val AIR = 0.12f            // height/air shelf gain
+        // Tuning, live. These were constants; they are the three numbers the stage is made of,
+        // so the profile setting writes them here and the next buffer picks them up.
+        @Volatile private var WIDTH = 1.35f      // mid/side expansion factor
+        @Volatile private var CROSSFEED = 0.38f  // opposite-ear feed level
+        @Volatile private var AIR = 0.12f        // height/air shelf gain
+
+        /** Applies a stage size. Called from MusicService when the setting changes. */
+        fun applyProfile(width: Float, crossfeed: Float, air: Float) {
+            WIDTH = width
+            CROSSFEED = crossfeed
+            AIR = air
+        }
         private const val MAKEUP = 0.82f         // headroom so widening never clips
         private const val CROSSFEED_CUTOFF_HZ = 700f
         private const val AIR_CUTOFF_HZ = 7_000f

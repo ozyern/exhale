@@ -54,7 +54,9 @@ val SettingsDividerThickness = 1.dp
  * Settings stopped 6dp short of the text it was supposed to align with, which is exactly the kind
  * of near-miss that makes a grouped list read as an imitation of iOS rather than as iOS.
  */
-val SettingsDividerStartIndent = 66.dp
+// 16dp of row padding + a 30dp glyph + the 14dp gap: the hairline starts exactly where the
+// label does, now that the glyph has no tile to add width.
+val SettingsDividerStartIndent = 60.dp
 
 /**
  * The ground the group cards float on.

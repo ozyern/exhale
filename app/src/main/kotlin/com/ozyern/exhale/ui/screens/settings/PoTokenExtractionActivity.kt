@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -39,6 +38,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.R
 import com.ozyern.exhale.innertube.utils.PoTokenGenerator
 import com.ozyern.exhale.ui.component.LiquidBackButton
@@ -297,9 +297,9 @@ class PoTokenExtractionActivity : ComponentActivity() {
                 },
                 icon = {
                     if (isExtracting) {
-                        CircularProgressIndicator(
+                        LoadingRing(
                             modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
+                            stroke = 2.dp,
                         )
                     } else {
                         Icon(

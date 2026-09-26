@@ -10,6 +10,7 @@
 
 package com.ozyern.exhale.ui.player
 
+import com.ozyern.exhale.ui.component.nowPlayingAccessory
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.res.Configuration
@@ -724,13 +725,17 @@ fun BottomSheetPlayer(
             playerConnection.service.stopAndClearPlayback()
         },
         collapsedContent = {
-            // Hidden in State B - the floating bottom bar renders the mini-player pill there.
-            if (hideMiniPlayer) {
-                Unit
-            } else {
+            // State B puts the player inside the bar instead. It is not removed and re-added: it
+            // is the same accessory, and it flies from here into the bar's pill.
+            androidx.compose.animation.AnimatedVisibility(
+                visible = !hideMiniPlayer,
+                enter = androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.fadeOut(),
+            ) {
                 MiniPlayer(
                     position = position,
                     duration = duration,
+                    modifier = Modifier.nowPlayingAccessory(this),
                     pureBlack = pureBlack,
                     navController = navController,
                     state = state,

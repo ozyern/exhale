@@ -6,8 +6,11 @@
 
 package com.ozyern.exhale.ui.screens.settings
 
+import com.ozyern.exhale.ui.component.PreferenceGroupDivider
+import com.ozyern.exhale.ui.component.PreferenceGroup
 import android.annotation.SuppressLint
 import androidx.compose.ui.graphics.isSpecified
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.ui.component.SettingsGroupCornerRadius
 import com.ozyern.exhale.ui.component.SwitchPreference
 import com.ozyern.exhale.ui.component.PreferenceGroupTitle
@@ -69,7 +72,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
@@ -539,7 +541,8 @@ private fun TogetherSection(
         if (footer != null) {
             Text(
                 footer,
-                style = MaterialTheme.typography.bodySmall,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 2.dp, bottom = 4.dp),
             )
@@ -547,7 +550,6 @@ private fun TogetherSection(
     }
 }
 
-/** One glass card with the same margins and shape a settings entry has, for things that aren't one row. */
 /** One glass card with the same margins and shape a settings entry has, for things that aren't one row. */
 @Composable
 private fun TogetherCard(content: @Composable ColumnScope.() -> Unit) {
@@ -595,14 +597,11 @@ private fun PuckRow(
 ) {
     PreferenceEntry(
         title = { Text(title) },
+        // Keyed by the row's own title so the puck is the same colour every time this page opens,
+        // rather than changing with where the row happens to land in the tree.
+        iconTintKey = title,
         description = subtitle,
-        icon = {
-            Icon(
-                painterResource(icon),
-                null,
-                tint = if (accent.isSpecified) accent else androidx.compose.material3.LocalContentColor.current,
-            )
-        },
+        icon = { Icon(painterResource(icon), null) },
         trailingContent = trailing,
         onClick = onClick,
     )
@@ -633,7 +632,7 @@ private fun BareAction(
         contentAlignment = Alignment.Center,
     ) {
         if (loading) {
-            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = color)
+            LoadingRing(Modifier.size(20.dp), stroke = 2.dp, color = color)
         } else {
             Text(
                 text,
@@ -686,9 +685,11 @@ private fun TogetherHeader(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         TogetherOrb(active = isActive && !waiting, error = isError, busy = busy)
+        // Title 1, the size iOS gives a sheet's subject. 30sp was a hair over every other heading
+        // in the app, which made this page look like it came from somewhere else.
         Text(
             title,
-            fontSize = 30.sp,
+            fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier.padding(horizontal = 24.dp),
@@ -696,8 +697,8 @@ private fun TogetherHeader(
         Spacer(Modifier.height(4.dp))
         Text(
             subtitle,
-            fontSize = 16.sp,
-            lineHeight = 21.sp,
+            fontSize = 15.sp,
+            lineHeight = 20.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             modifier = Modifier.padding(horizontal = 32.dp),
@@ -720,59 +721,62 @@ private fun ModeSwitch(mode: TogetherMode, onMode: (TogetherMode) -> Unit, modif
     val haptic = LocalHapticFeedback.current
     Column(modifier.fillMaxWidth()) {
         PreferenceGroupTitle("Where your friends are")
-        androidx.compose.foundation.layout.BoxWithConstraints(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .height(38.dp)
-                .clip(RoundedCornerShape(11.dp))
-                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = if (dark) 0.10f else 0.07f))
-                .padding(3.dp),
-        ) {
-            val half = maxWidth / 2
-            val offset by animateDpAsState(
-                if (mode == TogetherMode.Nearby) 0.dp else half,
-                spring(dampingRatio = 0.78f, stiffness = 520f),
-                label = "togetherModeThumb",
-            )
-            Box(
+        PreferenceGroup {
+            androidx.compose.foundation.layout.BoxWithConstraints(
                 Modifier
-                    .offset(x = offset)
-                    .width(half)
-                    .fillMaxHeight()
-                    .shadow(if (dark) 0.dp else 2.dp, RoundedCornerShape(9.dp), clip = false)
-                    .clip(RoundedCornerShape(9.dp))
-                    .background(if (dark) Color.White.copy(alpha = 0.20f) else Color.White),
-            )
-            Row(Modifier.fillMaxSize()) {
-                for ((value, label) in listOf(TogetherMode.Nearby to "Nearby", TogetherMode.Online to "Online")) {
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                if (mode != value) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onMode(value)
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            label,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = if (mode == value) FontWeight.SemiBold else FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = if (dark) 0.10f else 0.07f))
+                    .padding(3.dp),
+            ) {
+                val half = maxWidth / 2
+                val offset by animateDpAsState(
+                    if (mode == TogetherMode.Nearby) 0.dp else half,
+                    spring(dampingRatio = 0.78f, stiffness = 520f),
+                    label = "togetherModeThumb",
+                )
+                Box(
+                    Modifier
+                        .offset(x = offset)
+                        .width(half)
+                        .fillMaxHeight()
+                        .shadow(if (dark) 0.dp else 2.dp, RoundedCornerShape(9.dp), clip = false)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(if (dark) Color.White.copy(alpha = 0.20f) else Color.White),
+                )
+                Row(Modifier.fillMaxSize()) {
+                    for ((value, label) in listOf(TogetherMode.Nearby to "Nearby", TogetherMode.Online to "Online")) {
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                    if (mode != value) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onMode(value)
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = if (mode == value) FontWeight.SemiBold else FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
                     }
                 }
             }
+            Text(
+                if (mode == TogetherMode.Nearby) "Phones on the same Wi-Fi. No server, nothing leaves the network."
+                else "Friends anywhere join with a short code, through a relay server.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp),
+            )
         }
-        Text(
-            if (mode == TogetherMode.Nearby) "Phones on the same Wi-Fi. No server, nothing leaves the network."
-            else "Friends anywhere join with a short code, through a relay server.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp),
-        )
+
     }
 }
 
@@ -1121,7 +1125,7 @@ private fun ActionRow(
         },
         icon = icon?.let { res -> { Icon(painterResource(res), null, tint = color) } },
         trailingContent = if (loading) {
-            { CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = color) }
+            { LoadingRing(Modifier.size(20.dp), stroke = 2.dp, color = color) }
         } else {
             null
         },

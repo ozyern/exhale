@@ -460,17 +460,11 @@ fun SuggestionItem(
 
     // Trailing glyphs were drawn at 16dp and 0.35 alpha — below the threshold at which a control
     // reads as a control at all, so the row looked like it had two smudges on it. Both are now
-    // legible, and the leading icon sits in a puck so the row has a proper icon column instead of
-    // a floating glyph.
+    // legible.
     val trailingTint = if (pureBlack) {
         Color.White.copy(alpha = 0.62f)
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    val puckColor = if (pureBlack) {
-        Color.White.copy(alpha = 0.08f)
-    } else {
-        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
     }
 
     Column(
@@ -488,11 +482,11 @@ fun SuggestionItem(
                 .clickable(onClick = onClick)
                 .padding(start = 12.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
         ) {
+            // A bare glyph, like every other row in the app now. The grey disc behind it was the
+            // last puck left standing after settings dropped theirs, and on a list of plain text
+            // queries it is the only shape on the screen.
             Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(percent = 50))
-                    .background(puckColor),
+                modifier = Modifier.size(34.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(

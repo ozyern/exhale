@@ -8,6 +8,7 @@
 
 package com.ozyern.exhale.ui.menu
 
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.models.toMediaMetadata
 import android.content.Intent
 import android.content.res.Configuration
@@ -24,7 +25,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -561,9 +561,9 @@ fun PlaylistMenu(
                             ListItem(
                                 headlineContent = { Text(text = stringResource(R.string.downloading)) },
                                 leadingContent = {
-                                    CircularProgressIndicator(
+                                    LoadingRing(
                                         modifier = Modifier.size(24.dp),
-                                        strokeWidth = 2.dp,
+                                        stroke = 2.dp,
                                     )
                                 },
                                 modifier = Modifier.clickable {

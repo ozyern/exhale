@@ -15,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.R
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -158,7 +159,7 @@ fun ChangelogScreen(
         ) {
             when {
                 isLoading -> {
-                    CircularProgressIndicator(
+                    LoadingRing(
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }

@@ -6,6 +6,7 @@
 
 package com.ozyern.exhale.playback
 
+import com.ozyern.exhale.BuildConfig
 import android.net.Uri
 import android.os.Bundle
 import androidx.core.net.toUri
@@ -101,6 +102,17 @@ object OplusLiveLyrics {
     const val MANIFEST_META_MEDIA_HISTORY =
         "io.github.andrealtb.lockscreenlyrics.OPLUS_MEDIA_HISTORY"
 
+    /**
+     * The community bridge's package.
+     *
+     * Its presence is the one reliable signal that the `lyricInfo` document will actually be drawn
+     * on an OPlus lock screen. Stock ColorOS 16.1 gates that surface on an OPlus-maintained remote
+     * config of partner players - verified on device: the document reaches the platform session
+     * under every key and SystemUI still renders nothing - and the bridge exists precisely to patch
+     * those checks out.
+     */
+    const val BRIDGE_PACKAGE = "io.github.andrealtb.lockscreenlyrics"
+
     /** A line-level LRC timestamp: `[m:ss]`, `[mm:ss.xx]`, `[mm:ss:xxx]`. */
     private val LineTimeRegex = Regex("""\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?]""")
 
@@ -152,10 +164,36 @@ object OplusLiveLyrics {
         songName: String,
         artist: String,
         lyrics: String?,
+        album: String? = null,
+        durationMs: Long = 0L,
     ): String? {
         val lrc = toLrc(lyrics) ?: return null
-        return buildPayloadFromLrc(songId, songName, artist, lrc, lyrics)
+        return buildPayloadFromLrc(songId, songName, artist, lrc, lyrics, album, durationMs)
     }
+
+    /** Bumped for every *new* document, so a reader can drop one that arrives out of order. */
+    private val sessionGeneration = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /**
+     * Generations already handed out, keyed by the document's content.
+     *
+     * The counter has to stay off the hot path of *re*-building the same document. Publication is
+     * idempotent by string comparison — MusicService asks "does the current item already carry
+     * exactly this payload?" and skips the forced metadata rewrite when it does — so a field that
+     * changed on every call made that question always answer no, and every track took the forced
+     * path. The OPlus spec's one hard rule is that a second write close behind the first is how the
+     * ROM decides to discard it, which is a lock screen showing nothing at all.
+     *
+     * So the generation is a property of the document, not of the call: build the same track's
+     * lyrics twice and the bytes match, while a genuinely new document still gets a higher number
+     * than everything before it. Bounded, because this is per playback session and the only thing
+     * worth remembering is the recent past.
+     */
+    private val generations = java.util.Collections.synchronizedMap(
+        object : LinkedHashMap<String, Int>(16, 0.75f, true) {
+            override fun removeEldestEntry(eldest: Map.Entry<String, Int>?): Boolean = size > 32
+        }
+    )
 
     /**
      * The document as [buildPayload] would emit it, from an already-normalised [lrc].
@@ -169,13 +207,47 @@ object OplusLiveLyrics {
         artist: String,
         lrc: String,
         rawLyrics: String?,
+        album: String? = null,
+        durationMs: Long = 0L,
     ): String {
+        // The full document the ColorOS Live Lyrics contract describes, not just the four fields
+        // the lock screen needs to draw a line.
+        //
+        // `trackKey` and `sessionGeneration` are what let the reader throw away a payload that
+        // arrives after the song has already changed — without them a slow lyric fetch can paint
+        // the previous song's words over the new one, which on Live Space is the failure people
+        // report as "lyrics stuck on the last track". `provider` and `source` are diagnostics, so
+        // a log from someone else's phone says which app and which build produced the document.
+        val identity = listOf(songId, songName, artist, lrc.hashCode().toString()).joinToString("|")
+        val generation = generations.getOrPut(identity) { sessionGeneration.incrementAndGet() }
+        // `lyricType` and `noLyric` are the two fields the *stock* ColorOS lyric page reads before
+        // it will draw anything: the first says this is the standard timed payload, the second that
+        // there is a usable timeline. The document was complete in every other respect and still
+        // showed nothing, because a reader that cannot tell a lyric payload from an empty one falls
+        // back to its own "no lyrics" state.
         return JSONObject()
             .put("songName", songName)
             .put("artist", artist)
+            .apply { album?.takeIf { it.isNotBlank() }?.let { put("album", it) } }
             .put("songId", songId)
+            .put("lyricType", 0)
+            .put("noLyric", false)
             .put("lyric", lrc)
             .apply { rawLyrics?.let { raw -> toEnhancedLrc(raw)?.let { put("rawLyric", it) } } }
+            .put("provider", BuildConfig.APPLICATION_ID)
+            .put("source", "${BuildConfig.APPLICATION_ID}-v${BuildConfig.VERSION_NAME}")
+            // Identity in the order the contract recommends: media id first, then title, artist
+            // and duration, so a reader with no stable id can still match on the triple.
+            .put(
+                "trackKey",
+                listOfNotNull(
+                    songId,
+                    songName.lowercase(),
+                    artist.lowercase(),
+                    durationMs.takeIf { it > 0L }?.let { ms -> (ms / 1000).toString() },
+                ).joinToString("|"),
+            )
+            .put("sessionGeneration", generation)
             .toString()
     }
 
@@ -262,7 +334,7 @@ object OplusLiveLyrics {
         val totalMs = (seconds * 1000.0).toLong().coerceAtLeast(0L)
         val minutes = totalMs / 60_000
         val secs = (totalMs % 60_000) / 1000
-        val centis = (totalMs % 1000) / 10
-        return "%s%02d:%02d.%02d%s".format(open, minutes, secs, centis, close)
+        val millis = totalMs % 1000
+        return "%s%02d:%02d.%03d%s".format(open, minutes, secs, millis, close)
     }
 }

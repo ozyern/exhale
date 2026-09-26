@@ -6,6 +6,16 @@
 
 package com.ozyern.exhale.ui.utils
 
+import coil3.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
+import com.ozyern.exhale.ui.component.SettingsGroupCornerRadius
+import com.ozyern.exhale.ui.component.settingsGlassGroup
 import android.text.format.Formatter
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -90,6 +100,66 @@ fun ShowMediaInfo(videoId: String) {
         Toast.makeText(context, R.string.copied, Toast.LENGTH_SHORT).show()
     }
 
+    val unknown = stringResource(R.string.unknown)
+
+    // What the page is about, then what is known about it.
+    //
+    // It used to open on a centred "Details" banner and a card of stacked label/value pairs, with
+    // the song itself nowhere on the page - you could read nine facts about a track without being
+    // told which track. An iOS info sheet leads with the item: its artwork, its name, who made it.
+    val trackFacts = buildList {
+        val current = song
+        if (current != null) {
+            add(stringResource(R.string.song_title) to current.title)
+            add(stringResource(R.string.song_artists) to current.artists.joinToString { it.name })
+            add(stringResource(R.string.media_id) to current.id)
+        }
+    }
+
+    val audioFacts = buildList {
+        val format = currentFormat
+        if (format != null) {
+            add("Itag" to (format.itag?.toString() ?: unknown))
+            add(stringResource(R.string.mime_type) to (format.mimeType ?: unknown))
+            add(stringResource(R.string.codecs) to (format.codecs ?: unknown))
+            add(
+                stringResource(R.string.bitrate) to
+                    (format.bitrate?.let { "${it / 1000} Kbps" } ?: unknown)
+            )
+            add(
+                stringResource(R.string.sample_rate) to
+                    (format.sampleRate?.let { "$it Hz" } ?: unknown)
+            )
+            add(
+                stringResource(R.string.volume) to
+                    "${((playerConnection?.player?.volume ?: 1f) * 100).toInt()}%"
+            )
+            add(
+                stringResource(R.string.file_size) to
+                    (format.contentLength?.let { Formatter.formatShortFileSize(context, it) } ?: unknown)
+            )
+        }
+    }
+
+    val statFacts = buildList {
+        val media = info
+        if (media != null) {
+            add(stringResource(R.string.subscribers) to (media.subscribers ?: unknown))
+            add(
+                stringResource(R.string.views) to
+                    (media.viewCount?.toInt()?.let { numberFormatter(it) } ?: unknown)
+            )
+            add(
+                stringResource(R.string.likes) to
+                    (media.like?.toInt()?.let { numberFormatter(it) } ?: unknown)
+            )
+            add(
+                stringResource(R.string.dislikes) to
+                    (media.dislike?.toInt()?.let { numberFormatter(it) } ?: unknown)
+            )
+        }
+    }
+
     LazyColumn(
         state = rememberLazyListState(),
         modifier = Modifier
@@ -98,170 +168,165 @@ fun ShowMediaInfo(videoId: String) {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-
-        /* ============================================================
-         * DETAILS SECTION
-         * ============================================================ */
-
-        if (song != null) {
-
-            item {
-                SectionTitle(
-                    icon = R.drawable.info,
-                    title = stringResource(R.string.details)
-                )
-            }
-
-            item {
-
-                ElevatedCard(
-                    shape = MaterialTheme.shapes.extraLarge,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-
-                    Column(Modifier.padding(20.dp)) {
-
-                        val baseList = listOf(
-                            Triple(R.drawable.music_note, stringResource(R.string.song_title), song?.title),
-                            Triple(R.drawable.person, stringResource(R.string.song_artists),
-                                song?.artists?.joinToString { it.name }),
-                            Triple(R.drawable.tag, stringResource(R.string.media_id), song?.id)
-                        )
-
-                        val extendedList = baseList + if (currentFormat != null) {
-                            listOf(
-                                Triple(R.drawable.code, "Itag", currentFormat?.itag?.toString()),
-                                Triple(R.drawable.memory, stringResource(R.string.mime_type), currentFormat?.mimeType),
-                                Triple(R.drawable.tune, stringResource(R.string.codecs), currentFormat?.codecs),
-                                Triple(R.drawable.graphic_eq, stringResource(R.string.bitrate),
-                                    currentFormat?.bitrate?.let { "${it / 1000} Kbps" }),
-                                Triple(R.drawable.equalizer, stringResource(R.string.sample_rate),
-                                    currentFormat?.sampleRate?.let { "$it Hz" }),
-                                Triple(R.drawable.volume_up, stringResource(R.string.volume),
-                                    "${(playerConnection?.player?.volume?.times(100))?.toInt()}%"),
-                                Triple(
-                                    R.drawable.folder,
-                                    stringResource(R.string.file_size),
-                                    currentFormat?.contentLength?.let {
-                                        Formatter.formatShortFileSize(context, it)
-                                    }
-                                )
-                            )
-                        } else emptyList()
-
-                        extendedList.forEach { (icon, label, value) ->
-
-                            val text = value ?: stringResource(R.string.unknown)
-
-                            MediaRow(
-                                icon = icon,
-                                label = label,
-                                value = text,
-                                onClick = { copy(text) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        /* ============================================================
-         * MEDIA INFO
-         * ============================================================ */
-
-        item {
-            Spacer(Modifier.height(24.dp))
-            SectionTitle(
-                icon = R.drawable.description,
-                title = stringResource(R.string.information)
+        item(key = "header") {
+            MediaInfoHeader(
+                thumbnailUrl = song?.thumbnailUrl ?: info?.let { null },
+                title = song?.title ?: info?.title.orEmpty(),
+                subtitle = song?.artists?.joinToString { it.name } ?: info?.author.orEmpty(),
             )
         }
 
-        if (info != null) {
-
-            if (song == null) {
-                item {
-                    InfoBlock(
-                        icon = R.drawable.music_note,
-                        label = "",
-                        text = info?.title ?: ""
-                    )
-                }
+        if (trackFacts.isNotEmpty()) {
+            item(key = "trackHeader") { SectionTitle(stringResource(R.string.details)) }
+            item(key = "track") {
+                FactGroup(facts = trackFacts, onCopy = ::copy)
             }
+        }
 
-            item {
-                InfoBlock(
-                    icon = R.drawable.person,
-                    label = stringResource(R.string.artists),
-                    text = info?.author ?: ""
-                )
+        if (audioFacts.isNotEmpty()) {
+            item(key = "audioHeader") { SectionTitle(stringResource(R.string.audio)) }
+            item(key = "audio") {
+                FactGroup(facts = audioFacts, onCopy = ::copy)
             }
+        }
 
-            item {
-                InfoBlock(
-                    icon = R.drawable.description,
-                    label = stringResource(R.string.description),
-                    text = info?.description ?: ""
-                )
-            }
-
-            item {
-                ElevatedCard(
-                    shape = MaterialTheme.shapes.extraLarge,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 12.dp)
-                ) {
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-
-                        StatColumn(
-                            R.drawable.group,
-                            stringResource(R.string.subscribers),
-                            info?.subscribers ?: ""
-                        )
-
-                        StatColumn(
-                            R.drawable.visibility,
-                            stringResource(R.string.views),
-                            info?.viewCount?.toInt()?.let { numberFormatter(it) } ?: ""
-                        )
-
-                        StatColumn(
-                            R.drawable.thumbup,
-                            stringResource(R.string.likes),
-                            info?.like?.toInt()?.let { numberFormatter(it) } ?: ""
-                        )
-
-                        StatColumn(
-                            R.drawable.thumbdown,
-                            stringResource(R.string.dislikes),
-                            info?.dislike?.toInt()?.let { numberFormatter(it) } ?: ""
-                        )
-                    }
-                }
-            }
-
-        } else {
-
-            item {
+        if (info == null) {
+            item(key = "loading") {
                 ShimmerHost {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(24.dp),
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        TextPlaceholder()
+                    Column(Modifier.padding(top = 20.dp)) {
+                        repeat(3) { TextPlaceholder() }
                     }
+                }
+            }
+        } else {
+            if (statFacts.isNotEmpty()) {
+                item(key = "statsHeader") { SectionTitle(stringResource(R.string.information)) }
+                item(key = "stats") {
+                    FactGroup(facts = statFacts, onCopy = ::copy)
+                }
+            }
+
+            val description = info?.description.orEmpty()
+            if (description.isNotBlank()) {
+                item(key = "descriptionHeader") {
+                    SectionTitle(stringResource(R.string.description))
+                }
+                item(key = "description") {
+                    DescriptionGroup(text = description)
                 }
             }
         }
+
+        item(key = "tail") { Spacer(Modifier.height(32.dp)) }
+    }
+}
+
+/**
+ * The song this page is about: artwork, name, artist.
+ *
+ * The same shape every iOS info sheet opens with, and the reason is practical - the facts below
+ * are a list of strings with no context of their own, so without this the page could be about
+ * anything.
+ */
+@Composable
+private fun MediaInfoHeader(
+    thumbnailUrl: String?,
+    title: String,
+    subtitle: String,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 20.dp, bottom = 4.dp),
+    ) {
+        AsyncImage(
+            model = thumbnailUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(64.dp)
+                .clip(RoundedCornerShape(10.dp)),
+        )
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (subtitle.isNotBlank()) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/** A grouped table of label/value pairs, hairlines between them and nowhere else. */
+@Composable
+private fun FactGroup(
+    facts: List<Pair<String, String>>,
+    onCopy: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .settingsGlassGroup(RoundedCornerShape(SettingsGroupCornerRadius)),
+    ) {
+        facts.forEachIndexed { index, (label, value) ->
+            if (index > 0) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 16.dp),
+                    thickness = 0.5.dp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                )
+            }
+            MediaRow(label = label, value = value, onClick = { onCopy(value) })
+        }
+    }
+}
+
+/**
+ * The description, which is prose and not a fact.
+ *
+ * Collapsed to four lines with a "more" that opens it, because a YouTube description can be two
+ * screens of timestamps and hashtags and it used to push every table on this page below the fold.
+ */
+@Composable
+private fun DescriptionGroup(text: String) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .settingsGlassGroup(RoundedCornerShape(SettingsGroupCornerRadius))
+            .clickable { expanded = !expanded }
+            .padding(16.dp),
+    ) {
+        Text(
+            text = text,
+            fontSize = 15.sp,
+            lineHeight = 21.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = if (expanded) Int.MAX_VALUE else 4,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = stringResource(if (expanded) R.string.less else R.string.more),
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 
@@ -270,109 +335,54 @@ fun ShowMediaInfo(videoId: String) {
  * ============================================================ */
 
 @Composable
-private fun SectionTitle(icon: Int, title: String) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 12.dp),
-        horizontalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            painter = painterResource(icon),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium)
-    }
+private fun SectionTitle(title: String) {
+    // A grouped-table header: left, small, one tone down, no icon. Centred with a coloured glyph
+    // beside it, each heading was competing with the card it introduced - and there are five of
+    // them on this sheet, so the page read as five little banners with data squeezed between.
+    Text(
+        text = title,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 4.dp, top = 18.dp, bottom = 8.dp),
+    )
 }
 
 @Composable
 private fun MediaRow(
-    icon: Int,
     label: String,
     value: String,
     onClick: () -> Unit
 ) {
-    Column(Modifier.padding(vertical = 6.dp)) {
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                painter = painterResource(icon),
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.width(6.dp))
-            Text(label, style = MaterialTheme.typography.labelMedium)
-        }
-
-        Text(
-            text = value,
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onClick
-                )
-                .padding(start = 24.dp, top = 4.dp)
-        )
-    }
-}
-
-@Composable
-private fun InfoBlock(icon: Int, label: String, text: String) {
-
-    Column(
+    // Label and value on one line, the way a table of facts is read: the eye runs down the left
+    // for the thing it wants and right for the answer. Stacked - label, then value on its own
+    // line under an indent - each fact took two lines and thirty of them took a scroll.
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 12.dp)
-    ) {
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-
-            Icon(
-                painter = painterResource(icon),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
             )
-
-            Spacer(Modifier.width(8.dp))
-
-            if (label.isNotEmpty()) {
-                Text(label, style = MaterialTheme.typography.labelMedium)
-            }
-        }
-
-        BasicText(
-            text = text,
-            style = MaterialTheme.typography.titleMedium.copy(
-                color = MaterialTheme.colorScheme.onBackground
-            ),
-            modifier = Modifier.padding(start = 28.dp, top = 6.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Text(
+            text = label,
+            fontSize = 15.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.width(16.dp))
+        Text(
+            text = value,
+            fontSize = 15.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.End,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
         )
     }
 }
 
-@Composable
-private fun StatColumn(icon: Int, label: String, value: String) {
 
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-
-        Icon(
-            painter = painterResource(icon),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary
-        )
-
-        Spacer(Modifier.height(6.dp))
-
-        Text(label, style = MaterialTheme.typography.labelMedium)
-
-        Spacer(Modifier.height(4.dp))
-
-        Text(value, style = MaterialTheme.typography.titleSmall)
-    }
-}

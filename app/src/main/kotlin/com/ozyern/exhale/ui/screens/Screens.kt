@@ -19,6 +19,14 @@ sealed class Screens(
     @DrawableRes val iconIdInactive: Int,
     @DrawableRes val iconIdActive: Int,
     val route: String,
+    /**
+     * What the dock calls this tab.
+     *
+     * Defaults to the page's own name and stays that way unless a name is genuinely unusable at a
+     * caption size - "Mood & Genres" is not: it fits once the strip's tabs are measured on an even
+     * pitch. Shortening a label to dodge a layout bug hides the bug.
+     */
+    @StringRes val dockTitleId: Int = titleId,
 ) {
     object Home : Screens(
         titleId = R.string.home,

@@ -53,7 +53,7 @@ fun NavigationTitle(
             }
             // Generous Apple-style breathing room: lots of air ABOVE each section header,
             // a little below before its row content starts.
-            .padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 8.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp)
     ) {
         // Apple's shelf headers carry no artwork: the title and its chevron are the whole header.
 

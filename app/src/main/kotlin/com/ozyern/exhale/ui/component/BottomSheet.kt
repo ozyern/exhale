@@ -81,14 +81,17 @@ import androidx.compose.ui.util.fastRoundToInt
 private const val PILL_VERTICAL_SQUASH = 0.32f
 
 // The window over which the full player and the mini pill trade places, as a fraction of the
-// progress range (0→1). Small on purpose: geometry carries the gesture and the fade is only the
-// hand-off, not a crossfade that hides the transformation.
+// progress range (0→1). Geometry still carries the gesture - this is a hand-off, not a
+// crossfade that hides the transformation - but at 0.16 the full player was solid by a sixth of
+// the way up, so most of an expansion was a complete, miniature player inflating. Over 0.28 the
+// player arrives *into* the space the morph has already opened, which is the difference between a
+// window growing and a screenshot being scaled.
 //
 // Both layers MUST ramp over this same window, in opposite directions, so their alphas sum to 1 at
 // every p. They used to ramp over different windows (content over 0.12, pill over 0.25), which left
 // a band around p≈0.15 where both were near-opaque and stacked — two different layouts of the same
 // song superimposed. That double image was the single most visible flaw in the collapse.
-private const val MORPH_HANDOFF_FRACTION = 0.16f
+private const val MORPH_HANDOFF_FRACTION = 0.28f
 
 /**
  * Bottom Sheet

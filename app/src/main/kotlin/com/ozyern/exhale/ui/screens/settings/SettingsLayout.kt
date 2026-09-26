@@ -1,5 +1,6 @@
 package com.ozyern.exhale.ui.screens.settings
 
+import androidx.compose.foundation.layout.asPaddingValues
 import com.ozyern.exhale.R
 import androidx.compose.ui.res.stringResource
 import androidx.compose.animation.AnimatedVisibility
@@ -186,7 +187,7 @@ private fun CompactSettingsLayout(
                     WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
                 )
             ),
-        contentPadding = PaddingValues(top = topPadding, bottom = SettingsBottomSearchClearance),
+        contentPadding = PaddingValues(top = topPadding, bottom = settingsBottomClearance()),
     ) {
         // Search lives at the bottom of the screen now, as it does in iOS Settings.
         item(key = "hero") {
@@ -346,7 +347,7 @@ private fun MediumSettingsLayout(
             modifier = Modifier
                 .weight(SettingsDimensions.MediumPaneLeftWeight)
                 .fillMaxHeight(),
-            contentPadding = PaddingValues(top = topPadding, bottom = SettingsBottomSearchClearance),
+            contentPadding = PaddingValues(top = topPadding, bottom = settingsBottomClearance()),
         ) {
             item(key = "hero") {
                 AnimatedVisibility(
@@ -423,7 +424,7 @@ private fun MediumSettingsLayout(
             modifier = Modifier
                 .weight(SettingsDimensions.MediumPaneRightWeight)
                 .fillMaxHeight(),
-            contentPadding = PaddingValues(top = topPadding, bottom = SettingsBottomSearchClearance),
+            contentPadding = PaddingValues(top = topPadding, bottom = settingsBottomClearance()),
         ) {
             if (state.isSearchActive && !state.hasSearchResults) {
                 item(key = "empty") {
@@ -484,7 +485,7 @@ private fun ExpandedSettingsLayout(
             modifier = Modifier
                 .width(SettingsDimensions.ExpandedListPaneWidth)
                 .fillMaxHeight(),
-            contentPadding = PaddingValues(top = topPadding, bottom = SettingsBottomSearchClearance),
+            contentPadding = PaddingValues(top = topPadding, bottom = settingsBottomClearance()),
         ) {
             item(key = "hero") {
                 AnimatedVisibility(
@@ -561,7 +562,7 @@ private fun ExpandedSettingsLayout(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight(),
-            contentPadding = PaddingValues(top = topPadding, bottom = SettingsBottomSearchClearance),
+            contentPadding = PaddingValues(top = topPadding, bottom = settingsBottomClearance()),
         ) {
             if (state.isSearchActive && !state.hasSearchResults) {
                 item(key = "empty") {
@@ -594,3 +595,17 @@ private fun ExpandedSettingsLayout(
 
 /** Space under the last group so the floating search field never covers it. */
 internal val SettingsBottomSearchClearance = 104.dp
+
+/**
+ * How much room the list leaves at its foot.
+ *
+ * The flat 104dp assumed the search capsule was the only thing floating over the bottom of the
+ * page. With a song playing there is a 64dp mini player above it as well, so the last group in
+ * every settings page slid under the two of them - a row half-hidden behind a translucent capsule,
+ * which is what "the search bar is sitting on Storage" was. The player-aware insets already know
+ * the height of that chrome, so the clearance follows it instead of guessing.
+ */
+@Composable
+internal fun settingsBottomClearance(): Dp =
+    SettingsBottomSearchClearance +
+        LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding()

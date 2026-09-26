@@ -234,20 +234,33 @@ fun CurrentSongHeader(
             )
         }
 
-        Spacer(modifier = Modifier.height(18.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
+        // "Playing Next", and four small controls.
+        //
+        // These were four full-width capsules spread across the sheet, each 36dp tall on its own
+        // wash - a Material segmented control, and the loudest thing on a sheet whose subject is
+        // the list below it. Apple's queue puts the heading on the left and the switches on the
+        // right as bare glyphs, sized like bar buttons; the queue is what the sheet is for, so the
+        // controls get the corner rather than a band across the top.
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            Text(
+                text = stringResource(R.string.queue_playing_next),
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = onBackgroundColor,
+                modifier = Modifier.weight(1f),
+            )
             QueueSwitch(
                 icon = R.drawable.shuffle,
                 label = "Shuffle",
                 on = shuffleModeEnabled,
                 foreground = onBackgroundColor,
                 onClick = onShuffleClick,
-                modifier = Modifier.weight(1f),
             )
             QueueSwitch(
                 icon = when (repeatMode) {
@@ -259,7 +272,6 @@ fun CurrentSongHeader(
                 on = repeatMode != Player.REPEAT_MODE_OFF,
                 foreground = onBackgroundColor,
                 onClick = onRepeatClick,
-                modifier = Modifier.weight(1f),
             )
             QueueSwitch(
                 icon = R.drawable.all_inclusive,
@@ -267,7 +279,6 @@ fun CurrentSongHeader(
                 on = infiniteQueueEnabled,
                 foreground = onBackgroundColor,
                 onClick = onInfiniteQueueClick,
-                modifier = Modifier.weight(1f),
             )
             // Reordering and swipe-to-remove are off while this is locked; unlocking is the list's "Edit".
             QueueSwitch(
@@ -276,7 +287,6 @@ fun CurrentSongHeader(
                 on = !locked,
                 foreground = onBackgroundColor,
                 onClick = onLockClick,
-                modifier = Modifier.weight(1f),
             )
         }
 
@@ -332,14 +342,16 @@ private fun QueueSwitch(
 ) {
     // Glass on the song's colour: faint when off, brighter when on — Apple's queue buttons, which never
     // turn a solid accent because the row sits on artwork that already has a colour of its own.
-    val fill by animateColorAsState(foreground.copy(alpha = if (on) 0.34f else 0.12f), tween(220), label = "queueSwitchFill")
+    val fill by animateColorAsState(foreground.copy(alpha = if (on) 0.30f else 0.10f), tween(220), label = "queueSwitchFill")
     val ink by animateColorAsState(if (on) foreground else foreground.copy(alpha = 0.72f), tween(220), label = "queueSwitchInk")
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.95f else 1f, spring(dampingRatio = 0.6f, stiffness = 700f), label = "queueSwitchPress")
     Row(
         modifier = modifier
-            .height(36.dp)
+            // Square, so four of them read as a set of buttons rather than four pills of
+            // whatever width the row had left over.
+            .size(40.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -351,7 +363,7 @@ private fun QueueSwitch(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(painterResource(icon), contentDescription = null, tint = ink, modifier = Modifier.size(20.dp))
+        Icon(painterResource(icon), contentDescription = null, tint = ink, modifier = Modifier.size(19.dp))
     }
 }
 
@@ -474,7 +486,7 @@ fun SleepTimerDialog(
         else -> 0f
     }.coerceIn(0f, 1f)
 
-    DefaultDialog(onDismiss = onDismiss) {
+    DefaultDialog(onDismiss = onDismiss, wide = true) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxWidth(),
@@ -532,30 +544,21 @@ fun SleepTimerDialog(
                     // to silently change which timer you set, and a control that answers a
                     // different question than the one you asked is worse than no control.
                     if (timedMode) {
-                        FilledTonalButton(
+                        SleepTimerAction(
+                            label = stringResource(
+                                R.string.sleep_timer_extend,
+                                SleepTimerExtendMinutes,
+                            ),
+                            destructive = false,
                             onClick = { timer?.extend(SleepTimerExtendMinutes) },
-                            contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
-                        ) {
-                            Text(
-                                text = stringResource(
-                                    R.string.sleep_timer_extend,
-                                    SleepTimerExtendMinutes,
-                                ),
-                                maxLines = 1,
-                            )
-                        }
-                    }
-
-                    TextButton(
-                        onClick = onCancelTimer,
-                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.sleep_timer_stop),
-                            color = MaterialTheme.colorScheme.error,
-                            maxLines = 1,
                         )
                     }
+
+                    SleepTimerAction(
+                        label = stringResource(R.string.sleep_timer_stop),
+                        destructive = true,
+                        onClick = onCancelTimer,
+                    )
                 }
             }
 
@@ -737,14 +740,50 @@ private fun SleepTimerDial(
 
 @Composable
 private fun SleepTimerSectionLabel(text: String) {
+    // Sentence case, footnote size, one tone down - a grouped-table header, not a banner. Set in
+    // caps with tracking it was the loudest text on a sheet whose whole job is to be read in the
+    // dark on the way to sleep.
     Text(
-        text = text.uppercase(),
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = FontWeight.SemiBold,
-        letterSpacing = 0.08.em,
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
     )
+}
+
+/**
+ * The timer's two live actions.
+ *
+ * Both capsules, the same height, told apart by colour rather than by shape: Material gave one of
+ * them a filled tonal button and the other a bare text button, so "add fifteen minutes" looked
+ * like the real control and "stop the timer" looked like a footnote. Stop is red on a red wash -
+ * destructive, but not a solid red slab, which on this sheet would be the only loud thing on it.
+ */
+@Composable
+private fun SleepTimerAction(
+    label: String,
+    destructive: Boolean,
+    onClick: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val tint = if (destructive) scheme.error else scheme.primary
+    Box(
+        modifier = Modifier
+            .height(44.dp)
+            .clip(CircleShape)
+            .background(tint.copy(alpha = 0.14f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = tint,
+            maxLines = 1,
+        )
+    }
 }
 
 /**

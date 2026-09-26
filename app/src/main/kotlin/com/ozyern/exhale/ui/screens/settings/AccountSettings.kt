@@ -8,6 +8,8 @@
 
 package com.ozyern.exhale.ui.screens.settings
 
+import com.ozyern.exhale.ui.component.LoadingRing
+import com.ozyern.exhale.ui.component.settingsGlassGroup
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -29,6 +31,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,8 +46,6 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -70,7 +71,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
@@ -220,9 +220,13 @@ fun AccountSettings(
                 },
             )
 
-            // What is actually in the library, directly under whose library it is. The sheet
-            // used to go straight from a name to a row of navigation shortcuts, which meant the
-            // one screen in the app that is entirely about *this account* said nothing about it.
+            // What is in the library, as three numbers you can tap.
+            //
+            // Put back after a spell without it. The sheet with identity-then-rows was correct and
+            // completely inert: a portrait, a name, and four places to go, on a surface that is
+            // mostly empty. These are the only facts on the sheet that change, they are the ones a
+            // person opens it to glance at, and each third opens the library already filtered to
+            // what it counts - so the strip is a shortcut, not a readout.
             AccountLibraryStrip(
                 songs = librarySongs,
                 artists = libraryArtists,
@@ -230,14 +234,56 @@ fun AccountSettings(
                 onOpen = openLibrary,
             )
 
-            // The three things people actually open this sheet for, as tiles rather than as rows
-            // buried in three separate captioned groups further down.
-            AccountQuickTiles(
-                hasUpdate = hasUpdate,
-                onSoundChem = { onClose(); navController.navigate("stats") },
-                onHistory = { onClose(); navController.navigate("history") },
-                onSettings = { onClose(); navController.navigate("settings") },
-            )
+            // Where this sheet goes, as a grouped list.
+            //
+            // It used to be a strip of library counts and then three square tiles. iOS puts none
+            // of that in an account sheet: identity at the top, then rows. The counts said nothing
+            // anyone acts on, and the tiles were three different shapes of the same thing a row
+            // already is.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .settingsGlassGroup(RoundedCornerShape(SettingsGroupCornerRadius)),
+            ) {
+                SettingsRow(
+                    item = SettingsItem(
+                        icon = painterResource(R.drawable.stats),
+                        title = stringResource(R.string.sound_chem),
+                        accentColor = IosSystemColors[4],
+                        onClick = { onClose(); navController.navigate("stats") },
+                    ),
+                    showDivider = true,
+                )
+                SettingsRow(
+                    item = SettingsItem(
+                        icon = painterResource(R.drawable.history),
+                        title = stringResource(R.string.history),
+                        accentColor = IosSystemColors[0],
+                        onClick = { onClose(); navController.navigate("history") },
+                    ),
+                    showDivider = true,
+                )
+                SettingsRow(
+                    item = SettingsItem(
+                        icon = painterResource(R.drawable.library_music),
+                        title = stringResource(R.string.filter_library),
+                        accentColor = IosSystemColors[1],
+                        onClick = { openLibrary(LibraryFilter.LIBRARY) },
+                    ),
+                    showDivider = true,
+                )
+                SettingsRow(
+                    item = SettingsItem(
+                        icon = painterResource(R.drawable.settings),
+                        title = stringResource(R.string.settings),
+                        accentColor = IosSystemColors[8],
+                        showUpdateIndicator = hasUpdate,
+                        subtitle = if (hasUpdate) stringResource(R.string.new_version_available) else null,
+                        onClick = { onClose(); navController.navigate("settings") },
+                    ),
+                    showDivider = false,
+                )
+            }
 
             // Sign in / out is NOT a fourth tile.
             //
@@ -256,43 +302,22 @@ fun AccountSettings(
             )
 
             if (showSignOutConfirm) {
-                AlertDialog(
-                    onDismissRequest = { showSignOutConfirm = false },
-                    shape = RoundedCornerShape(28.dp),
-                    title = {
-                        Text(
-                            text = stringResource(R.string.account_signout_title),
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
+                // The app's iOS alert rather than Material's: 290dp wide, centred 17sp title,
+                // hairline-divided buttons. A 28dp-radius Material dialog with left-aligned text
+                // and two text buttons in the corner is the other design language answering a
+                // question this sheet asked.
+                IosAlert(
+                    title = stringResource(R.string.account_signout_title),
+                    message = stringResource(R.string.account_signout_message),
+                    confirmText = stringResource(R.string.logout),
+                    destructive = true,
+                    dismissText = stringResource(android.R.string.cancel),
+                    onConfirm = {
+                        showSignOutConfirm = false
+                        onInnerTubeCookieChange("")
+                        forgetAccount(context)
                     },
-                    text = {
-                        Text(
-                            text = stringResource(R.string.account_signout_message),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                showSignOutConfirm = false
-                                onInnerTubeCookieChange("")
-                                forgetAccount(context)
-                            },
-                        ) {
-                            Text(
-                                text = stringResource(R.string.logout),
-                                color = MaterialTheme.colorScheme.error,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showSignOutConfirm = false }) {
-                            Text(stringResource(android.R.string.cancel))
-                        }
-                    },
+                    onDismiss = { showSignOutConfirm = false },
                 )
             }
 
@@ -526,48 +551,63 @@ private fun AccountMoreSettingsRow(
     }
 }
 
-/** Just a close affordance. The sheet's own grab handle is the primary dismissal. */
+/**
+ * The sheet's navigation bar: centred title, "Done" on the right.
+ *
+ * This is the one shape iOS uses at the top of a presented sheet, and it is worth being literal
+ * about it. A left-aligned bold headline with a round glyph button floating opposite is the Android
+ * sheet pattern; put it on a frosted plate with a coloured accent and it reads as an imitation of
+ * this rather than the thing itself. The title is Headline weight at Body size, not a display size,
+ * because a modal that is one screen tall does not get a large title - the page behind it does.
+ *
+ * "Done" is text, in the accent colour, with a 44dp target around it. No container: a bar button on
+ * iOS is a word.
+ */
 @Composable
 private fun AccountSheetTopBar(onClose: () -> Unit) {
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 20.dp, end = 16.dp, top = 6.dp, bottom = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .height(52.dp)
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(
             text = stringResource(R.string.account),
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f),
         )
-        // A glass disc, not a Material IconButton on a flat 8% grey circle. On a translucent
-        // sheet that grey puck is the one element that reads as painted-on rather than as part
-        // of the same pane of glass as everything under it.
         Box(
             modifier = Modifier
-                .size(34.dp)
-                .bounceClick(onClick = onClose, shape = CircleShape)
-                .liquidGlassSurface(CircleShape),
+                .align(Alignment.CenterEnd)
+                .heightIn(min = 44.dp)
+                .bounceClick(onClick = onClose, shape = RoundedCornerShape(12.dp))
+                .padding(horizontal = 6.dp, vertical = 12.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                painter = painterResource(R.drawable.close),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(17.dp),
+            Text(
+                text = stringResource(R.string.done),
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
             )
         }
     }
 }
 
 /**
- * The identity block: portrait, name, second line, chevron.
+ * The identity block: portrait, name, second line — centred, on the sheet itself.
  *
- * Left-aligned and compact rather than a centred column with a 112dp halo. A sheet has a hard
- * height budget and everything below this has to fit in what is left; a centred hero spends that
- * budget on the one piece of information the user already knows.
+ * Apple Music's account sheet opens with the person, not with a row about them: a large circular
+ * portrait centred under the title, the name under that, the address under that, and only then the
+ * list. This was a left-aligned row inside a glass card with a chevron on the end, which is the
+ * shape of a *setting* — "Account ›" — and it put a container around the one thing on the sheet
+ * that should read as the sheet's subject.
+ *
+ * Still tappable, and still goes to the same place; it just does not wear a plate and an arrow to
+ * say so. Tapping a name and a picture to see the account is the convention the whole sheet is
+ * built on.
  */
 @Composable
 private fun AccountIdentityCard(
@@ -577,119 +617,69 @@ private fun AccountIdentityCard(
     accountImageUrl: String?,
     onClick: () -> Unit,
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            // The app's tap physics rather than a bare `clickable`. A Material ripple washing
-            // across a translucent glass plate is the single cheapest-looking interaction in
-            // any glass UI — it paints an opaque grey circle over the thing that is supposed
-            // to be a pane of glass.
-            .bounceClick(onClick = onClick, shape = RoundedCornerShape(20.dp))
-            .liquidGlassSurface(RoundedCornerShape(20.dp))
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .bounceClick(onClick = onClick, shape = RoundedCornerShape(SettingsGroupCornerRadius))
+            .padding(top = 2.dp, bottom = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // The portrait sits in a gradient ring rather than behind a radial haze. The old halo was
-        // a soft primary-coloured cloud bleeding out to transparent — on a translucent sheet that
-        // reads as a smudge behind the avatar, not as a deliberate frame.
-        Box(
-            modifier = Modifier.size(64.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            val ringColor = if (isLoggedIn) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            }
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(CircleShape)
-                    .background(
-                        Brush.linearGradient(
-                            listOf(ringColor.copy(alpha = 0.75f), ringColor.copy(alpha = 0.18f)),
-                        )
-                    )
-                    .padding(2.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surface),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (isLoggedIn && accountImageUrl != null) {
-                    AsyncImage(
-                        model = accountImageUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape)
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape)
-                            .background(ringColor.copy(alpha = 0.12f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.account),
-                            contentDescription = null,
-                            modifier = Modifier.size(28.dp),
-                            tint = ringColor,
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(Modifier.width(14.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = if (isLoggedIn && accountName.isNotEmpty()) {
-                    accountName
-                } else {
-                    stringResource(R.string.account_signed_out_title)
-                },
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(3.dp))
-            Text(
-                text = when {
-                    isLoggedIn && accountEmail.isNotEmpty() -> accountEmail
-                    isLoggedIn -> stringResource(R.string.account_signed_in_subtitle)
-                    else -> stringResource(R.string.account_signed_out_subtitle)
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-
-        Spacer(Modifier.width(10.dp))
-
-        // The chevron gets its own disc so it reads as a target. A bare 40%-alpha glyph floating
-        // at the edge of a card is the detail that makes a row look unfinished.
+        val ringColor = MaterialTheme.colorScheme.onSurface
         Box(
             modifier = Modifier
-                .size(28.dp)
+                .size(72.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)),
+                .background(ringColor.copy(alpha = 0.10f)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                painter = painterResource(R.drawable.navigate_next),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(16.dp),
-            )
+            if (isLoggedIn && accountImageUrl != null) {
+                AsyncImage(
+                    model = accountImageUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape),
+                )
+            } else {
+                Icon(
+                    painter = painterResource(R.drawable.account),
+                    contentDescription = null,
+                    modifier = Modifier.size(36.dp),
+                    tint = ringColor.copy(alpha = 0.45f),
+                )
+            }
         }
+
+        Spacer(Modifier.height(10.dp))
+
+        Text(
+            text = if (isLoggedIn && accountName.isNotEmpty()) {
+                accountName
+            } else {
+                stringResource(R.string.account_signed_out_title)
+            },
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = when {
+                isLoggedIn && accountEmail.isNotEmpty() -> accountEmail
+                isLoggedIn -> stringResource(R.string.account_signed_in_subtitle)
+                else -> stringResource(R.string.account_signed_out_subtitle)
+            },
+            fontSize = 13.sp,
+            lineHeight = 17.sp,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 24.dp),
+        )
     }
 }
 
@@ -765,15 +755,15 @@ private fun AccountLibraryStat(
         )
         Text(
             text = shown.toString(),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
         )
         Spacer(Modifier.height(2.dp))
         Text(
             text = label,
-            style = MaterialTheme.typography.labelMedium,
+            fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -851,62 +841,35 @@ private fun AccountSignInOutRow(
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
 ) {
-    val accent = if (isLoggedIn) {
-        MaterialTheme.colorScheme.error
-    } else {
-        MaterialTheme.colorScheme.primary
-    }
-
-    Row(
+    // A row in a group of its own, with the label centred - which is how iOS renders the one
+    // action that ends or begins a session, in Settings and in Music alike. It was a filled accent
+    // capsule, and a saturated pill stretched across the foot of a sheet is the single loudest
+    // thing on it: the shape every app store screenshot uses for "SUBSCRIBE NOW". The colour still
+    // carries the meaning - accent to sign in, red to sign out - it just does not need a slab
+    // behind it to say so.
+    val accent =
+        if (isLoggedIn) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .bounceClick(
                 onClick = if (isLoggedIn) onSignOut else onSignIn,
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(SettingsGroupCornerRadius),
             )
-            .liquidGlassSurface(RoundedCornerShape(20.dp))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .settingsGlassGroup(RoundedCornerShape(SettingsGroupCornerRadius))
+            .height(52.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .size(38.dp)
-                .clip(CircleShape)
-                .background(
-                    Brush.linearGradient(
-                        listOf(accent.copy(alpha = 0.34f), accent.copy(alpha = 0.16f))
-                    )
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                painter = painterResource(
-                    if (isLoggedIn) R.drawable.logout else R.drawable.login
-                ),
-                contentDescription = null,
-                tint = accent,
-                modifier = Modifier.size(19.dp),
-            )
-        }
-
-        Spacer(Modifier.width(14.dp))
-
         Text(
-            text = stringResource(if (isLoggedIn) R.string.logout else R.string.login),
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = if (isLoggedIn) accent else MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f),
+            // Apple's wording, on the sheet at least: you sign in to an account, you do not
+            // "log in" to one.
+            text = stringResource(
+                if (isLoggedIn) R.string.account_sign_out else R.string.account_sign_in,
+            ),
+            fontSize = 17.sp,
+            fontWeight = if (isLoggedIn) FontWeight.Normal else FontWeight.SemiBold,
+            color = accent,
         )
-
-        if (!isLoggedIn) {
-            Icon(
-                painter = painterResource(R.drawable.navigate_next),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(16.dp),
-            )
-        }
     }
 }
 
@@ -1359,11 +1322,9 @@ private fun PlaylistSelectionDialog(onDismiss: () -> Unit) {
                 ) {
 
                     val density = LocalDensity.current
-                    CircularWavyProgressIndicator(
+                    LoadingRing(
                         modifier = Modifier.size(48.dp),
-                        stroke = Stroke(
-                            width = with(density) { 2.dp.toPx() }
-                        ),
+                        stroke = 2.dp,
                         color = MaterialTheme.colorScheme.primary
                     )
                 }

@@ -40,7 +40,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -73,6 +72,7 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.R
 
 // Music Together's own pieces, drawn the way Apple draws SharePlay and AirDrop rather than the way a
@@ -128,7 +128,7 @@ internal fun CapsuleButton(
         contentAlignment = Alignment.Center,
     ) {
         if (loading) {
-            CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.4.dp, color = content)
+            LoadingRing(Modifier.size(22.dp), stroke = 2.4.dp, color = content)
         } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (icon != null) {
@@ -181,7 +181,7 @@ internal fun TogetherOrb(active: Boolean, error: Boolean, busy: Boolean, modifie
             contentAlignment = Alignment.Center,
         ) {
             if (busy) {
-                CircularProgressIndicator(Modifier.size(38.dp), strokeWidth = 3.dp, color = Color.White)
+                LoadingRing(Modifier.size(38.dp), stroke = 3.dp, color = Color.White)
             } else {
                 Icon(
                     painterResource(if (error) R.drawable.error else R.drawable.group),

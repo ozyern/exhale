@@ -280,10 +280,14 @@ private fun BrowseCategoryCard(
             modifier = Modifier
                 .matchParentSize()
                 .background(
+                    // Heavier at the foot than it looks like it needs to be, because the artwork
+                    // these cards use is promo art with its own title set across it: at the old
+                    // 0.62 the category's name ("Holiday") sat on top of the picture's name
+                    // ("Summer Dance Classics") and the two read as one scrambled line.
                     Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.12f),
-                        0.5f to Color.Black.copy(alpha = 0.22f),
-                        1f to Color.Black.copy(alpha = 0.62f),
+                        0f to Color.Black.copy(alpha = 0.10f),
+                        0.45f to Color.Black.copy(alpha = 0.30f),
+                        1f to Color.Black.copy(alpha = 0.84f),
                     )
                 )
         )

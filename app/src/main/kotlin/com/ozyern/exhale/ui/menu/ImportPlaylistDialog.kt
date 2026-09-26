@@ -11,11 +11,11 @@ package com.ozyern.exhale.ui.menu
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.TextButton
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.ui.component.DefaultDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -93,7 +93,7 @@ fun ImportPlaylistDialog(
             },
             extraContent = {
                 if (isImporting) {
-                    CircularProgressIndicator()
+                    LoadingRing()
                 }
             },
             onDone = { finalName ->
@@ -168,7 +168,7 @@ fun ImportPlaylistDialog(
                     Text(text = stringResource(R.string.already_in_playlist))
                     if (isProcessingDuplicate) {
                         Spacer(modifier = Modifier.height(16.dp))
-                        CircularProgressIndicator()
+                        LoadingRing()
                     }
                 }
             },

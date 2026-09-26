@@ -8,6 +8,8 @@
 
 package com.ozyern.exhale.ui.screens.settings
 
+import com.ozyern.exhale.ui.component.PreferenceGroupDivider
+import com.ozyern.exhale.ui.component.PreferenceGroup
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -71,38 +73,43 @@ fun IntegrationScreen(
         PreferenceGroupTitle(
                 title = stringResource(R.string.general),
             )
-
-        PreferenceEntry(
-            title = { Text(stringResource(R.string.discord_integration)) },
-            icon = { Icon(painterResource(R.drawable.discord), null) },
-            onClick = {
-                navController.navigate("settings/discord")
-            },
-        )
+        PreferenceGroup {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.discord_integration)) },
+                icon = { Icon(painterResource(R.drawable.discord), null) },
+                onClick = {
+                    navController.navigate("settings/discord")
+                },
+            )
+        }
 
         PreferenceGroupTitle(
             title = stringResource(R.string.scrobbling),
         )
+        PreferenceGroup {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.lastfm_integration)) },
+                icon = { Icon(painterResource(R.drawable.token), null) },
+                onClick = {
+                    navController.navigate("settings/lastfm")
+                },
+            )
+            PreferenceGroupDivider()
+            SwitchPreference(
+                title = { Text(stringResource(R.string.listenbrainz_scrobbling)) },
+                description = stringResource(R.string.listenbrainz_scrobbling_description),
+                icon = { Icon(painterResource(R.drawable.token), null) },
+                checked = listenBrainzEnabled,
+                onCheckedChange = onListenBrainzEnabledChange,
+            )
+            PreferenceGroupDivider()
+            PreferenceEntry(
+                title = { Text(if (listenBrainzToken.isBlank()) stringResource(R.string.set_listenbrainz_token) else stringResource(R.string.edit_listenbrainz_token)) },
+                icon = { Icon(painterResource(R.drawable.token), null) },
+                onClick = { showListenBrainzTokenEditor.value = true },
+            )
+        }
 
-        PreferenceEntry(
-            title = { Text(stringResource(R.string.lastfm_integration)) },
-            icon = { Icon(painterResource(R.drawable.token), null) },
-            onClick = {
-                navController.navigate("settings/lastfm")
-            },
-        )
-        SwitchPreference(
-            title = { Text(stringResource(R.string.listenbrainz_scrobbling)) },
-            description = stringResource(R.string.listenbrainz_scrobbling_description),
-            icon = { Icon(painterResource(R.drawable.token), null) },
-            checked = listenBrainzEnabled,
-            onCheckedChange = onListenBrainzEnabledChange,
-        )
-        PreferenceEntry(
-            title = { Text(if (listenBrainzToken.isBlank()) stringResource(R.string.set_listenbrainz_token) else stringResource(R.string.edit_listenbrainz_token)) },
-            icon = { Icon(painterResource(R.drawable.token), null) },
-            onClick = { showListenBrainzTokenEditor.value = true },
-        )
     }
 
     SettingsTopAppBar(

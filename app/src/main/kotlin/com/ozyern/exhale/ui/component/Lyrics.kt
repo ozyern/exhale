@@ -8,6 +8,13 @@
 
 package com.ozyern.exhale.ui.component
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.withFrameMillis
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.res.Configuration
@@ -863,22 +870,10 @@ fun Lyrics(
 
                 if (lyrics == null) {
                     item {
-                        ShimmerHost {
-                            repeat(10) {
-                                Box(
-                                    contentAlignment = when (lyricsTextPosition) {
-                                        LyricsPosition.LEFT -> Alignment.CenterStart
-                                        LyricsPosition.CENTER -> Alignment.Center
-                                        LyricsPosition.RIGHT -> Alignment.CenterEnd
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 24.dp, vertical = 4.dp)
-                                ) {
-                                    TextPlaceholder()
-                                }
-                            }
-                        }
+                        LyricsWaitingSkeleton(
+                            position = lyricsTextPosition,
+                            color = lyricsBaseColor,
+                        )
                     }
                 } else {
                     itemsIndexed(
@@ -1071,6 +1066,31 @@ fun Lyrics(
                                         LyricsPosition.RIGHT -> Alignment.End
                                     }
                                 ) {
+                                    // A blank entry is an instrumental stretch - the intro before
+                                    // the first line, or the bars between verses. It used to render
+                                    // as an empty row, so the lyrics simply stopped and the screen
+                                    // sat still until the next line arrived, which reads as the
+                                    // feature having lost its place. Apple fills that space with
+                                    // three dots that count the gap down; so does the desktop build.
+                                    if (item.text.isBlank()) {
+                                        val gapEnd = lines.getOrNull(index + 1)?.time
+                                        if (isSynced && gapEnd != null &&
+                                            gapEnd - item.time >= LyricInterludeMinMs
+                                        ) {
+                                            LyricInterlude(
+                                                startMs = item.time,
+                                                endMs = gapEnd,
+                                                active = index == displayedCurrentLineIndex,
+                                                color = lyricsBaseColor,
+                                                positionProvider = {
+                                                    sliderPositionProvider()
+                                                        ?: playerConnection.player.currentPosition
+                                                },
+                                            )
+                                        }
+                                        return@Column
+                                    }
+
                                     val isActiveLine = index == displayedCurrentLineIndex && isSynced
                                     val lineColor = remember(isActiveLine, lyricsBaseColor) {
                                         if (isActiveLine) lyricsBaseColor else lyricsBaseColor.copy(
@@ -2170,12 +2190,19 @@ fun Lyrics(
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 16.dp)
             ) {
+                // "Sync", on glass.
+                //
+                // It was a filled `primaryContainer` capsule with a play glyph on it - Material's
+                // tonal button, floating over album art, next to nothing else in the app that
+                // looks like that. And "Resume autoscroll" describes the mechanism; what the
+                // button does is put the words back in step with the song.
+                val syncShape = RoundedCornerShape(percent = 50)
                 Row(
                     modifier = Modifier
-                        .background(
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            shape = RoundedCornerShape(24.dp)
-                        )
+                        // In-content glass: see the note in ChipsRow. The chrome sampler would
+                        // make this pill part of the backdrop it is reading from.
+                        .liquidGlassSurface(syncShape, tint = Color.Black.copy(alpha = 0.28f))
+                        .clip(syncShape)
                         .clickable {
                             isManualScrolling = false
                             lastPreviewTime = 0L
@@ -2190,21 +2217,21 @@ fun Lyrics(
                                 }
                             }
                         }
-                        .padding(horizontal = 20.dp, vertical = 10.dp),
+                        .padding(horizontal = 20.dp, vertical = 11.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Icon(
-                        painter = painterResource(id = R.drawable.play),
+                        painter = painterResource(id = R.drawable.sync),
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(18.dp)
+                        tint = Color.White,
+                        modifier = Modifier.size(17.dp)
                     )
                     Text(
-                        text = stringResource(R.string.resume_autoscroll),
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium
+                        text = stringResource(R.string.lyrics_sync),
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
                     )
                 }
             }
@@ -2317,3 +2344,142 @@ private fun shouldAppendWordSpace(current: String, next: String): Boolean {
     if (!first.isLetterOrDigit()) return false
     return last !in NoSpaceAfterChars
 }
+
+/** Below this, a gap is just a breath between lines and wants no indicator. */
+private const val LyricInterludeMinMs = 4_000L
+
+/**
+ * An instrumental stretch: three dots that breathe while it lasts and fill as it runs out.
+ *
+ * The fill is the point. A pulsing row of dots says only "nothing is being sung"; dots that light
+ * up one after another say how much longer that is going to be true, which is the difference
+ * between a player that has paused and a player that is counting you in.
+ *
+ * The clock is read on frames and only while this gap is the current one - an interlude that has
+ * scrolled past costs nothing.
+ */
+@Composable
+private fun LyricInterlude(
+    startMs: Long,
+    endMs: Long,
+    active: Boolean,
+    color: Color,
+    positionProvider: () -> Long,
+) {
+    val span = (endMs - startMs).coerceAtLeast(1L)
+    var progress by remember(startMs, endMs) { mutableFloatStateOf(0f) }
+    LaunchedEffect(active, startMs, endMs) {
+        if (!active) {
+            progress = 0f
+            return@LaunchedEffect
+        }
+        while (true) {
+            withFrameMillis {
+                progress = ((positionProvider() - startMs).toFloat() / span).coerceIn(0f, 1f)
+            }
+        }
+    }
+
+    val breathe = rememberInfiniteTransition(label = "interlude")
+    // The whole group leaves before the line lands, so the words are never racing the dots.
+    val exit = ((1f - progress) / 0.08f).coerceIn(0f, 1f)
+
+    Row(
+        modifier = Modifier
+            .padding(vertical = 10.dp)
+            .graphicsLayer {
+                alpha = if (active) exit else 0.32f
+                val s = 0.92f + 0.08f * exit
+                scaleX = s
+                scaleY = s
+            },
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        repeat(3) { i ->
+            val pulse by breathe.animateFloat(
+                initialValue = 0.55f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    tween(700, delayMillis = i * 180, easing = FastOutSlowInEasing),
+                    RepeatMode.Reverse,
+                ),
+                label = "interludeDot$i",
+            )
+            // Each dot owns a third of the gap and brightens as its third is spent.
+            val filled = ((progress - i / 3f) * 3f).coerceIn(0f, 1f)
+            val scale = if (active) 0.78f + 0.22f * pulse * (0.4f + 0.6f * filled) else 0.8f
+            Box(
+                modifier = Modifier
+                    .size(11.dp)
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                    }
+                    .background(
+                        color.copy(alpha = if (active) 0.28f + 0.62f * filled else 0.3f),
+                        CircleShape,
+                    ),
+            )
+        }
+    }
+}
+
+/**
+ * Lyrics on their way: lines of the size and rhythm the real ones will have, lit by a sweep that
+ * travels down them.
+ *
+ * Ten identical grey bars is a loading state for a list of rows; a verse is not that shape. These
+ * are the widths a sung verse actually has, and the light passes down them in one stroke rather
+ * than every bar blinking together - the shape of the answer arriving, rather than a spinner
+ * saying only that something, somewhere, is happening.
+ */
+@Composable
+private fun LyricsWaitingSkeleton(
+    position: LyricsPosition,
+    color: Color,
+) {
+    val widths = remember { listOf(0.68f, 0.84f, 0.52f, 0.74f, 0.44f, 0.80f, 0.58f) }
+    val travel = rememberInfiniteTransition(label = "lyricsWaiting")
+    val sweep by travel.animateFloat(
+        initialValue = -1.4f,
+        targetValue = 2.4f,
+        animationSpec = infiniteRepeatable(tween(2_200, easing = LinearEasing)),
+        label = "lyricsWaitingSweep",
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+        horizontalAlignment = when (position) {
+            LyricsPosition.LEFT -> Alignment.Start
+            LyricsPosition.CENTER -> Alignment.CenterHorizontally
+            LyricsPosition.RIGHT -> Alignment.End
+        },
+    ) {
+        widths.forEachIndexed { index, fraction ->
+            // Each line is a little behind the one above it, so the light reads as one pass down
+            // the verse.
+            val lit = (sweep - index * 0.22f).coerceIn(0f, 1f)
+            val glow = (1f - kotlin.math.abs(lit - 0.5f) * 2f).coerceAtLeast(0f)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction)
+                    .height(26.dp)
+                    .clip(RoundedCornerShape(percent = 50))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                color.copy(alpha = 0.07f + 0.05f * glow),
+                                color.copy(alpha = 0.12f + 0.16f * glow),
+                                color.copy(alpha = 0.07f + 0.05f * glow),
+                            ),
+                        ),
+                    ),
+            )
+        }
+    }
+}
+

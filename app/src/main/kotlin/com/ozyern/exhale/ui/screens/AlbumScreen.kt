@@ -8,6 +8,9 @@
 
 package com.ozyern.exhale.ui.screens
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.unit.sp
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -36,7 +39,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -93,6 +95,8 @@ import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
 import androidx.palette.graphics.Palette
 import coil3.compose.AsyncImage
+import com.ozyern.exhale.ui.component.PlayShuffleButton
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.ui.component.LiquidBackButton
 import com.ozyern.exhale.ui.component.heroParallax
 import coil3.imageLoader
@@ -635,7 +639,12 @@ fun AlbumScreen(
 
         LazyColumn(
             state = lazyListState,
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+            // No top inset: the cover runs under the status bar, with the back button floating on
+            // it - the chrome belongs *on* the artwork, not above it in a band of page colour.
+            contentPadding = PaddingValues(
+                bottom = LocalPlayerAwareWindowInsets.current.asPaddingValues()
+                    .calculateBottomPadding(),
+            ),
         ) {
             val albumWithSongs = albumWithSongs
             val hasSongs = albumWithSongs?.songs?.isNotEmpty() == true
@@ -643,38 +652,47 @@ fun AlbumScreen(
                 // Hero Header
                 item(key = "header") {
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = systemBarsTopPadding + AppBarHeight),
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        // Album Art - Large centered with shadow and rounded corners
+                        // The cover is the header.
+                        //
+                        // Apple Music runs it edge to edge from the top of the screen, with the
+                        // back button and the menu floating on it and the bottom of the picture
+                        // dissolving into the page. A 240dp square floating in the middle of a
+                        // margin is a *thumbnail of* the album; this is the album. The page's own
+                        // top padding goes with it - the art starts under the status bar, which is
+                        // the whole point.
                         Box(
                             modifier = Modifier
-                                .padding(top = 8.dp, bottom = 20.dp)
+                                .fillMaxWidth()
+                                .aspectRatio(1f)
                                 // Same treatment as the artist portrait, and the same reason: a
                                 // cover that scrolls at exactly the list's speed reads as a tall
                                 // list row rather than as the subject of the page.
                                 .heroParallax(lazyListState, travel = 260.dp)
                         ) {
-                            Surface(
+                            AsyncImage(
+                                model = albumWithSongs.album.thumbnailUrl,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            // Darkened at both ends: the chrome sits on the top, the title sits
+                            // under the bottom, and neither can rely on the artwork being dark
+                            // where it happens to land.
+                            Box(
                                 modifier = Modifier
-                                    .size(240.dp)
-                                    .shadow(
-                                        elevation = 24.dp,
-                                        shape = RoundedCornerShape(16.dp),
-                                        spotColor = gradientColors.getOrNull(0)?.copy(alpha = 0.5f)
-                                            ?: MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
-                                    ),
-                                shape = RoundedCornerShape(16.dp)
-                            ) {
-                                AsyncImage(
-                                    model = albumWithSongs.album.thumbnailUrl,
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            }
+                                    .matchParentSize()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            0f to Color.Black.copy(alpha = 0.38f),
+                                            0.22f to Color.Transparent,
+                                            0.72f to Color.Transparent,
+                                            1f to MaterialTheme.colorScheme.surface,
+                                        )
+                                    )
+                            )
 
                             // Download Cover Button - Inside image, bottom-right
                             Surface(
@@ -707,8 +725,8 @@ fun AlbumScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     if (downloadingCover) {
-                                        CircularProgressIndicator(
-                                            strokeWidth = 2.dp,
+                                        LoadingRing(
+                                            stroke = 2.dp,
                                             modifier = Modifier.size(24.dp), // Ícono más pequeño
                                             color = Color.White.copy(alpha = 0.9f)
                                         )
@@ -723,6 +741,8 @@ fun AlbumScreen(
                                 }
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(4.dp))
 
                         // Album Title
                         Text(
@@ -773,43 +793,32 @@ fun AlbumScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Metadata Row - Year, Song Count, Duration
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 48.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Year
-                            albumWithSongs.album.year?.let { year ->
-                                MetadataChip(
-                                    icon = R.drawable.calendar_today,
-                                    text = year.toString()
+                        // The release, in one line.
+                        //
+                        // Three icon chips spread across the width was a toolbar of facts you
+                        // cannot press. Apple Music sets the same three as a single quiet line
+                        // under the artist - "2023 · 12 songs · 48 minutes" - and keeps the width
+                        // for the two buttons underneath, which you can.
+                        val totalDuration = albumWithSongs.songs.sumOf { it.song.duration }
+                        Text(
+                            text = buildList {
+                                albumWithSongs.album.year?.let { add(it.toString()) }
+                                add(
+                                    pluralStringResource(
+                                        R.plurals.n_song,
+                                        wrappedSongs.size,
+                                        wrappedSongs.size
+                                    )
                                 )
-                            }
+                                if (totalDuration > 0) add(makeTimeString(totalDuration * 1000L))
+                            }.joinToString("  \u00b7  "),
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 32.dp),
+                        )
 
-                            // Song Count
-                            MetadataChip(
-                                icon = R.drawable.music_note,
-                                text = pluralStringResource(
-                                    R.plurals.n_song,
-                                    wrappedSongs.size,
-                                    wrappedSongs.size
-                                )
-                            )
-
-                            // Duration
-                            val totalDuration = albumWithSongs.songs.sumOf { it.song.duration }
-                            if (totalDuration > 0) {
-                                MetadataChip(
-                                    icon = R.drawable.timer,
-                                    text = makeTimeString(totalDuration * 1000L)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(24.dp))
+                        Spacer(modifier = Modifier.height(22.dp))
 
                         // Action Buttons Row
                         Row(
@@ -827,8 +836,8 @@ fun AlbumScreen(
                                     }
                                 },
                                 shape = CircleShape,
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier.size(48.dp)
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                                modifier = Modifier.size(50.dp)
                             ) {
                                 Box(
                                     modifier = Modifier.fillMaxSize(),
@@ -851,45 +860,34 @@ fun AlbumScreen(
                                 }
                             }
 
-                            // Play Button
-                            Button(
+                            // Play / Shuffle, as Apple Music has them: two tinted capsules
+                            // carrying a glyph AND its word, not two filled primary slabs with a
+                            // bare icon each. See PlayShuffleButton.
+                            PlayShuffleButton(
+                                iconRes = R.drawable.play,
+                                label = stringResource(R.string.play),
+                                solid = true,
+                                modifier = Modifier.weight(1f),
                                 onClick = {
                                     playerConnection.service.getAutomix(playlistId)
                                     playerConnection.playQueue(
                                         LocalAlbumRadio(albumWithSongs),
                                     )
-                                },
-                                shape = RoundedCornerShape(24.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp)
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.play),
-                                    contentDescription = stringResource(R.string.play),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
+                                    },
+                            )
 
-                            // Shuffle Button
-                            Button(
+                            PlayShuffleButton(
+                                iconRes = R.drawable.shuffle,
+                                label = stringResource(R.string.shuffle),
+                                solid = true,
+                                modifier = Modifier.weight(1f),
                                 onClick = {
                                     playerConnection.service.getAutomix(playlistId)
                                     playerConnection.playQueue(
                                         LocalAlbumRadio(albumWithSongs.copy(songs = albumWithSongs.songs.shuffled())),
                                     )
-                                },
-                                shape = RoundedCornerShape(24.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp)
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.shuffle),
-                                    contentDescription = stringResource(R.string.shuffle),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
+                                    },
+                            )
 
                             // Download Button
                             Surface(
@@ -934,8 +932,8 @@ fun AlbumScreen(
                                     }
                                 },
                                 shape = CircleShape,
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier.size(48.dp)
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                                modifier = Modifier.size(50.dp)
                             ) {
                                 Box(
                                     modifier = Modifier.fillMaxSize(),
@@ -951,8 +949,8 @@ fun AlbumScreen(
                                             )
                                         }
                                         Download.STATE_DOWNLOADING -> {
-                                            CircularProgressIndicator(
-                                                strokeWidth = 2.dp,
+                                            LoadingRing(
+                                                stroke = 2.dp,
                                                 modifier = Modifier.size(24.dp),
                                                 color = MaterialTheme.colorScheme.primary
                                             )
@@ -984,8 +982,8 @@ fun AlbumScreen(
                                     }
                                 },
                                 shape = CircleShape,
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier.size(48.dp)
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                                modifier = Modifier.size(50.dp)
                             ) {
                                 Box(
                                     modifier = Modifier.fillMaxSize(),

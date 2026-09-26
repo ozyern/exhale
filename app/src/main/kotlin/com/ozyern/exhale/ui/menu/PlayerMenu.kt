@@ -6,6 +6,14 @@
 
 package com.ozyern.exhale.ui.menu
 
+import com.ozyern.exhale.ui.component.SettingsGroupCornerRadius
+import com.ozyern.exhale.ui.component.settingsGlassGroup
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.draw.alpha
+import com.ozyern.exhale.ui.component.DefaultDialog
+import com.ozyern.exhale.ui.component.PlayerSliderColors
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.res.Configuration
@@ -43,7 +51,6 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,6 +60,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.ui.component.liquid.LiquidToggle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -791,9 +799,9 @@ private fun PlayerQuickAction(
             contentAlignment = Alignment.Center,
         ) {
             if (busy) {
-                CircularProgressIndicator(
+                LoadingRing(
                     modifier = Modifier.size(22.dp),
-                    strokeWidth = 2.dp,
+                    stroke = 2.dp,
                     color = content,
                 )
             } else {
@@ -976,172 +984,429 @@ fun TempoPitchDialog(onDismiss: () -> Unit) {
         )
     }
 
-    AlertDialog(
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.tempo_and_pitch)) },
-        dismissButton = {
-            TextButton(onClick = {
-                tempo = 1f; pitch = 1f; applyPlaybackParameters(tempo, pitch)
-            }) { Text(stringResource(R.string.reset)) }
+    DefaultDialog(
+        onDismiss = onDismiss,
+        wide = true,
+        title = {
+            Text(
+                text = stringResource(R.string.tempo_and_pitch),
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
         },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.ok)) }
-        },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(18.dp),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(painter = painterResource(R.drawable.speed), contentDescription = null, modifier = Modifier.size(28.dp))
-                    Text(text = stringResource(R.string.tempo), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                    Text(text = "x${formatMultiplier(tempo)}", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.End)
-                }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    IconButton(enabled = tempo > TempoMin, onClick = {
-                        tempo = (tempo - 0.01f).coerceIn(TempoMin, TempoMax).quantize(0.01f)
-                        applyPlaybackParameters(tempo, pitch)
-                    }) { Icon(painter = painterResource(R.drawable.remove), contentDescription = null) }
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            TunerHeading(
+                iconRes = R.drawable.speed,
+                label = stringResource(R.string.tempo),
+                value = "\u00d7${formatMultiplier(tempo)}",
+            )
 
-                    Slider(
-                        value = multiplierToSlider(tempo),
+            TunerStepperRow(
+                value = multiplierToSlider(tempo),
+                onValueChange = { slider ->
+                    val updated = sliderToMultiplier(slider).quantize(0.01f)
+                    if (abs(updated - tempo) >= 0.005f) {
+                        tempo = updated
+                        applyPlaybackParameters(tempo, pitch)
+                    }
+                },
+                canDecrease = tempo > TempoMin,
+                canIncrease = tempo < TempoMax,
+                onDecrease = {
+                    tempo = (tempo - 0.01f).coerceIn(TempoMin, TempoMax).quantize(0.01f)
+                    applyPlaybackParameters(tempo, pitch)
+                },
+                onIncrease = {
+                    tempo = (tempo + 0.01f).coerceIn(TempoMin, TempoMax).quantize(0.01f)
+                    applyPlaybackParameters(tempo, pitch)
+                },
+            )
+
+            TunerChipRow(
+                options = MultiplierPresets.map { "\u00d7${formatMultiplier(it)}" },
+                selectedIndex = MultiplierPresets.indexOfFirst { abs(tempo - it) < 0.005f },
+                onSelect = { index ->
+                    tempo = MultiplierPresets[index]
+                    applyPlaybackParameters(tempo, pitch)
+                },
+            )
+
+            TunerRule()
+
+            TunerHeading(
+                iconRes = R.drawable.discover_tune,
+                label = stringResource(R.string.pitch),
+                value = when (pitchMode) {
+                    PitchMode.Semitones -> {
+                        val semitones = pitchToSemitones(pitch)
+                        "${if (semitones > 0) "+" else ""}$semitones"
+                    }
+
+                    PitchMode.Multiplier -> "\u00d7${formatMultiplier(pitch)}"
+                },
+            )
+
+            // A segmented control, not two chips. "st" and "\u00d7" in a pair of circles is a
+            // riddle; iOS asks this kind of either/or question with one track and a sliding
+            // thumb, and the words fit because there are only two of them.
+            TunerSegmentedControl(
+                options = listOf(
+                    stringResource(R.string.pitch_mode_semitones),
+                    stringResource(R.string.pitch_mode_multiplier),
+                ),
+                selectedIndex = if (pitchMode == PitchMode.Semitones) 0 else 1,
+                onSelect = { index ->
+                    pitchMode = if (index == 0) PitchMode.Semitones else PitchMode.Multiplier
+                },
+            )
+
+            when (pitchMode) {
+                PitchMode.Semitones -> {
+                    val currentSemitones = pitchToSemitones(pitch)
+                    TunerSlider(
+                        value = currentSemitones.toFloat(),
+                        valueRange = -12f..12f,
+                        steps = 23,
+                        onValueChange = { slider ->
+                            val semitones = slider.roundToInt().coerceIn(-12, 12)
+                            val updated = semitonesToPitch(semitones)
+                            if (abs(updated - pitch) >= 0.0005f) {
+                                pitch = updated
+                                applyPlaybackParameters(tempo, pitch)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    TunerChipRow(
+                        options = SemitonePresets.map { "${if (it > 0) "+" else ""}$it" },
+                        selectedIndex = SemitonePresets.indexOfFirst { it == currentSemitones },
+                        onSelect = { index ->
+                            pitch = semitonesToPitch(SemitonePresets[index])
+                            applyPlaybackParameters(tempo, pitch)
+                        },
+                    )
+                }
+
+                PitchMode.Multiplier -> {
+                    TunerStepperRow(
+                        value = multiplierToSlider(pitch),
                         onValueChange = { slider ->
                             val updated = sliderToMultiplier(slider).quantize(0.01f)
-                            if (abs(updated - tempo) >= 0.005f) { tempo = updated; applyPlaybackParameters(tempo, pitch) }
-                        },
-                        valueRange = 0f..1f,
-                        modifier = Modifier.weight(1f),
-                    )
-
-                    IconButton(enabled = tempo < TempoMax, onClick = {
-                        tempo = (tempo + 0.01f).coerceIn(TempoMin, TempoMax).quantize(0.01f)
-                        applyPlaybackParameters(tempo, pitch)
-                    }) { Icon(painter = painterResource(R.drawable.add), contentDescription = null) }
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                ) {
-                    listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f).forEach { preset ->
-                        FilterChip(
-                            selected = abs(tempo - preset) < 0.005f,
-                            onClick = { tempo = preset; applyPlaybackParameters(tempo, pitch) },
-                            label = { Text("x${formatMultiplier(preset)}") },
-                        )
-                    }
-                }
-
-                HorizontalDivider()
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(painter = painterResource(R.drawable.discover_tune), contentDescription = null, modifier = Modifier.size(28.dp))
-                    Text(text = stringResource(R.string.pitch), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                    Text(
-                        text = when (pitchMode) {
-                            PitchMode.Semitones -> { val s = pitchToSemitones(pitch); "${if (s > 0) "+" else ""}$s" }
-                            PitchMode.Multiplier -> "x${formatMultiplier(pitch)}"
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                        textAlign = TextAlign.End,
-                    )
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                ) {
-                    FilterChip(selected = pitchMode == PitchMode.Semitones, onClick = { pitchMode = PitchMode.Semitones }, label = { Text(stringResource(R.string.pitch_mode_semitones_short)) })
-                    FilterChip(selected = pitchMode == PitchMode.Multiplier, onClick = { pitchMode = PitchMode.Multiplier }, label = { Text(stringResource(R.string.pitch_mode_multiplier_short)) })
-                }
-
-                when (pitchMode) {
-                    PitchMode.Semitones -> {
-                        val currentSemitones = pitchToSemitones(pitch)
-                        Slider(
-                            value = currentSemitones.toFloat(),
-                            onValueChange = { slider ->
-                                val semitones = slider.roundToInt().coerceIn(-12, 12)
-                                val updated = semitonesToPitch(semitones)
-                                if (abs(updated - pitch) >= 0.0005f) { pitch = updated; applyPlaybackParameters(tempo, pitch) }
-                            },
-                            valueRange = -12f..12f,
-                            steps = 23,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        ) {
-                            listOf(-12, -7, -5, 0, 5, 7, 12).forEach { preset ->
-                                FilterChip(
-                                    selected = currentSemitones == preset,
-                                    onClick = { pitch = semitonesToPitch(preset); applyPlaybackParameters(tempo, pitch) },
-                                    label = { Text("${if (preset > 0) "+" else ""}$preset") },
-                                )
-                            }
-                        }
-                    }
-                    PitchMode.Multiplier -> {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            IconButton(enabled = pitch > PitchMin, onClick = {
-                                pitch = (pitch - 0.01f).coerceIn(PitchMin, PitchMax).quantize(0.01f)
+                            if (abs(updated - pitch) >= 0.005f) {
+                                pitch = updated
                                 applyPlaybackParameters(tempo, pitch)
-                            }) { Icon(painter = painterResource(R.drawable.remove), contentDescription = null) }
-
-                            Slider(
-                                value = multiplierToSlider(pitch),
-                                onValueChange = { slider ->
-                                    val updated = sliderToMultiplier(slider).quantize(0.01f)
-                                    if (abs(updated - pitch) >= 0.005f) { pitch = updated; applyPlaybackParameters(tempo, pitch) }
-                                },
-                                valueRange = 0f..1f,
-                                modifier = Modifier.weight(1f),
-                            )
-
-                            IconButton(enabled = pitch < PitchMax, onClick = {
-                                pitch = (pitch + 0.01f).coerceIn(PitchMin, PitchMax).quantize(0.01f)
-                                applyPlaybackParameters(tempo, pitch)
-                            }) { Icon(painter = painterResource(R.drawable.add), contentDescription = null) }
-                        }
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        ) {
-                            listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f).forEach { preset ->
-                                FilterChip(
-                                    selected = abs(pitch - preset) < 0.005f,
-                                    onClick = { pitch = preset; applyPlaybackParameters(tempo, pitch) },
-                                    label = { Text("x${formatMultiplier(preset)}") },
-                                )
                             }
-                        }
-                    }
+                        },
+                        canDecrease = pitch > PitchMin,
+                        canIncrease = pitch < PitchMax,
+                        onDecrease = {
+                            pitch = (pitch - 0.01f).coerceIn(PitchMin, PitchMax).quantize(0.01f)
+                            applyPlaybackParameters(tempo, pitch)
+                        },
+                        onIncrease = {
+                            pitch = (pitch + 0.01f).coerceIn(PitchMin, PitchMax).quantize(0.01f)
+                            applyPlaybackParameters(tempo, pitch)
+                        },
+                    )
+                    TunerChipRow(
+                        options = MultiplierPresets.map { "\u00d7${formatMultiplier(it)}" },
+                        selectedIndex = MultiplierPresets.indexOfFirst { abs(pitch - it) < 0.005f },
+                        onSelect = { index ->
+                            pitch = MultiplierPresets[index]
+                            applyPlaybackParameters(tempo, pitch)
+                        },
+                    )
                 }
             }
-        },
+
+            Spacer(Modifier.height(2.dp))
+
+            // Reset above Done, both the same size: one undoes the panel, the other closes it,
+            // and neither is worth a 52dp slab of accent in a dialog this small.
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                TunerAction(
+                    label = stringResource(R.string.reset),
+                    filled = false,
+                    enabled = abs(tempo - 1f) > 0.0005f || abs(pitch - 1f) > 0.0005f,
+                    onClick = {
+                        tempo = 1f
+                        pitch = 1f
+                        applyPlaybackParameters(tempo, pitch)
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                TunerAction(
+                    label = stringResource(R.string.done),
+                    filled = true,
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+/** The presets both multiplier sliders offer. */
+private val MultiplierPresets = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+
+/** Fifths, fourths and octaves - the intervals anyone actually transposes by. */
+private val SemitonePresets = listOf(-12, -7, -5, 0, 5, 7, 12)
+
+/**
+ * The line that names a control and states its value.
+ *
+ * Label on the left in body weight, value on the right in the accent: the value is the only thing
+ * on the row that changes, so it is the only thing that gets colour.
+ */
+@Composable
+private fun TunerHeading(
+    @DrawableRes iconRes: Int,
+    label: String,
+    value: String,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(
+            text = label,
+            fontSize = 17.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = value,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+}
+
+/** The app's slider, not Material's: same track, same thumb as the one under the artwork. */
+@Composable
+private fun TunerSlider(
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    steps: Int = 0,
+) {
+    // The app's own slider - the one the settings pages and the volume row use.
+    //
+    // Not Material's, and not the seek bar's either: the seek bar is a scrubber with a tall bar
+    // thumb and a gap in its track, which is the wrong object for setting a value. This is the
+    // glass one, so a control inside a dialog matches the controls outside it.
+    LiquidSlider(
+        value = value,
+        onValueChange = onValueChange,
+        valueRange = valueRange,
+        steps = steps,
+        accentColor = MaterialTheme.colorScheme.primary,
+        modifier = modifier,
     )
+}
+
+/** Minus, slider, plus - the two discs sized as tap targets rather than as bare glyphs. */
+@Composable
+private fun TunerStepperRow(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    canDecrease: Boolean,
+    canIncrease: Boolean,
+    onDecrease: () -> Unit,
+    onIncrease: () -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        TunerStepButton(iconRes = R.drawable.remove, enabled = canDecrease, onClick = onDecrease)
+        TunerSlider(
+            value = value,
+            valueRange = 0f..1f,
+            onValueChange = onValueChange,
+            modifier = Modifier.weight(1f),
+        )
+        TunerStepButton(iconRes = R.drawable.add, enabled = canIncrease, onClick = onIncrease)
+    }
+}
+
+@Composable
+private fun TunerStepButton(
+    @DrawableRes iconRes: Int,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val ink = MaterialTheme.colorScheme.onSurface
+    Box(
+        modifier = Modifier
+            .size(38.dp)
+            .clip(CircleShape)
+            .background(ink.copy(alpha = 0.10f))
+            .clickable(enabled = enabled, onClick = onClick)
+            .alpha(if (enabled) 1f else 0.35f),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            tint = ink,
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+/**
+ * A row of presets as capsules.
+ *
+ * Material's `FilterChip` brings a border, a container colour and a check mark that appears on
+ * selection and shoves the label sideways. A capsule that fills with the accent when it is chosen
+ * says the same thing without moving anything.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TunerChipRow(
+    options: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+) {
+    // Wrapped, not scrolled. A horizontally scrolling row inside a dialog is a row whose last
+    // option is sliced in half by the card's own edge and gives no sign that there is more; seven
+    // presets at this size fit in two lines with nothing hidden.
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        options.forEachIndexed { index, label ->
+            val selected = index == selectedIndex
+            val accent = MaterialTheme.colorScheme.primary
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(
+                        if (selected) accent
+                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                    )
+                    .clickable { onSelect(index) }
+                    .padding(horizontal = 13.dp, vertical = 7.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label,
+                    fontSize = 14.sp,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (selected) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Two mutually exclusive words on one track.
+ *
+ * The iOS segmented control: a recessed capsule with a raised thumb that slides between the
+ * options, so the choice reads as a switch with positions rather than as two buttons that happen
+ * to disagree.
+ */
+@Composable
+private fun TunerSegmentedControl(
+    options: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+) {
+    val ink = MaterialTheme.colorScheme.onSurface
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(36.dp)
+            .clip(CircleShape)
+            .background(ink.copy(alpha = 0.08f))
+            .padding(3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        options.forEachIndexed { index, label ->
+            val selected = index == selectedIndex
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clip(CircleShape)
+                    .background(
+                        if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
+                    )
+                    .clickable { onSelect(index) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label,
+                    fontSize = 14.sp,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                    color = if (selected) MaterialTheme.colorScheme.onPrimary else ink,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+/** The hairline between the two halves of the panel, inset the way a grouped table insets one. */
+@Composable
+private fun TunerRule() {
+    HorizontalDivider(
+        thickness = 0.5.dp,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+        modifier = Modifier.padding(vertical = 4.dp),
+    )
+}
+
+/** The panel's buttons: same capsule, filled for the one that closes it. */
+@Composable
+private fun TunerAction(
+    label: String,
+    filled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    val accent = MaterialTheme.colorScheme.primary
+    Box(
+        modifier = modifier
+            .height(46.dp)
+            .clip(CircleShape)
+            .background(if (filled) accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+            .clickable(enabled = enabled, onClick = onClick)
+            .alpha(if (enabled) 1f else 0.4f),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = if (filled) MaterialTheme.colorScheme.onPrimary else accent,
+        )
+    }
 }
 
 private enum class PitchMode { Semitones, Multiplier }
@@ -1343,19 +1608,24 @@ fun EqualizerDialog(onDismiss: () -> Unit, openSystemEqualizer: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
             Column(modifier = Modifier.fillMaxSize()) {
+                // The bar holds the name and the way out, and nothing else.
+                //
+                // The master switch used to live in the toolbar, where a switch has no label and
+                // no group - it read as an action rather than as the thing that turns the whole
+                // page on. It is the first row of the first card now, which is where a phone puts
+                // the switch that governs a settings screen.
                 TopAppBar(
-                    title = { Text(text = stringResource(R.string.equalizer)) },
+                    title = {
+                        Text(
+                            text = stringResource(R.string.equalizer),
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    },
                     navigationIcon = {
                         IconButton(onClick = onDismiss) {
                             Icon(painter = painterResource(R.drawable.close), contentDescription = null)
                         }
-                    },
-                    actions = {
-                        LiquidToggle(
-                            checked = eqEnabled,
-                            onCheckedChange = { setEqEnabled(it); if (it && selectedProfileId.isBlank()) setSelectedProfileId("manual") },
-                        )
-                        Spacer(Modifier.width(8.dp))
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface, scrolledContainerColor = MaterialTheme.colorScheme.surface),
                 )
@@ -1366,7 +1636,7 @@ fun EqualizerDialog(onDismiss: () -> Unit, openSystemEqualizer: () -> Unit) {
                     if (caps == null || bandCount <= 0) {
                         Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
-                                CircularProgressIndicator()
+                                LoadingRing()
                                 Spacer(Modifier.height(16.dp))
                                 Text(text = stringResource(R.string.eq_waiting_for_audio_session), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                                 Spacer(Modifier.height(16.dp))
@@ -1377,13 +1647,57 @@ fun EqualizerDialog(onDismiss: () -> Unit, openSystemEqualizer: () -> Unit) {
                         return@Column
                     }
 
-                    EqSection(title = stringResource(R.string.eq_presets), trailing = { TextButton(onClick = openSystemEqualizer) { Text(text = stringResource(R.string.eq_system)) } }) {
-                        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp).horizontalScroll(rememberScrollState())) {
-                            FilterChip(selected = selectedProfileId == "flat", onClick = { playerConnection.service.applyEqFlatPreset(); setSelectedProfileId("flat") }, label = { Text(text = stringResource(R.string.eq_flat)) }, colors = FilterChipDefaults.filterChipColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh), border = null)
-                            Spacer(Modifier.width(8.dp))
+                    EqCard {
+                        EqSwitchRow(
+                            label = stringResource(R.string.equalizer),
+                            checked = eqEnabled,
+                            onCheckedChange = {
+                                setEqEnabled(it)
+                                if (it && selectedProfileId.isBlank()) setSelectedProfileId("manual")
+                            },
+                        )
+                    }
+
+                    // Everything below the master switch dims when it is off: the controls stay
+                    // readable (you can see what the preset was) but stop inviting a drag that
+                    // would do nothing.
+                    val liveAlpha = if (eqEnabled) 1f else 0.45f
+
+                    Spacer(Modifier.height(18.dp))
+
+                    EqSection(
+                        title = stringResource(R.string.eq_presets),
+                        alpha = liveAlpha,
+                        trailing = {
+                            EqTextAction(
+                                label = stringResource(R.string.eq_system),
+                                onClick = openSystemEqualizer,
+                            )
+                        },
+                    ) {
+                        // Wrapped, so the last preset is not sliced in half by the card's edge.
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        ) {
+                            EqPresetChip(
+                                label = stringResource(R.string.eq_flat),
+                                selected = selectedProfileId == "flat",
+                                onClick = {
+                                    playerConnection.service.applyEqFlatPreset()
+                                    setSelectedProfileId("flat")
+                                },
+                            )
                             caps.systemPresets.forEachIndexed { index, name ->
-                                FilterChip(selected = selectedProfileId == "system:$index", onClick = { playerConnection.service.applySystemEqPreset(index); setSelectedProfileId("system:$index") }, label = { Text(text = name, maxLines = 1, overflow = TextOverflow.Ellipsis) }, colors = FilterChipDefaults.filterChipColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh), border = null)
-                                Spacer(Modifier.width(8.dp))
+                                EqPresetChip(
+                                    label = name,
+                                    selected = selectedProfileId == "system:$index",
+                                    onClick = {
+                                        playerConnection.service.applySystemEqPreset(index)
+                                        setSelectedProfileId("system:$index")
+                                    },
+                                )
                             }
                         }
                     }
@@ -1418,7 +1732,11 @@ fun EqualizerDialog(onDismiss: () -> Unit, openSystemEqualizer: () -> Unit) {
                             val valueDb = (value / 100f).coerceIn(-24f, 24f)
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp)) {
                                 Text(text = label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.width(64.dp))
-                                Slider(
+                                // The app's slider, the same one the settings pages use. Ten of
+                                // Material's in a column is ten different-looking controls doing
+                                // one job; the glass one is what the rest of the app means by
+                                // "drag this".
+                                LiquidSlider(
                                     value = value.toFloat().coerceIn(minMb.toFloat(), maxMb.toFloat()),
                                     onValueChange = { newValue ->
                                         val coerced = newValue.toInt().coerceIn(minMb, maxMb)
@@ -1426,7 +1744,7 @@ fun EqualizerDialog(onDismiss: () -> Unit, openSystemEqualizer: () -> Unit) {
                                     },
                                     onValueChangeFinished = { setSelectedProfileId("manual"); setBandLevelsRaw(encodeBandLevelsMb(bandLevelsMb)) },
                                     valueRange = minMb.toFloat()..maxMb.toFloat(),
-                                    colors = SliderDefaults.colors(activeTrackColor = MaterialTheme.colorScheme.primary, inactiveTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest),
+                                    accentColor = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.weight(1f),
                                 )
                                 Text(text = formatDb(valueDb), style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.End, modifier = Modifier.width(64.dp))
@@ -1434,22 +1752,47 @@ fun EqualizerDialog(onDismiss: () -> Unit, openSystemEqualizer: () -> Unit) {
                         }
                     }
 
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(18.dp))
 
-                    EqSection(title = stringResource(R.string.eq_output_gain)) {
-                        EqToggleSliderRow(enabled = outputGainEnabled, onEnabledChange = { setSelectedProfileId("manual"); setOutputGainEnabled(it) }, value = outputGainLocal, onValueChange = { outputGainLocal = it }, valueRange = -1500..1500, formatValue = { formatDb(it / 100f) }, modifier = Modifier.padding(horizontal = 8.dp), onValueChangeFinished = { setSelectedProfileId("manual"); setOutputGainMb(outputGainLocal) })
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-
-                    EqSection(title = stringResource(R.string.eq_bass_boost)) {
-                        EqToggleSliderRow(enabled = bassBoostEnabled, onEnabledChange = { setSelectedProfileId("manual"); setBassBoostEnabled(it) }, value = bassBoostStrengthLocal, onValueChange = { bassBoostStrengthLocal = it }, valueRange = 0..1000, formatValue = { "${it / 10}%" }, modifier = Modifier.padding(horizontal = 8.dp), onValueChangeFinished = { setSelectedProfileId("manual"); setBassBoostStrength(bassBoostStrengthLocal) })
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-
-                    EqSection(title = stringResource(R.string.eq_virtualizer)) {
-                        EqToggleSliderRow(enabled = virtualizerEnabled, onEnabledChange = { setSelectedProfileId("manual"); setVirtualizerEnabled(it) }, value = virtualizerStrengthLocal, onValueChange = { virtualizerStrengthLocal = it }, valueRange = 0..1000, formatValue = { "${it / 10}%" }, modifier = Modifier.padding(horizontal = 8.dp), onValueChangeFinished = { setSelectedProfileId("manual"); setVirtualizerStrength(virtualizerStrengthLocal) })
+                    // One group, three effects.
+                    //
+                    // Three separate cards, each with a title, a switch, a slider and a number,
+                    // is three pages of furniture for three settings of the same kind. Grouped,
+                    // they read as a list you can scan: name on the left, value on the right, the
+                    // switch that owns the row at the end, and the slider under it.
+                    EqSection(title = stringResource(R.string.eq_effects), alpha = liveAlpha) {
+                        EqEffectBlock(
+                            label = stringResource(R.string.eq_output_gain),
+                            value = formatDb(outputGainLocal / 100f),
+                            enabled = outputGainEnabled,
+                            onEnabledChange = { setSelectedProfileId("manual"); setOutputGainEnabled(it) },
+                            sliderValue = outputGainLocal,
+                            valueRange = -1500..1500,
+                            onValueChange = { outputGainLocal = it },
+                            onValueChangeFinished = { setSelectedProfileId("manual"); setOutputGainMb(outputGainLocal) },
+                        )
+                        EqRule()
+                        EqEffectBlock(
+                            label = stringResource(R.string.eq_bass_boost),
+                            value = "${bassBoostStrengthLocal / 10}%",
+                            enabled = bassBoostEnabled,
+                            onEnabledChange = { setSelectedProfileId("manual"); setBassBoostEnabled(it) },
+                            sliderValue = bassBoostStrengthLocal,
+                            valueRange = 0..1000,
+                            onValueChange = { bassBoostStrengthLocal = it },
+                            onValueChangeFinished = { setSelectedProfileId("manual"); setBassBoostStrength(bassBoostStrengthLocal) },
+                        )
+                        EqRule()
+                        EqEffectBlock(
+                            label = stringResource(R.string.eq_virtualizer),
+                            value = "${virtualizerStrengthLocal / 10}%",
+                            enabled = virtualizerEnabled,
+                            onEnabledChange = { setSelectedProfileId("manual"); setVirtualizerEnabled(it) },
+                            sliderValue = virtualizerStrengthLocal,
+                            valueRange = 0..1000,
+                            onValueChange = { virtualizerStrengthLocal = it },
+                            onValueChangeFinished = { setSelectedProfileId("manual"); setVirtualizerStrength(virtualizerStrengthLocal) },
+                        )
                     }
                 }
             }
@@ -1457,16 +1800,144 @@ fun EqualizerDialog(onDismiss: () -> Unit, openSystemEqualizer: () -> Unit) {
     }
 }
 
+/**
+ * A section: its name above the card, not inside it.
+ *
+ * Every settings page in this app is built this way - a quiet footnote label, then the plate the
+ * rows sit on. The equalizer was the one screen that put a `titleMedium` heading *inside* a
+ * Material `surfaceContainer` card, so each of its five sections read as a little titled panel
+ * and none of them matched the app they are part of.
+ */
 @Composable
-private fun EqSection(title: String, trailing: @Composable (() -> Unit)? = null, content: @Composable () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(vertical = 16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                Text(text = title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                trailing?.invoke()
-            }
-            content()
+private fun EqSection(
+    title: String,
+    trailing: @Composable (() -> Unit)? = null,
+    alpha: Float = 1f,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().alpha(alpha)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            trailing?.invoke()
         }
+        EqCard(content = content)
+    }
+}
+
+/** The plate. The same one the settings pages use, so the page belongs to the app. */
+@Composable
+private fun EqCard(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .settingsGlassGroup(RoundedCornerShape(SettingsGroupCornerRadius)),
+        content = content,
+    )
+}
+
+/** The hairline between rows of a group: inset, never at an edge. */
+@Composable
+private fun EqRule() {
+    HorizontalDivider(
+        modifier = Modifier.padding(start = 16.dp),
+        thickness = 0.5.dp,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+    )
+}
+
+/** A section's one action, as text in the accent rather than a Material button. */
+@Composable
+private fun EqTextAction(label: String, onClick: () -> Unit) {
+    Text(
+        text = label,
+        fontSize = 15.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .clip(CircleShape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    )
+}
+
+/** Name on the left, switch on the right: the row that governs a page. */
+@Composable
+private fun EqSwitchRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Text(
+            text = label,
+            fontSize = 17.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        LiquidToggle(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+/**
+ * One effect: what it is, what it is set to, whether it is on, and the slider that sets it.
+ *
+ * The value belongs on the label line rather than at the end of the slider - a number that moves
+ * while your thumb is on the track is easier to read where the eye already is, and it stops the
+ * track being squeezed into whatever is left after a toggle and a 72dp column.
+ */
+@Composable
+private fun EqEffectBlock(
+    label: String,
+    value: String,
+    enabled: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    sliderValue: Int,
+    valueRange: IntRange,
+    onValueChange: (Int) -> Unit,
+    onValueChangeFinished: () -> Unit,
+) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = label,
+                fontSize = 17.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = value,
+                fontSize = 15.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(12.dp))
+            LiquidToggle(checked = enabled, onCheckedChange = onEnabledChange)
+        }
+        Spacer(Modifier.height(2.dp))
+        LiquidSlider(
+            value = sliderValue.toFloat().coerceIn(valueRange.first.toFloat(), valueRange.last.toFloat()),
+            onValueChange = { onValueChange(it.toInt().coerceIn(valueRange.first, valueRange.last)) },
+            onValueChangeFinished = onValueChangeFinished,
+            valueRange = valueRange.first.toFloat()..valueRange.last.toFloat(),
+            accentColor = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .fillMaxWidth()
+                .alpha(if (enabled) 1f else 0.4f),
+        )
     }
 }
 
@@ -1482,14 +1953,15 @@ private fun EqToggleSliderRow(
             checked = enabled, onCheckedChange = onEnabledChange,
         )
         Spacer(Modifier.width(12.dp))
-        Slider(
+        LiquidSlider(
             value = value.toFloat().coerceIn(valueRange.first.toFloat(), valueRange.last.toFloat()),
             onValueChange = { onValueChange(it.toInt().coerceIn(valueRange.first, valueRange.last)) },
             onValueChangeFinished = { onValueChangeFinished?.invoke() },
             valueRange = valueRange.first.toFloat()..valueRange.last.toFloat(),
-            enabled = enabled,
-            colors = SliderDefaults.colors(activeTrackColor = MaterialTheme.colorScheme.primary, inactiveTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest),
-            modifier = Modifier.weight(1f),
+            accentColor = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .weight(1f)
+                .alpha(if (enabled) 1f else 0.4f),
         )
         Spacer(Modifier.width(12.dp))
         Text(text = formatValue(value), style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.End, modifier = Modifier.width(72.dp))
@@ -1535,4 +2007,41 @@ private fun formatHz(hz: Int): String {
 private fun formatDb(db: Float): String {
     val rounded = round(db * 10f) / 10f
     return "${if (rounded > 0f) "+" else ""}$rounded dB"
+}
+
+
+/**
+ * An equalizer preset, as a capsule.
+ *
+ * Same shape as the tempo panel's presets, for the same reason: a `FilterChip` brings a border,
+ * a container colour of its own and a check mark that slides in on selection and pushes the label
+ * sideways. Filling with the accent says "this one" without moving anything.
+ */
+@Composable
+private fun EqPresetChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val accent = MaterialTheme.colorScheme.primary
+    Box(
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(
+                if (selected) accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary
+            else MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }

@@ -6,6 +6,7 @@
 
 package com.ozyern.exhale.ui.component
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -248,6 +249,14 @@ fun SabrinaCharmField(
     colors: List<Color>,
     modifier: Modifier = Modifier,
     alpha: Float = 0.5f,
+    /**
+     * Whether something is playing.
+     *
+     * The field drifts either way - a still sky would read as a wallpaper someone left on - but it
+     * quickens and brightens while there is music, so the decoration belongs to the thing the app
+     * is doing rather than sitting beside it.
+     */
+    playing: Boolean = false,
 ) {
     val charms = remember { layOutCharms() }
 
@@ -255,14 +264,24 @@ fun SabrinaCharmField(
     val phase by transition.animateFloat(
         initialValue = 0f,
         targetValue = TWO_PI,
-        animationSpec = infiniteRepeatable(tween(41_000, easing = LinearEasing)),
+        animationSpec = infiniteRepeatable(
+            tween(if (playing) 27_000 else 41_000, easing = LinearEasing),
+        ),
         label = "drift",
     )
     val twinkle by transition.animateFloat(
         initialValue = 0f,
         targetValue = TWO_PI,
-        animationSpec = infiniteRepeatable(tween(7_400, easing = LinearEasing)),
+        animationSpec = infiniteRepeatable(
+            tween(if (playing) 5_200 else 7_400, easing = LinearEasing),
+        ),
         label = "twinkle",
+    )
+    // Eased rather than switched, so starting a song lifts the sky instead of flicking it on.
+    val lift by animateFloatAsState(
+        targetValue = if (playing) 1.18f else 1f,
+        animationSpec = tween(1_200),
+        label = "sabrinaLift",
     )
 
     Canvas(modifier = modifier.fillMaxSize()) {
@@ -289,7 +308,7 @@ fun SabrinaCharmField(
                 size = unit * charm.size,
                 degrees = charm.spin + 14f * sin(wobble * 0.6f),
                 color = colors[charm.tint % colors.size],
-                alpha = charm.alpha * pulse * alpha,
+                alpha = (charm.alpha * pulse * alpha * lift).coerceAtMost(1f),
             )
         }
     }

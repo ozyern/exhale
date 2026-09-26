@@ -6,14 +6,25 @@
 
 package com.ozyern.exhale.ui.screens.settings
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.withTransform
+import com.ozyern.exhale.utils.DeviceNames
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import com.ozyern.exhale.utils.Updater
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.Image
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,7 +34,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -57,9 +67,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -85,8 +93,7 @@ import com.ozyern.exhale.constants.AquamorphicStiffness
 import com.ozyern.exhale.ui.component.ExhaleBreathingEgg
 import com.ozyern.exhale.ui.component.IconButton
 import com.ozyern.exhale.ui.utils.backToMain
-import kotlin.math.PI
-import kotlin.math.sin
+import com.ozyern.exhale.utils.rememberAppIconPack
 import android.os.Build
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -134,11 +141,14 @@ private val SocialLinks = listOf(
  * Laid out the way OxygenOS 16 lays out "About device", because that shape is right for a page that
  * is mostly facts about a build:
  *
- *  1. a tall **statement card** — the brand, set large, with a graphic band along the bottom edge;
- *  2. a **two-up pair of stat cards** for the two facts worth reading first (version, architecture);
- *  3. **grouped key/value rows** underneath, label left and value right.
+ *  1. a tall **poster** — the mark and the brand set large on lit colour, with the build under it
+ *     and one pill for the only action the page has;
+ *  2. **grouped key/value rows** underneath, label left and value right.
  *
- * The rows in group 3 deliberately carry no icon pucks. A puck earns its place when it distinguishes
+ * There is no pair of stat tiles between them any more: they stated the version and the
+ * architecture, which is what the poster already says and what the table below says again.
+ *
+ * The rows in group 2 deliberately carry no icon pucks. A puck earns its place when it distinguishes
  * one destination from its neighbours in a long list of destinations; on a table where every row is
  * a fact about the same app, thirteen identical accent squares are decoration that makes the values
  * harder to scan, not easier. Rows that *go* somewhere — the maintainer, the social links, the
@@ -220,33 +230,13 @@ fun AboutScreen(
             item(key = "hero") {
                 AboutHero(
                     onSecretUnlocked = { showEasterEgg = true },
+                    onUpdateClick = { navController.navigate("settings/update") },
                     modifier = Modifier.padding(bottom = 10.dp),
                 )
             }
 
-            item(key = "stats") {
-                // The two facts someone opening About is most likely here for, given the weight a
-                // pair of side-by-side cards carries. Everything else stays in the table below.
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = spacing),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    AboutStatCard(
-                        icon = R.drawable.info,
-                        label = stringResource(R.string.about_version),
-                        value = BuildConfig.VERSION_NAME,
-                        modifier = Modifier.weight(1f),
-                    )
-                    AboutStatCard(
-                        icon = R.drawable.token,
-                        label = stringResource(R.string.about_architecture),
-                        value = BuildConfig.ARCHITECTURE,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
+            // (Version and architecture are on the poster and in the table below it; a pair of
+            // cards repeating them between the two was the same fact three times on one screen.)
 
             item(key = "maintainer") {
                 Column(modifier = Modifier.padding(bottom = spacing)) {
@@ -422,65 +412,47 @@ private data class BuildFacts(
 private const val SecretTapCount = 7
 
 /**
- * Resting heights of the bars in the band along the bottom of the statement card, as a fraction of
- * the band's height. The live animation swings around these.
+ * The poster: the mark, the name, the build and the state, on the release's own artwork.
  *
- * Hard-coded rather than randomised: a `Random` call in a composable re-rolls on every
- * recomposition, so the silhouette would jump every time the tap counter changed. This is a fixed
- * shape that happens to look arbitrary — which is what the OxygenOS confetti strip is too.
- */
-private val HeroBandHeights = listOf(
-    0.30f, 0.62f, 0.44f, 0.86f, 0.55f, 1.00f, 0.38f, 0.72f, 0.48f, 0.90f,
-    0.34f, 0.66f, 0.95f, 0.42f, 0.58f, 0.80f, 0.36f, 0.68f, 0.50f, 0.28f,
-    0.74f, 0.40f, 0.88f, 0.52f, 0.32f, 0.70f, 0.46f, 0.92f,
-)
-
-/** Seconds for one full sweep of the band's travelling wave. */
-private const val HeroBandPeriodMs = 3400
-
-/**
- * The statement card: brand set large, version under it, and a graphic band across the foot.
+ * The same card the Updates page opens on - see [SettingsPosterCard]. A phone's About page and its
+ * Software-update page show the same picture for the same reason: they are two views of one fact,
+ * which release you are running, and both say at the foot of the card whether that release is
+ * current. Tapping it goes where that sentence points: the Updates page.
  *
- * OxygenOS gives this card the whole top of the page and puts nothing in it but the slogan and an
- * illustration — the identity, at a size no other element on the screen competes with. This is that
- * card: a spectrum band standing in for their confetti strip, since the thing being identified is a
- * music player.
- *
- * It counts taps. Nothing visible acknowledges them until the fourth, at which point the mark
- * starts leaning into each press a little harder than a normal tap would — enough that someone
- * poking at it realises something is happening, and invisible to someone who is not. On the
- * seventh, [ExhaleBreathingEgg] opens.
+ * It also counts long presses. Nothing visible acknowledges them until the fourth, at which point
+ * the card starts leaning into each press a little harder than a normal one would - enough that
+ * someone holding it realises something is happening, and invisible to someone who is not. On the
+ * seventh, [ExhaleBreathingEgg] opens. It moved off the tap when the tap became navigation; an
+ * easter egg is meant to be hunted, and a hold is a better hiding place than a tap that now does
+ * something.
  */
 @Composable
 private fun AboutHero(
     onSecretUnlocked: () -> Unit,
+    onUpdateClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var taps by remember { mutableIntStateOf(0) }
+    var flipped by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
-
-    // The tell. Below the halfway mark this is an ordinary, almost imperceptible press response;
-    // past it the mark visibly winds up, which is the only hint the egg exists.
-    val warmth = (taps.toFloat() / SecretTapCount).coerceIn(0f, 1f)
-    val markScale by animateFloatAsState(
-        targetValue = if (isPressed) 1f - 0.04f - 0.10f * warmth else 1f + 0.06f * warmth,
+    val press by animateFloatAsState(
+        targetValue = if (isPressed) 0.98f else 1f,
         animationSpec = spring(
             dampingRatio = AquamorphicDampingRatio,
             stiffness = AquamorphicStiffness,
         ),
-        label = "markScale",
-    )
-    val markRotation by animateFloatAsState(
-        targetValue = if (isPressed) -8f * warmth else 0f,
-        animationSpec = spring(
-            dampingRatio = AquamorphicDampingRatio,
-            stiffness = AquamorphicStiffness,
-        ),
-        label = "markRotation",
+        label = "aboutHeroPress",
     )
 
-    // Taps have to be consecutive-ish; wandering off and coming back later starts over.
+    // The turn itself. Under-damped on purpose: it should overshoot a few degrees and settle, the
+    // way a card thrown onto a table does, rather than rotate to 180 and stop dead.
+    val flip by animateFloatAsState(
+        targetValue = if (flipped) 180f else 0f,
+        animationSpec = spring(dampingRatio = 0.78f, stiffness = 180f),
+        label = "aboutHeroFlip",
+    )
+
     LaunchedEffect(taps) {
         if (taps in 1 until SecretTapCount) {
             kotlinx.coroutines.delay(2_500)
@@ -488,155 +460,207 @@ private fun AboutHero(
         }
     }
 
-    val primary = MaterialTheme.colorScheme.primary
-    val secondary = MaterialTheme.colorScheme.secondary
-    val tertiary = MaterialTheme.colorScheme.tertiary
-    val bandPalette = remember(primary, secondary, tertiary) {
-        listOf(primary, tertiary, secondary)
+    // Asked once, on arrival, and quiet about it: until the answer comes back the card simply
+    // does not claim a state. Same question the Updates page asks, so the two never disagree.
+    var latestVersion by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        Updater.getLatestVersionName().onSuccess { latestVersion = it }
+    }
+    val status = latestVersion?.let {
+        if (Updater.hasUpdate(it, BuildConfig.VERSION_NAME)) {
+            stringResource(R.string.update_status_available)
+        } else {
+            stringResource(R.string.update_status_up_to_date)
+        }
     }
 
-    Column(
+    val iconPack = rememberAppIconPack()
+    val haptic = LocalHapticFeedback.current
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .settingsGlassGroup(RoundedCornerShape(SettingsDimensions.HeroCardCornerRadius))
-            .clickable(
+            .aspectRatio(1.06f)
+            .graphicsLayer {
+                scaleX = press
+                scaleY = press
+                rotationY = flip
+                // Without this the card rotates in a flat orthographic space and reads as being
+                // squashed horizontally rather than turned. 14 is about a hand's distance.
+                cameraDistance = 14f * density
+            }
+            .combinedClickable(
                 interactionSource = interactionSource,
                 indication = null,
-            ) {
-                val next = taps + 1
-                if (next >= SecretTapCount) {
-                    taps = 0
-                    onSecretUnlocked()
-                } else {
-                    taps = next
-                }
-            },
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(top = 56.dp, bottom = 26.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            // No app icon above the wordmark. OxygenOS puts nothing in this card but the words and
-            // the illustration, and an icon here was competing with the type for the one job the
-            // card has. The mark still fronts the row in Settings that navigates here, so it is not
-            // lost — it is just not repeated at the destination.
-            //
-            // The press response therefore moves onto the wordmark itself, which is now the thing
-            // being tapped.
-            Text(
-                text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.displayLarge,
-                fontWeight = FontWeight.Black,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.graphicsLayer {
-                    scaleX = markScale
-                    scaleY = markScale
-                    rotationZ = markRotation
+                onClick = {
+                    if (flipped) {
+                        // On the back, taps are the older egg: seven of them and it breathes.
+                        val next = taps + 1
+                        if (next >= SecretTapCount) {
+                            taps = 0
+                            onSecretUnlocked()
+                        } else {
+                            taps = next
+                        }
+                    } else {
+                        onUpdateClick()
+                    }
                 },
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = stringResource(R.string.about_tagline),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    flipped = !flipped
+                    taps = 0
+                },
+            ),
+    ) {
+        if (flip <= 90f) {
+            SettingsPosterCard(modifier = Modifier.fillMaxSize()) {
+                Spacer(Modifier.weight(1f))
+
+                SettingsPosterMark(
+                    name = stringResource(R.string.app_name),
+                    version = BuildConfig.VERSION_NAME,
+                    markRes = iconPack.splashLogoRes,
+                    markSize = 84.dp,
+                )
+
+                Spacer(Modifier.weight(1f))
+
+                if (status != null) {
+                    SettingsPosterStatus(status = status)
+                }
+            }
+        } else {
+            // The back of the card, counter-rotated so it is not a mirror image of itself.
+            AboutStatementCard(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { rotationY = 180f },
             )
         }
+    }
+}
 
-        // The graphic band. OxygenOS ends its card with a strip of confetti; a music player ends it
-        // with a spectrum — and this one is alive, which is the point: on a page that is otherwise
-        // a table of static facts, the identity card is the one thing that should look like it is
-        // running.
-        //
-        // Drawn edge to edge inside the card's clip so the bottom corners cut it, which is what
-        // makes it read as part of the card rather than a widget sitting on it.
-        AboutHeroBand(
-            palette = bandPalette,
-            warmth = warmth,
+/**
+ * The other side of the About card.
+ *
+ * Every phone hides one of these behind its About page - hold the release card and it turns over
+ * to whatever the company would put on a poster. This is ours: the line the project describes
+ * itself with, set large and quiet, over a drift of the app's own colours pooling along the
+ * bottom. Nothing here is a control; it exists to be found.
+ */
+@Composable
+private fun AboutStatementCard(modifier: Modifier = Modifier) {
+    val scheme = MaterialTheme.colorScheme
+    val confetti = remember(scheme.primary, scheme.secondary, scheme.tertiary) {
+        listOf(scheme.primary, scheme.secondary, scheme.tertiary, Color(0xFFFFC53D), Color.White)
+    }
+    // Fixed, not random per frame: a scatter that reshuffles on every recomposition is a bug, and
+    // a scatter that reshuffles on every *open* is a card you can never recognise twice.
+    val shapes = remember {
+        List(34) { index ->
+            val rng = kotlin.random.Random(index * 7919)
+            ConfettiShape(
+                x = rng.nextFloat(),
+                y = 0.72f + rng.nextFloat() * 0.26f,
+                size = 10f + rng.nextFloat() * 16f,
+                aspect = 0.35f + rng.nextFloat() * 1.3f,
+                angle = rng.nextFloat() * 360f,
+                colorIndex = rng.nextInt(5),
+                round = rng.nextFloat() < 0.32f,
+            )
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(28.dp))
+            .background(if (isSystemInDarkTheme()) Color(0xFF1A1C1F) else Color(0xFFE9EAEE)),
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            shapes.forEach { shape ->
+                val colour = confetti[shape.colorIndex % confetti.size].copy(alpha = 0.85f)
+                val w = shape.size * density
+                val h = w * shape.aspect
+                withTransform({
+                    rotate(shape.angle, Offset(size.width * shape.x, size.height * shape.y))
+                }) {
+                    val topLeft = Offset(
+                        size.width * shape.x - w / 2f,
+                        size.height * shape.y - h / 2f,
+                    )
+                    if (shape.round) {
+                        drawCircle(colour, radius = w / 2f, center = Offset(topLeft.x + w / 2f, topLeft.y + h / 2f))
+                    } else {
+                        drawRoundRect(
+                            color = colour,
+                            topLeft = topLeft,
+                            size = Size(w, h),
+                            cornerRadius = CornerRadius(w * 0.18f, w * 0.18f),
+                        )
+                    }
+                }
+            }
+        }
+
+        Text(
+            text = stringResource(R.string.about_tagline),
+            fontSize = 44.sp,
+            lineHeight = 50.sp,
+            fontWeight = FontWeight.Normal,
+            letterSpacing = (-0.5).sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
             modifier = Modifier
-                .fillMaxWidth()
-                .height(64.dp),
+                .align(Alignment.Center)
+                .padding(horizontal = 28.dp)
+                .offset(y = (-28).dp),
         )
     }
 }
 
+private data class ConfettiShape(
+    val x: Float,
+    val y: Float,
+    val size: Float,
+    val aspect: Float,
+    val angle: Float,
+    val colorIndex: Int,
+    val round: Boolean,
+)
+
 /**
- * The living spectrum band.
+ * The pair of cards under the poster: the two facts worth reading first.
  *
- * A travelling wave, not 28 independent oscillators: each bar's phase is offset by its position, so
- * the crest moves left to right across the card instead of the whole band pulsing in unison. The
- * resting silhouette in [HeroBandHeights] is what the wave modulates, which keeps it looking like a
- * spectrum rather than a sine curve.
- *
- * Everything happens in the **draw phase**. One `Animatable`-backed float feeds a `drawBehind`
- * lambda, so an animation running forever on a settings page costs one draw invalidation a frame
- * and never recomposes or re-lays-out anything — the same discipline the dock's capsule uses.
- * Doing this with 28 animated `Modifier.height()` values would relayout the row 60 times a second
- * for as long as the page is open.
+ * Phone About pages put exactly two here, side by side, because two is what fits at a size you can
+ * read at a glance - everything else belongs in the table below. Version and architecture are ours:
+ * the first is what you tell someone when something is wrong, the second is which build you are
+ * actually on.
  */
 @Composable
-private fun AboutHeroBand(
-    palette: List<Color>,
-    warmth: Float,
+private fun AboutStatPair(
+    version: String,
+    architecture: String,
     modifier: Modifier = Modifier,
 ) {
-    val transition = rememberInfiniteTransition(label = "heroBand")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2f * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = HeroBandPeriodMs, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "heroBandPhase",
-    )
-
-    Box(
-        modifier = modifier.drawBehind {
-            val count = HeroBandHeights.size
-            val gap = 4.dp.toPx()
-            val sidePad = 14.dp.toPx()
-            val usable = size.width - sidePad * 2f - gap * (count - 1)
-            if (usable <= 0f) return@drawBehind
-            val barWidth = usable / count
-            val radius = CornerRadius(barWidth.coerceAtMost(6.dp.toPx()) / 2f)
-
-            HeroBandHeights.forEachIndexed { index, rest ->
-                // Each bar sits a fixed distance further along the wave than the one before it.
-                val swing = sin(phase + index * 0.55f)
-                // Amplitude grows with the tap counter: the band winding up is the second, quieter
-                // tell that something is behind this card.
-                val amplitude = 0.16f + 0.22f * warmth
-                val fraction = (rest + swing * amplitude).coerceIn(0.10f, 1f)
-
-                val barHeight = size.height * fraction
-                val left = sidePad + index * (barWidth + gap)
-                drawRoundRect(
-                    color = palette[index % palette.size]
-                        .copy(alpha = 0.18f + 0.50f * fraction),
-                    topLeft = Offset(left, size.height - barHeight),
-                    size = Size(barWidth, barHeight),
-                    cornerRadius = radius,
-                )
-            }
-        },
-    )
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        AboutStatCard(
+            icon = R.drawable.info,
+            label = stringResource(R.string.update_installed_version),
+            value = version,
+            modifier = Modifier.weight(1f),
+        )
+        AboutStatCard(
+            icon = R.drawable.memory,
+            label = stringResource(R.string.about_architecture),
+            value = architecture,
+            modifier = Modifier.weight(1f),
+        )
+    }
 }
 
-// ─── Stat cards ───────────────────────────────────────────────────────────────
-
-/**
- * One of the two cards in the pair under the hero: a glyph, a quiet label, a loud value.
- *
- * Sized by its content rather than by a fixed height so the pair stays level whichever of the two
- * values wraps — a `height()` here would clip the longer one the first time a version string grew.
- */
 @Composable
 private fun AboutStatCard(
     icon: Int,
@@ -647,29 +671,26 @@ private fun AboutStatCard(
     Column(
         modifier = modifier
             .settingsGlassGroup(RoundedCornerShape(SettingsDimensions.GroupCardCornerRadius))
-            .padding(horizontal = 18.dp, vertical = 18.dp),
+            .padding(horizontal = 16.dp, vertical = 16.dp),
     ) {
         Icon(
             painter = painterResource(icon),
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(24.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(22.dp),
         )
-        // The gap is the design. OxygenOS pins the glyph to the top of these cards and the
-        // label/value pair to the bottom, and the empty band between them is what stops a
-        // two-line card from reading as a cramped list row.
-        Spacer(Modifier.height(44.dp))
+        Spacer(Modifier.height(26.dp))
         Text(
             text = label,
-            style = MaterialTheme.typography.bodyMedium,
+            fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(1.dp))
         Text(
             text = value,
-            style = MaterialTheme.typography.titleMedium,
+            fontSize = 17.sp,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
@@ -677,6 +698,7 @@ private fun AboutStatCard(
         )
     }
 }
+
 
 // ─── Grouped rows ─────────────────────────────────────────────────────────────
 
@@ -756,21 +778,21 @@ private fun AboutRow(
     // A chevron promises another screen. Rows that act on the spot must not wear one.
     showChevron: Boolean = true,
 ) {
+    // A coloured glyph on nothing, like every other settings row - see SettingsRow. These were the
+    // last blue pucks left in the app: a column of identical primary-tinted tiles, all one colour
+    // because they all took the theme accent rather than one of their own.
+    val accent = IosAutoColors[(title.hashCode() and 0x7fffffff) % IosAutoColors.size]
+
     AboutRowScaffold(onClick = onClick) {
         Box(
-            modifier = Modifier
-                .size(SettingsDimensions.RowIconSize)
-                .settingsIconPuck(
-                    MaterialTheme.colorScheme.primary,
-                    RoundedCornerShape(SettingsDimensions.RowIconCornerRadius),
-                ),
+            modifier = Modifier.size(30.dp),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 painter = painterResource(icon),
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(SettingsDimensions.RowIconInnerSize),
+                tint = accent,
+                modifier = Modifier.size(25.dp),
             )
         }
 

@@ -48,7 +48,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -65,6 +64,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.ui.component.LiquidBackButton
 import com.ozyern.exhale.ui.component.liquid.LiquidSlider
 import androidx.compose.material3.SliderDefaults
@@ -1005,7 +1005,7 @@ private fun ThemeRichPreview(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text("Loading", style = MaterialTheme.typography.labelLarge)
-                                CircularProgressIndicator(strokeWidth = 3.dp, modifier = Modifier.size(22.dp))
+                                LoadingRing(stroke = 3.dp, modifier = Modifier.size(22.dp))
                             }
                         }
                     }

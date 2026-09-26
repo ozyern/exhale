@@ -8,6 +8,8 @@
 
 package com.ozyern.exhale.playback
 
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.delay
 import android.content.Context
 import android.media.MediaCodecList
 import android.net.ConnectivityManager
@@ -304,6 +306,26 @@ constructor(
                 result[cursor.download.request.id] = cursor.download
             }
             downloads.value = result
+        }
+
+        // Progress, while it is happening.
+        //
+        // `DownloadManager.Listener` only fires when a download *changes state* — queued, started,
+        // finished — and never as bytes arrive. Everything that draws a progress bar was therefore
+        // reading the percentage recorded at the moment the download started, which is zero, so a
+        // song downloading for two minutes showed an empty bar and then a tick. media3 keeps the
+        // live figures on the Download objects themselves, so the only thing missing was somebody
+        // to look at them.
+        CoroutineScope(Dispatchers.IO).launch {
+            while (true) {
+                val active = downloadManager.currentDownloads
+                if (active.isEmpty()) {
+                    delay(2000)
+                    continue
+                }
+                downloads.update { current -> current + active.associateBy { it.request.id } }
+                delay(500)
+            }
         }
     }
 

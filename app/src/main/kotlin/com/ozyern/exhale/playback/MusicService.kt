@@ -10,6 +10,10 @@
 
 package com.ozyern.exhale.playback
 
+import com.ozyern.exhale.constants.SpatialAudioProfileKey
+import com.ozyern.exhale.constants.SpatialAudioProfile
+import androidx.media3.exoplayer.LoadControl
+import androidx.media3.exoplayer.DefaultLoadControl
 import android.app.PendingIntent
 import android.app.ActivityManager
 import android.content.ComponentName
@@ -476,6 +480,9 @@ class MusicService :
      */
     private var liveLyricsOnMediaCard = true
 
+    /** Cached [EnableLockScreenLyricsKey]; see [cardLineWouldFightDocument]. */
+    private var liveLyricsDocument = true
+
     /** The subtitle currently published, so a repeat line is not republished. */
     private var liveLyricCardLine: String? = null
 
@@ -677,6 +684,7 @@ class MusicService :
                 .setMediaSourceFactory(createMediaSourceFactory())
                 .setRenderersFactory(createRenderersFactory())
                 .setTrackSelector(createTrackSelector())
+                .setLoadControl(createLoadControl())
                 .setHandleAudioBecomingNoisy(true)
                 .setWakeMode(C.WAKE_MODE_NETWORK)
                 .setAudioAttributes(
@@ -828,6 +836,16 @@ class MusicService :
             }
 
         dataStore.data
+            .map { it[EnableLockScreenLyricsKey] ?: true }
+            .distinctUntilChanged()
+            .collectLatest(scope) { enabled ->
+                liveLyricsDocument = enabled
+                // Turning the document channel on hands the lock screen back to it, so the
+                // subtitle goes back to being the artist.
+                if (enabled) publishMediaCardLine(null)
+            }
+
+        dataStore.data
             .map { it[PreferLocalLosslessKey] ?: true }
             .distinctUntilChanged()
             .collectLatest(scope) {
@@ -846,10 +864,27 @@ class MusicService :
         // read once per audio buffer, so flipping it is instant and never
         // requires rebuilding the player/sink.
         dataStore.data
-            .map { it[SpatialAudioKey] ?: true } // default ON — ships enabled out of the box
+            // Off by default where the phone already spatialises (OnePlus/OPPO's OReality);
+            // see DeviceAudio.
+            .map { it[SpatialAudioKey] ?: com.ozyern.exhale.utils.DeviceAudio.defaultSpatialAudio }
             .distinctUntilChanged()
             .collectLatest(scope) { enabled ->
                 CavernSpatialAudioProcessor.globalEnabled = enabled
+            }
+
+        dataStore.data
+            .map { settings ->
+                settings[SpatialAudioProfileKey]?.let {
+                    runCatching { SpatialAudioProfile.valueOf(it) }.getOrNull()
+                } ?: SpatialAudioProfile.CINEMA
+            }
+            .distinctUntilChanged()
+            .collectLatest(scope) { profile ->
+                when (profile) {
+                    SpatialAudioProfile.NATURAL -> CavernSpatialAudioProcessor.applyProfile(1.15f, 0.30f, 0.06f)
+                    SpatialAudioProfile.WIDE -> CavernSpatialAudioProcessor.applyProfile(1.35f, 0.38f, 0.12f)
+                    SpatialAudioProfile.CINEMA -> CavernSpatialAudioProcessor.applyProfile(1.60f, 0.46f, 0.20f)
+                }
             }
 
         dataStore.data
@@ -1649,6 +1684,8 @@ class MusicService :
                 artist = metadata.artists.joinToString { it.name },
                 lrc = it,
                 rawLyrics = usable,
+                album = metadata.album?.title,
+                durationMs = metadata.duration.takeIf { d -> d > 0 }?.times(1000L) ?: 0L,
             )
         }
 
@@ -1845,6 +1882,7 @@ class MusicService :
         // A null is a *restore*, so it is allowed through even when the feature is off - that is
         // how switching the preference puts the real artist back straight away.
         if (line != null && !liveLyricsOnMediaCard) return
+        if (line != null && cardLineWouldFightDocument) return
         if (line == liveLyricCardLine) return
 
         val index = player.currentMediaItemIndex
@@ -1857,6 +1895,45 @@ class MusicService :
         with(OplusLiveLyrics) {
             player.replaceMediaItem(index, item.withDisplayLine(line, artist))
         }
+    }
+
+    /**
+     * Whether writing a lyric line into the subtitle right now would cost more than it buys.
+     *
+     * Only one thing can own the lock screen. The document channel needs the session's metadata to
+     * sit still - OPlus reads track identity out of the title/artist pair, and the integration
+     * contract forbids rewriting metadata for lyric progress - while the card ticker rewrites the
+     * subtitle every line. So when the document is actually being *rendered*, the ticker stands
+     * down.
+     *
+     * "Actually being rendered" is the whole point, and it is narrower than "OPlus device". Stock
+     * ColorOS does not draw a third-party player's lyrics at all: SystemUI takes the enable map for
+     * that surface from OPlus's own remote config (`app_systemui_oplus_media_controller_config`,
+     * read by `MediaActionPrioritySelectorImpl.getLyricEnable(pkg)`), and the packages in it are
+     * OPlus's partner players. Ours is not one of them and cannot be added from the device side.
+     * Measured on ColorOS 16.1: our payload lands on the platform session under all four keys and
+     * the lock screen still shows none of it.
+     *
+     * The Bridge module is what changes that, by patching those SystemUI checks. So the rule is
+     * simply: if the bridge is installed, the document wins and the ticker gets out of its way;
+     * otherwise the subtitle is the only lyric anyone is going to see on that lock screen, and
+     * standing down would mean showing nothing at all.
+     */
+    private val cardLineWouldFightDocument: Boolean
+        get() = liveLyricsDocument &&
+            com.ozyern.exhale.utils.DeviceAudio.isOplusDevice &&
+            lockScreenLyricBridgeInstalled
+
+    /**
+     * Whether the ColorOS Live Lyrics Bridge is on this phone.
+     *
+     * Read once: installing an LSPosed module requires a reboot, so the answer cannot change
+     * inside a playback session, and this is consulted on every lyric line.
+     */
+    private val lockScreenLyricBridgeInstalled: Boolean by lazy {
+        runCatching {
+            packageManager.getPackageInfo(OplusLiveLyrics.BRIDGE_PACKAGE, 0)
+        }.isSuccess
     }
 
     /**
@@ -1968,6 +2045,8 @@ class MusicService :
                 songName = song.title,
                 artist = song.artists.joinToString { it.name },
                 lyrics = cached.takeIf { it != LyricsEntity.LYRICS_NOT_FOUND },
+                album = song.album?.title,
+                durationMs = song.duration.takeIf { d -> d > 0 }?.times(1000L) ?: 0L,
             ) ?: continue
 
             withContext(Dispatchers.Main) {
@@ -4086,7 +4165,16 @@ class MusicService :
         }
 
         virtualizer?.let { v ->
-            runCatching { v.enabled = settings.virtualizerEnabled }
+            // OReality is a virtualizer, and on OnePlus/OPPO it is already in this chain.
+            //
+            // Running ours as well is two head-related transfer functions applied in series to the
+            // same stereo pair: the stage collapses toward the middle, the centre image goes
+            // hollow and cymbals smear - the "weirdish" sound those devices get. The device's own
+            // one wins, because it is the one the speakers and the tuning were designed around and
+            // the one the user can control from the system panel. This is the same rule the Cavern
+            // spatial stage follows in DeviceAudio.defaultSpatialAudio.
+            val ours = settings.virtualizerEnabled && !com.ozyern.exhale.utils.DeviceAudio.isOplusDevice
+            runCatching { v.enabled = ours }
             runCatching { v.setStrength(settings.virtualizerStrength.toShort()) }
         }
 
@@ -4847,6 +4935,27 @@ class MusicService :
         }
     }
 
+    /**
+     * Read as far ahead as the track will allow.
+     *
+     * On the defaults the player kept about twenty seconds in hand, and twenty seconds is not a
+     * buffer on a phone — it is the length of one lift ride or one dead spot on a train. Music is
+     * small: two minutes of AAC is under two megabytes, so there is no reason not to hold minutes
+     * of it. Playback still starts on the first couple of seconds; it just doesn't stop again.
+     */
+    private fun createLoadControl(): LoadControl =
+        DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* minBufferMs = */ 60_000,
+                /* maxBufferMs = */ 300_000,
+                /* bufferForPlaybackMs = */ 1_500,
+                /* bufferForPlaybackAfterRebufferMs = */ 3_000,
+            )
+            .setTargetBufferBytes(32 * 1024 * 1024)
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .setBackBuffer(/* backBufferDurationMs = */ 30_000, /* retainBackBufferFromKeyframe = */ true)
+            .build()
+
     private fun createCacheDataSource(): CacheDataSource.Factory =
         CacheDataSource
             .Factory()
@@ -4979,7 +5088,8 @@ class MusicService :
 
             playbackUrlCache[mediaId]?.takeIf { it.second > System.currentTimeMillis() }?.let {
                 scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
-                val length = if (dataSpec.length >= 0) minOf(dataSpec.length, CHUNK_LENGTH) else CHUNK_LENGTH
+                val chunk = if (dataSpec.position > 0L) LATER_CHUNK_LENGTH else CHUNK_LENGTH
+                val length = if (dataSpec.length >= 0) minOf(dataSpec.length, chunk) else chunk
                 return@Factory dataSpec.withUri(it.first.toUri()).subrange(dataSpec.uriPositionOffset, length)
             }
 
@@ -5034,7 +5144,8 @@ class MusicService :
             }
             run {
                 val streamUrl = storeResolvedStream(mediaId, nonNullPlayback)
-                val length = if (dataSpec.length >= 0) minOf(dataSpec.length, CHUNK_LENGTH) else CHUNK_LENGTH
+                val chunk = if (dataSpec.position > 0L) LATER_CHUNK_LENGTH else CHUNK_LENGTH
+                val length = if (dataSpec.length >= 0) minOf(dataSpec.length, chunk) else chunk
                 return@Factory dataSpec.withUri(streamUrl.toUri()).subrange(dataSpec.uriPositionOffset, length)
             }
         }
@@ -5224,12 +5335,22 @@ class MusicService :
         )
 
     private fun updateAudioOffload(enabled: Boolean) {
+        // Offload and OReality are mutually exclusive, and only one of them is why anyone bought
+        // the phone.
+        //
+        // An offloaded stream is handed to the DSP as compressed data and decoded past the point
+        // where the effect chain lives, so every system effect - OReality, the OEM equaliser, our
+        // own session effects - is bypassed silently. On an OPlus device that trade is never worth
+        // taking: the user gets a little battery back in exchange for the phone's entire audio
+        // character, with nothing on screen to say why the sound changed. So it stays off there,
+        // and the setting says so.
+        val offload = enabled && !com.ozyern.exhale.utils.DeviceAudio.isOplusDevice
         runCatching {
             val builder = player.trackSelectionParameters.buildUpon()
             val audioOffloadPrefsClass = Class.forName("androidx.media3.common.AudioOffloadPreferences")
             val audioOffloadPrefsBuilderClass = Class.forName("androidx.media3.common.AudioOffloadPreferences\$Builder")
 
-            val modeFieldName = if (enabled) "AUDIO_OFFLOAD_MODE_ENABLED" else "AUDIO_OFFLOAD_MODE_DISABLED"
+            val modeFieldName = if (offload) "AUDIO_OFFLOAD_MODE_ENABLED" else "AUDIO_OFFLOAD_MODE_DISABLED"
             val mode = audioOffloadPrefsClass.getField(modeFieldName).getInt(null)
 
             val prefsBuilder = audioOffloadPrefsBuilderClass.getDeclaredConstructor().newInstance()
@@ -5245,7 +5366,7 @@ class MusicService :
                 player.trackSelectionParameters = builder.build()
             }
         }
-        player.setOffloadEnabled(enabled)
+        player.setOffloadEnabled(offload)
     }
 
     private fun updateWakeLock() {
@@ -5861,7 +5982,29 @@ class MusicService :
         const val CHANNEL_ID = "music_channel_01"
         const val NOTIFICATION_ID = 888
         const val ERROR_CODE_NO_STREAM = 1000001
-        const val CHUNK_LENGTH = 512 * 1024L
+    /**
+     * How much of a stream one request asks for.
+     *
+     * googlevideo serves an open-ended GET at about the speed the audio plays, so playback asks in
+     * ranges. Every range boundary costs a fresh connection, and a stream fetched 512KB at a time —
+     * roughly half a minute of audio — spends its life one chunk ahead: any boundary where the
+     * handshake is slow lands as a stall a minute or two into the song, at the same place every
+     * time, because the boundaries are at fixed byte offsets.
+     *
+     * So: the first request stays small, because nothing plays until it arrives, and every request
+     * after it is larger — four minutes of a 128kbps track, usually the whole rest of the song in
+     * one connection.
+     *
+     * The first request is no longer smaller, and that is the fix for the stall at around half a
+     * minute. A range's *size* does not gate playback - the response streams, and the player starts
+     * on the first frames that arrive - so a small first chunk bought nothing and cost a boundary
+     * early in the song. 512KB is about thirty seconds of a 128kbps stream, so the first boundary
+     * landed exactly where the audio ran out; 1.5MB moved it to roughly a minute and a half, which
+     * is still inside the song at higher bitrates, which is why some tracks went on stalling. At
+     * 4MB the first boundary is past the end of most songs entirely.
+     */
+        const val CHUNK_LENGTH = 4 * 1024 * 1024L
+        const val LATER_CHUNK_LENGTH = 4 * 1024 * 1024L
         const val PERSISTENT_QUEUE_FILE = "persistent_queue.data"
         const val PERSISTENT_AUTOMIX_FILE = "persistent_automix.data"
         const val PERSISTENT_PLAYER_STATE_FILE = "persistent_player_state.data"

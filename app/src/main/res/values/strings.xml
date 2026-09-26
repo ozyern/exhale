@@ -154,6 +154,8 @@
     <string name="tempo">Tempo</string>
     <string name="pitch">Pitch</string>
     <string name="pitch_mode_semitones_short">st</string>
+    <string name="pitch_mode_semitones">Semitones</string>
+    <string name="pitch_mode_multiplier">Multiplier</string>
     <string name="pitch_mode_multiplier_short">x</string>
     <!-- Sort menu -->
     <string name="sort_by_create_date">Date added</string>
@@ -268,7 +270,7 @@
     <string name="appearance">Appearance</string>
     <string name="theme">Theme</string>
     <string name="sabrina_theme">Sabrina Carpenter theme</string>
-    <string name="sabrina_theme_desc">Blush, butter and lilac on warm cream, with bows, hearts and sparkles through the app. Replaces dynamic color, the palette picker and true blacks while it is on</string>
+    <string name="sabrina_theme_desc">Blush, butter and lilac, with bows and sparkles through the app</string>
     <string name="enable_dynamic_theme">Enable dynamic theme</string>
     <string name="random_theme_on_startup">Random theme on startup</string>
     <string name="random_theme_on_startup_desc">Apply a random color palette every time the app starts</string>
@@ -900,6 +902,12 @@ Exhale will only extract your token, and everything else is stored locally.</str
     <string name="update_check_now">Check for Updates</string>
     <string name="update_check_download">Download Update</string>
     <string name="update_status_checking">Checking for updates…</string>
+    <string name="software_version">Software version</string>
+    <string name="audio">Audio</string>
+    <string name="eq_effects">Effects</string>
+    <string name="app_language_desc">The language the app is shown in</string>
+    <string name="app_language_system">System default</string>
+    <string name="beta_label">Beta</string>
     <string name="update_status_up_to_date">Exhale is up to date.</string>
     <string name="update_status_available">A new version is available.</string>
     <string name="update_status_failed">Update check failed. %1$s</string>
@@ -956,9 +964,9 @@ Exhale will only extract your token, and everything else is stored locally.</str
     <string name="egg_close_hint">Tap to ripple &#183; Hold to gather &#183; Swipe down to close</string>
     <string name="egg_breath_count">%1$s breaths</string>
     <string name="lock_screen_lyrics">Lock screen lyrics</string>
-    <string name="lock_screen_lyrics_desc">Publishes timed lyrics to Live Space on OxygenOS and ColorOS. The system only shows them for approved apps, so on a stock phone this does nothing on its own \u2014 use the media card below.</string>
+    <string name="lock_screen_lyrics_desc">Publishes timed lyrics to Live Space on OxygenOS and ColorOS. Stock ColorOS only draws them for players on its own approved list, so on an unmodified phone this does nothing by itself and the media card below is what shows your lyrics.</string>
     <string name="lyrics_on_media_card">Lyrics on the media card</string>
-    <string name="lyrics_on_media_card_desc">Shows the line playing now under the song title on the lock screen and in the notification. Works on every phone, unlike Live Space above, which needs a ColorOS module. The lyric replaces the artist name wherever playback is shown, including Bluetooth and Android Auto \u2014 and if Live Space does work on your phone, turn this off, because the two interfere.</string>
+    <string name="lyrics_on_media_card_desc">Shows the line playing now under the song title on the lock screen and in the notification. Works on every phone. The lyric takes the place of the artist name wherever playback is shown, including Bluetooth and Android Auto. On OnePlus and OPPO phones this steps aside on its own while Live Space above is on, because the two cannot both own the lock screen.</string>
     <string name="logout">Sign out</string>
     <!-- Account sheet. Distinct from logout_confirm_* above, which is Discord's. -->
     <string name="account_signout_title">Sign out?</string>
@@ -1002,4 +1010,18 @@ Exhale will only extract your token, and everything else is stored locally.</str
         <item quantity="one">%d song couldn\'t be saved</item>
         <item quantity="other">%d songs couldn\'t be saved</item>
     </plurals>
+    <string name="spatial_audio_profile">Spatial stage</string>
+    <string name="spatial_profile_natural">Natural</string>
+    <string name="spatial_profile_wide">Wide</string>
+    <string name="spatial_profile_cinema">Cinema</string>
+    <string name="system_audio_effects">System audio effects</string>
+    <string name="system_audio_effects_desc">Open the phone equaliser for Exhale</string>
+    <string name="system_audio_effects_oplus_desc">Open OReality for Exhale. Leave the app spatial audio off while you use it.</string>
+    <string name="system_audio_effects_missing">This phone has no audio effects panel</string>
+    <string name="done">Done</string>
+    <string name="audio_offload_oplus_desc">Off on this phone. OReality processes the sound after the point offloaded playback decodes at, so offload would turn it off along with the system equaliser.</string>
+    <string name="queue_playing_next">Playing Next</string>
+    <string name="account_sign_in">Sign In</string>
+    <string name="account_sign_out">Sign Out</string>
+    <string name="lyrics_sync">Sync</string>
 </resources>

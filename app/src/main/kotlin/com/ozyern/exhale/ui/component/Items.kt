@@ -43,7 +43,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -1506,7 +1505,7 @@ fun YouTubeListItem(
                 )
                 is AlbumItem -> joinByBullet(item.artists?.joinToString { it.name }, item.year?.toString())
                 is ArtistItem -> null
-                is PlaylistItem -> joinByBullet(item.author?.name, item.songCountText)
+                is PlaylistItem -> joinByBullet(item.author?.name, item.songCountText?.withoutViewCount())
             },
             badges = badges,
             thumbnailContent = {
@@ -1591,7 +1590,7 @@ fun YouTubeGridItem(
             is SongItem -> joinByBullet(item.artists.joinToString { it.name }, makeTimeString(item.duration?.times(1000L)))
             is AlbumItem -> joinByBullet(item.artists?.joinToString { it.name }, item.year?.toString())
             is ArtistItem -> null
-            is PlaylistItem -> joinByBullet(item.author?.name, item.songCountText)
+            is PlaylistItem -> joinByBullet(item.author?.name, item.songCountText?.withoutViewCount())
         }
         if (subtitle != null) {
             Text(
@@ -2265,8 +2264,8 @@ private object Icon {
                     .size(18.dp)
                     .padding(end = 2.dp)
             )
-            STATE_QUEUED, STATE_DOWNLOADING -> CircularProgressIndicator(
-                strokeWidth = 2.dp,
+            STATE_QUEUED, STATE_DOWNLOADING -> LoadingRing(
+                stroke = 2.dp,
                 modifier = Modifier
                     .size(16.dp)
                     .padding(end = 2.dp)
@@ -2286,3 +2285,16 @@ private object Icon {
         )
     }
 }
+
+/**
+ * YouTube's "1.1M views" out of a shelf caption.
+ *
+ * A view count is a fact about a video, and a shelf of album art is not a list of videos — Apple
+ * Music never prints one, and in a grey caption under a cover it is the loudest thing on the row.
+ * A playlist keeps its song count, which is the part someone browsing actually uses.
+ */
+private fun String.withoutViewCount(): String? =
+    replace(Regex("""\s*[0-9][0-9.,]*\s*[KMB]?\s*views?""", RegexOption.IGNORE_CASE), "")
+        .trim()
+        .trim('•', '·', ' ')
+        .takeIf { it.isNotBlank() }

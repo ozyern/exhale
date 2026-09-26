@@ -29,7 +29,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -70,6 +69,7 @@ import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.innertube.YouTube
 import com.ozyern.exhale.LocalDatabase
 import com.ozyern.exhale.LocalDownloadUtil
@@ -734,9 +734,9 @@ fun SongMenu(
                             ListItem(
                                 headlineContent = { Text(text = stringResource(R.string.downloading)) },
                                 leadingContent = {
-                                    CircularProgressIndicator(
+                                    LoadingRing(
                                         modifier = Modifier.size(24.dp),
-                                        strokeWidth = 2.dp,
+                                        stroke = 2.dp,
                                     )
                                 },
                                 modifier =

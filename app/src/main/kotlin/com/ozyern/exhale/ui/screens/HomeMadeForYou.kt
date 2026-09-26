@@ -6,6 +6,7 @@
 
 package com.ozyern.exhale.ui.screens
 
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -92,7 +93,17 @@ fun HomeMadeForYou(
     }
 }
 
-private val CardHeight = 268.dp
+private val CardWidth = 172.dp
+
+/**
+ * Square, because an album cover is square.
+ *
+ * The card was a 176x220 portrait crop with the song title set 19sp bold across its foot. That is
+ * the shape of a video thumbnail with a headline on it - a YouTube shelf - and it made every cover
+ * on Home a letterboxed fragment of itself. Apple's shelves show the artwork whole and put the
+ * words underneath, where they can be read at a caption size instead of shouting over the picture.
+ */
+private val CardArtHeight = CardWidth
 
 @Composable
 private fun pressScale(source: MutableInteractionSource): Float {
@@ -103,141 +114,27 @@ private fun pressScale(source: MutableInteractionSource): Float {
 
 /** The artwork, stretched far past its edges and blurred down to its colour, as a card's ground. */
 @Composable
-private fun ArtworkWash(url: String?, modifier: Modifier = Modifier) {
-    Box(modifier.clipToBounds()) {
-        AsyncImage(
-            model = url?.resize(120, 120),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    scaleX = 2.4f
-                    scaleY = 2.4f
-                }
-                .blur(60.dp),
-        )
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.28f)))
-    }
-}
-
-@Composable
-private fun SpotlightCard(pick: Recommendation, active: Boolean, playing: Boolean, onPlay: () -> Unit, onPlayNext: () -> Unit) {
-    val song = pick.song
-    val source = remember { MutableInteractionSource() }
-    val scale = pressScale(source)
-    val shape = RoundedCornerShape(26.dp)
-    Box(
-        Modifier
-            .width(300.dp)
-            .height(CardHeight)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .shadow(14.dp, shape)
-            .clip(shape)
-            .background(Color(0xFF1C1C1E))
-            .clickable(interactionSource = source, indication = null, onClick = onPlay),
-    ) {
-        ArtworkWash(song.thumbnail, Modifier.fillMaxSize())
-        Column(Modifier.fillMaxSize().padding(18.dp)) {
-            Box(
-                Modifier
-                    .size(172.dp)
-                    .align(Alignment.CenterHorizontally)
-                    .shadow(20.dp, RoundedCornerShape(14.dp))
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color.White.copy(alpha = 0.06f)),
-            ) {
-                AsyncImage(
-                    model = song.thumbnail.resize(544, 544),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-            Spacer(Modifier.weight(1f))
-            Text(
-                pick.reason.uppercase(),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 0.08.em,
-                color = Color.White.copy(alpha = 0.72f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(3.dp))
-            Text(song.title, fontSize = 22.sp, lineHeight = 26.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(
-                song.artists.joinToString { it.name },
-                fontSize = 14.sp,
-                color = Color.White.copy(alpha = 0.75f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PillButton(
-                    icon = if (active && playing) R.drawable.pause else R.drawable.play,
-                    label = if (active && playing) "Pause" else "Play",
-                    filled = true,
-                    onClick = onPlay,
-                )
-                PillButton(icon = R.drawable.playlist_play, label = "Play Next", filled = false, onClick = onPlayNext)
-            }
-        }
-    }
-}
-
-@Composable
-private fun PillButton(icon: Int, label: String, filled: Boolean, onClick: () -> Unit) {
-    val haptic = LocalHapticFeedback.current
-    val source = remember { MutableInteractionSource() }
-    val scale = pressScale(source)
-    val content = if (filled) Color.Black else Color.White
-    Row(
-        Modifier
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .clip(CircleShape)
-            .background(if (filled) Color.White else Color.White.copy(alpha = 0.18f))
-            .clickable(interactionSource = source, indication = null) {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                onClick()
-            }
-            .padding(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(painterResource(icon), contentDescription = null, tint = content, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = content)
-    }
-}
-
-@Composable
 private fun PickCard(pick: Recommendation, active: Boolean, playing: Boolean, onPlay: () -> Unit) {
     val song = pick.song
     val source = remember { MutableInteractionSource() }
     val scale = pressScale(source)
-    val shape = RoundedCornerShape(14.dp)
-    val width: Dp = 176.dp
+    val shape = RoundedCornerShape(12.dp)
     Column(
         Modifier
-            .width(width)
-            .height(CardHeight)
+            .width(CardWidth)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
             }
-            .shadow(4.dp, shape)
-            .clip(shape)
-            .background(Color(0xFF1C1C1E))
             .clickable(interactionSource = source, indication = null, onClick = onPlay),
     ) {
-        Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(CardArtHeight)
+                .clip(shape)
+                .background(Color(0xFF1C1C1E)),
+        ) {
             AsyncImage(
                 model = song.thumbnail.resize(544, 544),
                 contentDescription = null,
@@ -245,39 +142,33 @@ private fun PickCard(pick: Recommendation, active: Boolean, playing: Boolean, on
                 modifier = Modifier.fillMaxSize(),
             )
             if (active) {
-                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.30f)), contentAlignment = Alignment.Center) {
                     Icon(
                         painterResource(if (playing) R.drawable.pause else R.drawable.play),
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(44.dp),
+                        modifier = Modifier.size(42.dp),
                     )
                 }
             }
         }
-        Box(Modifier.fillMaxWidth().weight(1f)) {
-            ArtworkWash(song.thumbnail, Modifier.fillMaxSize())
-            // Where the cover meets the panel, fade one into the other.
-            Box(Modifier.fillMaxWidth().height(28.dp).background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.18f), Color.Transparent))))
-            Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 10.dp)) {
-                Text(
-                    pick.reason,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.White.copy(alpha = 0.7f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(3.dp))
-                Text(song.title, fontSize = 15.sp, lineHeight = 19.sp, fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(
-                    song.artists.joinToString { it.name },
-                    fontSize = 13.sp,
-                    color = Color.White.copy(alpha = 0.7f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            song.title,
+            fontSize = 15.sp,
+            lineHeight = 19.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            pick.reason,
+            fontSize = 13.sp,
+            lineHeight = 17.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }

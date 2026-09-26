@@ -6,6 +6,8 @@
 
 package com.ozyern.exhale.ui.component
 
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.ui.unit.sp
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -144,28 +146,59 @@ private fun <T> MenuPanel(
 ) {
     // The app's own theme, which can differ from the system's.
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val shape = RoundedCornerShape(16.dp)
-    val panel = if (dark) Color(0xF2242428) else Color(0xF5FBFBFD)
+
+    // iOS menu geometry, not Material's.
+    //
+    // What was here read as a dialog that had lost its dialog: a 16dp panel as wide as the screen
+    // allowed, rows of `bodyLarge` at 12dp padding, and a hairline between *every* option. A menu
+    // on iOS has no rules between its items - they only separate sections - and its rows are 44pt
+    // with a 17pt label, so five options take about the room three took here. The panel is also
+    // narrow: it is sized by its longest label, not by the row that opened it.
+    val shape = RoundedCornerShape(MenuCornerRadius)
+    // Nearly opaque. iOS can afford a translucent menu because the system blurs everything under
+    // it; a popup here gets no blur, so at 94% the settings rows underneath stayed legible through
+    // the panel and the whole thing read as a rendering fault.
+    val panel = if (dark) Color(0xFA17171A) else Color(0xFAFBFBFD)
     val rim = if (dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.06f)
+
     Column(
         Modifier
-            .widthIn(min = 210.dp, max = 280.dp)
-            .shadow(24.dp, shape, clip = false, ambientColor = Color.Black.copy(alpha = 0.35f), spotColor = Color.Black.copy(alpha = 0.35f))
+            .widthIn(min = 200.dp, max = 260.dp)
+            // Sized by its longest option, like a menu, rather than always taking the maximum.
+            .width(IntrinsicSize.Max)
+            .shadow(
+                elevation = 30.dp,
+                shape = shape,
+                clip = false,
+                ambientColor = Color.Black.copy(alpha = 0.45f),
+                spotColor = Color.Black.copy(alpha = 0.45f),
+            )
             .clip(shape)
             .background(panel)
-            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = if (dark) 0.04f else 0.25f), Color.Transparent)))
+            // One pass of light across the top, so the panel sits above the page rather than on it.
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color.White.copy(alpha = if (dark) 0.05f else 0.25f),
+                        Color.Transparent,
+                    ),
+                ),
+            )
             .border(0.7.dp, rim, shape)
             .heightIn(max = 420.dp)
             .verticalScroll(rememberScrollState()),
     ) {
-        options.forEachIndexed { index, option ->
-            if (index > 0) {
-                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (dark) 0.10f else 0.08f))
-            }
+        options.forEach { option ->
             MenuRow(label(option), option == selected) { onPick(option) }
         }
     }
 }
+
+/** iOS menus round at 13-14pt, not at the 16-20 a card uses. */
+private val MenuCornerRadius = 14.dp
+
+/** 44pt, the row height every iOS list and menu is built on. */
+private val MenuRowHeight = 44.dp
 
 @Composable
 private fun MenuRow(text: String, checked: Boolean, onClick: () -> Unit) {
@@ -175,27 +208,35 @@ private fun MenuRow(text: String, checked: Boolean, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = if (pressed) 0.08f else 0f))
+            .heightIn(min = MenuRowHeight)
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = if (pressed) 0.10f else 0f))
             .clickable(interactionSource = source, indication = null) {
                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
             }
-            .padding(start = 16.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+            .padding(horizontal = 14.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // The check sits in front, the way iOS's menus put it, so every label starts in the same place.
-        Box(Modifier.width(22.dp), contentAlignment = Alignment.CenterStart) {
+        // The check leads, the way UIMenu shows a chosen item, so every label starts in the same
+        // place whether or not anything is ticked.
+        Box(Modifier.width(20.dp), contentAlignment = Alignment.CenterStart) {
             if (checked) {
-                Icon(painterResource(R.drawable.check), null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(17.dp))
+                Icon(
+                    painterResource(R.drawable.check),
+                    null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(16.dp),
+                )
             }
         }
-        Spacer(Modifier.width(4.dp))
+        Spacer(Modifier.width(6.dp))
         Text(
             text,
-            style = MaterialTheme.typography.bodyLarge,
+            fontSize = 17.sp,
+            lineHeight = 22.sp,
             fontWeight = if (checked) FontWeight.SemiBold else FontWeight.Normal,
             color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
     }

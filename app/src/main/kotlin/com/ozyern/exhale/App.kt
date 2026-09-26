@@ -434,7 +434,12 @@ class App : Application(), SingletonImageLoader.Factory {
         }
 
         return ImageLoader.Builder(this)
-            .crossfade(true)
+            // A stated duration, not `true`.
+            //
+            // Coil's default is 100ms, which on a grid of covers reads as a flicker: tiles blink in
+            // one after another as the decoder catches up. 220ms is long enough to register as a
+            // fade and short enough that a cached image still feels instant.
+            .crossfade(220)
             .allowHardware(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
             // Heavy in-memory caching: a quarter of the app heap keeps every on-screen
             // thumbnail (home shelves, search category artwork, player art) hot so scroll

@@ -1,5 +1,11 @@
 package com.ozyern.exhale.ui.player
 
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.layout.onSizeChanged
 import android.content.Context
 import android.content.Intent
 import android.media.AudioDeviceInfo
@@ -142,6 +148,8 @@ fun DeviceSelectionBottomSheet(
     val playerConnection = LocalPlayerConnection.current
     val accent = MaterialTheme.colorScheme.primary
     val onSurface = MaterialTheme.colorScheme.onSurface
+    val format by (playerConnection?.currentFormat
+        ?: kotlinx.coroutines.flow.MutableStateFlow(null)).collectAsState(initial = null)
 
     LiquidGlassSheet(onDismiss = onDismiss) {
         Column(
@@ -152,332 +160,257 @@ fun DeviceSelectionBottomSheet(
         ) {
             Text(
                 text = stringResource(R.string.device_sheet_title),
-                style = MaterialTheme.typography.headlineMedium,
+                fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = (-0.6).sp,
+                letterSpacing = (-0.4).sp,
                 color = onSurface,
-                modifier = Modifier.padding(top = 4.dp, bottom = 18.dp),
+                modifier = Modifier.padding(top = 2.dp, bottom = 14.dp),
             )
 
-            // ── Current output: the hero card ──────────────────────────────
-            ActiveDeviceCard(
-                device = activeDevice,
-                accent = accent,
-                playerConnection = playerConnection,
-            )
-
-            val others = availableDevices.filter { it != activeDevice }
-            if (others.isNotEmpty()) {
-                Spacer(Modifier.height(22.dp))
-                Text(
-                    text = stringResource(R.string.device_sheet_other_outputs),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.4.sp,
-                    color = onSurface.copy(alpha = 0.55f),
-                    modifier = Modifier.padding(start = 4.dp, bottom = 10.dp),
-                )
-
-                others.forEach { device ->
-                    DeviceRow(
+            // ── The outputs, as a list ────────────────────────────────────
+            //
+            // One card, one row per output, a tick on the one you are hearing - which is what
+            // AirPlay shows and what makes the sheet answer its own question at a glance. It used
+            // to be a hero card for the active device and a separate list for the others, so the
+            // two halves of one question were in two different shapes, and the device you were on
+            // was the only one whose name was set large.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(onSurface.copy(alpha = 0.07f)),
+            ) {
+                val ordered = buildList {
+                    activeDevice?.let(::add)
+                    addAll(availableDevices.filter { it != activeDevice })
+                }
+                ordered.forEachIndexed { index, device ->
+                    if (index > 0) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = 58.dp),
+                            thickness = 0.5.dp,
+                            color = onSurface.copy(alpha = 0.12f),
+                        )
+                    }
+                    OutputRow(
                         device = device,
+                        active = device == activeDevice,
+                        accent = accent,
+                        subtitle = if (device == activeDevice) {
+                            format?.bitrate?.takeIf { it > 0 }?.let { "${it / 1000} kbps" }
+                        } else {
+                            null
+                        },
                         onClick = {
-                            openSystemOutputPicker(context)
-                            onDeviceSelected(device)
+                            if (device != activeDevice) {
+                                openSystemOutputPicker(context)
+                                onDeviceSelected(device)
+                            }
                         },
                     )
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
+            // ── Volume ────────────────────────────────────────────────────
+            if (playerConnection != null) {
+                Spacer(Modifier.height(14.dp))
+                val volume by playerConnection.service.playerVolume.collectAsState()
+                IosVolumeBar(
+                    value = volume,
+                    onValueChange = { playerConnection.service.playerVolume.value = it },
+                    tint = onSurface,
+                )
+            }
 
-            // ── Action tile ────────────────────────────────────────────────
-            GlassActionTile(
-                iconRes = R.drawable.bluetooth,
-                label = stringResource(R.string.device_sheet_bluetooth_settings),
-                onClick = {
-                    runCatching {
-                        context.startActivity(
-                            Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        )
+            Spacer(Modifier.height(14.dp))
+
+            // ── The one place that can actually reroute ───────────────────
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(onSurface.copy(alpha = 0.07f))
+                    .clickable {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
+                        onDismiss()
                     }
-                    onDismiss()
-                },
-            )
+                    .padding(horizontal = 16.dp, vertical = 15.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.bluetooth),
+                    contentDescription = null,
+                    tint = onSurface.copy(alpha = 0.75f),
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(14.dp))
+                Text(
+                    text = stringResource(R.string.device_sheet_bluetooth_settings),
+                    fontSize = 17.sp,
+                    color = onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    painter = painterResource(R.drawable.navigate_next),
+                    contentDescription = null,
+                    tint = onSurface.copy(alpha = 0.35f),
+                    modifier = Modifier.size(20.dp),
+                )
+            }
 
             Spacer(Modifier.height(10.dp))
 
             Text(
                 text = stringResource(R.string.device_sheet_routing_note),
-                style = MaterialTheme.typography.bodySmall,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
                 color = onSurface.copy(alpha = 0.45f),
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
+
+            Spacer(Modifier.height(4.dp))
         }
     }
 }
 
+/**
+ * One output: glyph, name, and a tick when it is the one playing.
+ *
+ * The tick rather than a chevron. A chevron on every row promised each one led somewhere, when in
+ * fact the only thing a row can do is hand the reroute to the system picker; a tick says which
+ * output you are on, which is the question the sheet exists to answer.
+ */
 @Composable
-private fun ActiveDeviceCard(
-    device: AudioDeviceInfo?,
-    accent: Color,
-    playerConnection: com.ozyern.exhale.playback.PlayerConnection?,
-) {
-    val onSurface = MaterialTheme.colorScheme.onSurface
-    val metadata by (playerConnection?.mediaMetadata
-        ?: kotlinx.coroutines.flow.MutableStateFlow(null)).collectAsState()
-    val format by (playerConnection?.currentFormat
-        ?: kotlinx.coroutines.flow.MutableStateFlow(null)).collectAsState(initial = null)
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        accent.copy(alpha = 0.16f),
-                        accent.copy(alpha = 0.07f),
-                    )
-                )
-            )
-            .border(
-                width = 0.8.dp,
-                brush = Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.22f),
-                        Color.White.copy(alpha = 0.04f),
-                    )
-                ),
-                shape = RoundedCornerShape(24.dp),
-            )
-            .padding(horizontal = 18.dp, vertical = 16.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = device?.let { deviceLabel(it) }
-                            ?: stringResource(R.string.device_speaker),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.3).sp,
-                        color = onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-
-                    // Quality chip, driven by the format actually playing rather than by the
-                    // user's *preference* — a "Max" label on a 128 kbps stream would be a lie.
-                    val bitrate = format?.bitrate
-                    if (bitrate != null && bitrate > 0) {
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "${bitrate / 1000} kbps",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = onSurface.copy(alpha = 0.75f),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(percent = 50))
-                                .background(onSurface.copy(alpha = 0.10f))
-                                .padding(horizontal = 9.dp, vertical = 3.dp),
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(7.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        painter = painterResource(R.drawable.equalizer),
-                        contentDescription = null,
-                        tint = accent,
-                        modifier = Modifier.size(15.dp),
-                    )
-                    Spacer(Modifier.width(7.dp))
-                    Text(
-                        text = metadata?.let { meta ->
-                            val artists = meta.artists.joinToString { it.name }
-                            if (artists.isBlank()) meta.title else "${meta.title} — $artists"
-                        } ?: stringResource(R.string.device_sheet_nothing_playing),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = accent,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-
-            Spacer(Modifier.width(14.dp))
-
-            Box(
-                modifier = Modifier
-                    .size(54.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(accent.copy(alpha = 0.18f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = painterResource(device?.let { deviceIcon(it) } ?: R.drawable.airplay),
-                    contentDescription = null,
-                    tint = accent,
-                    modifier = Modifier.size(26.dp),
-                )
-            }
-        }
-
-        // ── Volume ─────────────────────────────────────────────────────────
-        if (playerConnection != null) {
-            Spacer(Modifier.height(18.dp))
-            val volume by playerConnection.service.playerVolume.collectAsState()
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    painter = painterResource(R.drawable.volume_off),
-                    contentDescription = null,
-                    tint = onSurface.copy(alpha = 0.55f),
-                    modifier = Modifier.size(19.dp),
-                )
-                Spacer(Modifier.width(12.dp))
-                LiquidSlider(
-                    value = volume,
-                    onValueChange = { playerConnection.service.playerVolume.value = it },
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(12.dp))
-                Icon(
-                    painter = painterResource(R.drawable.volume_up),
-                    contentDescription = null,
-                    tint = onSurface.copy(alpha = 0.55f),
-                    modifier = Modifier.size(19.dp),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun DeviceRow(
+private fun OutputRow(
     device: AudioDeviceInfo,
+    active: Boolean,
+    accent: Color,
+    subtitle: String?,
     onClick: () -> Unit,
 ) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val haptic = LocalHapticFeedback.current
-    var pressed by remember { mutableStateOf(false) }
-    val pressScale by animateFloatAsState(
-        targetValue = if (pressed) 0.975f else 1f,
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
-        label = "deviceRowPress",
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val wash by animateFloatAsState(
+        targetValue = if (pressed) 0.06f else 0f,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 500f),
+        label = "outputRowPress",
     )
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .scale(pressScale)
-            .clip(RoundedCornerShape(18.dp))
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                    pressed = true
-                    waitForUpOrCancellation(pass = PointerEventPass.Initial)
-                    pressed = false
-                }
-            }
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) {
+            .background(onSurface.copy(alpha = wash))
+            .clickable(interactionSource = interaction, indication = null) {
                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
             }
-            .padding(horizontal = 6.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 13.dp),
     ) {
         Icon(
             painter = painterResource(deviceIcon(device)),
             contentDescription = null,
-            tint = onSurface.copy(alpha = 0.72f),
-            modifier = Modifier.size(23.dp),
+            tint = if (active) accent else onSurface.copy(alpha = 0.70f),
+            modifier = Modifier.size(26.dp),
         )
         Spacer(Modifier.width(16.dp))
-        Text(
-            text = deviceLabel(device),
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Medium,
-            color = onSurface.copy(alpha = 0.88f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        Icon(
-            painter = painterResource(R.drawable.chevron_right),
-            contentDescription = null,
-            tint = onSurface.copy(alpha = 0.35f),
-            modifier = Modifier.size(18.dp),
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = deviceLabel(device),
+                fontSize = 17.sp,
+                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                color = onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    fontSize = 13.sp,
+                    color = onSurface.copy(alpha = 0.55f),
+                    maxLines = 1,
+                )
+            }
+        }
+        if (active) {
+            Spacer(Modifier.width(10.dp))
+            Icon(
+                painter = painterResource(R.drawable.done),
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(21.dp),
+            )
+        }
     }
 }
 
+/**
+ * iOS's volume control: a tall rounded track that fills, with the speaker inside it.
+ *
+ * Not a Material slider with a thumb. The thumb is the giveaway - iOS has not drawn one on a
+ * volume bar since Control Center was introduced, because the bar itself is the handle: you push
+ * the level up and down by dragging anywhere across it, and the glyph rides at the left so the
+ * control says what it controls without a label.
+ */
 @Composable
-private fun GlassActionTile(
-    iconRes: Int,
-    label: String,
-    onClick: () -> Unit,
+private fun IosVolumeBar(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    tint: Color,
 ) {
-    val onSurface = MaterialTheme.colorScheme.onSurface
-    var pressed by remember { mutableStateOf(false) }
-    val pressScale by animateFloatAsState(
-        targetValue = if (pressed) 0.96f else 1f,
-        animationSpec = spring(dampingRatio = 0.75f, stiffness = 400f),
-        label = "actionTilePress",
-    )
+    var width by remember { mutableStateOf(1f) }
+    val level = value.coerceIn(0f, 1f)
 
-    Row(
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .scale(pressScale)
-            .clip(RoundedCornerShape(20.dp))
-            .background(onSurface.copy(alpha = 0.08f))
-            .border(
-                width = 0.8.dp,
-                brush = Brush.verticalGradient(
-                    listOf(Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.03f))
-                ),
-                shape = RoundedCornerShape(20.dp),
-            )
+            .height(46.dp)
+            .clip(RoundedCornerShape(percent = 50))
+            .background(tint.copy(alpha = 0.10f))
+            .onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }
             .pointerInput(Unit) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                    pressed = true
-                    waitForUpOrCancellation(pass = PointerEventPass.Initial)
-                    pressed = false
-                }
+                detectTapGestures { offset -> onValueChange((offset.x / width).coerceIn(0f, 1f)) }
             }
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-            )
-            .padding(vertical = 15.dp),
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures { change, _ ->
+                    onValueChange((change.position.x / width).coerceIn(0f, 1f))
+                }
+            },
+        contentAlignment = Alignment.CenterStart,
     ) {
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = null,
-            tint = onSurface.copy(alpha = 0.85f),
-            modifier = Modifier.size(20.dp),
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(level)
+                .background(tint.copy(alpha = 0.85f)),
         )
-        Spacer(Modifier.width(10.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = onSurface.copy(alpha = 0.9f),
+        Icon(
+            painter = painterResource(
+                if (level <= 0.001f) R.drawable.volume_off else R.drawable.volume_up,
+            ),
+            contentDescription = null,
+            // Dark against the filled part, light against the empty one.
+            tint = if (level > 0.10f) {
+                MaterialTheme.colorScheme.surface
+            } else {
+                tint.copy(alpha = 0.65f)
+            },
+            modifier = Modifier
+                .padding(start = 16.dp)
+                .size(19.dp),
         )
     }
 }
+
+
+
 
 /** Opens the platform's own output switcher, which is the only thing that can actually reroute. */
 private fun openSystemOutputPicker(context: Context) {
@@ -495,7 +428,20 @@ private fun openSystemOutputPicker(context: Context) {
 
 @Composable
 private fun deviceLabel(device: AudioDeviceInfo): String {
-    val product = device.productName?.toString()?.takeIf { it.isNotBlank() }
+    val context = LocalContext.current
+    // The phone itself is named, not numbered.
+    //
+    // `productName` for a built-in output is `Build.MODEL`, so this row read "CPH2649" while every
+    // other row in the list showed a name somebody had chosen. See DeviceNames for where a real
+    // one comes from.
+    if (device.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER ||
+        device.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
+    ) {
+        return com.ozyern.exhale.utils.DeviceNames.thisDevice(context)
+    }
+    val product = device.productName?.toString()
+        ?.trim()
+        ?.takeIf { it.isNotBlank() && !it.equals(android.os.Build.MODEL, ignoreCase = true) }
     return product ?: when (device.type) {
         AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> stringResource(R.string.device_speaker)
         AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> stringResource(R.string.device_wired_headphones)

@@ -135,10 +135,22 @@ fun DefaultDialog(
     icon: (@Composable () -> Unit)? = null,
     title: (@Composable () -> Unit)? = null,
     contentScrollable: Boolean = false,
+    /**
+     * Take the width of the screen rather than the platform's alert width.
+     *
+     * An alert is a sentence and two buttons, and 280dp is the right size for that. A panel of
+     * sliders, steppers and preset chips is not an alert: at the platform width the sliders are
+     * shorter than a thumb's travel and the chips wrap two to a line. Panels pass true.
+     */
+    wide: Boolean = false,
     buttons: (@Composable RowScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
-    BasicAlertDialog(onDismissRequest = onDismiss) {
+    BasicAlertDialog(
+        onDismissRequest = onDismiss,
+        properties = if (wide) DialogProperties(usePlatformDefaultWidth = false) else DialogProperties(),
+        modifier = if (wide) Modifier.padding(horizontal = 20.dp) else Modifier,
+    ) {
         GlassDialogSurface {
             if (icon != null) {
                 Box(modifier = Modifier.align(Alignment.CenterHorizontally)) {

@@ -6,6 +6,10 @@
 
 package com.ozyern.exhale.ui.component
 
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.currentCompositeKeyHashCode
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.animation.core.animateFloatAsState
 import com.ozyern.exhale.ui.theme.MotionTokens
 import androidx.compose.foundation.BorderStroke
@@ -72,10 +76,54 @@ import kotlin.math.roundToInt
 
 val LocalPreferenceInGroup = compositionLocalOf { false }
 
+/** Icon-puck geometry, shared with the top-level Settings rows. */
+private val PreferenceIconSize = 30.dp
+
+/**
+ * iOS's system colours, the ones Settings paints its row icons with. Grey is deliberately absent:
+ * the pick is a hash, and a one-in-nine chance of grey means a page can come up with three pale
+ * squares in a row, which reads as icons that failed to load.
+ */
+private val PreferenceIconColors = listOf(
+    Color(0xFF0A84FF), // blue
+    Color(0xFF30D158), // green
+    Color(0xFFFF9F0A), // orange
+    Color(0xFFFF375F), // pink
+    Color(0xFFBF5AF2), // purple
+    Color(0xFF5E5CE6), // indigo
+    Color(0xFFFF453A), // red
+    Color(0xFF64D2FF), // cyan
+)
+
+/** A stable colour for [key], so a row is the same colour every time the page is opened. */
+private fun preferenceIconColor(key: String): Color =
+    PreferenceIconColors[(key.hashCode() and 0x7fffffff) % PreferenceIconColors.size]
+
+/**
+ * Hands each row in a group the next colour in the palette.
+ *
+ * A hash gives every row *a* colour and no row a colour that relates to its neighbours, so a page
+ * of ten settings came up with three reds in a row and read as random - which is what it was.
+ * Walking the palette instead means consecutive rows never repeat, and the page looks chosen. Each
+ * row takes its slot once, in `remember`, so it keeps that colour for as long as it is on screen.
+ */
+@Stable
+class PreferenceIconSequence {
+    private var next = 0
+    fun take(): Int = next++
+}
+
+private val LocalPreferenceIconSequence = compositionLocalOf<PreferenceIconSequence?> { null }
+
 @Composable
 fun PreferenceEntry(
     modifier: Modifier = Modifier,
     title: @Composable () -> Unit,
+    /**
+     * What the icon's colour is picked from. Defaults to the row's own position in the tree, which
+     * is stable for a given page; pass a name to tie two rows to the same colour.
+     */
+    iconTintKey: String = currentCompositeKeyHashCode.toString(),
     subtitle: (@Composable () -> Unit)? = null,
     description: String? = null,
     content: (@Composable () -> Unit)? = null,
@@ -85,6 +133,13 @@ fun PreferenceEntry(
     isEnabled: Boolean = true,
 ) {
     val inGroup = LocalPreferenceInGroup.current
+    val sequence = LocalPreferenceIconSequence.current
+    val slot = remember(sequence) { sequence?.take() }
+    val iconColor = if (slot != null) {
+        PreferenceIconColors[slot % PreferenceIconColors.size]
+    } else {
+        preferenceIconColor(iconTintKey)
+    }
     // Subtle premium haptic tick on every preference tap (respects the user's haptics setting
     // via the app-wide LocalHapticFeedback provider).
     val haptic = LocalHapticFeedback.current
@@ -114,20 +169,27 @@ fun PreferenceEntry(
                     },
                 )
                 .alpha(if (isEnabled) 1f else 0.5f)
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .padding(horizontal = 16.dp, vertical = 11.dp),
         ) {
             if (icon != null) {
+                // The same puck the top-level Settings list uses: a solid iOS system colour with a
+                // white glyph on it, picked from the row's own key so a row keeps its colour
+                // between visits. Sub-pages used to draw the glyph in the brand accent on a 12%
+                // wash of the same accent, which on a page of ten rows is ten near-identical
+                // pastel squares - and it read as a different app from the Settings page that
+                // linked to it.
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterVertically)
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                        ),
+                        .size(PreferenceIconSize),
                     contentAlignment = Alignment.Center,
                 ) {
-                    icon()
+                    // The glyph carries the colour itself - see the note on the Settings row.
+                    CompositionLocalProvider(
+                        LocalContentColor provides iconColor,
+                    ) {
+                        icon()
+                    }
                 }
                 Spacer(Modifier.width(14.dp))
             }
@@ -179,6 +241,19 @@ fun PreferenceEntry(
     }
 
     if (inGroup) {
+        // Every row but the first draws the hairline above it.
+        //
+        // This used to be the page's job: twenty screens each placing `PreferenceGroupDivider()`
+        // by hand between rows, and a page that forgot - Appearance forgot five times - showed a
+        // group whose rows ran together with one stray line in the middle of it. A row knows
+        // whether it is the first in its group, so it can rule itself.
+        if (slot != null && slot > 0) {
+            HorizontalDivider(
+                modifier = Modifier.padding(start = SettingsDividerStartIndent),
+                thickness = SettingsDividerThickness,
+                color = settingsDividerColor(),
+            )
+        }
         rowContent()
     } else {
         // Apple Music-style inset row: NO Material Card (no elevation, no border, no tonal
@@ -634,22 +709,25 @@ fun PreferenceGroup(
         if (title != null) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 16.dp, bottom = 8.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 18.dp, bottom = 8.dp),
             )
         }
-        // Apple Music-style grouped inset list: a Column clipped to 16dp over a frosted
-        // translucent surface — NO Material Card (no elevation, no border). Rows inside sit
-        // flush, separated by hairline dividers (callers place PreferenceGroupDivider between
-        // rows; never at the very top or bottom of the group).
+        // The same plate the Settings page floats its groups on - `settingsGlassGroup`, not a
+        // 5% wash of onSurface behind a 16dp clip. Two cards claiming to be the same grouped
+        // table were being drawn two different ways: the landing page had a rim, a gradient and
+        // a 22dp corner, and every page it linked to had a flat grey box.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)),
+                .settingsGlassGroup(RoundedCornerShape(SettingsGroupCornerRadius)),
         ) {
-            CompositionLocalProvider(LocalPreferenceInGroup provides true) {
+            val sequence = remember { PreferenceIconSequence() }
+            CompositionLocalProvider(
+                LocalPreferenceInGroup provides true,
+                LocalPreferenceIconSequence provides sequence,
+            ) {
                 Column(content = content)
             }
         }
@@ -658,11 +736,16 @@ fun PreferenceGroup(
 
 @Composable
 fun PreferenceGroupDivider(modifier: Modifier = Modifier) {
-    HorizontalDivider(
-        modifier = modifier.padding(start = 60.dp),
-        thickness = 0.5.dp,
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-    )
+    // Nothing, inside a group: the rows rule themselves now - see PreferenceEntry. Kept because
+    // twenty settings pages call it between their rows, and drawing it here as well would double
+    // every hairline in the app.
+    if (!LocalPreferenceInGroup.current) {
+        HorizontalDivider(
+            modifier = modifier.padding(start = SettingsDividerStartIndent),
+            thickness = SettingsDividerThickness,
+            color = settingsDividerColor(),
+        )
+    }
 }
 
 @Composable
@@ -670,11 +753,15 @@ fun PreferenceGroupTitle(
     title: String,
     modifier: Modifier = Modifier,
 ) {
-    // Apple Music-style large, bold section header.
+    // A label, not a headline - the same one the Settings page sets over "Essentials".
+    //
+    // At headlineSmall/Bold this was larger and heavier than the row titles underneath it, so a
+    // sub-page read as a stack of competing headlines with the settings squeezed between them,
+    // and nothing on the page matched the page that linked to it.
     Text(
         text = title,
-        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier = modifier.padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 8.dp),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 8.dp),
     )
 }

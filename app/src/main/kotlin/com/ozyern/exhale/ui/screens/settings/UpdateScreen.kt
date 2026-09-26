@@ -6,6 +6,15 @@
 
 package com.ozyern.exhale.ui.screens.settings
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import com.ozyern.exhale.ui.component.settingsGlassGroup
+import com.ozyern.exhale.utils.DeviceNames
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.border
+import androidx.compose.ui.unit.sp
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -49,7 +58,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -85,6 +93,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.BuildConfig
 import com.ozyern.exhale.LocalPlayerAwareWindowInsets
 import com.ozyern.exhale.R
@@ -233,6 +242,15 @@ fun UpdateScreen(
 
     val updateAvailable = latestVersion?.let { Updater.hasUpdate(it, BuildConfig.VERSION_NAME) } == true
 
+    // The bar is shared with the page that linked here, and it arrives collapsed if that page was
+    // scrolled down - which the About page, the only way in, almost always is. This page is one
+    // card tall and has nothing to scroll back, so the title and the back button would simply
+    // never reappear. Every other settings page recovers by being scrollable; this one has to ask.
+    LaunchedEffect(Unit) {
+        scrollBehavior.state.heightOffset = 0f
+        scrollBehavior.state.contentOffset = 0f
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         AuroraBackdrop()
 
@@ -273,227 +291,127 @@ fun UpdateScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
             ) {
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(4.dp))
 
-                UpdateHero(state = updateCheckState, updateAvailable = updateAvailable)
-
-                Spacer(Modifier.height(26.dp))
-
-                LiquidButton(
-                    onClick = ::checkForUpdate,
-                    modifier = Modifier.fillMaxWidth(),
-                    tint = MaterialTheme.colorScheme.primary,
+                // The poster, then the build. Two blocks, in that order, because that is the
+                // order the question is asked in: am I current, and what am I running.
+                //
+                // Inside the card the mark sits high and the state sits at the foot, which is
+                // where a system update page puts them - centring the whole column left the
+                // bottom third of the artwork empty and the card read as a placeholder.
+                SettingsPosterCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(0.78f),
                 ) {
-                    if (updateCheckState == UpdateCheckState.Loading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                        )
-                    } else {
-                        Icon(
-                            painter = painterResource(R.drawable.update),
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                    Text(
-                        text = stringResource(
-                            if (updateAvailable) R.string.update_check_download
-                            else R.string.update_check_now
-                        ),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
+                    Spacer(Modifier.weight(1f))
+
+                    SettingsPosterMark(
+                        name = stringResource(R.string.app_name),
+                        version = BuildConfig.VERSION_NAME,
+                        markRes = R.drawable.splash_logo_gold,
+                        markSize = 104.dp,
                     )
-                }
 
-                Spacer(Modifier.height(22.dp))
+                    Spacer(Modifier.weight(1.25f))
 
-                // ── Version ───────────────────────────────────────────────────
-                UpdateGroupTitle(stringResource(R.string.update_group_version))
-                UpdateGlassGroup {
-                    UpdateRow(
-                        icon = painterResource(R.drawable.info),
-                        title = stringResource(R.string.update_installed_version),
-                        value = BuildConfig.VERSION_NAME,
-                    )
-                    UpdateRowDivider()
-                    UpdateRow(
-                        icon = painterResource(R.drawable.new_release),
-                        title = stringResource(R.string.update_latest_available),
-                        value = latestVersion ?: "—",
-                        valueColor = if (updateAvailable) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                        valueBold = updateAvailable,
-                    )
-                    UpdateRowDivider()
-                    UpdateRow(
-                        icon = painterResource(R.drawable.history),
-                        title = stringResource(R.string.update_last_checked),
-                        value = remember(lastCheckedAt) {
-                            if (lastCheckedAt <= 0L) null
-                            else DateUtils.getRelativeTimeSpanString(
-                                lastCheckedAt,
-                                System.currentTimeMillis(),
-                                DateUtils.MINUTE_IN_MILLIS,
-                            ).toString()
-                        } ?: stringResource(R.string.update_never_checked),
-                    )
-                    UpdateRowDivider()
-                    // This page is the one people screenshot when reporting that an update did
-                    // not apply, so it should carry enough to identify the build without a trip
-                    // to About.
-                    UpdateRow(
-                        icon = painterResource(R.drawable.code),
-                        title = stringResource(R.string.about_build),
-                        value = "${BuildConfig.VERSION_CODE} · ${BuildConfig.ARCHITECTURE}",
-                    )
-                }
+                    SettingsPosterStatus(
+                        status = when (val state = updateCheckState) {
+                            UpdateCheckState.Loading -> stringResource(R.string.update_status_checking)
+                            UpdateCheckState.UpToDate -> stringResource(R.string.update_status_up_to_date)
+                            is UpdateCheckState.UpdateAvailable ->
+                                stringResource(R.string.update_version_label, state.info.versionName)
 
-                Spacer(Modifier.height(22.dp))
+                            is UpdateCheckState.Error ->
+                                stringResource(R.string.update_status_failed, state.message)
 
-                // ── Notifications ─────────────────────────────────────────────
-                UpdateGroupTitle(stringResource(R.string.notification_settings))
-                UpdateGlassGroup {
-                    // One shared handler: the row and the toggle must do exactly the same
-                    // thing, including the notification-permission detour.
-                    val toggleUpdateNotification = {
-                        val enabled = !enableUpdateNotification
-                        when {
-                            !enabled -> {
-                                onEnableUpdateNotificationChange(false)
-                                UpdateNotificationManager.cancelPeriodicUpdateCheck(context)
-                            }
-
-                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                                    !hasNotificationPermission ->
-                                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-
-                            else -> {
-                                onEnableUpdateNotificationChange(true)
-                                UpdateNotificationManager.schedulePeriodicUpdateCheck(context)
-                            }
-                        }
-                    }
-
-                    UpdateRow(
-                        icon = painterResource(R.drawable.notifications),
-                        title = stringResource(R.string.enable_update_notification),
-                        subtitle = stringResource(R.string.enable_update_notification_desc),
-                        trailing = {
-                            // The app's own glass switch, matching every other toggle in
-                            // Settings. This was the one stock Material `Switch` left on the
-                            // page, so the single control here was also the only thing on it
-                            // that did not belong to the design system.
-                            LiquidToggle(
-                                checked = enableUpdateNotification,
-                                onCheckedChange = { toggleUpdateNotification() },
-                            )
-                        },
-                        // Also on the whole row so the hit target is the row, which is how an
-                        // iOS grouped list behaves.
-                        onClick = toggleUpdateNotification,
-                    )
-                }
-
-                Spacer(Modifier.height(22.dp))
-
-                // ── Changelog ─────────────────────────────────────────────────
-                // One card, not two. The release notes for this build used to sit in their own
-                // group above, which meant the page carried two separate answers to "what
-                // changed" — a long uncollapsible list of features and, further down, a lone row
-                // pointing at the real changelog. They belong together: this build's notes fold
-                // out of the top row, and the full history is the row underneath.
-                UpdateGroupTitle(stringResource(R.string.update_group_changelog))
-                UpdateGlassGroup {
-                    if (BundledChangelog.isCurrentBuild) {
-                        val chevronRotation by animateFloatAsState(
-                            targetValue = if (whatsNewExpanded) 90f else 0f,
-                            animationSpec = spring(
-                                dampingRatio = AquamorphicDampingRatio,
-                                stiffness = AquamorphicStiffness,
-                            ),
-                            label = "whatsNewChevron",
-                        )
-
-                        UpdateRow(
-                            icon = painterResource(R.drawable.new_release),
-                            title = stringResource(
-                                R.string.update_whats_new_in_version,
-                                BundledChangelog.VERSION,
-                            ),
-                            subtitle = stringResource(R.string.update_first_release_badge),
-                            onClick = { whatsNewExpanded = !whatsNewExpanded },
-                            trailing = {
-                                Icon(
-                                    painter = painterResource(R.drawable.chevron_right),
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .size(20.dp)
-                                        .graphicsLayer { rotationZ = chevronRotation },
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                        .copy(alpha = 0.6f),
-                                )
-                            },
-                        )
-
-                        AnimatedVisibility(visible = whatsNewExpanded) {
-                            Column {
-                                BundledChangelog.highlights.forEach { highlight ->
-                                    UpdateRowDivider()
-                                    UpdateRow(
-                                        icon = painterResource(highlight.icon),
-                                        title = stringResource(highlight.title),
-                                        subtitle = stringResource(highlight.description),
-                                    )
+                            UpdateCheckState.Idle ->
+                                if (updateAvailable) {
+                                    stringResource(R.string.update_status_available)
+                                } else {
+                                    stringResource(R.string.update_status_up_to_date)
                                 }
-                            }
-                        }
-
-                        UpdateRowDivider()
-                    }
-
-                    UpdateRow(
-                        icon = painterResource(R.drawable.history),
-                        title = stringResource(R.string.view_changelog),
-                        subtitle = stringResource(R.string.update_changelog_all_releases),
-                        onClick = { navController.navigate("settings/changelog") },
-                        trailing = {
-                            Icon(
-                                painter = painterResource(R.drawable.chevron_right),
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            )
                         },
                     )
 
-                    UpdateRowDivider()
+                    Spacer(Modifier.height(2.dp))
+                }
 
-                    // The releases page was only reachable from inside the "an update exists"
-                    // sheet, so on an up-to-date build there was no way to reach the downloads at
-                    // all — including the older ones, which is exactly what someone wanting to
-                    // roll back is here for.
-                    UpdateRow(
-                        icon = painterResource(R.drawable.github),
-                        title = stringResource(R.string.update_releases_page),
-                        subtitle = stringResource(R.string.update_releases_page_desc),
-                        onClick = { uriHandler.openUri(GitHubReleasesUrl) },
-                        trailing = {
-                            Icon(
-                                painter = painterResource(R.drawable.link),
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            )
-                        },
+                // The build, stated once, under the card - the line the system page puts there.
+                // Without it the page was a picture and a button, with nothing on it you could
+                // read back to someone.
+                Spacer(Modifier.height(22.dp))
+                Text(
+                    text = stringResource(R.string.software_version),
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(start = 12.dp),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    // The shape a system page states a build in: product, version, the variant and
+                    // the commit it was cut from. Not "1.0.304.304" - the version name already
+                    // carries the build number, so printing both said the same number twice.
+                    text = "Exhale_${BuildConfig.VERSION_NAME}_${BuildConfig.ARCHITECTURE}(${BuildConfig.GIT_COMMIT})",
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 12.dp),
+                )
+
+                // What is waiting, if anything. Stated here rather than only inside the sheet,
+                // so the page still answers "what would I be installing" after the sheet closes.
+                pendingUpdateInfo?.takeIf {
+                    Updater.hasUpdate(it.versionName, BuildConfig.VERSION_NAME)
+                }?.let { pending ->
+                    Spacer(Modifier.height(18.dp))
+                    Text(
+                        text = stringResource(R.string.update_status_available),
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 12.dp),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Exhale_${pending.versionName}  \u00b7  ${pending.publishedAt.take(10)}",
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 12.dp),
                     )
                 }
 
-                Spacer(Modifier.height(32.dp))
+                // The action, last.
+                //
+                // It used to float inside the artwork, which put the one button on the page on top
+                // of the one picture on the page. A system update screen ends with it: you read
+                // the release, you read the build you are on, and then there is a single full-width
+                // button. Nothing competes with it because nothing is under it.
+                Spacer(Modifier.height(24.dp))
+                // Two jobs, one button.
+                //
+                // With nothing pending it checks. With an update already found it reopens the
+                // transfer sheet, rather than asking GitHub the same question again - closing the
+                // sheet by accident used to mean a second round trip before you could get back to
+                // the download you had just been offered.
+                UpdateActionButton(
+                    loading = updateCheckState == UpdateCheckState.Loading,
+                    label = stringResource(
+                        if (updateAvailable) R.string.update_check_download
+                        else R.string.update_check_now
+                    ),
+                    emphasised = updateAvailable,
+                    onClick = {
+                        val pending = pendingUpdateInfo
+                        if (pending != null && Updater.hasUpdate(pending.versionName, BuildConfig.VERSION_NAME)) {
+                            showUpdateDialog = true
+                        } else {
+                            checkForUpdate()
+                        }
+                    },
+                )
+
+                Spacer(Modifier.height(28.dp))
             }
         }
     }
@@ -511,6 +429,81 @@ private const val GitHubReleasesUrl = "https://github.com/ozyern/Exhale/releases
  * redraw, so the animation runs on the render thread and keeps running while the check is in
  * flight. They are the whole reason the page feels alive rather than static.
  */
+/**
+ * The page's one action: a full-width capsule under everything else.
+ *
+ * 52dp and the full measure, which is the size a primary action is given on a phone - big enough
+ * to be the obvious thing to press, at the bottom where a thumb already is. It fills with the
+ * accent only when there is genuinely something to fetch; when you are current it is the quiet
+ * glass version, because "Check for Updates" on an up-to-date app is a button you are being
+ * offered, not one you are being told to press.
+ */
+@Composable
+private fun UpdateActionButton(
+    loading: Boolean,
+    label: String,
+    emphasised: Boolean,
+    onClick: () -> Unit,
+) {
+    val haptic = LocalHapticFeedback.current
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        animationSpec = spring(dampingRatio = 0.75f, stiffness = 900f),
+        label = "updateActionPress",
+    )
+    val shape = CircleShape
+    val accent = MaterialTheme.colorScheme.primary
+    val ink = if (emphasised) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(shape)
+            .then(
+                if (emphasised) {
+                    Modifier.background(accent)
+                } else {
+                    Modifier.settingsGlassGroup(shape)
+                }
+            )
+            .clickable(interactionSource = source, indication = null, enabled = !loading) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            },
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (loading) {
+            LoadingRing(
+                modifier = Modifier.size(20.dp),
+                stroke = 2.dp,
+                color = ink,
+            )
+        } else {
+            Icon(
+                painter = painterResource(R.drawable.update),
+                contentDescription = null,
+                tint = ink,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(9.dp))
+            Text(
+                text = label,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = ink,
+            )
+        }
+    }
+}
+
 @Composable
 private fun UpdateHero(
     state: UpdateCheckState,

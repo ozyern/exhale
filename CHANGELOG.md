@@ -7,44 +7,119 @@ Release notes for the build you are running are also bundled into the app itself
 **Settings → Updates → Changelog**. Every later version's notes are pulled from this repository's
 [GitHub releases](https://github.com/ozyern/Exhale/releases).
 
-## [1.0.304] — 2026-09-11
+## [1.0.304] — 2026-09-26
 
-One palette that spends all four seeds instead of one.
+The whole app in Apple Music's shape, music that plays without a network, updates that install
+themselves, and a long list of things that had been quietly wrong.
 
 ### Added
+
+**Offline, properly** — downloads that behave like files you own.
+
+- Downloaded songs play with no network at all, and the queue skips to what is actually on the
+  phone instead of stalling on the first track that is not.
+- **Save to device** writes a tagged `.m4a` into `Music/Exhale` with its cover art and synced
+  lyrics embedded, so the song is a file every other player on the phone can read.
+- **Prefer lossless files** plays a FLAC, WAV or AIFF of the same song from your own storage
+  instead of streaming it, when there is one. Settings → Player and audio.
+
+**Updates without leaving the app.** Settings → Updates checks, downloads and hands the APK
+straight to the installer, with real byte progress. The page states the pending release and the
+build you are on; it no longer sends you to a browser to fetch a file by hand.
+
+**The live artwork background from the desktop build**, on every page that has a subject — home,
+library, settings, the player and the lyrics, drifting behind the glass rather than sitting still.
+
+**App language (Beta)** — Settings → Appearance → Display. Twenty languages, named in their own
+scripts, applied through Android's per-app locale API. Beta because several of those translations
+are partial: choosing one gets a translated app with English where the strings have not landed.
+
+**Spatial audio stages** — Natural, Wide and Cinema, with Cinema as the default. A phone has two
+speakers, so the 5.1/7.1 switches other players show have nothing to drive; this is the width of
+the stage, which is the thing they are reaching for.
+
+**Music Together over a hotspot.** Two phones, one host, no router in between — a QR invite and a
+screen built like the rest of the app rather than like a debug panel.
 
 **A Sabrina Carpenter theme** — Settings → Appearance → Theme.
 
 - Blush, butter and lilac over warm cream. In dark mode the surfaces go warm near-black rather
   than blue-grey.
-- It is the only palette in the app that uses all four theme seeds. Every entry in the palette
-  picker sets primary, secondary, tertiary and neutral to the same colour, which turns a four-seed
-  system into an accent swap — the buttons change and the app underneath stays the grey it was.
-  This one puts a separate warm seed on `neutral`, which is the seed Material builds background,
-  surface and every container tier from, so the whole app moves rather than a few controls.
-- Colours only. No artwork, no likeness, nothing shipped in the APK but four hex values and three
-  vector paths.
+- It is the only palette in the app that spends all four theme seeds. Every other entry sets
+  primary, secondary, tertiary and neutral to one colour, which turns a four-seed system into an
+  accent swap — the buttons change and the app underneath stays the grey it was. This one puts a
+  separate warm seed on `neutral`, the seed Material builds every surface tier from, so the whole
+  app moves.
+- **Charms**: ribbon bows, hearts and four-point sparkles drifting *behind* the app, on the layer
+  every frosted surface samples — so they are refracted through the top bar, the dock, the
+  mini-player pill and every sheet. Vector paths, not images: no APK weight, sharp at any density.
+- Colours and drawings only. Nothing shipped in the APK but four hex values and three vector paths.
 
-**Charms** — the decorative half, and the reason the theme is more than a repaint.
-
-- Ribbon bows, hearts and four-point sparkles, drifting and twinkling across a layer *behind* the
-  app. That layer is the one every frosted surface samples, so the charms are refracted through the
-  floating top bar, the navigation bar, the mini-player pill and every sheet, bending as those
-  surfaces move.
-- A bow tied to the end of every section header, and a bow on the corner of the player's album
-  cover with sparkles caught on the other three.
-- Drawn as vector paths rather than shipped as images: no APK weight, sharp at any density, and
-  tinted from the live colour scheme. All of it inert — nothing is clickable and nothing takes up
-  space that content needed.
+**Small things that were missing.** Swipe a song left to queue it, right to play it next. A sync
+pill on the lyrics that puts you back on the line being sung. Interlude dots that count an
+instrumental down. Tempo and pitch, with semitones or a multiplier. A sleep timer with a countdown
+dial. Hold the card on the About page and it turns over.
 
 ### Changed
 
-- The Sabrina palette overrides dynamic color, the palette picker and true blacks while it is on,
-  and those three controls are hidden rather than left switchable and inert. True blacks in
-  particular has to yield: forcing surface to `#000` erases the warm neutral the palette is built
-  on.
-- Random theme on startup no longer fires while Sabrina is on. It could not have changed what you
-  saw, but it would have quietly overwritten the palette you had saved underneath.
+**The Apple Music pass.** Home leads with Top Picks for You, learned from what you actually listen
+to, then Recently Played, at Apple's type sizes and shelf rhythm. The queue, the menus, the artist
+page, the charts, the account sheet, the search pages and every settings screen were rebuilt to
+the same rules: grouped tables on glass plates, hairlines inset to the label, headers set quiet,
+and a coloured glyph rather than a coloured tile on every row.
+
+**Album and Downloads** open on their cover, edge to edge under the status bar, dissolving into
+the page — then the title, one grey line of facts, and Play and Shuffle as glass capsules.
+
+**About and Updates** are one release poster: the gold key art, the Exhale wordmark, the build, and
+whether you are current. The update action sits under the facts rather than on top of the artwork.
+
+**The player's panels** — equalizer, tempo and pitch, sleep timer and details — are the app's own
+sliders, capsules and segmented controls instead of Material's, on the same plates as the settings
+pages. The equalizer's section names moved outside their cards, its presets wrap so none is sliced
+off, and its three effects became one group.
+
+**Outputs** is an AirPlay-style picker that names devices the way their makers do — "OnePlus 13",
+not "CPH2649" — with a volume bar you can drag.
+
+**Option menus** open as iOS pull-downs: 44pt rows, 17pt labels, no rules between items, sized to
+their longest option.
+
+**Motion.** Tab changes are a 150ms fade with a hair of scale rather than a slide. A tapped
+expansion of the player uses a softer spring than a flung one, because a tap starts from nothing
+and has the whole screen to cover. The dock fades out over the first half of that expansion instead
+of sliding under a player that has already arrived.
+
+**Lyrics** use Linotte and the staggered line motion from the Windows build, and only the line
+being sung reads the clock — the rest of the column no longer recomposes sixty times a second.
+
+### Fixed
+
+- **Songs stopped at about 0:29**, then resumed. The first range requested from the server was
+  512 KB, which put a chunk boundary right there; a range's size does not gate playback start, so
+  the small first chunk bought nothing and cost a stall.
+- **Lyrics ran a line ahead** on fast songs. The highlight was given a fixed 450ms lead, which is
+  most of a line when lines are a second apart. The lead is smaller now and capped at a quarter of
+  the current line's own length.
+- **Lyrics flickered on every line change.** Two causes: the lit copy of each word was added to and
+  removed from the tree as it was sung, and the auto-scroll jumped the whole column instantly and
+  caught it a frame later. Both are gone.
+- **The artist's name was missing** in the mini player and the full player when a song was played
+  from search rather than from an artist page.
+- **The dock's "Mood & Genres" label** ran into the selection capsule. The labels are now fitted to
+  the slot they sit in.
+- **Opening Library crashed** on devices with a runtime shader: two in-content chips were sampling
+  the backdrop they were drawn into.
+- **The settings search field floated a mini player's height above the mini player**, having been
+  lifted twice by the same inset.
+- **System audio effects opened MusicFX** instead of the phone's own panel. Handlers are ranked
+  now, vendor first.
+- **Discord showed "Playing Exhale"** with a stranger's artwork. The presence is fixed to
+  Listening, the song, the artist and the cover.
+- **The Updates page could open without its title bar**, having inherited a collapsed app bar from
+  the page that linked to it.
+- The standard player slider never committed a seek. The update sheet offered older releases as
+  updates. Treat network as metered defaults to off.
 
 ## [1.0.203] — 2026-09-05
 

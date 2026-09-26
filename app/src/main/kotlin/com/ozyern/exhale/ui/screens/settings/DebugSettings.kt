@@ -8,6 +8,8 @@
 
 package com.ozyern.exhale.ui.screens.settings
 
+import com.ozyern.exhale.ui.component.PreferenceGroupDivider
+import com.ozyern.exhale.ui.component.PreferenceGroup
 import android.content.Intent
 import android.text.format.DateFormat
 import android.util.Log
@@ -159,60 +161,64 @@ fun DebugSettings(
             PreferenceGroupTitle(
                 title = stringResource(R.string.experimental_features)
             )
+            PreferenceGroup {
+                SwitchPreference(
+                    title = { Text(stringResource(R.string.show_discord_debug_ui)) },
+                    description = stringResource(R.string.enable_discord_debug_lines),
+                    icon = { Icon(painterResource(R.drawable.discord), null) },
+                    checked = showDevDebug,
+                    onCheckedChange = onShowDevDebugChange
+                )
 
-            SwitchPreference(
-                title = { Text(stringResource(R.string.show_discord_debug_ui)) },
-                description = stringResource(R.string.enable_discord_debug_lines),
-                icon = { Icon(painterResource(R.drawable.discord), null) },
-                checked = showDevDebug,
-                onCheckedChange = onShowDevDebugChange
-            )
+                PreferenceGroupDivider()
+                SwitchPreference(
+                    title = { Text(stringResource(R.string.show_nerd_stats)) },
+                    description = stringResource(R.string.description_show_nerd_stats),
+                    icon = { Icon(painterResource(R.drawable.stats), null) },
+                    checked = showNerdStats,
+                    onCheckedChange = onShowNerdStatsChange
+                )
 
-            SwitchPreference(
-                title = { Text(stringResource(R.string.show_nerd_stats)) },
-                description = stringResource(R.string.description_show_nerd_stats),
-                icon = { Icon(painterResource(R.drawable.stats), null) },
-                checked = showNerdStats,
-                onCheckedChange = onShowNerdStatsChange
-            )
+                PreferenceGroupDivider()
+                SwitchPreference(
+                    title = { Text(stringResource(R.string.display_codec_on_player)) },
+                    description = stringResource(R.string.description_display_codec_on_player),
+                    icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                    checked = showCodecOnPlayer,
+                    onCheckedChange = onShowCodecOnPlayerChange
+                )
 
-            SwitchPreference(
-                title = { Text(stringResource(R.string.display_codec_on_player)) },
-                description = stringResource(R.string.description_display_codec_on_player),
-                icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
-                checked = showCodecOnPlayer,
-                onCheckedChange = onShowCodecOnPlayerChange
-            )
-
-            AnimatedVisibility(
-                visible = showDevDebug,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                AnimatedVisibility(
+                    visible = showDevDebug,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
                 ) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    DiscordDebugSection()
+                    Column(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        DiscordDebugSection()
+                    }
                 }
+
+                AnimatedVisibility(
+                    visible = showNerdStats && playerConnection != null,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        NerdStatsSection(playerConnection = playerConnection)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
             }
 
-            AnimatedVisibility(
-                visible = showNerdStats && playerConnection != null,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    NerdStatsSection(playerConnection = playerConnection)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }

@@ -8,6 +8,7 @@
 
 package com.ozyern.exhale.ui.screens.playlist
 
+import com.ozyern.exhale.ui.component.PlayShuffleButton
 import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -36,7 +37,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -113,6 +113,7 @@ import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.LocalDatabase
 import com.ozyern.exhale.LocalDownloadUtil
 import com.ozyern.exhale.LocalPlayerAwareWindowInsets
@@ -796,8 +797,8 @@ fun LocalPlaylistScreen(
                                         Surface(
                                             onClick = { showDeletePlaylistDialog = true },
                                             shape = CircleShape,
-                                            color = MaterialTheme.colorScheme.surfaceVariant,
-                                            modifier = Modifier.size(48.dp)
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                                            modifier = Modifier.size(50.dp)
                                         ) {
                                             Box(
                                                 modifier = Modifier.fillMaxSize(),
@@ -820,8 +821,8 @@ fun LocalPlaylistScreen(
                                                 }
                                             },
                                             shape = CircleShape,
-                                            color = MaterialTheme.colorScheme.surfaceVariant,
-                                            modifier = Modifier.size(48.dp)
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                                            modifier = Modifier.size(50.dp)
                                         ) {
                                             Box(
                                                 modifier = Modifier.fillMaxSize(),
@@ -843,7 +844,12 @@ fun LocalPlaylistScreen(
                                     }
 
                                     // Play Button
-                                    Button(
+                                    PlayShuffleButton(
+                                        iconRes = R.drawable.play,
+                                        label = stringResource(R.string.play),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(50.dp),
                                         onClick = {
                                             playerConnection.playQueue(
                                                 ListQueue(
@@ -851,21 +857,16 @@ fun LocalPlaylistScreen(
                                                     items = songs.map { it.song.toMediaItem() },
                                                 ),
                                             )
-                                        },
-                                        shape = RoundedCornerShape(24.dp),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(48.dp)
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.play),
-                                            contentDescription = stringResource(R.string.play),
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
+                                            },
+                                    )
 
                                     // Shuffle Button
-                                    Button(
+                                    PlayShuffleButton(
+                                        iconRes = R.drawable.shuffle,
+                                        label = stringResource(R.string.shuffle),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(50.dp),
                                         onClick = {
                                             playerConnection.playQueue(
                                                 ListQueue(
@@ -873,18 +874,8 @@ fun LocalPlaylistScreen(
                                                     items = songs.shuffled().map { it.song.toMediaItem() },
                                                 ),
                                             )
-                                        },
-                                        shape = RoundedCornerShape(24.dp),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(48.dp)
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.shuffle),
-                                            contentDescription = stringResource(R.string.shuffle),
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
+                                            },
+                                    )
 
                                     // Download Button
                                     Surface(
@@ -921,8 +912,8 @@ fun LocalPlaylistScreen(
                                             }
                                         },
                                         shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
-                                        modifier = Modifier.size(48.dp)
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                                        modifier = Modifier.size(50.dp)
                                     ) {
                                         Box(
                                             modifier = Modifier.fillMaxSize(),
@@ -938,8 +929,8 @@ fun LocalPlaylistScreen(
                                                     )
                                                 }
                                                 Download.STATE_DOWNLOADING -> {
-                                                    CircularProgressIndicator(
-                                                        strokeWidth = 2.dp,
+                                                    LoadingRing(
+                                                        stroke = 2.dp,
                                                         modifier = Modifier.size(24.dp),
                                                         color = MaterialTheme.colorScheme.primary
                                                     )
@@ -989,8 +980,8 @@ fun LocalPlaylistScreen(
                                             }
                                         },
                                         shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
-                                        modifier = Modifier.size(48.dp)
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                                        modifier = Modifier.size(50.dp)
                                     ) {
                                         Box(
                                             modifier = Modifier.fillMaxSize(),

@@ -8,6 +8,7 @@
 
 package com.ozyern.exhale.ui.screens.playlist
 
+import com.ozyern.exhale.ui.component.PlayShuffleButton
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -486,7 +487,12 @@ fun CachePlaylistScreen(
                                 ),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Button(
+                                PlayShuffleButton(
+                                    iconRes = R.drawable.play,
+                                    label = stringResource(R.string.play),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(50.dp),
                                     onClick = {
                                         playerConnection.playQueue(
                                             ListQueue(
@@ -494,23 +500,14 @@ fun CachePlaylistScreen(
                                                 items = filteredSongs.map { it.item.toMediaItem() },
                                             )
                                         )
-                                    },
-                                    shape = ButtonGroupDefaults.connectedLeadingButtonShapes().shape,
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary,
-                                        contentColor = MaterialTheme.colorScheme.onPrimary
-                                    ),
+                                        },
+                                )
+                                PlayShuffleButton(
+                                    iconRes = R.drawable.shuffle,
+                                    label = stringResource(R.string.shuffle),
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(48.dp)
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.play),
-                                        contentDescription = stringResource(R.string.play),
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                                Button(
+                                        .height(50.dp),
                                     onClick = {
                                         playerConnection.playQueue(
                                             ListQueue(
@@ -518,22 +515,8 @@ fun CachePlaylistScreen(
                                                 items = filteredSongs.shuffled().map { it.item.toMediaItem() },
                                             )
                                         )
-                                    },
-                                    shape = ButtonGroupDefaults.connectedMiddleButtonShapes().shape,
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary,
-                                        contentColor = MaterialTheme.colorScheme.onPrimary
-                                    ),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(48.dp)
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.shuffle),
-                                        contentDescription = stringResource(R.string.shuffle),
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
+                                        },
+                                )
                                 Surface(
                                     onClick = {
                                         playerConnection.addToQueue(

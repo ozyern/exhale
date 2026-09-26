@@ -6,6 +6,32 @@
 
 package com.ozyern.exhale.ui.component
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.isRuntimeShaderSupported
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.withFrameMillis
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Build
@@ -141,7 +167,7 @@ import kotlin.math.abs
 // ──────────────────────────────────────────────────────────────────────
 
 /** Lead time offset for LRC-style line-synced lyrics (ms). */
-private const val LRC_LEAD_MS = 300L
+private const val LRC_LEAD_MS = 140L
 
 /** Lead time offset for TTML word-synced lyrics (ms). */
 private const val TTML_LEAD_MS = 0L
@@ -157,7 +183,7 @@ private const val MANUAL_SCROLL_TIMEOUT_MS = 3000L
  * lands exactly on the beat reads as late, because reading takes time that the timestamp does not
  * account for.
  */
-private const val VISUAL_TUNING_OFFSET_MS = 150L
+private const val VISUAL_TUNING_OFFSET_MS = 60L
 
 /**
  * Optical tracking for lyric type.
@@ -171,9 +197,6 @@ private const val VISUAL_TUNING_OFFSET_MS = 150L
  */
 // Windows' tracking for Linotte: tight enough to read as a headline, loose enough that the rounded
 // letterforms don't touch at lyric sizes.
-/** One jump of the lyrics column: how far it went, to which line, and when. */
-private class LineShift(val delta: Float, val target: Int, val at: Long)
-
 private val LyricTracking = (-0.015).em
 
 /**
@@ -412,10 +435,35 @@ fun LyricsV2(
             val speed = player.playbackParameters.speed.takeIf { it > 0.05f } ?: 1f
 
             currentPositionMs = pos + ((leadMs + VISUAL_TUNING_OFFSET_MS) * speed).toLong()
-            currentLineIndex = findCurrentLineIndex(entriesWithWords, currentPositionMs, 0L)
+
+            // The lead is capped by the line it would be jumping out of.
+            //
+            // A fixed lead is fine on a ballad and wrong on a fast verse: 450ms of it (which is
+            // what LRC + visual tuning used to add up to) is most of a line when lines are a
+            // second apart, so the highlight sat on the *next* line for the whole of the current
+            // one. That is the "lyrics are one line ahead" on quick songs, and it got worse the
+            // tighter the timing.
+            //
+            // So the early jump is allowed to eat at most a quarter of the current line's own
+            // length. Long lines still get the full lead - which is where it buys anything, since
+            // the eye needs a moment to find the line - and short lines get almost none, because
+            // there is nothing to compensate for when the next line is already arriving.
+            val rawPositionMs = pos
+            val leadBudget = ((leadMs + VISUAL_TUNING_OFFSET_MS) * speed).toLong()
+            val baseIndex = findCurrentLineIndex(entriesWithWords, rawPositionMs, 0L)
+            val nextIndex = baseIndex + 1
+            currentLineIndex = if (nextIndex <= entriesWithWords.lastIndex) {
+                val nextTime = entriesWithWords[nextIndex].time
+                val lineLength = (nextTime - entriesWithWords[baseIndex].time).coerceAtLeast(0L)
+                val allowedLead = minOf(leadBudget, lineLength / 4L)
+                if (rawPositionMs + allowedLead >= nextTime) nextIndex else baseIndex
+            } else {
+                baseIndex
+            }
+
             scrollLineIndex = findCurrentLineIndex(
                 entriesWithWords,
-                currentPositionMs + (SCROLL_LEAD_MS * speed).toLong(),
+                rawPositionMs + leadBudget + (SCROLL_LEAD_MS * speed).toLong(),
                 0L,
             )
 
@@ -463,8 +511,6 @@ fun LyricsV2(
     // back as its own offset and springs home, each starting ~34ms after the line above it. The
     // sung line moves first and the verse below arrives in a wave behind it, which is the motion
     // that makes Apple's lyrics feel like they flow rather than scroll.
-    var lineShift by remember { mutableStateOf<LineShift?>(null) }
-
     // ── Auto-scroll ──
     //
     // Driven by `scrollLineIndex`, which runs SCROLL_LEAD_MS ahead of the highlight, so the
@@ -499,10 +545,24 @@ fun LyricsV2(
         when {
             itemInfo != null -> {
                 // Measured and on screen: glide its centre onto the anchor.
+                //
+                // *Glide*, not jump-and-catch. This used to `scrollBy(delta)` - an instantaneous
+                // scroll of the whole column - and then hide it: every line snapped its own
+                // `translationY` back by the same delta and sprang home in a staggered wave, so
+                // the column appeared to stay put while the list underneath had already moved.
+                //
+                // The catch runs a frame late. `scrollBy` lands inside this coroutine, the per-line
+                // compensation is a `LaunchedEffect` keyed on the shift, and between the two there
+                // is one frame where the list has jumped and nothing has been offset back yet.
+                // That frame is the flicker on every line change: the entire lyric column moves a
+                // line's height and comes back.
+                //
+                // An animated scroll needs no catching. It is the same spring the branch below
+                // uses, it is interruptible - the next line simply retargets from wherever the
+                // column is - and there is no frame in which anything is in the wrong place.
                 val delta = itemInfo.offset + itemInfo.size / 2f - anchorY
                 if (abs(delta) > 4f) {
-                    val moved = listState.scrollBy(delta)
-                    lineShift = LineShift(delta = moved, target = target, at = System.nanoTime())
+                    listState.animateScrollBy(delta, glide)
                 }
             }
 
@@ -580,13 +640,11 @@ fun LyricsV2(
         }
 
         if (lyrics == null) {
-            ShimmerHost {
-                repeat(6) {
-                    TextPlaceholder()
-                }
-            }
+            LyricsWaitingLines(color = textColor)
             return@BoxWithConstraints
         }
+
+        val lyricsBackdrop = rememberLayerBackdrop()
 
         if (entriesWithWords.isEmpty()) {
             Box(
@@ -607,6 +665,10 @@ fun LyricsV2(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
+                // The layer the sync pill refracts. A sibling drawn *before* the pill, never the
+                // app's own content backdrop: consuming an ancestor layer from inside it is a
+                // re-entrant draw, which is the crash the glass chips hit on the Library page.
+                .layerBackdrop(lyricsBackdrop)
                 .nestedScroll(nestedScrollConnection)
                 .smoothFadingEdge(vertical = 80.dp)
                 .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
@@ -632,6 +694,40 @@ fun LyricsV2(
                     "v1", null -> Alignment.Start
                     "v2" -> Alignment.End
                     else -> Alignment.CenterHorizontally
+                }
+
+                // An instrumental stretch before this line.
+                //
+                // Driven by the gap between two line *times*, not by blank entries: most LRCs have
+                // none, which is why an earlier attempt at this never appeared. A line is sung for
+                // a few seconds at most, so anything left over after that is the band playing -
+                // and Apple fills exactly that space with three dots that fill as it runs out.
+                val interludeStart = if (index <= 1) {
+                    0L
+                } else {
+                    entriesWithWords[index - 1].time + LyricInterludeLeadMs
+                }
+                val showInterlude = isSynced &&
+                    item.time - interludeStart >= LyricInterludeMinMs &&
+                    (currentLineIndex == index - 1 || (index == 1 && currentLineIndex <= 0))
+
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showInterlude,
+                    enter = androidx.compose.animation.fadeIn(tween(220)) +
+                        androidx.compose.animation.expandVertically(
+                            spring(dampingRatio = 0.9f, stiffness = 320f),
+                        ),
+                    exit = androidx.compose.animation.fadeOut(tween(160)) +
+                        androidx.compose.animation.shrinkVertically(tween(220)),
+                ) {
+                    LyricInterludeDots(
+                        startMs = interludeStart,
+                        endMs = item.time,
+                        color = textColor,
+                        positionProvider = {
+                            sliderPositionProvider() ?: playerConnection.player.currentPosition
+                        },
+                    )
                 }
 
                 val isActive = isSynced && index == currentLineIndex
@@ -674,8 +770,15 @@ fun LyricsV2(
                     animationSpec = lineSpring,
                     label = "lineAlpha",
                 )
+                // The desktop build's number, not a shrink.
+                //
+                // Inactive lines sat at 85%, which at these sizes is a visible change of type
+                // size: the column reads as two different fonts, and every line change is a
+                // 15% zoom on two of them. The desktop settles inactive lines at 96.5% - enough
+                // that the sung line is the nearest object without the rest becoming small print,
+                // which is also how Apple does it (dimmer, barely smaller).
                 val animatedLineScale by animateFloatAsState(
-                    targetValue = if (!isSynced || isActive) 1f else 0.85f,
+                    targetValue = if (!isSynced || isActive) 1f else 0.965f,
                     animationSpec = lineSpring,
                     label = "lineScale",
                 )
@@ -709,13 +812,17 @@ fun LyricsV2(
                 // blur ramp is spent entirely on what is coming. Because it now only has to cover
                 // one direction it can be steeper, which buys a stronger sense of depth for the
                 // same peak radius.
+                //
+                // The ramp itself is the desktop's: 1.2px per line of distance, capped at 5, and
+                // nothing at all past four lines out. The old ramp reached 8px, which turns the
+                // line after next into a smear - depth reads from a gentle gradient, and every
+                // blurred line is its own offscreen layer, so a steep ramp is also the most
+                // expensive way to draw the same idea.
                 val animatedLineBlur by animateFloatAsState(
                     targetValue = when {
                         !isSynced || isActive || isManualScrolling || isPast -> 0f
-                        distanceFromActive == 1 -> 2f
-                        distanceFromActive == 2 -> 4.5f
-                        distanceFromActive == 3 -> 6.5f
-                        else -> 8f
+                        distanceFromActive > 4 -> 0f
+                        else -> (distanceFromActive * 1.2f).coerceAtMost(5f)
                     },
                     animationSpec = lineSpring,
                     label = "lineBlur",
@@ -729,18 +836,6 @@ fun LyricsV2(
                 }
 
 
-
-                val waveOffset = remember { Animatable(0f) }
-                LaunchedEffect(lineShift) {
-                    val shift = lineShift ?: return@LaunchedEffect
-                    // Only a shift that just happened. A line composed later (scrolled into view by
-                    // hand) must not replay an old one and drift in from nowhere.
-                    if (System.nanoTime() - shift.at > 120_000_000L) return@LaunchedEffect
-                    waveOffset.snapTo(waveOffset.value + shift.delta)
-                    val lag = (index - shift.target + 1).coerceIn(0, 12)
-                    delay(lag * 34L)
-                    waveOffset.animateTo(0f, spring(dampingRatio = 0.86f, stiffness = 120f))
-                }
 
                 // Background vocal detection
                 val hasBackgroundWords = item.words?.any { it.isBackground } == true
@@ -764,23 +859,39 @@ fun LyricsV2(
                             top = if (index == 0 || (index == 1 && entriesWithWords[0] == HEAD_LYRICS_ENTRY)) 0.dp else (lyricsLineSpacing * 8).dp,
                             bottom = (lyricsLineSpacing * 8).dp,
                         )
+                        // One layer, blur included - never a modifier that comes and goes.
+                        //
+                        // This is the micro-flicker on every line change. `Modifier.blur` was
+                        // added to the chain when a line's blur rose above 0.05 and dropped from
+                        // it when it fell back, and a line becoming active does exactly that: the
+                        // node is removed mid-animation, the layer it owned is torn down and the
+                        // line is re-drawn without it. That costs a frame, on the one line the eye
+                        // is already tracking.
+                        //
+                        // Setting `renderEffect` on a layer that is always there changes a
+                        // property instead of the tree, so the blur can fall to nothing without
+                        // anything being rebuilt. (`BlurEffect` is API 31+; below that
+                        // `Modifier.blur` did nothing anyway, so there is nothing to lose.)
                         .graphicsLayer {
                             alpha = animatedLineAlpha
                             scaleX = animatedLineScale
                             scaleY = animatedLineScale
-                            translationY = animatedLineLift.dp.toPx() + waveOffset.value
+                            translationY = animatedLineLift.dp.toPx()
                             transformOrigin = lineTransformOrigin
-                        }
-                        .then(
-                            if (animatedLineBlur > 0.05f) {
-                                Modifier.blur(
-                                    radius = animatedLineBlur.dp,
-                                    edgeTreatment = BlurredEdgeTreatment.Unbounded,
+                            renderEffect = if (
+                                android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S &&
+                                animatedLineBlur > 0.05f
+                            ) {
+                                val radius = animatedLineBlur.dp.toPx()
+                                androidx.compose.ui.graphics.BlurEffect(
+                                    radius,
+                                    radius,
+                                    androidx.compose.ui.graphics.TileMode.Decal,
                                 )
                             } else {
-                                Modifier
+                                null
                             }
-                        )
+                        }
                         .combinedClickable(
                             enabled = true,
                             onClick = {
@@ -820,7 +931,19 @@ fun LyricsV2(
                             words = item.words!!,
                             isActive = isActive,
                             isPast = isPast,
-                            currentPositionMs = currentPositionMs,
+                            // The clock only reaches the line that is being sung.
+                            //
+                            // `currentPositionMs` ticks every frame, and every word that reads it
+                            // recomposes every frame with it - which was every word on screen,
+                            // forty of them, sixty times a second, to animate the eight that are
+                            // actually moving. A line that has finished is finished at any
+                            // position, and a line that has not started has not started, so those
+                            // are handed a constant and drop out of the frame loop entirely.
+                            currentPositionMs = when {
+                                isActive -> currentPositionMs
+                                isPast -> Long.MAX_VALUE / 2L
+                                else -> 0L
+                            },
                             textColor = textColor,
                             inactiveAlpha = inactiveAlpha,
                             baseFontSize = lyricsTextSize,
@@ -876,9 +999,18 @@ fun LyricsV2(
             }
         }
 
-        // ── Resume auto-scroll button ──
-        if (isManualScrolling && isSynced) {
-            androidx.compose.material3.FilledTonalButton(
+        // ── Back to the line that is playing ──
+        AnimatedVisibility(
+            visible = isManualScrolling && isSynced,
+            enter = fadeIn(tween(160)) + scaleIn(initialScale = 0.86f, animationSpec = spring(dampingRatio = 0.72f, stiffness = 520f)),
+            exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.9f, animationSpec = tween(140)),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 18.dp),
+        ) {
+            LyricsSyncPill(
+                backdrop = lyricsBackdrop,
+                tint = textColor,
                 onClick = {
                     isManualScrolling = false
                     scope.launch {
@@ -889,16 +1021,7 @@ fun LyricsV2(
                         )
                     }
                 },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 16.dp),
-                shape = RoundedCornerShape(24.dp),
-            ) {
-                Text(
-                    text = "Resume",
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
+            )
         }
         if (isSelectionModeActive) {
             mediaMetadata?.let { metadata ->
@@ -1595,62 +1718,284 @@ private fun AnimatedWordV2(
             color = textColor.copy(alpha = if (isBackground) restingAlpha * 0.7f else restingAlpha),
         )
 
-        // Layer 2: Filled overlay with liquid sweep mask + glow
-        if (isWordComplete || isWordActive || isLinePast) {
-            Text(
-                text = word.text,
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontSize = actualFontSize.sp,
-                    fontWeight = fontWeight,
-                    fontStyle = FontStyle.Normal,
-                    lineHeight = (actualFontSize * 1.35f).sp,
-                    fontFamily = lyricsFontFamily ?: MaterialTheme.typography.headlineMedium.fontFamily,
-                    letterSpacing = LyricTracking,
-                    shadow = if (glowAlpha > 0f) {
-                        Shadow(
-                            color = textColor.copy(alpha = glowAlpha),
-                            offset = Offset.Zero,
-                            blurRadius = glowRadius.coerceAtLeast(1f),
-                        )
-                    } else null,
+        // Layer 2: the lit copy. Always composed, always masked - only the numbers move.
+        //
+        // This is the line-change flicker.
+        //
+        // The lit copy used to be *conditionally composed* (`if (complete || active || past)`) and
+        // then given a *conditional modifier*: an offscreen layer plus a DstIn mask while the word
+        // was being sung, and a bare Modifier either side of that. So every word crossed two
+        // structural edges as it was sung - a node appearing when it started, and a layer plus a
+        // mask node being torn down when it finished - and at a line change several words cross
+        // them on the same frame. The frame where the mask is gone but the copy is not yet dim is
+        // the flash.
+        //
+        // Now the copy is always there and the wipe is always applied; `fill` carries the state.
+        // At 0 nothing is drawn at all (cheaper than the old absent-node case), at 1 the mask is
+        // skipped and the word is solid, and in between it is the same sweep as before. Nothing is
+        // added to or removed from the tree while a line changes, so there is no frame to catch.
+        val fill = when {
+            isLinePast || isWordComplete -> 1f
+            isWordActive -> progress
+            else -> 0f
+        }
+        Text(
+            text = word.text,
+            style = MaterialTheme.typography.headlineMedium.copy(
+                fontSize = actualFontSize.sp,
+                fontWeight = fontWeight,
+                fontStyle = FontStyle.Normal,
+                lineHeight = (actualFontSize * 1.35f).sp,
+                fontFamily = lyricsFontFamily ?: MaterialTheme.typography.headlineMedium.fontFamily,
+                letterSpacing = LyricTracking,
+                // Always a shadow, sometimes a transparent one. Swapping between `Shadow(...)`
+                // and `null` changes the text style's shape, and a changed style re-measures the
+                // text - at the exact moment the word stops glowing, which is the line change.
+                shadow = Shadow(
+                    color = textColor.copy(alpha = glowAlpha),
+                    offset = Offset.Zero,
+                    blurRadius = glowRadius.coerceAtLeast(0.01f),
                 ),
-                color = textColor.copy(
-                    alpha = if (isBackground) 0.75f else 1f
+            ),
+            color = textColor.copy(
+                alpha = if (isBackground) 0.75f else 1f
+            ),
+            modifier = Modifier
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    if (fill <= 0f) return@drawWithContent
+                    drawContent()
+                    if (fill >= 1f) return@drawWithContent
+                    // The wipe that reveals the lit word, softened at its leading edge.
+                    //
+                    // A fixed 8dp edge is a different thing on a three-letter word than on a
+                    // twelve-letter one: on the short word it is most of the glyph (so the fill
+                    // never looks solid) and on the long one it is a hard line sliding across (so
+                    // it looks like a wiper blade). Scaling the feather with the word's own width
+                    // keeps the *proportion* of the sweep that is soft constant, which is what the
+                    // eye actually reads.
+                    //
+                    // Three stops rather than two: black → half → transparent gives the edge a
+                    // shoulder, so the highlight trails off into the unlit text instead of ending
+                    // on a visible boundary.
+                    val edgeWidth = (size.width * 0.22f).coerceIn(6.dp.toPx(), 22.dp.toPx())
+                    val center = (size.width + edgeWidth * 2) * fill - edgeWidth
+                    drawRect(
+                        brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                            0f to Color.Black,
+                            0.55f to Color.Black.copy(alpha = 0.45f),
+                            1f to Color.Transparent,
+                            startX = center - edgeWidth,
+                            endX = center + edgeWidth,
+                        ),
+                        blendMode = BlendMode.DstIn,
+                    )
+                },
+        )
+    }
+}
+
+
+/** Below this, a gap is a breath between lines and wants no indicator. */
+private const val LyricInterludeMinMs = 5_000L
+
+/** How long the line before the gap is assumed to still be being sung. */
+private const val LyricInterludeLeadMs = 3_000L
+
+/**
+ * An instrumental stretch: three dots that breathe while it lasts and fill as it runs out.
+ *
+ * The fill is the point. A pulsing row of dots says only "nothing is being sung"; dots that light
+ * one after another say how much longer that will be true, which is the difference between a
+ * player that has stalled and one that is counting you in. The clock is read on frames and only
+ * while this gap is on screen, so an interlude that has scrolled past costs nothing.
+ */
+@Composable
+private fun LyricInterludeDots(
+    startMs: Long,
+    endMs: Long,
+    color: Color,
+    positionProvider: () -> Long,
+) {
+    val span = (endMs - startMs).coerceAtLeast(1L)
+    var progress by remember(startMs, endMs) { mutableFloatStateOf(0f) }
+    LaunchedEffect(startMs, endMs) {
+        while (true) {
+            withFrameMillis {
+                progress = ((positionProvider() - startMs).toFloat() / span).coerceIn(0f, 1f)
+            }
+        }
+    }
+
+    val breathe = rememberInfiniteTransition(label = "interlude")
+    // The group leaves before the line lands, so the words never race the dots.
+    val exit = ((1f - progress) / 0.08f).coerceIn(0f, 1f)
+
+    Row(
+        modifier = Modifier
+            .padding(horizontal = 24.dp, vertical = 14.dp)
+            .graphicsLayer {
+                alpha = exit
+                val s = 0.92f + 0.08f * exit
+                scaleX = s
+                scaleY = s
+            },
+        horizontalArrangement = Arrangement.spacedBy(11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        repeat(3) { i ->
+            val pulse by breathe.animateFloat(
+                initialValue = 0.55f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    tween(700, delayMillis = i * 180, easing = FastOutSlowInEasing),
+                    RepeatMode.Reverse,
                 ),
-                modifier = if (isWordActive && !isWordComplete) {
-                    Modifier
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                        .drawWithContent {
-                            drawContent()
-                            // The wipe that reveals the lit word, softened at its leading edge.
-                            //
-                            // A fixed 8dp edge is a different thing on a three-letter word than
-                            // on a twelve-letter one: on the short word it is most of the glyph
-                            // (so the fill never looks solid) and on the long one it is a hard
-                            // line sliding across (so it looks like a wiper blade). Scaling the
-                            // feather with the word's own width keeps the *proportion* of the
-                            // sweep that is soft constant, which is what the eye actually reads.
-                            //
-                            // Three stops rather than two: black → half → transparent gives the
-                            // edge a shoulder, so the highlight trails off into the unlit text
-                            // instead of ending on a visible boundary.
-                            val edgeWidth = (size.width * 0.22f).coerceIn(6.dp.toPx(), 22.dp.toPx())
-                            val center = (size.width + edgeWidth * 2) * progress - edgeWidth
-                            drawRect(
-                                brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
-                                    0f to Color.Black,
-                                    0.55f to Color.Black.copy(alpha = 0.45f),
-                                    1f to Color.Transparent,
-                                    startX = center - edgeWidth,
-                                    endX = center + edgeWidth,
-                                ),
-                                blendMode = BlendMode.DstIn,
-                            )
-                        }
-                } else {
-                    Modifier
-                }
+                label = "interludeDot$i",
+            )
+            // Each dot owns a third of the gap and brightens as its third is spent.
+            val filled = ((progress - i / 3f) * 3f).coerceIn(0f, 1f)
+            val scale = 0.78f + 0.22f * pulse * (0.4f + 0.6f * filled)
+            Box(
+                modifier = Modifier
+                    .size(12.dp)
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                    }
+                    .background(color.copy(alpha = 0.26f + 0.64f * filled), CircleShape),
             )
         }
+    }
+}
+
+/**
+ * Lyrics on their way: lines of the size and rhythm the real ones will have, lit by a sweep that
+ * travels down them.
+ *
+ * Six identical grey bars is the loading state for a list of rows, and a verse is not that shape.
+ * These are the widths a sung verse actually has, and the light passes down them in one stroke
+ * rather than every bar blinking together - the shape of the answer arriving, rather than a
+ * spinner saying only that something, somewhere, is happening. Same pass the desktop build shows.
+ */
+@Composable
+private fun LyricsWaitingLines(color: Color) {
+    val widths = remember { listOf(0.68f, 0.84f, 0.52f, 0.74f, 0.44f, 0.80f, 0.58f) }
+    val travel = rememberInfiniteTransition(label = "lyricsWaiting")
+    val sweep by travel.animateFloat(
+        initialValue = -1.4f,
+        targetValue = 2.4f,
+        animationSpec = infiniteRepeatable(tween(2_200, easing = LinearEasing)),
+        label = "lyricsWaitingSweep",
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 26.dp, vertical = 90.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
+        widths.forEachIndexed { index, fraction ->
+            // Each line is a little behind the one above it, so the light reads as one pass down
+            // the verse.
+            val lit = (sweep - index * 0.22f).coerceIn(0f, 1f)
+            val glow = (1f - kotlin.math.abs(lit - 0.5f) * 2f).coerceAtLeast(0f)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction)
+                    .height(30.dp)
+                    .clip(RoundedCornerShape(percent = 50))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                color.copy(alpha = 0.07f + 0.05f * glow),
+                                color.copy(alpha = 0.13f + 0.17f * glow),
+                                color.copy(alpha = 0.07f + 0.05f * glow),
+                            ),
+                        ),
+                    ),
+            )
+        }
+    }
+}
+
+
+/**
+ * "Sync": the pill that puts you back on the line being sung.
+ *
+ * It said "Resume", which is what a *player* does - on a page with a play button a few hundred
+ * pixels below it, a button reading Resume is a button that looks like it starts the music. What
+ * it actually does is re-attach the scroll to the song, so it says so, with the sync glyph.
+ *
+ * Real glass, not a tonal button: it floats over the words rather than sitting in a layout, so it
+ * has to bend what is behind it the way every other floating chip in the app does. It refracts the
+ * lyric list alone - a local layer drawn before it - which is what keeps this off the re-entrant
+ * draw that the chrome glass caused in page content. Where no runtime shader exists (below API 33)
+ * it falls back to the painted glass surface.
+ */
+@Composable
+private fun LyricsSyncPill(
+    backdrop: com.kyant.backdrop.Backdrop,
+    tint: Color,
+    onClick: () -> Unit,
+) {
+    val haptic = LocalHapticFeedback.current
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val press by animateFloatAsState(
+        targetValue = if (pressed) 0.94f else 1f,
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = 900f),
+        label = "syncPillPress",
+    )
+    val shape = RoundedCornerShape(percent = 50)
+    val glassy = remember { isRuntimeShaderSupported() }
+
+    val base = Modifier
+        .graphicsLayer {
+            scaleX = press
+            scaleY = press
+        }
+        .shadow(18.dp, shape, clip = false, ambientColor = Color.Black.copy(alpha = 0.45f), spotColor = Color.Black.copy(alpha = 0.45f))
+
+    val surface = if (glassy) {
+        base.drawBackdrop(
+            backdrop = backdrop,
+            shape = { shape },
+            effects = {
+                blur(6f.dp.toPx())
+                lens(8f.dp.toPx(), 14f.dp.toPx(), true)
+            },
+            highlight = { Highlight.Ambient },
+            onDrawSurface = {
+                drawRect(Color.Black.copy(alpha = 0.22f))
+            },
+        )
+    } else {
+        base.liquidGlassSurface(shape, tint = Color.Black.copy(alpha = 0.28f))
+    }
+
+    Row(
+        modifier = surface
+            .clip(shape)
+            .clickable(interactionSource = source, indication = null) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            }
+            .padding(horizontal = 18.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.sync),
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(17.dp),
+        )
+        Text(
+            text = stringResource(R.string.lyrics_sync),
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = tint,
+        )
     }
 }

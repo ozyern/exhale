@@ -6,6 +6,13 @@
 
 package com.ozyern.exhale.ui.screens.settings
 
+import androidx.annotation.DrawableRes
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -305,11 +312,16 @@ fun SettingsProfileHeader(
                 },
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                painter = painterResource(R.drawable.exhale),
+            // The mark itself, not a tinted glyph of it.
+            //
+            // `R.drawable.exhale` is the monochrome outline the nav bar uses, and painted in the
+            // theme accent it became whatever colour the album art happened to extract - a pink
+            // scribble in a pink circle. This is the same gold mark the Updates and About posters
+            // carry, so the app introduces itself the same way in all three places.
+            Image(
+                painter = painterResource(R.drawable.splash_logo_gold),
                 contentDescription = null,
-                tint = accent,
-                modifier = Modifier.size(34.dp),
+                modifier = Modifier.size(40.dp),
             )
         }
 
@@ -630,7 +642,12 @@ fun SettingsRow(
     // system colour picked from its title so it is the same colour every time.
     // iOS paints every row icon in a saturated system colour; the theme's pastel accents read as
     // disabled next to them. Picked from the title, so a row keeps its colour.
-    val effectiveAccent = IosSystemColors[(item.title.hashCode() and 0x7fffffff) % IosSystemColors.size]
+    // A row that was given a colour keeps it. This used to hash the title in every case, which
+    // quietly threw away the colours the account sheet had chosen for its four rows and handed two
+    // of them the same grey - a grouped list where half the icons are grey squares reads as
+    // unfinished, which is exactly what it was.
+    val effectiveAccent = item.accentColor.takeIf { it != Color.Unspecified }
+        ?: IosAutoColors[(item.title.hashCode() and 0x7fffffff) % IosAutoColors.size]
 
     // Subtle premium haptic tick on row taps — routed through the app-wide custom
     // LocalHapticFeedback provider, which already respects the user's haptics preference.
@@ -664,11 +681,15 @@ fun SettingsRow(
                 .padding(horizontal = 16.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // A coloured glyph, not a coloured tile.
+            //
+            // iOS fills a rounded square and puts a white glyph on it; ColorOS - which is what this
+            // app is read on - draws the glyph itself in its colour and gives it no container at
+            // all. The tiles turned every page into a column of solid swatches competing with the
+            // artwork wash behind them; the bare glyph keeps the colour coding and hands the row
+            // back to its label.
             Box(
-                modifier = Modifier
-                    .size(30.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Brush.verticalGradient(listOf(effectiveAccent, effectiveAccent.copy(alpha = 0.86f).compositeOver(Color.Black)))),
+                modifier = Modifier.size(30.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 if (item.showUpdateIndicator) {
@@ -683,16 +704,16 @@ fun SettingsRow(
                         Icon(
                             painter = item.icon,
                             contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp),
+                            tint = effectiveAccent,
+                            modifier = Modifier.size(25.dp),
                         )
                     }
                 } else {
                     Icon(
                         painter = item.icon,
                         contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp),
+                        tint = effectiveAccent,
+                        modifier = Modifier.size(25.dp),
                     )
                 }
             }
@@ -882,7 +903,168 @@ fun SettingsLargeTopAppBar(
     }
 }
 
-/** iOS's system colours, the ones Settings paints its row icons with. */
+/**
+ * The statement card the About and Updates pages open on.
+ *
+ * A shipped image, not a drawn gradient. The theme-derived poster was this app's colours, which is
+ * a nice idea and the wrong one: a phone's About and Software-update pages open on *the release's*
+ * artwork - one picture, the same on every install, that says which thing you are running. So this
+ * is Exhale's own gold key art, with a scrim so white type sits on it at any point in the frame.
+ *
+ * Shared because the two pages make the same statement: what this is, and whether it is current.
+ */
+@Composable
+fun SettingsPosterCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(28.dp)),
+    ) {
+        Image(
+            painter = painterResource(R.drawable.banner_gold),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.matchParentSize(),
+        )
+        // Darkest where the words are, so the picture keeps its light in the middle.
+        //
+        // Deeper at the foot than it looks like it needs to be: the state line and the action pill
+        // sit there, and this artwork runs a bright gold arc straight through that band. White
+        // 19sp on gold at 55% is legible and looks cheap; at 68% it looks printed.
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.38f),
+                        0.38f to Color.Black.copy(alpha = 0.12f),
+                        0.72f to Color.Black.copy(alpha = 0.40f),
+                        1f to Color.Black.copy(alpha = 0.68f),
+                    ),
+                ),
+        )
+        // Fills the card, so a caller can weight its blocks apart - the mark sitting high and
+        // the state at the foot is the whole shape of a system release card, and centring
+        // everything in a column that only wrapped its content left the bottom third empty.
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 24.dp, vertical = 26.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            content = content,
+        )
+    }
+}
+
+/**
+ * The mark, the name and the version, as a release poster states them.
+ *
+ * The order is the one every system About page uses: the product's mark, its name set large, the
+ * version under it in a quieter weight. The state of the thing - "up to date", and whatever you
+ * can do about it - is [SettingsPosterStatus], a separate block, because it belongs at the foot of
+ * the card rather than tucked under the version.
+ */
+@Composable
+fun SettingsPosterMark(
+    name: String,
+    version: String,
+    @DrawableRes markRes: Int,
+    modifier: Modifier = Modifier,
+    markSize: Dp = 96.dp,
+    /** A quiet line above the name - the device this is running on. */
+    eyebrow: String? = null,
+    /** A quiet line under the version, where the eyebrow would otherwise go. */
+    subline: String? = null,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Image(
+            painter = painterResource(markRes),
+            contentDescription = null,
+            modifier = Modifier.size(markSize),
+        )
+        if (eyebrow != null) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = eyebrow,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White.copy(alpha = 0.92f),
+            )
+            Spacer(Modifier.height(2.dp))
+        } else {
+            Spacer(Modifier.height(6.dp))
+        }
+        // The wordmark, drawn, not typed.
+        //
+        // "ColorOS" and "OxygenOS" are set in their own lettering on these cards, and no weight of
+        // the UI font gets there: typed in Linotte this was a headline pretending to be a mark.
+        // [name] is still taken, as the content description - the card has to say what it is to a
+        // screen reader even when what it shows is a picture of a word.
+        Image(
+            painter = painterResource(R.drawable.wordmark_exhale),
+            contentDescription = name,
+            modifier = Modifier.height(46.dp),
+        )
+        Spacer(Modifier.height(1.dp))
+        Text(
+            text = version,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Medium,
+            color = Color.White.copy(alpha = 0.92f),
+        )
+        if (subline != null) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = subline,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.White.copy(alpha = 0.78f),
+            )
+        }
+    }
+}
+
+/**
+ * What the release *is* right now, at the foot of the poster: a line of state, and at most one
+ * thing to do about it.
+ *
+ * Separated from [SettingsPosterMark] so the card can push it down. On a phone's software-update
+ * page the mark sits in the upper half and this sits near the bottom edge, which is what makes the
+ * card read as a poster with a caption rather than as a stack of centred text.
+ */
+@Composable
+fun SettingsPosterStatus(
+    status: String,
+    modifier: Modifier = Modifier,
+    action: (@Composable () -> Unit)? = null,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = status,
+            fontSize = 19.sp,
+            lineHeight = 24.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White,
+            textAlign = TextAlign.Center,
+        )
+        if (action != null) {
+            Spacer(Modifier.height(14.dp))
+            action()
+        }
+    }
+}
+
+/** iOS's system colours, the ones Settings paints its row icons with. *//** iOS's system colours, the ones Settings paints its row icons with. */
 internal val IosSystemColors = listOf(
     Color(0xFF0A84FF), // blue
     Color(0xFF30D158), // green
@@ -894,3 +1076,13 @@ internal val IosSystemColors = listOf(
     Color(0xFF64D2FF), // cyan
     Color(0xFF8E8E93), // grey
 )
+
+/**
+ * The colours a row may be given *automatically*.
+ *
+ * Grey is in the palette because iOS paints Settings' own gear with it, and a row that asks for it
+ * still gets it. It is out of this list because the automatic pick is a hash of the title, and a
+ * one-in-nine chance of grey meant a group could come up with three pale slate squares in a row -
+ * which reads as icons that failed to load rather than as a colour scheme.
+ */
+internal val IosAutoColors = IosSystemColors.dropLast(1)

@@ -87,9 +87,17 @@ class DiscordRPC(
             lastSongId = song.song.id
         }
 
-        val namePref = context.dataStore[DiscordActivityNameKey] ?: "APP"
-        val detailsPref = context.dataStore[DiscordActivityDetailsKey] ?: "SONG"
-        val statePref = context.dataStore[DiscordActivityStateKey] ?: "ARTIST"
+        // Fixed, not read back.
+        //
+        // These used to come from the settings page, and the settings page is gone: the desktop
+        // build has no such controls and produces the presence everyone expects - Exhale, the
+        // song, the artist. Reading the keys anyway meant anyone who had touched the old
+        // dropdowns was stuck with whatever they had left there and no way back, which is exactly
+        // what happened: a presence that read "Playing Exhale / <song> / Exhale", because name and
+        // state had both been set to APP and the type to PLAYING.
+        val namePref = "APP"
+        val detailsPref = "SONG"
+        val statePref = "ARTIST"
         val statusPref = context.dataStore[DiscordPresenceStatusKey] ?: "online"
         val showWhenPaused = context.dataStore[DiscordShowWhenPausedKey] ?: false
 
@@ -201,7 +209,8 @@ class DiscordRPC(
         }
         val finalButtons = buttons.take(2)
 
-        val activityTypePref = context.dataStore[DiscordActivityTypeKey] ?: "LISTENING"
+        // Music is listened to. Same reason as above: the stored value can only be wrong now.
+        val activityTypePref = "LISTENING"
         val resolvedType = when (activityTypePref.uppercase()) {
             "PLAYING" -> Type.PLAYING
             "STREAMING" -> Type.STREAMING
@@ -211,10 +220,12 @@ class DiscordRPC(
             else -> Type.LISTENING
         }
 
-        val largeImageTypePref = context.dataStore[DiscordLargeImageTypeKey] ?: "thumbnail"
-        val largeImageCustomPref = context.dataStore[DiscordLargeImageCustomUrlKey] ?: ""
-        val smallImageTypePref = context.dataStore[DiscordSmallImageTypeKey] ?: "artist"
-        val smallImageCustomPref = context.dataStore[DiscordSmallImageCustomUrlKey] ?: ""
+        // The cover, and the artist's picture on it. No custom URLs: there is nowhere left to
+        // type one, and a stale one would silently replace the artwork.
+        val largeImageTypePref = "thumbnail"
+        val largeImageCustomPref = ""
+        val smallImageTypePref = "artist"
+        val smallImageCustomPref = ""
 
         val resolvedImages = DiscordImageResolver.resolveImagesForSong(context, song)
         
@@ -229,6 +240,14 @@ class DiscordRPC(
                 createRpcImage(resolvedImages.thumbnailResolvedId)
                     ?: createRpcImage(resolvedImages.thumbnailOriginalUrl)
                     ?: song.song.thumbnailUrl?.takeIf { it.isNotBlank() }?.let { RpcImage.ExternalImage(it) }
+                    // Exhale's own mark when the cover cannot be resolved.
+                    //
+                    // Handing Discord nothing does not mean "no picture": it falls back to the
+                    // *application's* icon, and the application id this presence is published
+                    // under is not ours - which is the random rainbow logo that turned up where
+                    // the album art should have been. Naming our icon explicitly means the worst
+                    // case is the app that is playing rather than a stranger's artwork.
+                    ?: RpcImage.ExternalImage(APP_ICON_URL)
             }
             "artist" -> {
                 createRpcImage(resolvedImages.artistResolvedId)
@@ -261,6 +280,8 @@ class DiscordRPC(
                 createRpcImage(resolvedImages.artistResolvedId)
                     ?: createRpcImage(resolvedImages.artistOriginalUrl)
                     ?: song.artists.firstOrNull()?.thumbnailUrl?.takeIf { it.isNotBlank() }?.let { RpcImage.ExternalImage(it) }
+                    // Same reasoning as the large image: ours, not the application's.
+                    ?: RpcImage.ExternalImage(APP_ICON_URL)
             }
             smallImageTypePref.lowercase() in listOf("thumbnail", "song", "album") -> {
                 createRpcImage(resolvedImages.thumbnailResolvedId)

@@ -8,6 +8,19 @@
 
 package com.ozyern.exhale.ui.component
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import android.annotation.SuppressLint
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -76,34 +89,98 @@ fun <E> ChipsRow(
             val isSelected = currentValue == value
             val iconRes = icons[value]
 
-            FilterChip(
+            GlassChip(
+                label = label,
                 selected = isSelected,
+                iconRes = iconRes,
                 onClick = { onValueUpdate(value) },
-                label = { Text(label) },
-                leadingIcon = {
-                    if (isSelected) {
-                        Icon(
-                            painter = painterResource(R.drawable.done),
-                            contentDescription = null,
-                            modifier = Modifier.size(FilterChipDefaults.IconSize),
-                        )
-                    } else if (iconRes != null) {
-                        Icon(
-                            painter = painterResource(iconRes),
-                            contentDescription = null,
-                            modifier = Modifier.size(FilterChipDefaults.IconSize),
-                        )
-                    }
-                },
-                shape = RoundedCornerShape(16.dp),
-                border = null,
-                colors = FilterChipDefaults.filterChipColors(
-                    containerColor = containerColor,
-                ),
             )
 
             Spacer(Modifier.width(8.dp))
         }
+    }
+}
+
+/**
+ * A filter chip on the app's own glass.
+ *
+ * `FilterChip` is the most recognisable Material control there is: a grey tonal capsule that grows
+ * a check mark on the left when it is chosen, shifting the label sideways as it does. On a library
+ * page whose every other surface is frosted, three of them in a row were the thing that made the
+ * page look like a different app - and the shifting label is a layout jump on every tap.
+ *
+ * So: one capsule of the same glass as the dock, which fills with the accent when it is on. The
+ * leading glyph is the chip's own icon and it stays put; selection is carried by colour, which is
+ * how iOS marks a chosen segment.
+ */
+@Composable
+private fun GlassChip(
+    label: String,
+    selected: Boolean,
+    iconRes: Int?,
+    onClick: () -> Unit,
+) {
+    val accent = MaterialTheme.colorScheme.primary
+    val shape = RoundedCornerShape(percent = 50)
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.95f else 1f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 700f),
+        label = "glassChipPress",
+    )
+    val fill by animateColorAsState(
+        targetValue = if (selected) accent else Color.Transparent,
+        animationSpec = tween(200),
+        label = "glassChipFill",
+    )
+    val ink by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.onPrimary
+        } else {
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+        },
+        animationSpec = tween(200),
+        label = "glassChipInk",
+    )
+
+    Row(
+        modifier = Modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .height(38.dp)
+            // In-content glass, NOT `rememberChromeGlassModifier`.
+            //
+            // That one samples `LocalAppBackdrop` - the layer the whole page is drawn into - which
+            // is only legal for chrome composed *outside* the NavHost, like the dock. Used on a
+            // chip that lives inside the page, it makes the backdrop contain something that reads
+            // the backdrop, and hwui walks that render tree until the native stack runs out: the
+            // library tab took the whole process down with a `prepareTreeImpl` overflow.
+            .liquidGlassSurface(shape)
+            .clip(shape)
+            .background(fill)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        if (iconRes != null) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                tint = ink,
+                modifier = Modifier.size(17.dp),
+            )
+        }
+        Text(
+            text = label,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = ink,
+            maxLines = 1,
+        )
     }
 }
 

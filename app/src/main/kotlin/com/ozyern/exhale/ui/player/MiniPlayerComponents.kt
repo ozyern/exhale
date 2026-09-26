@@ -44,8 +44,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -87,6 +85,7 @@ import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.R
 import com.ozyern.exhale.constants.EnableHapticFeedbackKey
 import com.ozyern.exhale.constants.MiniPlayerHeight
@@ -334,16 +333,14 @@ private fun MiniPlayerArtwork(
     modifier: Modifier = Modifier,
     size: Dp = 48.dp,
 ) {
-    // A disc.
+    // A rounded square, which is what a cover is.
     //
-    // This was a rounded square, on the argument that cropping a square cover to a circle throws
-    // away its corners. True, and it stops mattering at 48dp: at that size the corners of an
-    // album cover carry almost nothing, and what the shape is really doing is saying which of the
-    // objects at the bottom of the screen is the record. The pill now only appears on Home —
-    // everywhere else the player is the island at the top — so it sits directly above a dock full
-    // of rounded-square glyphs, and being the one round thing in that stack is worth more than
-    // four corners of a thumbnail.
-    val shape = CircleShape
+    // It was a disc, on the argument that at 48dp an album's corners carry nothing and the round
+    // shape marks out which object at the bottom of the screen is the record. In a capsule that is
+    // itself fully round, a disc reads as a second, smaller pill rather than as artwork - and the
+    // pill now appears over settings pages too, where there is no dock of round glyphs for it to
+    // play off. Apple shows the cover as the cover.
+    val shape = RoundedCornerShape(10.dp)
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
@@ -400,10 +397,10 @@ private fun MiniPlayerArtwork(
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.42f)),
             ) {
-                CircularProgressIndicator(
+                LoadingRing(
                     modifier = Modifier.size(20.dp),
                     color = Color.White,
-                    strokeWidth = 2.dp,
+                    stroke = 2.dp,
                 )
             }
         }
@@ -566,10 +563,15 @@ fun NewMiniPlayerContent(
 
             Spacer(modifier = Modifier.width(4.dp))
 
+            // The size was computed above and then never handed over, so this drew at its own
+            // 48dp default in a 56dp pill - a glass button with a press swell and a backdrop that
+            // reaches past its own bounds, in a capsule with 4dp of room above and below it. That
+            // is the button visibly hanging out of the pill on the settings page.
             com.ozyern.exhale.ui.component.LiquidPlayPauseButton(
                 isPlaying = isPlaying,
                 isLoading = isLoading,
                 onClick = { playerConnection.player.togglePlayPause() },
+                size = buttonSize,
             )
         }
 

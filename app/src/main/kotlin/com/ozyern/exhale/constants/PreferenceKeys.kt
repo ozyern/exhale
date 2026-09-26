@@ -208,6 +208,25 @@ val SkipSilenceKey = booleanPreferencesKey("skipSilence")
 val PreferLocalLosslessKey = booleanPreferencesKey("preferLocalLossless")
 val AudioNormalizationKey = booleanPreferencesKey("audioNormalization")
 val SpatialAudioKey = booleanPreferencesKey("spatialAudio") // Cavern-style Atmos/spatial upscaling
+
+/**
+ * How wide the spatial stage is.
+ *
+ * A phone has two speakers, so "5.1" and "7.1" are not outputs it can have — what it can have is
+ * how far the virtual stage is pushed, which is the thing those switches are really reaching for.
+ */
+val SpatialAudioProfileKey = stringPreferencesKey("spatialAudioProfile")
+
+enum class SpatialAudioProfile {
+    /** Barely there: a little width, no obvious processing. */
+    NATURAL,
+
+    /** The default: a clear stage outside the headphones without hollowing the centre. */
+    WIDE,
+
+    /** Room-sized, with the height shelf pushed — big on headphones, much on a speaker. */
+    CINEMA,
+}
 val AudioOffload = booleanPreferencesKey("audioOffload")
 val AudioCrossfadeDurationKey = intPreferencesKey("audioCrossfadeDuration")
 val AutoLoadMoreKey = booleanPreferencesKey("autoLoadMore")

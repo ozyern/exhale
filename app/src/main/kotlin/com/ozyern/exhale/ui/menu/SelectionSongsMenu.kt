@@ -11,6 +11,7 @@ package com.ozyern.exhale.ui.menu
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.foundation.layout.Column
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.ui.component.Next
 import com.ozyern.exhale.ui.component.MenuDividers
 import com.ozyern.exhale.ui.component.MenuSurfaceSection
@@ -24,7 +25,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -429,9 +429,9 @@ fun SelectionSongMenu(
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         headlineContent = { Text(text = stringResource(R.string.downloading)) },
                         leadingContent = {
-                            CircularProgressIndicator(
+                            LoadingRing(
                                 modifier = Modifier.size(24.dp),
-                                strokeWidth = 2.dp
+                                stroke = 2.dp
                             )
                         },
                         modifier = Modifier.clickable {
@@ -835,9 +835,9 @@ fun SelectionMediaMetadataMenu(
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         headlineContent = { Text(text = stringResource(R.string.downloading)) },
                         leadingContent = {
-                            CircularProgressIndicator(
+                            LoadingRing(
                                 modifier = Modifier.size(24.dp),
-                                strokeWidth = 2.dp
+                                stroke = 2.dp
                             )
                         },
                         modifier = Modifier.clickable {

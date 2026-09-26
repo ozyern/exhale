@@ -25,7 +25,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -180,7 +179,7 @@ fun LiquidPlayPauseButton(
     ) {
         val ink = if (dark) Color.White else Color(0xFF121216)
         if (isLoading) {
-            CircularProgressIndicator(modifier = Modifier.size(size * 0.40f), color = ink, strokeWidth = 2.dp)
+            LoadingRing(modifier = Modifier.size(size * 0.40f), color = ink, stroke = 2.dp)
         } else {
             AnimatedContent(
                 targetState = isPlaying,

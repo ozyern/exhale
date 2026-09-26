@@ -6,6 +6,8 @@
 
 package com.ozyern.exhale.ui.screens.settings
 
+import com.ozyern.exhale.ui.component.PreferenceGroupDivider
+import com.ozyern.exhale.ui.component.PreferenceGroup
 import android.app.Activity
 import android.content.Intent
 import android.widget.Toast
@@ -295,115 +297,119 @@ fun PoTokenScreen(
                 PreferenceGroupTitle(
                     title = stringResource(R.string.generated_tokens)
                 )
+                PreferenceGroup {
+                    SelectableTokenCard(
+                        label = stringResource(R.string.po_token_gvs),
+                        token = displayGvsToken,
+                        onCopy = {
+                            clipboardManager.setText(AnnotatedString(displayGvsToken))
+                            Toast.makeText(context, R.string.token_copied, Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
 
-                SelectableTokenCard(
-                    label = stringResource(R.string.po_token_gvs),
-                    token = displayGvsToken,
-                    onCopy = {
-                        clipboardManager.setText(AnnotatedString(displayGvsToken))
-                        Toast.makeText(context, R.string.token_copied, Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
+                    SelectableTokenCard(
+                        label = stringResource(R.string.po_token_player),
+                        token = displayPlayerToken,
+                        onCopy = {
+                            clipboardManager.setText(AnnotatedString(displayPlayerToken))
+                            Toast.makeText(context, R.string.token_copied, Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
 
-                SelectableTokenCard(
-                    label = stringResource(R.string.po_token_player),
-                    token = displayPlayerToken,
-                    onCopy = {
-                        clipboardManager.setText(AnnotatedString(displayPlayerToken))
-                        Toast.makeText(context, R.string.token_copied, Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
-
-                SelectableTokenCard(
-                    label = stringResource(R.string.visitor_data),
-                    token = displayVisitorData,
-                    onCopy = {
-                        clipboardManager.setText(AnnotatedString(displayVisitorData))
-                        Toast.makeText(context, R.string.token_copied, Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
+                    SelectableTokenCard(
+                        label = stringResource(R.string.visitor_data),
+                        token = displayVisitorData,
+                        onCopy = {
+                            clipboardManager.setText(AnnotatedString(displayVisitorData))
+                            Toast.makeText(context, R.string.token_copied, Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
 
                 PreferenceGroupTitle(
                     title = stringResource(R.string.supported_clients)
                 )
-
-                FlowRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    SUPPORTED_CLIENTS.forEach { client ->
-                        AssistChip(
-                            onClick = {},
-                            label = {
-                                Text(
-                                    text = client,
-                                    style = MaterialTheme.typography.labelMedium,
-                                )
-                            },
-                            colors = AssistChipDefaults.assistChipColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            ),
-                        )
+                PreferenceGroup {
+                    FlowRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        SUPPORTED_CLIENTS.forEach { client ->
+                            AssistChip(
+                                onClick = {},
+                                label = {
+                                    Text(
+                                        text = client,
+                                        style = MaterialTheme.typography.labelMedium,
+                                    )
+                                },
+                                colors = AssistChipDefaults.assistChipColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                    labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                ),
+                            )
+                        }
                     }
                 }
 
                 PreferenceGroupTitle(
                     title = stringResource(R.string.token_settings)
                 )
+                PreferenceGroup {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.use_visitor_data)) },
+                        description = stringResource(R.string.use_visitor_data_desc),
+                        icon = { Icon(painterResource(R.drawable.person), null) },
+                        checked = useVisitorData,
+                        onCheckedChange = { enabled ->
+                            if (enabled && hasCookie) {
+                                Toast.makeText(
+                                    context,
+                                    R.string.cookies_must_be_disabled,
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            } else {
+                                onUseVisitorDataChange(enabled)
+                            }
+                        },
+                    )
 
-                SwitchPreference(
-                    title = { Text(stringResource(R.string.use_visitor_data)) },
-                    description = stringResource(R.string.use_visitor_data_desc),
-                    icon = { Icon(painterResource(R.drawable.person), null) },
-                    checked = useVisitorData,
-                    onCheckedChange = { enabled ->
-                        if (enabled && hasCookie) {
-                            Toast.makeText(
-                                context,
-                                R.string.cookies_must_be_disabled,
-                                Toast.LENGTH_LONG
-                            ).show()
-                        } else {
-                            onUseVisitorDataChange(enabled)
-                        }
-                    },
-                )
+                    Spacer(Modifier.height(12.dp))
 
-                Spacer(Modifier.height(12.dp))
+                    ExtendedFloatingActionButton(
+                        onClick = {
+                            showRegenerateSheet = true
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        shape = MaterialTheme.shapes.medium,
+                        icon = {
+                            Icon(
+                            painter = painterResource(R.drawable.sync),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            )
+                        },
+                        text = {
+                            Text(
+                                text = stringResource(R.string.regenerate),
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                        },
+                    )
 
-                ExtendedFloatingActionButton(
-                    onClick = {
-                        showRegenerateSheet = true
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = MaterialTheme.shapes.medium,
-                    icon = {
-                        Icon(
-                        painter = painterResource(R.drawable.sync),
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        )
-                    },
-                    text = {
-                        Text(
-                            text = stringResource(R.string.regenerate),
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                    },
-                )
+                    Spacer(Modifier.height(24.dp))
+                }
 
-                Spacer(Modifier.height(24.dp))
             }
         }
     }

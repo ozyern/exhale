@@ -8,6 +8,7 @@
 
 package com.ozyern.exhale.ui.screens.playlist
 
+import com.ozyern.exhale.ui.component.PlayShuffleButton
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -705,8 +706,8 @@ fun OnlinePlaylistScreen(
                                                 }
                                             },
                                             shape = CircleShape,
-                                            color = MaterialTheme.colorScheme.surfaceVariant,
-                                            modifier = Modifier.size(48.dp)
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                                            modifier = Modifier.size(50.dp)
                                         ) {
                                             Box(
                                                 modifier = Modifier.fillMaxSize(),
@@ -741,41 +742,34 @@ fun OnlinePlaylistScreen(
 
                                     // Shuffle Button
                                     playlist.shuffleEndpoint?.let { shuffleEndpoint ->
-                                        Button(
+                                        PlayShuffleButton(
+                                            iconRes = R.drawable.shuffle,
+                                            label = stringResource(R.string.shuffle),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(50.dp),
                                             onClick = {
                                                 playerConnection.playQueue(
                                                     YouTubeQueue(shuffleEndpoint)
                                                 )
-                                            },
-                                            shape = RoundedCornerShape(24.dp),
-                                            modifier = Modifier.weight(1f).height(48.dp)
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.shuffle),
-                                                contentDescription =
-                                                    stringResource(R.string.shuffle),
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
+                                                },
+                                        )
                                     }
 
                                     // Radio Button
                                     playlist.radioEndpoint?.let { radioEndpoint ->
-                                        Button(
+                                        PlayShuffleButton(
+                                            iconRes = R.drawable.radio,
+                                            label = stringResource(R.string.radio),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(50.dp),
                                             onClick = {
                                                 playerConnection.playQueue(
                                                     YouTubeQueue(radioEndpoint)
                                                 )
-                                            },
-                                            shape = RoundedCornerShape(24.dp),
-                                            modifier = Modifier.weight(1f).height(48.dp)
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.radio),
-                                                contentDescription = stringResource(R.string.radio),
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
+                                                },
+                                        )
                                     }
 
                                     // More Options Button
@@ -794,8 +788,8 @@ fun OnlinePlaylistScreen(
                                             }
                                         },
                                         shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
-                                        modifier = Modifier.size(48.dp)
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
+                                        modifier = Modifier.size(50.dp)
                                     ) {
                                         Box(
                                             modifier = Modifier.fillMaxSize(),

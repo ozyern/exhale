@@ -155,12 +155,17 @@ val BottomSheetAnimationSpec = spring<Dp>(
 )
 
 /**
- * Used for programmatic (tapped, not flung) transitions — `expandSoft` / `collapseSoft`. The same
- * curve as [BottomSheetAnimationSpec] on purpose: minimising by tapping the chevron and minimising
- * by flinging the sheet are the same gesture as far as the user is concerned, and they used to
- * settle on visibly different springs.
+ * Used for programmatic (tapped, not flung) transitions — `expandSoft` / `collapseSoft`.
+ *
+ * Softer than [BottomSheetAnimationSpec], which is the one thing the two gestures genuinely do not
+ * share. A fling arrives with velocity: the finger has already done most of the travel and the
+ * spring only finishes it, so it should be stiff or it feels like drag. A tap starts from nothing
+ * and has to cover the whole screen, and at the fling's stiffness it covered it in about four
+ * frames - the mini player vanished and the full player was simply *there*, at which point none of
+ * the morph below it is visible at all. At 210 the same motion takes around a third of a second:
+ * long enough to read as the pill becoming the player, short enough that nobody waits for it.
  */
 val BottomSheetSoftAnimationSpec = spring<Dp>(
-	dampingRatio = AquamorphicDampingRatio,
-	stiffness = AquamorphicStiffness
+	dampingRatio = 0.86f,
+	stiffness = 210f
 )

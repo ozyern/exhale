@@ -7,6 +7,9 @@
 
 package com.ozyern.exhale.ui.player
 
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.CompositingStrategy
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -50,7 +53,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
@@ -97,6 +99,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.Player.STATE_ENDED
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.ui.component.liquid.LiquidSlider
 import com.ozyern.exhale.ui.component.liquid.LocalAppBackdrop
 import me.saket.squiggles.SquigglySlider
@@ -799,11 +802,21 @@ fun StyledPlaybackSlider(
 ) {
     when (sliderStyle) {
         SliderStyle.Standard -> {
-            // Use Liquid Glass slider with lens refraction
-            LiquidSlider(
+            // The plain slider, as OpenTune draws it.
+            //
+            // This was routed to `LiquidSlider` - the lens-refracting glass control built for the
+            // dock and the volume row - and it was the wrong instrument twice over. It takes no
+            // `onValueChangeFinished`, so a seek on this style never committed on release: the
+            // handle moved, the thumb snapped back and the song carried on, which is the glitch.
+            // And "Standard" is the setting people pick when they do *not* want the glass; every
+            // other style here is a plain Material slider with the player's colours, and this one
+            // now is too.
+            Slider(
                 value = value,
-                onValueChange = onValueChange,
                 valueRange = valueRange,
+                onValueChange = onValueChange,
+                onValueChangeFinished = onValueChangeFinished,
+                colors = PlayerSliderColors.standardSliderColors(activeColor),
                 modifier = modifier
             )
         }
@@ -1032,7 +1045,7 @@ fun PlayerPlaybackControls(
                             .clip(RoundedCornerShape(32.dp))
                     ) {
                         if (isLoading) {
-                            CircularWavyProgressIndicator(
+                            LoadingRing(
                                 modifier = Modifier.size(42.dp),
                                 color = iconButtonColor,
                             )
@@ -1192,7 +1205,7 @@ fun PlayerPlaybackControls(
                         contentAlignment = Alignment.Center
                     ) {
                         if (isLoading) {
-                            CircularWavyProgressIndicator(
+                            LoadingRing(
                                 modifier = Modifier.size(32.dp),
                                 color = icBackgroundColor,
                             )
@@ -1419,7 +1432,7 @@ fun PlayerPlaybackControls(
                             contentAlignment = Alignment.Center
                         ) {
                             if (isLoading) {
-                                CircularWavyProgressIndicator(
+                                LoadingRing(
                                     modifier = Modifier.size(40.dp),
                                     color = icBackgroundColor,
                                 )
@@ -1620,7 +1633,7 @@ fun PlayerPlaybackControls(
                             },
                 ) {
                     if (isLoading) {
-                        CircularWavyProgressIndicator(
+                        LoadingRing(
                             modifier = Modifier
                                 .align(Alignment.Center)
                                 .size(36.dp),
@@ -1806,7 +1819,7 @@ fun PlayerPlaybackControls(
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (isLoading) {
-                                    CircularWavyProgressIndicator(
+                                    LoadingRing(
                                         modifier = Modifier.size(40.dp),
                                         color = iconButtonColor,
                                     )
@@ -1980,7 +1993,7 @@ fun PlayerPlaybackControls(
                         contentAlignment = Alignment.Center
                     ) {
                         if (isLoading) {
-                            CircularWavyProgressIndicator(
+                            LoadingRing(
                                 modifier = Modifier.size(44.dp),
                                 color = textBackgroundColor,
                             )
@@ -2076,7 +2089,7 @@ fun PlayerPlaybackControls(
                         contentAlignment = Alignment.Center
                     ) {
                         if (isLoading) {
-                            CircularWavyProgressIndicator(
+                            LoadingRing(
                                 modifier = Modifier.size(36.dp),
                                 color = Color.Black,
                             )
@@ -2749,6 +2762,30 @@ fun V8PlayerBackdrop(
     )
 }
 
+/**
+ * Softens both ends of a line that scrolls.
+ *
+ * `basicMarquee` moves the text through its own bounds and cuts it dead at the edge, so a long
+ * title arrives and leaves by being sliced in half at the screen margin. Apple fades it. The mask
+ * is drawn into the layer with `DstIn`, which is why the content needs an offscreen compositing
+ * strategy: without it there is nothing to punch the alpha out of.
+ */
+private fun Modifier.marqueeFade(width: Dp = 22.dp): Modifier = this
+    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        val edge = width.toPx().coerceAtMost(size.width / 3f)
+        drawRect(
+            brush = Brush.horizontalGradient(
+                0f to Color.Transparent,
+                (edge / size.width) to Color.Black,
+                1f - (edge / size.width) to Color.Black,
+                1f to Color.Transparent,
+            ),
+            blendMode = BlendMode.DstIn,
+        )
+    }
+
 @Composable
 fun V8PlayerControlsContent(
     mediaMetadata: MediaMetadata,
@@ -2814,7 +2851,9 @@ fun V8PlayerControlsContent(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = textBackgroundColor,
-                        modifier = Modifier.basicMarquee()
+                        modifier = Modifier
+                            .marqueeFade()
+                            .basicMarquee()
                     )
                 }
 
@@ -2857,6 +2896,7 @@ fun V8PlayerControlsContent(
                         overflow = TextOverflow.Ellipsis,
                         onTextLayout = { artistLayout = it },
                         modifier = Modifier
+                            .marqueeFade()
                             .basicMarquee()
                             // Records where the finger went down so the click below can ask the
                             // layout which name was under it. Compose gives the click no
@@ -2964,11 +3004,26 @@ fun V8PlayerControlsContent(
 
         val safeDuration = if (duration <= 0L) 0f else duration.toFloat()
         val safeValue = (sliderPosition ?: position).toFloat().coerceIn(0f, maxOf(0f, safeDuration))
+
+        // The scrubber is a hairline until you touch it, and then it is a handle.
+        //
+        // Apple's grows under the finger - the track roughly doubles while a drag is in progress
+        // and settles back when it ends - which is what makes a bar with no visible thumb feel
+        // like something you are holding. A fixed 10dp bar is just a progress indicator you happen
+        // to be allowed to drag.
+        val scrubInteraction = remember { MutableInteractionSource() }
+        val scrubbing by scrubInteraction.collectIsDraggedAsState()
+        val trackHeight by animateDpAsState(
+            targetValue = if (scrubbing || sliderPosition != null) 14.dp else 7.dp,
+            animationSpec = spring(dampingRatio = 0.75f, stiffness = 420f),
+            label = "v8TrackHeight",
+        )
         Slider(
             value = safeValue,
             valueRange = 0f..maxOf(1f, safeDuration),
             onValueChange = { onSliderValueChange(it.toLong()) },
             onValueChangeFinished = onSliderValueChangeFinished,
+            interactionSource = scrubInteraction,
             colors = PlayerSliderColors.thickSliderColors(textBackgroundColor),
             thumb = { Spacer(modifier = Modifier.size(0.dp)) },
             track = { sliderState ->
@@ -2977,7 +3032,7 @@ fun V8PlayerControlsContent(
                     .coerceIn(0f, 1f)
                 GlassTrack(
                     fraction = fraction,
-                    trackHeight = 10.dp,
+                    trackHeight = trackHeight,
                     tint = textBackgroundColor,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -3009,7 +3064,7 @@ fun V8PlayerControlsContent(
                     }
                     Surface(
                         shape = RoundedCornerShape(4.dp),
-                        color = textBackgroundColor.copy(alpha = 0.12f),
+                        color = Color.Transparent,
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -3168,25 +3223,26 @@ fun V8PlaybackControls(
             .padding(horizontal = PlayerHorizontalPadding)
     ) {
         // Skip Previous
-        Surface(
+        V8TransportButton(
             onClick = { playerConnection.seekToPrevious() },
             enabled = canSkipPrevious,
-            shape = CircleShape,
-            color = Color.Transparent,
-            modifier = Modifier.size(56.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                Icon(
-                    painter = painterResource(R.drawable.skip_previous),
-                    contentDescription = null,
-                    tint = textBackgroundColor.copy(alpha = if (canSkipPrevious) 1f else 0.4f),
-                    modifier = Modifier.size(38.dp)
-                )
-            }
+            size = 56.dp,
+        ) { pressScale ->
+            Icon(
+                painter = painterResource(R.drawable.skip_previous),
+                contentDescription = null,
+                tint = textBackgroundColor.copy(alpha = if (canSkipPrevious) 1f else 0.4f),
+                modifier = Modifier
+                    .size(38.dp)
+                    .graphicsLayer {
+                        scaleX = pressScale
+                        scaleY = pressScale
+                    },
+            )
         }
 
-        // Play/Pause - SIN FONDO (como Apple Music)
-        Surface(
+        // Play/Pause - no container, like Apple Music
+        V8TransportButton(
             onClick = {
                 if (playbackState == Player.STATE_ENDED) {
                     playerConnection.player.seekTo(0, 0)
@@ -3195,50 +3251,91 @@ fun V8PlaybackControls(
                     playerConnection.player.togglePlayPause()
                 }
             },
-            shape = CircleShape,
-            color = Color.Transparent,
-            modifier = Modifier.size(72.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                if (isLoading) {
-                    CircularWavyProgressIndicator(
-                        modifier = Modifier.size(36.dp),
-                        color = textBackgroundColor,
-                    )
-                } else {
-                    Icon(
-                        painter = painterResource(
-                            when {
-                                playbackState == Player.STATE_ENDED -> R.drawable.replay
-                                isPlaying -> R.drawable.pause
-                                else -> R.drawable.play
-                            }
-                        ),
-                        contentDescription = null,
-                        tint = textBackgroundColor,
-                        modifier = Modifier.size(48.dp)
-                    )
-                }
+            size = 76.dp,
+        ) { pressScale ->
+            if (isLoading) {
+                LoadingRing(
+                    modifier = Modifier.size(36.dp),
+                    color = textBackgroundColor,
+                )
+            } else {
+                Icon(
+                    painter = painterResource(
+                        when {
+                            playbackState == Player.STATE_ENDED -> R.drawable.replay
+                            isPlaying -> R.drawable.pause
+                            else -> R.drawable.play
+                        }
+                    ),
+                    contentDescription = null,
+                    tint = textBackgroundColor,
+                    modifier = Modifier
+                        .size(50.dp)
+                        .graphicsLayer {
+                            scaleX = pressScale
+                            scaleY = pressScale
+                        },
+                )
             }
         }
 
         // Skip Next
-        Surface(
+        V8TransportButton(
             onClick = { playerConnection.seekToNext() },
             enabled = canSkipNext,
-            shape = CircleShape,
-            color = Color.Transparent,
-            modifier = Modifier.size(56.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                Icon(
-                    painter = painterResource(R.drawable.skip_next),
-                    contentDescription = null,
-                    tint = textBackgroundColor.copy(alpha = if (canSkipNext) 1f else 0.4f),
-                    modifier = Modifier.size(38.dp)
-                )
-            }
+            size = 56.dp,
+        ) { pressScale ->
+            Icon(
+                painter = painterResource(R.drawable.skip_next),
+                contentDescription = null,
+                tint = textBackgroundColor.copy(alpha = if (canSkipNext) 1f else 0.4f),
+                modifier = Modifier
+                    .size(38.dp)
+                    .graphicsLayer {
+                        scaleX = pressScale
+                        scaleY = pressScale
+                    },
+            )
         }
+    }
+}
+
+/**
+ * One transport control: no container, no ripple, and a glyph that gives under the finger.
+ *
+ * These were `Surface(onClick)` buttons with a transparent colour, which still draws Material's
+ * ripple - an expanding grey disc over album art, on the three controls the eye is on most. Apple's
+ * transport has no container at all; what acknowledges the press is the glyph itself dipping and
+ * coming back. Underdamped on the way out so it overshoots slightly, which is what makes a flat
+ * glyph feel like a physical button.
+ */
+@Composable
+private fun V8TransportButton(
+    onClick: () -> Unit,
+    size: Dp,
+    enabled: Boolean = true,
+    content: @Composable (pressScale: Float) -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.86f else 1f,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = 900f),
+        label = "v8TransportPress",
+    )
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                enabled = enabled,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        content(scale)
     }
 }
 

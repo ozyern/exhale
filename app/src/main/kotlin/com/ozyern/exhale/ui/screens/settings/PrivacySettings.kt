@@ -8,6 +8,8 @@
 
 package com.ozyern.exhale.ui.screens.settings
 
+import com.ozyern.exhale.ui.component.PreferenceGroupDivider
+import com.ozyern.exhale.ui.component.PreferenceGroup
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -154,46 +156,52 @@ fun PrivacySettings(
         PreferenceGroupTitle(
             title = stringResource(R.string.listen_history)
         )
-
-        SwitchPreference(
-            title = { Text(stringResource(R.string.pause_listen_history)) },
-            icon = { Icon(painterResource(R.drawable.history), null) },
-            checked = pauseListenHistory,
-            onCheckedChange = onPauseListenHistoryChange,
-        )
-        PreferenceEntry(
-            title = { Text(stringResource(R.string.clear_listen_history)) },
-            icon = { Icon(painterResource(R.drawable.delete_history), null) },
-            onClick = { showClearListenHistoryDialog = true },
-        )
+        PreferenceGroup {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.pause_listen_history)) },
+                icon = { Icon(painterResource(R.drawable.history), null) },
+                checked = pauseListenHistory,
+                onCheckedChange = onPauseListenHistoryChange,
+            )
+            PreferenceGroupDivider()
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.clear_listen_history)) },
+                icon = { Icon(painterResource(R.drawable.delete_history), null) },
+                onClick = { showClearListenHistoryDialog = true },
+            )
+        }
 
         PreferenceGroupTitle(
             title = stringResource(R.string.search_history)
         )
-
-        SwitchPreference(
-            title = { Text(stringResource(R.string.pause_search_history)) },
-            icon = { Icon(painterResource(R.drawable.search_off), null) },
-            checked = pauseSearchHistory,
-            onCheckedChange = onPauseSearchHistoryChange,
-        )
-        PreferenceEntry(
-            title = { Text(stringResource(R.string.clear_search_history)) },
-            icon = { Icon(painterResource(R.drawable.clear_all), null) },
-            onClick = { showClearSearchHistoryDialog = true },
-        )
+        PreferenceGroup {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.pause_search_history)) },
+                icon = { Icon(painterResource(R.drawable.search_off), null) },
+                checked = pauseSearchHistory,
+                onCheckedChange = onPauseSearchHistoryChange,
+            )
+            PreferenceGroupDivider()
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.clear_search_history)) },
+                icon = { Icon(painterResource(R.drawable.clear_all), null) },
+                onClick = { showClearSearchHistoryDialog = true },
+            )
+        }
 
         PreferenceGroupTitle(
             title = stringResource(R.string.misc),
         )
+        PreferenceGroup {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.disable_screenshot)) },
+                description = stringResource(R.string.disable_screenshot_desc),
+                icon = { Icon(painterResource(R.drawable.screenshot), null) },
+                checked = disableScreenshot,
+                onCheckedChange = onDisableScreenshotChange,
+            )
+        }
 
-        SwitchPreference(
-            title = { Text(stringResource(R.string.disable_screenshot)) },
-            description = stringResource(R.string.disable_screenshot_desc),
-            icon = { Icon(painterResource(R.drawable.screenshot), null) },
-            checked = disableScreenshot,
-            onCheckedChange = onDisableScreenshotChange,
-        )
     }
 
     SettingsTopAppBar(

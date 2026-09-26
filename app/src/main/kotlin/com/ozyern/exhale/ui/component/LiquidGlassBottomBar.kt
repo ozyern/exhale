@@ -8,6 +8,8 @@
 
 package com.ozyern.exhale.ui.component
 
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -192,13 +194,55 @@ fun LiquidGlassBottomBar(
         onMiniPlayerClick()
     }
 
+    // How big the round chrome is in each state, as one continuous value rather than two
+    // composables of different sizes taking turns. Collapsed, the row belongs to the song: the
+    // circles step down and their glyphs step down with them, which is what gives the pill the
+    // width.
+    val chromeCircleSize by animateDpAsState(
+        targetValue = if (collapsed) CollapsedCircleSize else DockCircleSize,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 420f),
+        label = "chromeCircleSize",
+    )
+    val chromeGlyphScale = chromeCircleSize / DockCircleSize
+
+    // The home circle is not a thing that appears; it is a thing that grows.
+    //
+    // It used to live inside State B, which meant it came into being at the moment the morph
+    // swapped states and had to cover that with a fade and a scale-up - two frames of nothing,
+    // then a circle popping in, which is what made it read as coarse next to the search circle
+    // beside it. Out here it exists in both states with a width of zero in the expanded one, so
+    // collapsing is one continuous spring: the strip folds left, the circle opens out of the fold,
+    // and the pill takes the rest. The gap follows it, so the expanded row has no hole where the
+    // circle will be.
+    val homeCircleSize by animateDpAsState(
+        targetValue = if (collapsed) CollapsedCircleSize else 0.dp,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 420f),
+        label = "homeCircleSize",
+    )
+    val homeGap = 10.dp * (homeCircleSize / CollapsedCircleSize).coerceIn(0f, 1f)
+
     Row(
-        // Fixed height (all children are 64dp) instead of IntrinsicSize.Min — this drops the
+        // Fixed height (the tallest child is 64dp) instead of IntrinsicSize.Min — this drops the
         // intrinsic-measurement pass the morph used to trigger on every animation frame.
         modifier = modifier.fillMaxWidth().height(64.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (homeTab != null && homeCircleSize > 1.dp) {
+            FrostedCircle(
+                size = homeCircleSize,
+                onClick = { onItemClickHaptic(homeTab, isSelected(homeTab)) },
+            ) {
+                NavGlyph(
+                    iconRes = if (isSelected(homeTab)) homeTab.iconIdActive else homeTab.iconIdInactive,
+                    contentDescription = stringResource(homeTab.titleId),
+                    tint = if (isSelected(homeTab)) MaterialTheme.colorScheme.primary
+                    else itemContentColor(pureBlack),
+                    scale = (homeCircleSize / DockCircleSize).coerceAtMost(1f),
+                )
+            }
+        }
+        Spacer(Modifier.width(homeGap))
+
         AnimatedContent(
             targetState = collapsed,
             transitionSpec = {
@@ -245,7 +289,17 @@ fun LiquidGlassBottomBar(
                         isSelected = isSelected,
                         onItemClick = onItemClickHaptic,
                         modifier = Modifier
-                            .weight(1f, fill = false)
+                            // Fills the space it is given, rather than wrapping its content.
+                            //
+                            // With `fill = false` the strip was measured wrap-content, so its
+                            // weighted tabs fell back to their intrinsic widths - one tab as wide
+                            // as its label, the next as narrow as its own - while the selected
+                            // capsule is drawn on an even pitch of total/tabs. The two disagreed,
+                            // and the widest label ("Mood & Genres") ran straight out of the
+                            // capsule and across its neighbours. Filling makes the pitch real, so
+                            // every tab is the same width the capsule assumes and a long label
+                            // ellipsises inside its own slot instead of escaping it.
+                            .weight(1f)
                             .widthIn(max = LiquidTabBarMaxWidth)
                             // Folds along its length into the footprint the home circle is about
                             // to occupy, and unfolds back out of it.
@@ -264,24 +318,9 @@ fun LiquidGlassBottomBar(
                                 scaleX = folded + (1f - folded) * stripFold
                             },
                     )
-                    if (searchScreen != null) {
-                        val searchActive = isSelected(searchScreen)
-                        FrostedCircle(
-                            onClick = { onItemClickHaptic(searchScreen, searchActive) },
-                        ) {
-                            NavGlyph(
-                                iconRes = if (searchActive) searchScreen.iconIdActive else searchScreen.iconIdInactive,
-                                contentDescription = stringResource(searchScreen.titleId),
-                                tint = if (searchActive) MaterialTheme.colorScheme.primary
-                                else itemContentColor(pureBlack),
-                            )
-                        }
-                    }
                 }
             } else {
                 // ---- STATE B: home circle | center pill | search circle ----
-                val circleInk by morphInk("homeInk")
-                val circleShape by morphShape("homeShape")
                 val pillInk by morphInk("pillInk")
                 val pillShape by morphShape("pillShape")
 
@@ -290,31 +329,9 @@ fun LiquidGlassBottomBar(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (homeTab != null) {
-                        FrostedCircle(
-                            onClick = { onItemClickHaptic(homeTab, isSelected(homeTab)) },
-                            // In place, because that is where it comes from: it is the end the
-                            // tab strip folds into, and the strip's left edge is already exactly
-                            // here. It used to slide in from off the left edge *and* scale up
-                            // from 0.55 — two accounts of where it came from, neither of them the
-                            // one the strip was telling.
-                            modifier = Modifier.graphicsLayer {
-                                alpha = circleInk
-                                val grow = 0.74f + 0.26f * circleShape
-                                scaleX = grow
-                                scaleY = grow
-                            },
-                        ) {
-                            NavGlyph(
-                                iconRes = if (isSelected(homeTab)) homeTab.iconIdActive else homeTab.iconIdInactive,
-                                contentDescription = stringResource(homeTab.titleId),
-                                tint = if (isSelected(homeTab)) MaterialTheme.colorScheme.primary
-                                else itemContentColor(pureBlack),
-                            )
-                        }
-                    }
-
                     FrostedPill(
+                        // The same accessory that was above the bar a moment ago, flown down into it.
+                        sharedAccessoryScope = if (hasNowPlaying) this@AnimatedContent else null,
                         // Frostier than the rest of the dock when it carries the now-playing row:
                         // a page heading sliding under the song title at 13dp of blur stays
                         // legible and the two lines of type read as one collision.
@@ -354,20 +371,26 @@ fun LiquidGlassBottomBar(
                         }
                     }
 
-                    if (searchScreen != null) {
-                        val searchActive = isSelected(searchScreen)
-                        FrostedCircle(
-                            onClick = { onItemClickHaptic(searchScreen, searchActive) },
-                        ) {
-                            NavGlyph(
-                                iconRes = if (searchActive) searchScreen.iconIdActive else searchScreen.iconIdInactive,
-                                contentDescription = stringResource(searchScreen.titleId),
-                                tint = if (searchActive) MaterialTheme.colorScheme.primary
-                                else itemContentColor(pureBlack),
-                            )
-                        }
-                    }
                 }
+            }
+        }
+
+        Spacer(Modifier.width(10.dp))
+
+        // Outside the morph on purpose: see the note where the strip's copy used to be.
+        if (searchScreen != null) {
+            val searchActive = isSelected(searchScreen)
+            FrostedCircle(
+                size = chromeCircleSize,
+                onClick = { onItemClickHaptic(searchScreen, searchActive) },
+            ) {
+                NavGlyph(
+                    iconRes = if (searchActive) searchScreen.iconIdActive else searchScreen.iconIdInactive,
+                    contentDescription = stringResource(searchScreen.titleId),
+                    tint = if (searchActive) MaterialTheme.colorScheme.primary
+                    else itemContentColor(pureBlack),
+                    scale = chromeGlyphScale,
+                )
             }
         }
     }
@@ -383,7 +406,17 @@ fun LiquidGlassBottomBar(
 private val DockCircleSize = 64.dp
 
 /**
- * Opacity, and why both halves are the same linear ramp.
+ * The round chrome in State B, a step down from the dock's own 64dp.
+ *
+ * Collapsed, the row is mostly the song: the reference this is drawn from gives the pill the width
+ * and keeps the two circles as small marks at either end. At 64dp each they took a third of the
+ * row between them and the pill was the narrowest thing in a bar that exists, in that state, to
+ * show what is playing.
+ */
+private val CollapsedCircleSize = 52.dp
+
+/**
+ * Opacity: the outgoing state leaves before the incoming one arrives.
  *
  * The two states are composed on top of each other for the length of the morph and each of them
  * is a sheet of frosted glass, so what the eye judges is how much glass is over any given pixel at
@@ -391,15 +424,20 @@ private val DockCircleSize = 64.dp
  * state gives up precisely what the incoming one takes — so the bar holds one plate's worth of
  * material all the way through and never flashes a shade lighter or darker.
  *
- * That is what the previous springs got wrong. An eased pair does not sum to one: it dips in the
- * middle, and on a translucent surface a dip in coverage is a flash of the page underneath. The
- * shape change is carried entirely by [MorphShapeSpring]; opacity's whole job here is to not be
- * noticed.
+ * The two ramps used to be matched and simultaneous, on the reasoning that two halves summing to
+ * one keeps the glass an even thickness. What it actually produced was both layouts legible at
+ * once for a fifth of a second — tab labels showing through a mini-player pill, two pieces of
+ * artwork, a home circle sitting on top of the pill — which reads as a crossfade between two
+ * different bars rather than one bar changing shape.
+ *
+ * So the handoff is now sequential: the state that is leaving is gone in 110ms, and the one
+ * arriving starts 90ms in. Nothing is ever doubled, and the shape change — carried entirely by
+ * [MorphShapeSpring], which runs through both — is what the eye follows across the gap.
  */
 private val MorphFadeOut: FiniteAnimationSpec<Float> =
-    tween(durationMillis = 190, easing = LinearEasing)
+    tween(durationMillis = 110, easing = LinearEasing)
 private val MorphFadeIn: FiniteAnimationSpec<Float> =
-    tween(durationMillis = 190, easing = LinearEasing)
+    tween(durationMillis = 170, delayMillis = 90, easing = LinearEasing)
 
 /**
  * Geometry.
@@ -460,8 +498,8 @@ private val DockGlassBlurRadius = 68.dp
  * is frosted to the point where a heading passing under it is colour, not letters (the radius is
  * quartered by the chrome modifier, so this is ~28dp of real blur).
  */
-internal const val MiniPlayerGlassExtraTint = 0.12f
-internal val MiniPlayerGlassBlurRadius = 112.dp
+internal const val MiniPlayerGlassExtraTint = 0.46f
+internal val MiniPlayerGlassBlurRadius = 130.dp
 
 @Composable
 private fun frostedGlassModifier(
@@ -503,6 +541,7 @@ private fun frostedGlassModifier(
 private fun FrostedPill(
     modifier: Modifier = Modifier,
     height: Dp = 64.dp,
+    sharedAccessoryScope: androidx.compose.animation.AnimatedVisibilityScope? = null,
     extraTint: Float = DockGlassExtraTint,
     blurRadius: Dp = DockGlassBlurRadius,
     content: @Composable () -> Unit,
@@ -511,6 +550,7 @@ private fun FrostedPill(
     Box(
         modifier = modifier
             .height(height)
+            .nowPlayingAccessory(sharedAccessoryScope)
             .then(frostedGlassModifier(shape, extraTint, blurRadius)),
         contentAlignment = Alignment.Center,
     ) { content() }
@@ -560,14 +600,27 @@ private fun FrostedCircle(
 }
 
 @Composable
-private fun NavGlyph(iconRes: Int, contentDescription: String?, tint: Color) {
+private fun NavGlyph(
+    iconRes: Int,
+    contentDescription: String?,
+    tint: Color,
+    // Drawn smaller rather than measured smaller: the glyph follows the circle down in the collapsed
+    // state, and a scale on the draw layer costs nothing on a frame where the circle is already
+    // being remeasured.
+    scale: Float = 1f,
+) {
     // Outlined to solid is a change of state, so it is watched happening rather than swapped on a frame.
     Crossfade(targetState = iconRes, animationSpec = tween(170), label = "navGlyph") { res ->
         Icon(
             painter = painterResource(res),
             contentDescription = contentDescription,
             tint = tint,
-            modifier = Modifier.size(26.dp),
+            modifier = Modifier
+                .size(26.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                },
         )
     }
 }
@@ -695,14 +748,54 @@ private fun LiquidTabBar(
         (pillWidth - 8.dp) / tabs.size.coerceAtLeast(1) >= LabelledTabMinWidth
     }
 
+    var totalWidthPx by remember { mutableFloatStateOf(0f) }
+    var tabWidthPx by remember { mutableFloatStateOf(0f) }
+
+    // How big the labels can be before they touch the ends of the capsule.
+    //
+    // "Mood & Genres" at 11sp is 90dp wide, and on a 411dp phone a tab slot is 93dp - so the label
+    // fitted, and sat hard against the curved ends of the glass with a dp to spare on each side.
+    // That is the overlap: not text running past its slot, but text with no room inside it.
+    //
+    // The slot cannot grow - four even tabs across the width of the phone is what there is - so
+    // the type gives way instead, by exactly as much as it has to and no more. Measured against
+    // the longest label at the heaviest weight it is ever drawn in, and one size is used for all
+    // four, because tabs set at different sizes look like a mistake rather than a fit. Apple sets
+    // a tab bar label at 10pt, so this lands where iOS already is.
+    val textMeasurer = rememberTextMeasurer()
+    val labelStyle = MaterialTheme.typography.labelSmall
+    val labels = tabs.map { stringResource(it.dockTitleId) }
+    val labelFontSize = remember(labels, tabWidthPx, labelStyle, density) {
+        val room = tabWidthPx - with(density) { DockLabelSideRoom.toPx() * 2f }
+        if (room <= 0f) {
+            DockLabelMaxSize
+        } else {
+            val widest = labels.maxOfOrNull { label ->
+                textMeasurer.measure(
+                    text = label,
+                    style = labelStyle.copy(
+                        fontSize = DockLabelMaxSize,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                    maxLines = 1,
+                    softWrap = false,
+                ).size.width.toFloat()
+            } ?: 0f
+            if (widest <= room || widest == 0f) {
+                DockLabelMaxSize
+            } else {
+                (DockLabelMaxSize.value * (room / widest))
+                    .coerceAtLeast(DockLabelMinSize.value)
+                    .sp
+            }
+        }
+    }
+
     // Inset of the capsule inside the pill, and therefore what the tab pitch is measured from.
     // 64dp of bar minus 4dp top and bottom is the capsule's 56dp.
     val inset = 4.dp
     val insetPx = with(density) { inset.toPx() }
     val capsuleHeight = height - inset * 2
-
-    var totalWidthPx by remember { mutableFloatStateOf(0f) }
-    var tabWidthPx by remember { mutableFloatStateOf(0f) }
 
     // ---- Live gesture state. All plain float state: written from the pointer callback, read
     // ---- only from draw lambdas, so a drag frame costs a layer invalidation and nothing else.
@@ -927,6 +1020,7 @@ private fun LiquidTabBar(
                         tint = if (!glassy && index == selectedIndex) accent else restColor,
                         filled = !glassy && index == selectedIndex,
                         showLabel = showLabels,
+                        labelFontSize = labelFontSize,
                         scaleProvider = { 1f },
                         onClick = { onItemClick(screen, index == selectedIndex) },
                         gestureOwnedByBar = true,
@@ -957,6 +1051,7 @@ private fun LiquidTabBar(
                         // a twin carrying labels the row has dropped would magnify text that is
                         // not there.
                         showLabel = showLabels,
+                        labelFontSize = labelFontSize,
                         // Magnified with the press, so squeezing the capsule appears to draw the
                         // icon towards the surface of the glass.
                         scaleProvider = { lerp(1f, 1.16f, dampedDragAnimation.pressProgress) },
@@ -1071,7 +1166,19 @@ private fun LiquidTabBar(
  * How wide the tab pill is allowed to get. On a tablet the dock would otherwise stretch to the
  * full width of the screen and put an inch of glass between two tabs.
  */
-private val LiquidTabBarMaxWidth = 420.dp
+// Wide enough for the longest label the app has.
+//
+// At 420dp three tabs get 140dp each minus their own 8dp padding, and "Mood & Genres" at 11sp is
+// right on that line - it fit only because the pitch is now even, with nothing to spare. The extra
+// 40dp is the margin that keeps it honest on a narrower phone or a larger display scale.
+private val LiquidTabBarMaxWidth = 460.dp
+
+/** Clear space at each end of a tab label, inside the capsule. */
+private val DockLabelSideRoom = 7.dp
+
+/** What a dock label is set at when it fits, and the floor it is never set below. */
+private val DockLabelMaxSize = 11.sp
+private val DockLabelMinSize = 9.sp
 
 /**
  * Everything in the dock row that is not the tab pill: the row's padding on both sides, the gap,
@@ -1100,6 +1207,7 @@ private fun RowScope.LiquidTabItem(
     tint: Color,
     filled: Boolean,
     showLabel: Boolean,
+    labelFontSize: TextUnit,
     scaleProvider: () -> Float,
     onClick: (() -> Unit)?,
     gestureOwnedByBar: Boolean = false,
@@ -1143,14 +1251,17 @@ private fun RowScope.LiquidTabItem(
         )
         if (showLabel) {
             Text(
-                text = stringResource(screen.titleId),
+                text = stringResource(screen.dockTitleId),
                 color = tint,
                 style = MaterialTheme.typography.labelSmall,
-                fontSize = 11.sp,
+                fontSize = labelFontSize,
                 fontWeight = if (filled) FontWeight.SemiBold else FontWeight.Medium,
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Ellipsis,
+                // Kept clear of the capsule's curved ends, which is the room the size above was
+                // solved for.
+                modifier = Modifier.padding(horizontal = DockLabelSideRoom),
             )
         }
     }
@@ -1235,7 +1346,7 @@ private fun TabButton(
         }
         Spacer(Modifier.size(3.dp))
         Text(
-            text = stringResource(screen.titleId),
+            text = stringResource(screen.dockTitleId),
             color = contentColor,
             style = MaterialTheme.typography.labelSmall,
             fontSize = 11.sp,
@@ -1265,7 +1376,7 @@ private fun MiniPlayerPill(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onExpand)
-            .padding(start = 8.dp, end = 6.dp),
+            .padding(start = 10.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // The song, as one thing that changes as one thing.
@@ -1296,8 +1407,8 @@ private fun MiniPlayerPill(
                 // Album art (clean circle — no wavy/floral shapes).
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(8.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -1327,25 +1438,18 @@ private fun MiniPlayerPill(
                         .padding(horizontal = 10.dp),
                     verticalArrangement = Arrangement.Center,
                 ) {
+                    // The title alone, at reading size. Two stacked lines at label size turned the
+                    // collapsed pill into a miniature of the full mini-player; the bar has room for
+                    // one thing and the song's name is the thing.
                     Text(
                         text = metadata?.title.orEmpty(),
-                        style = MaterialTheme.typography.titleSmall,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.basicMarquee(),
                     )
-                    val artistText = metadata?.artists?.joinToString { it.name }.orEmpty()
-                    if (artistText.isNotEmpty()) {
-                        Text(
-                            text = artistText,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.basicMarquee(),
-                        )
-                    }
                 }
             }
         }
@@ -1353,15 +1457,23 @@ private fun MiniPlayerPill(
         // Play / pause, as glass: the same lens the dock is made of, holding the accent inside it
         // rather than sitting on it as a coloured chip. Shape carries the state — a rounded square
         // while playing, a circle when paused — so the pill reads at a glance without a label.
-        LiquidPlayPauseButton(
-            isPlaying = isPlaying,
-            isLoading = false,
-            onClick = {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                playerConnection.player.togglePlayPause()
-            },
-            size = 44.dp,
-        )
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .clickable {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    playerConnection.player.togglePlayPause()
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(26.dp),
+            )
+        }
     }
 }
 
@@ -1392,8 +1504,14 @@ private val SearchRowHeight = 48.dp
  * blur a little under the dock's own — which the row can afford to sit below precisely because it
  * is short enough that its interior would otherwise disappear.
  */
-private const val SearchGlassExtraTint = 0.05f
-private val SearchGlassBlurRadius = 60.dp
+// The search row is thinner than the dock, not made of something else.
+//
+// At 0.05 extra tint and a 60dp blur the row was effectively clear: category artwork and its
+// titles read straight through the capsule, which is the one thing a frosted pane must never let
+// happen to the text sitting on it. These are the dock's numbers pulled back a little for the
+// lower height - a difference of degree, which is what the helper's doc always claimed this was.
+private const val SearchGlassExtraTint = 0.26f
+private val SearchGlassBlurRadius = 110.dp
 
 /**
  * The bottom chrome for **both** search surfaces — the Search tab and the results page for a

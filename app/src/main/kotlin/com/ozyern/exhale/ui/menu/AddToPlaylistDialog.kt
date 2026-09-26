@@ -30,7 +30,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -56,6 +55,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.innertube.utils.parseCookieString
 import com.ozyern.exhale.LocalDatabase
 import com.ozyern.exhale.R
@@ -387,9 +387,9 @@ fun AddToPlaylistDialog(
                             contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
                         ) {
                             if (isAddingToPlaylist) {
-                                CircularProgressIndicator(
+                                LoadingRing(
                                     modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp,
+                                    stroke = 2.dp,
                                     color = MaterialTheme.colorScheme.onPrimary,
                                 )
                             } else {

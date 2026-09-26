@@ -52,6 +52,7 @@ import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.LocalPlayerAwareWindowInsets
 import com.ozyern.exhale.LocalPlayerConnection
 import com.ozyern.exhale.R
@@ -1687,9 +1688,9 @@ private fun InsightShareFab(
             contentColor = Snow,
         ) {
             if (isGenerating) {
-                CircularProgressIndicator(
+                LoadingRing(
                     modifier    = Modifier.size(22.dp),
-                    strokeWidth = 2.dp,
+                    stroke = 2.dp,
                     color       = WelcomeC,
                 )
             } else {

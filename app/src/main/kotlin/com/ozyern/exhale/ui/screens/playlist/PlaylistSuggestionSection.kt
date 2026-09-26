@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -40,6 +39,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.LocalDatabase
 import com.ozyern.exhale.LocalPlayerConnection
 import com.ozyern.exhale.R
@@ -233,9 +233,9 @@ fun PlaylistSuggestionsSection(
                 contentAlignment = Alignment.Center
             ) {
                 if (isLoading) {
-                    CircularProgressIndicator(
+                    LoadingRing(
                         modifier = Modifier.size(24.dp),
-                        strokeWidth = 2.dp,
+                        stroke = 2.dp,
                         color = MaterialTheme.colorScheme.primary
                     )
                 } else {

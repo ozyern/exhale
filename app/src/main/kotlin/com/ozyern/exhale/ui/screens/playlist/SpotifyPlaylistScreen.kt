@@ -35,7 +35,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
-import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -92,6 +91,7 @@ import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.LocalPlayerAwareWindowInsets
 import com.ozyern.exhale.LocalPlayerConnection
 import com.ozyern.exhale.R
@@ -672,7 +672,7 @@ fun SpotifyPlaylistScreen(
                                 .height(160.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        CircularWavyProgressIndicator()
+                        LoadingRing()
                     }
                 }
             }
@@ -721,7 +721,7 @@ fun SpotifyPlaylistScreen(
                     isPlaying = isPlaying && !trackIsResolving,
                     trailingContent = {
                         if (trackIsResolving) {
-                            CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
+                            LoadingRing(modifier = Modifier.size(24.dp))
                         }
                     },
                     modifier =

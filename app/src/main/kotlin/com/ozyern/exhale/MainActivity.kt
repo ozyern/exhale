@@ -121,6 +121,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -691,7 +692,15 @@ class MainActivity : ComponentActivity() {
             ExhaleTheme(
                 darkTheme = useDarkTheme,
                 pureBlack = pureBlack,
-                motionScheme = MotionScheme.expressive(),
+                // Standard, not expressive.
+                //
+                // `MotionScheme.expressive()` is what makes every Material component in the app
+                // overshoot: switches bounce past their track, sliders wobble to a stop, menus
+                // spring open. Against the app's own springs - which are tuned once, in
+                // Aquamorphic* - that reads as two different pieces of software animating at once,
+                // and it is the single loudest Android tell left in the chrome. The app's own
+                // motion is unaffected; this only governs the components Material draws.
+                motionScheme = MotionScheme.standard(),
                 themeColor = themeColor,
                 seedPalette = if (sabrinaTheme || !enableDynamicTheme) customThemeSeedPalette else null,
                 useSystemFont = useSystemFont,
@@ -759,13 +768,23 @@ class MainActivity : ComponentActivity() {
                                         ),
                                 )
                             } else {
+                                // Nothing playing: the same slow field, but deep.
+                                //
+                                // It used to take the theme's primary, secondary and tertiary at full
+                                // strength over the surface colour, and those are bright — on a light
+                                // theme, or any pale palette, the page washed out to near-white and
+                                // every card on it lost its edges. Sunk towards black and drawn faint,
+                                // it reads as the same material the artwork background is made of,
+                                // waiting for a song rather than shouting without one.
+                                val idleGround = if (isSystemInDarkTheme()) Color.Black else ground
                                 LiquidBackground(
                                     colors = listOf(
-                                        MaterialTheme.colorScheme.primary,
-                                        MaterialTheme.colorScheme.tertiary,
-                                        MaterialTheme.colorScheme.secondary,
+                                        androidx.compose.ui.graphics.lerp(MaterialTheme.colorScheme.primary, idleGround, 0.62f),
+                                        androidx.compose.ui.graphics.lerp(MaterialTheme.colorScheme.tertiary, idleGround, 0.68f),
+                                        androidx.compose.ui.graphics.lerp(MaterialTheme.colorScheme.secondary, idleGround, 0.72f),
                                     ),
-                                    baseColor = ground,
+                                    baseColor = idleGround,
+                                    blobAlpha = 0.30f,
                                     modifier = Modifier.matchParentSize(),
                                 )
                             }
@@ -780,7 +799,11 @@ class MainActivity : ComponentActivity() {
                         // they would have had to be faint enough not to disturb reading, which is
                         // another way of saying invisible.
                         if (sabrinaTheme) {
+                            val charmsPlaying by remember(playerConnection) {
+                                playerConnection?.isPlaying ?: MutableStateFlow(false)
+                            }.collectAsState()
                             SabrinaCharmField(
+                                playing = charmsPlaying,
                                 colors = listOf(
                                     MaterialTheme.colorScheme.primary,
                                     MaterialTheme.colorScheme.secondary,
@@ -1662,12 +1685,23 @@ class MainActivity : ComponentActivity() {
                                                                         ),
                                                                 )
                                                             } else {
-                                                                Icon(
-                                                                    painter = painterResource(R.drawable.account_outline),
-                                                                    contentDescription = stringResource(R.string.account),
-                                                                    tint = MaterialTheme.colorScheme.onSurface,
-                                                                    modifier = Modifier.size(21.dp),
-                                                                )
+                                                                // Solid, as iOS draws person.crop.circle.fill.
+                                                                // The hairline outline glyph read as a
+                                                                // placeholder rather than as an account.
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .size(28.dp)
+                                                                        .clip(CircleShape)
+                                                                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f)),
+                                                                    contentAlignment = Alignment.Center,
+                                                                ) {
+                                                                    Icon(
+                                                                        painter = painterResource(R.drawable.account),
+                                                                        contentDescription = stringResource(R.string.account),
+                                                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.92f),
+                                                                        modifier = Modifier.size(19.dp),
+                                                                    )
+                                                                }
                                                             }
                                                         }
 
@@ -1921,6 +1955,12 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 bottomBar = {
+                                    // One scope over both the sheet's mini-player and the bar's pill,
+                                    // so the accessory can fly between them. See NowPlayingAccessory.
+                                    androidx.compose.animation.SharedTransitionLayout {
+                                    androidx.compose.runtime.CompositionLocalProvider(
+                                        com.ozyern.exhale.ui.component.LocalNowPlayingSharedScope provides this,
+                                    ) {
                                     Box {
                                         // State-B logic: when the user scrolls down, the floating bottom bar
                                         // morphs to show its own mini-player pill. To avoid showing TWO players
@@ -2141,6 +2181,24 @@ class MainActivity : ComponentActivity() {
                                                                 y = (slideOffset + hideOffset).roundToPx(),
                                                             )
                                                         }
+                                                    }
+                                                    // Gone by the time the player is half open.
+                                                    //
+                                                    // Sliding alone is not leaving: the dock only
+                                                    // clears the screen at p=1, so through the
+                                                    // whole expansion its glass, its tab labels
+                                                    // and the mini pill were still being drawn on
+                                                    // top of a player that was already three
+                                                    // quarters of the way up. Fading it out over
+                                                    // the first 45% hands the screen over while
+                                                    // the geometry is still moving, which is what
+                                                    // makes the player look like it is replacing
+                                                    // the bar rather than growing behind it.
+                                                    .graphicsLayer {
+                                                        alpha = 1f - (
+                                                            playerBottomSheetState.progress
+                                                                .coerceIn(0f, 1f) / 0.45f
+                                                            ).coerceIn(0f, 1f)
                                                     },
                                         ) {
                                             if ((isSearchScreen || isSearchResultsRoute) && !active) {
@@ -2282,6 +2340,8 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                     }
+                                    }
+                                    }
                                 },
                                 // Scaffold paints the theme's background by default, and that background
                                 // is opaque — which put a solid sheet over the moving artwork drawn at the
@@ -2329,16 +2389,22 @@ class MainActivity : ComponentActivity() {
                                             initialState.destination.route in topLevelScreens &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            // Premium tab switch: crossfade + a subtle scale-in
-                                            // (M3 "fade-through" idiom) so Home ⇄ Search ⇄ Library
-                                            // feels fluid instead of an instant snap.
+                                            // A tab switch is a change of subject, not a journey.
+                                            //
+                                            // This was Material's fade-through: 300ms and a scale
+                                            // from 0.92, which on a page of album art reads as the
+                                            // whole screen being pushed toward you and takes a
+                                            // third of a second to stop moving. Tapping a tab
+                                            // should feel like the page was already there. The
+                                            // fade is halved and the scale is a hair off 1, so
+                                            // there is a breath of motion and nothing to wait for.
                                             fadeIn(
-                                                animationSpec = tween(300)
+                                                animationSpec = tween(150)
                                             ) + scaleIn(
-                                                initialScale = 0.92f,
+                                                initialScale = 0.985f,
                                                 animationSpec = spring(
-                                                    dampingRatio = 0.8f,
-                                                    stiffness = 380f
+                                                    dampingRatio = 0.9f,
+                                                    stiffness = 700f
                                                 )
                                             )
                                         } else {
@@ -2372,13 +2438,14 @@ class MainActivity : ComponentActivity() {
                                             initialState.destination.route in topLevelScreens &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            // Outgoing tab shrinks slightly as it fades — the
-                                            // other half of the fade-through pair.
+                                            // The other half of the pair, equally brief: the old
+                                            // tab is gone before the new one has finished arriving,
+                                            // so the two are never both legible at once.
                                             fadeOut(
-                                                animationSpec = tween(200)
+                                                animationSpec = tween(110)
                                             ) + scaleOut(
-                                                targetScale = 0.96f,
-                                                animationSpec = tween(200)
+                                                targetScale = 0.995f,
+                                                animationSpec = tween(110)
                                             )
                                         } else {
                                         // The page being covered. It falls away from the viewer rather than
@@ -2397,13 +2464,15 @@ class MainActivity : ComponentActivity() {
                                                     initialState.destination.route?.startsWith("search/") == true) &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
+                                            // Same brief pair as the forward tab switch: going
+                                            // back to a tab is still just a change of subject.
                                             fadeIn(
-                                                animationSpec = tween(300)
+                                                animationSpec = tween(150)
                                             ) + scaleIn(
-                                                initialScale = 0.92f,
+                                                initialScale = 0.985f,
                                                 animationSpec = spring(
-                                                    dampingRatio = 0.8f,
-                                                    stiffness = 380f
+                                                    dampingRatio = 0.9f,
+                                                    stiffness = 700f
                                                 )
                                             )
                                         } else {

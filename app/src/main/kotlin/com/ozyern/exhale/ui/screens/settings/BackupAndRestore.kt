@@ -65,8 +65,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -77,6 +75,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.ui.component.LiquidBackButton
 import com.ozyern.exhale.ui.component.liquid.LiquidToggle
 import androidx.compose.material3.TextButton
@@ -715,7 +714,7 @@ fun BackupAndRestore(
                                     enter = scaleIn(animationSpec = spring(dampingRatio = 0.6f)),
                                     exit = scaleOut(),
                                 ) {
-                                    CircularWavyProgressIndicator(
+                                    LoadingRing(
                                         modifier = Modifier.size(36.dp),
                                         color = MaterialTheme.colorScheme.onTertiaryContainer,
                                     )
@@ -1408,12 +1407,12 @@ fun SpotifyActionButton(
             horizontalArrangement = Arrangement.Center,
         ) {
             if (isLoading) {
-                CircularProgressIndicator(
+                LoadingRing(
                     modifier = Modifier
                         .size(20.dp)
                         .padding(end = 8.dp),
                     color = contentColor,
-                    strokeWidth = 2.dp,
+                    stroke = 2.dp,
                 )
             } else {
                 Icon(

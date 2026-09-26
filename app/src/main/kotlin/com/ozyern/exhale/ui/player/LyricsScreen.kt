@@ -8,6 +8,7 @@
 
 package com.ozyern.exhale.ui.player
 
+import androidx.compose.ui.graphics.Brush
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
@@ -33,7 +34,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.ripple
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -68,6 +68,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.Player.STATE_BUFFERING
 import androidx.media3.common.Player.STATE_READY
 import coil3.compose.AsyncImage
+import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.LocalDatabase
 import com.ozyern.exhale.LocalPlayerConnection
 import com.ozyern.exhale.R
@@ -404,10 +405,10 @@ fun LyricsScreen(
                                     modifier = Modifier.size(56.dp)
                                 ) {
                                     if (isLoading) {
-                                        CircularProgressIndicator(
+                                        LoadingRing(
                                             modifier = Modifier.size(36.dp),
                                             color = textBackgroundColor,
-                                            strokeWidth = 3.dp
+                                            stroke = 3.dp
                                         )
                                     } else {
                                         Icon(
@@ -692,10 +693,10 @@ fun LyricsScreen(
                                 modifier = Modifier.size(56.dp) // Slightly smaller but still prominent
                             ) {
                                 if (isLoading) {
-                                    CircularProgressIndicator(
+                                    LoadingRing(
                                         modifier = Modifier.size(36.dp),
                                         color = textBackgroundColor,
-                                        strokeWidth = 3.dp
+                                        stroke = 3.dp
                                     )
                                 } else {
                                     Icon(
@@ -815,6 +816,16 @@ private fun AppleLyricsBackground(mediaMetadata: MediaMetadata) {
     ) { thumbnailUrl ->
         Box(modifier = Modifier.fillMaxSize()) {
             if (thumbnailUrl != null) {
+                // The desktop build's lyrics sit on the cover as a slowly moving field of its own
+                // colours, and that is the thing worth having: a still, hard-blurred bitmap is a
+                // photograph of a background, while this one breathes with the song. It goes
+                // underneath the cover rather than instead of it, so a dark album still gives the
+                // screen some light to work with.
+                com.ozyern.exhale.ui.component.FluidArtworkBackground(
+                    url = thumbnailUrl,
+                    brightness = 0.62f,
+                    modifier = Modifier.fillMaxSize(),
+                )
                 AsyncImage(
                     model = thumbnailUrl.highRes(),
                     contentDescription = null,
@@ -823,10 +834,17 @@ private fun AppleLyricsBackground(mediaMetadata: MediaMetadata) {
                         .fillMaxSize()
                         // Overscale so the blur never reveals hard screen-edge vignetting.
                         .graphicsLayer {
-                            scaleX = 1.4f
-                            scaleY = 1.4f
+                            scaleX = 1.16f
+                            scaleY = 1.16f
                         }
-                        .blur(radius = 100.dp)
+                        // 100dp was not a blur, it was an erasure: at this screen's density that
+                        // kernel is ~350px across a 1440px cover, which averages the whole image
+                        // down to a single colour. What was left was a brown gradient that
+                        // happened to have been computed from artwork. The desktop build keeps the
+                        // cover legible behind the words, and that is the part worth copying - you
+                        // can still see which record you are listening to.
+                        .blur(radius = 42.dp)
+                        .graphicsLayer { alpha = 0.55f },
                 )
             } else {
                 Box(
@@ -836,10 +854,21 @@ private fun AppleLyricsBackground(mediaMetadata: MediaMetadata) {
                 )
             }
             // Dark translucent scrim: keeps full-alpha white lyrics legible on bright art.
+            //
+            // Graded rather than flat, now that what is underneath has structure again: heaviest
+            // at the top and the foot, where the header and the transport sit, and lightest across
+            // the middle, which is where the lyrics are and where the cover should show through.
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.4f))
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Black.copy(alpha = 0.58f),
+                            0.28f to Color.Black.copy(alpha = 0.40f),
+                            0.72f to Color.Black.copy(alpha = 0.42f),
+                            1f to Color.Black.copy(alpha = 0.62f),
+                        )
+                    )
             )
         }
     }
