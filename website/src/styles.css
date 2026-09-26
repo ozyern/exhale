@@ -560,75 +560,6 @@ svg {
   background: rgba(0, 0, 0, 0.08);
 }
 
-/* ================================================================ stage */
-
-.stage {
-  display: block;
-}
-
-.stage-device {
-  position: sticky;
-  top: calc(var(--seg-h) + 14px);
-  z-index: 2;
-  height: calc(660px * var(--phone-scale));
-  display: flex;
-  justify-content: center;
-  opacity: 0;
-  transform: translateY(26px) scale(0.97);
-  transition: opacity 0.8s var(--ease), transform 1s var(--settle);
-}
-
-.stage-device.in {
-  opacity: 1;
-  transform: none;
-}
-
-.beat {
-  min-height: 74vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding-block: 6vh;
-  max-width: 32rem;
-  opacity: 0.32;
-  transition: opacity 0.7s var(--ease);
-}
-
-.beat[data-on='true'] {
-  opacity: 1;
-}
-
-.beat .headline-sm {
-  margin-top: 12px;
-}
-
-.beat p.lede {
-  margin-top: 18px;
-}
-
-.beat .footnote {
-  margin-top: 18px;
-  font-size: 14px;
-  line-height: 1.55;
-  color: var(--grey-dim);
-}
-
-@media (min-width: 1000px) {
-  .stage {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 90px;
-    align-items: start;
-  }
-
-  .stage-device {
-    top: max(
-      calc(var(--seg-h) + 14px),
-      calc(50vh - (660px * var(--phone-scale)) / 2)
-    );
-  }
-}
-
 /* ============================================================ dock demo */
 
 /* The dock needs something with detail behind it or the blur proves nothing —
@@ -686,6 +617,373 @@ svg {
   z-index: 1;
 }
 
+/* ================================================================= tour */
+
+/* Everything after the hero is panels on black: one wide one for lyrics, then
+   a grid of tiles, each with a real screen rising out of its bottom edge.
+   Panels rather than a pinned phone beside three paragraphs, because a pinned
+   phone leaves two thirds of every screen as dimmed text waiting its turn. */
+.tour {
+  /* The overview above ends on the phone fan and its own bottom padding;
+     that is already the break between the two. */
+  margin-top: calc(clamp(80px, 11vw, 150px) * -0.45);
+}
+
+.tour-lyrics {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(24px, 4vw, 64px);
+  padding: clamp(40px, 6vw, 84px) clamp(28px, 5vw, 72px) 0;
+  border-radius: 36px;
+  background:
+    radial-gradient(60% 80% at 78% 100%, color-mix(in oklab, var(--iris) 30%, transparent), transparent 70%),
+    radial-gradient(50% 70% at 60% 20%, color-mix(in oklab, var(--rose) 18%, transparent), transparent 72%),
+    var(--tile);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.tour-copy {
+  padding-bottom: clamp(40px, 6vw, 84px);
+}
+
+.tour-copy .headline,
+.tour-head .headline,
+.getit .headline {
+  font-size: clamp(34px, 4.6vw, 64px);
+  margin-top: 12px;
+}
+
+.tour-copy .lede {
+  margin-top: 20px;
+  max-width: 34ch;
+}
+
+.tour-note {
+  margin-top: 22px;
+  font-size: 13px;
+  color: var(--grey-dim);
+}
+
+/* The phone is 660px in layout and scaled at paint, so the box reserves the
+   scaled height of the part that shows — the rest runs under the panel's
+   bottom edge, which is what makes it rise out of the page. */
+.tour-lyrics-device {
+  align-self: end;
+  display: flex;
+  justify-content: center;
+  height: calc(560px * var(--phone-scale));
+}
+
+.tour-lyrics-device .phone {
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.14),
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 -30px 120px -40px color-mix(in oklab, var(--iris) 60%, transparent);
+}
+
+.tour-design {
+  padding-top: clamp(96px, 12vw, 168px);
+}
+
+.tour-head {
+  text-align: center;
+  margin-bottom: clamp(36px, 5vw, 64px);
+}
+
+.ft-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(14px, 1.6vw, 22px);
+}
+
+/* Each tile is lit from below in its own accent, so a grid of five dark
+   panels reads as five objects rather than one table with gaps in it. */
+.ft {
+  --glow: var(--rose);
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  border-radius: 32px;
+  background:
+    radial-gradient(80% 60% at 50% 100%, color-mix(in oklab, var(--glow) 26%, transparent), transparent 72%),
+    var(--tile);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.ft:nth-child(2) { --glow: var(--ember); }
+.ft:nth-child(3) { --glow: var(--iris); }
+.ft:nth-child(4) { --glow: var(--cyan); }
+.ft:nth-child(5) { --glow: var(--rose); }
+
+.ft-copy {
+  padding: clamp(30px, 3.4vw, 44px) clamp(28px, 3.4vw, 44px) 0;
+}
+
+.ft-kicker {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--glow, var(--rose));
+  transition: color 0.7s var(--ease);
+}
+
+.ft-title {
+  margin-top: 8px;
+  font-size: clamp(24px, 2.4vw, 32px);
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+}
+
+.ft-body {
+  margin-top: 12px;
+  max-width: 40ch;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--grey);
+}
+
+.ft-shot {
+  margin-top: auto;
+  padding: clamp(28px, 3vw, 40px) 16% 0;
+}
+
+.ft-shot img {
+  display: block;
+  width: 100%;
+  height: clamp(300px, 30vw, 420px);
+  object-fit: cover;
+  object-position: top center;
+  border-radius: 26px 26px 0 0;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 -24px 80px -30px rgba(0, 0, 0, 0.9);
+}
+
+.ft-shot[data-crop='middle'] img {
+  object-position: 50% 36%;
+}
+
+.ft-wide {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  align-items: center;
+  gap: clamp(20px, 3vw, 48px);
+  padding-bottom: clamp(30px, 3.4vw, 44px);
+}
+
+.ft-wide .ft-dock {
+  margin: clamp(30px, 3.4vw, 44px) clamp(28px, 3.4vw, 44px) 0 0;
+}
+
+/* ============================================================= features */
+
+.tour-features {
+  padding-top: clamp(96px, 12vw, 168px);
+}
+
+.fx-grid {
+  list-style: none;
+  margin: clamp(36px, 4.4vw, 60px) 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(32px, 3.6vw, 48px) clamp(20px, 2.6vw, 36px);
+}
+
+.fx {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 20px;
+  border-top: 1px solid var(--hairline);
+}
+
+.fx-glyph {
+  width: 30px;
+  height: 30px;
+  margin-bottom: 10px;
+  color: var(--rose);
+  transition: color 0.7s var(--ease);
+}
+
+.fx-glyph svg {
+  width: 100%;
+  height: 100%;
+}
+
+.fx-title {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.fx-body {
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--grey);
+}
+
+/* ============================================================== finale */
+
+.finale {
+  /* The footer brings its own top margin, so the panel ends the page on that
+     and nothing more. */
+  padding-top: clamp(96px, 12vw, 168px);
+}
+
+.getit-icon {
+  display: block;
+  width: 88px;
+  height: 88px;
+  margin: 0 auto 26px;
+  border-radius: 22px;
+  filter: drop-shadow(0 18px 40px rgba(255, 170, 40, 0.28));
+}
+
+.getit-read {
+  display: inline-flex;
+  margin-top: 22px;
+}
+
+.open {
+  margin-top: clamp(14px, 1.6vw, 22px);
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: clamp(14px, 1.6vw, 22px);
+}
+
+.open-copy,
+.open-build {
+  padding: clamp(28px, 3.4vw, 44px);
+  border-radius: 32px;
+  background: var(--tile);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.open-copy .ft-title {
+  font-size: clamp(22px, 2.2vw, 28px);
+}
+
+.open-facts {
+  margin: 26px 0 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px 26px;
+}
+
+.open-facts dt {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.open-facts dd {
+  margin: 4px 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--grey);
+}
+
+.open-build {
+  display: flex;
+  flex-direction: column;
+}
+
+.open-build .code {
+  margin: 18px 0 0;
+  max-width: none;
+}
+
+.open-build .subnote {
+  margin-top: auto;
+  padding-top: 18px;
+}
+
+@media (max-width: 999px) {
+  .tour-lyrics,
+  .ft-wide,
+  .open {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tour-lyrics {
+    padding-top: 40px;
+    border-radius: 28px;
+  }
+
+  .tour-copy {
+    padding-bottom: 0;
+  }
+
+  .ft-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ft {
+    border-radius: 28px;
+  }
+
+  .ft-wide .ft-dock {
+    margin: 0 18px;
+  }
+
+  .ft-shot {
+    padding-inline: 14%;
+  }
+
+  .ft-shot img {
+    height: min(96vw, 400px);
+  }
+
+  .fx-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tour-head {
+    text-align: left;
+  }
+}
+
+@media (max-width: 520px) {
+  /* Two narrow columns rather than one long one: twelve features stacked
+     singly is most of a phone's scroll spent on one-liners. */
+  .fx-grid {
+    gap: 28px 18px;
+  }
+
+  .fx-glyph {
+    width: 26px;
+    height: 26px;
+    margin-bottom: 6px;
+  }
+
+  .fx-title {
+    font-size: 15px;
+  }
+
+  .fx-body {
+    font-size: 13.5px;
+  }
+
+  .open-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* ============================================================ big title */
 
 /* Section headings: large, left-aligned, arriving grey and filling in.
@@ -707,616 +1005,6 @@ svg {
   color: var(--ink);
 }
 
-/* ================================================================ tiles */
-
-.tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 16px;
-}
-
-.tile-card {
-  padding: clamp(28px, 3vw, 40px);
-  border-radius: 26px;
-  background: var(--tile);
-  /* A hairline that is brighter at the top than the bottom, so a flat panel
-     picks up an edge the way a physical one would. Cheaper and quieter than a
-     border, and it survives on any background. */
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
-  transition: background 0.3s var(--ease), transform 0.5s var(--settle);
-}
-
-.tile-card:hover {
-  background: var(--tile-lift);
-  transform: translateY(-3px);
-}
-
-.tile-card .glyph {
-  width: 34px;
-  height: 34px;
-  margin-bottom: 20px;
-  color: var(--rose);
-  transition: color 0.7s var(--ease);
-}
-
-.tile-card h3 {
-  font-size: clamp(20px, 2vw, 24px);
-  font-weight: 600;
-  letter-spacing: -0.018em;
-  line-height: 1.18;
-}
-
-.tile-card p {
-  margin-top: 10px;
-  font-size: 16px;
-  line-height: 1.5;
-  color: var(--grey);
-}
-
-/* ============================================================== gallery */
-
-.everything {
-  background: #131315;
-  padding-block: clamp(56px, 8vw, 104px);
-}
-
-/* The rail runs off the right edge of the window, not off the edge of the
-   text column. The peek of the next card is what says there is one; a rail
-   that stops at the gutter has to say it with a scrollbar instead. Leading
-   padding matches the shell, the trailing edge bleeds. */
-.gallery {
-  margin-top: clamp(30px, 3.6vw, 48px);
-}
-
-.gallery-rail {
-  position: relative; /* so a card's offsetLeft is measured against the rail */
-  display: flex;
-  gap: clamp(14px, 1.6vw, 22px);
-  padding-inline: max(22px, (100% - 1120px) / 2);
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  /* A snap container cancels the leading padding on its own, so it has to be
-     handed back explicitly or the first card sits flush against the window. */
-  scroll-padding-inline-start: max(22px, (100% - 1120px) / 2);
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-}
-
-.gallery-rail::-webkit-scrollbar {
-  display: none;
-}
-
-.gcard {
-  position: relative;
-  isolation: isolate;
-  flex: 0 0 min(86vw, 940px);
-  aspect-ratio: 16 / 9.4;
-  scroll-snap-align: start;
-  display: flex;
-  flex-direction: column;
-  padding: clamp(24px, 3vw, 44px);
-  border-radius: 28px;
-  overflow: hidden;
-  background: #000;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
-  opacity: 0.5;
-  /* Depth, not just dimming. A rail where the neighbours only fade reads as one
-     card with two ghosts; a few percent of scale puts them BEHIND it, which is
-     what makes the rail feel like a stack you are moving through. */
-  transform: scale(0.955);
-  transform-origin: center bottom;
-  transition:
-    opacity 0.7s var(--ease),
-    transform 0.85s var(--settle);
-}
-
-.gcard[data-on='true'] {
-  opacity: 1;
-  transform: none;
-}
-
-/* Pure black is the ground, but a card of nothing but black is a hole. One
-   soft emitter behind the miniature gives it a room to sit in. */
-.gcard::before {
-  content: '';
-  position: absolute;
-  z-index: -1;
-  left: 50%;
-  top: 46%;
-  width: 78%;
-  height: 92%;
-  translate: -50% -50%;
-  background: radial-gradient(
-    ellipse at center,
-    color-mix(in oklab, var(--rose) 20%, transparent),
-    color-mix(in oklab, var(--rose) 7%, transparent) 42%,
-    transparent 72%
-  );
-}
-
-.gcard:nth-child(2)::before,
-.gcard:nth-child(6)::before {
-  background: radial-gradient(
-    ellipse at center,
-    color-mix(in oklab, var(--iris) 22%, transparent),
-    transparent 66%
-  );
-}
-
-.gcard:nth-child(3)::before,
-.gcard:nth-child(7)::before {
-  background: radial-gradient(
-    ellipse at center,
-    color-mix(in oklab, var(--cyan) 18%, transparent),
-    transparent 66%
-  );
-}
-
-.gcard:nth-child(4)::before,
-.gcard:nth-child(8)::before {
-  background: radial-gradient(
-    ellipse at center,
-    color-mix(in oklab, var(--ember) 20%, transparent),
-    transparent 66%
-  );
-}
-
-/* The caption sits inside the card, above the thing it describes, centred and
-   narrow, so it reads as a title card rather than a label stuck on. */
-.gcard-cap {
-  flex: none;
-  max-width: 46ch;
-  margin-inline: auto;
-  text-align: center;
-  font-size: clamp(14.5px, 1.4vw, 18px);
-  line-height: 1.42;
-  letter-spacing: -0.012em;
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.gcard-cap b {
-  color: #fff;
-  font-weight: 600;
-}
-
-.gcard-art {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  place-items: center;
-  padding-top: clamp(16px, 2.2vw, 30px);
-}
-
-/* ------------------------------------------------------------ miniatures */
-
-.g-panel {
-  /* Big enough to be the subject of the card. A miniature floating small in
-     the middle of a 940px black rectangle reads as a thumbnail of something
-     else; at this size it reads as the thing itself. */
-  width: min(560px, 100%);
-  padding: 20px;
-  border-radius: 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(22px) saturate(160%);
-  -webkit-backdrop-filter: blur(22px) saturate(160%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
-}
-
-.g-centre {
-  align-items: center;
-  text-align: center;
-}
-
-.g-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.g-cover {
-  flex: none;
-  width: 44px;
-  height: 44px;
-  border-radius: 11px;
-  background: linear-gradient(
-    140deg,
-    color-mix(in oklab, var(--tint) 82%, #fff),
-    color-mix(in oklab, var(--tint) 45%, #000)
-  );
-}
-
-.g-meta {
-  flex: 1;
-  min-width: 0;
-}
-
-.g-meta b {
-  display: block;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.012em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.g-meta span {
-  display: block;
-  margin-top: 2px;
-  font-size: 13px;
-  color: var(--grey);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.g-pct {
-  flex: none;
-  font-size: 12px;
-  color: var(--grey);
-}
-
-.g-tick {
-  flex: none;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--rose);
-  color: #fff;
-}
-
-.g-tick svg {
-  width: 13px;
-  height: 13px;
-}
-
-.g-bar {
-  margin-top: -8px;
-  margin-left: 56px;
-  height: 4px;
-  border-radius: 99px;
-  background: rgba(255, 255, 255, 0.14);
-  overflow: hidden;
-}
-
-.g-bar i {
-  display: block;
-  height: 100%;
-  border-radius: 99px;
-  background: var(--ink);
-}
-
-.g-eyebrow {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--grey-dim);
-}
-
-.g-caption-sm {
-  font-size: 12.5px;
-  color: var(--grey);
-}
-
-.g-chips {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.g-centre .g-chips {
-  justify-content: center;
-}
-
-.g-chip {
-  font-size: 12px;
-  padding: 7px 12px;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--ink);
-}
-
-.g-chip-solid {
-  background: var(--iris);
-  color: #fff;
-}
-
-.g-chip-on {
-  background: color-mix(in oklab, var(--cyan) 14%, transparent);
-  color: color-mix(in oklab, var(--cyan) 70%, #fff);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--cyan) 26%, transparent);
-}
-
-/* The bands move, because a still equalizer is a bar chart. */
-.g-eq-bands {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  height: 168px;
-}
-
-.g-eq-bands span {
-  flex: 1;
-  height: 100%;
-  border-radius: 99px;
-  background: rgba(255, 255, 255, 0.07);
-  display: flex;
-  align-items: flex-end;
-  overflow: hidden;
-}
-
-.g-eq-bands i {
-  display: block;
-  width: 100%;
-  height: var(--h);
-  border-radius: 99px;
-  background: linear-gradient(180deg, var(--ember), var(--rose));
-  animation: gband 2.6s var(--ease) infinite alternate;
-  animation-delay: var(--d);
-}
-
-@keyframes gband {
-  from {
-    height: calc(var(--h) * 0.52);
-  }
-  to {
-    height: var(--h);
-  }
-}
-
-.g-eq-scale {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  color: var(--grey-dim);
-}
-
-.g-dial {
-  width: 176px;
-  height: 176px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: conic-gradient(
-    from 0turn,
-    var(--ember),
-    var(--rose) 0.58turn,
-    rgba(255, 255, 255, 0.08) 0.58turn
-  );
-}
-
-.g-dial-face {
-  width: 138px;
-  height: 138px;
-  border-radius: 50%;
-  background: #0a0a0c;
-  display: grid;
-  place-items: center;
-  align-content: center;
-}
-
-.g-dial-face b {
-  font-size: 46px;
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: -0.03em;
-}
-
-.g-dial-face em {
-  margin-top: 5px;
-  font-style: normal;
-  font-size: 12px;
-  color: var(--grey);
-}
-
-.g-auto-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-}
-
-.g-auto-grid span {
-  aspect-ratio: 1.3;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  display: grid;
-  place-items: center;
-  font-size: 11.5px;
-  color: var(--grey);
-}
-
-.g-code {
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
-  font-size: clamp(30px, 4vw, 44px);
-  font-weight: 600;
-  letter-spacing: 0.05em;
-}
-
-.g-faces {
-  display: flex;
-  justify-content: center;
-}
-
-.g-faces i {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 2px solid #0a0a0c;
-  background: linear-gradient(140deg, var(--iris), var(--rose));
-}
-
-.g-faces i + i {
-  margin-left: -9px;
-}
-
-.g-faces i:nth-child(2) {
-  background: linear-gradient(140deg, var(--cyan), var(--iris));
-}
-
-.g-faces i:nth-child(3) {
-  background: linear-gradient(140deg, var(--ember), var(--rose));
-}
-
-.g-faces i:nth-child(4) {
-  background: linear-gradient(140deg, var(--rose), var(--iris));
-}
-
-.g-file {
-  width: 100%;
-  padding: 16px 18px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.06);
-  text-align: left;
-}
-
-.g-file b {
-  display: block;
-  font-size: 14.5px;
-  font-weight: 600;
-  letter-spacing: -0.012em;
-}
-
-.g-file span {
-  display: block;
-  margin-top: 4px;
-  font-size: 12.5px;
-  color: var(--grey);
-}
-
-/* ------------------------------------------------------------------ nav */
-
-/* Dots and the stop button in one cluster, the way the reference has it: the
-   control that halts the motion sits next to the thing that shows it. */
-.gallery-nav {
-  margin-top: clamp(20px, 2.4vw, 32px);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 12px;
-}
-
-.gnav-dots {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 14px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.09);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-}
-
-.gnav-dots button {
-  border: 0;
-  padding: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 99px;
-  overflow: hidden;
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.36);
-  transition:
-    width 0.5s var(--settle),
-    background 0.3s var(--ease);
-}
-
-.gnav-dots button[data-on='true'] {
-  width: 34px;
-  background: rgba(255, 255, 255, 0.26);
-}
-
-.gnav-dots button i {
-  display: block;
-  height: 100%;
-  width: 0;
-  border-radius: 99px;
-  background: #fff;
-  animation: gfill linear forwards;
-}
-
-@keyframes gfill {
-  from {
-    width: 0;
-  }
-  to {
-    width: 100%;
-  }
-}
-
-.gnav-toggle {
-  width: 36px;
-  height: 36px;
-  border: 0;
-  padding: 0;
-  border-radius: 50%;
-  cursor: pointer;
-  color: var(--ink);
-  background: rgba(255, 255, 255, 0.09);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  display: grid;
-  place-items: center;
-  transition: background 0.3s var(--ease);
-}
-
-.gnav-toggle:hover {
-  background: rgba(255, 255, 255, 0.16);
-}
-
-.gnav-toggle svg {
-  width: 15px;
-  height: 15px;
-}
-
-/* ============================================================ the build */
-
-.lede code {
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
-  font-size: 0.88em;
-  padding: 2px 7px;
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.07);
-  color: var(--ink);
-}
-
-/* Caption under the card rather than inside it, the opposite of the gallery.
-   A gallery card is one statement you look at; these are five facts you
-   compare, and comparing them needs the sentences lined up in their own row. */
-/* The panel is the conclusion of the section above it, so it sits closer to
-   the cards than a section break would put it, and the cards get the section's
-   bottom padding back. */
-.build .getit {
-  margin-top: clamp(40px, 5vw, 76px);
-}
-
-.getit-note {
-  margin-top: 26px;
-  max-width: 44ch;
-  margin-inline: auto;
-  text-wrap: balance;
-}
-
-.build .lede,
-.build .subnote {
-  max-width: 54ch;
-  margin-inline: auto;
-  text-wrap: balance;
-}
-
-.build .lede {
-  margin-top: 22px;
-}
-
 /* The reference's small grey line under the lede: the caveat, at a size that
    says it is a caveat. */
 .subnote {
@@ -1324,198 +1012,6 @@ svg {
   font-size: clamp(14px, 1.2vw, 16px);
   line-height: 1.45;
   color: var(--grey-dim);
-}
-
-/* All five in the text column, under a centred heading.
-   They used to run off the right edge on purpose, borrowed from a rail that
-   continues past the fold. Five is not many, and a row that overflows under
-   centred type just looks pushed to one side. */
-.cardrow {
-  width: var(--shell);
-  margin: clamp(34px, 4.4vw, 60px) auto 0;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: clamp(12px, 1.4vw, 18px);
-  align-items: start;
-  text-align: left;
-}
-
-.cardrow::-webkit-scrollbar {
-  display: none;
-}
-
-.scard {
-  margin: 0;
-  min-width: 0;
-  scroll-snap-align: start;
-  transition: transform 0.6s var(--settle);
-}
-
-.scard:hover {
-  transform: translateY(-4px);
-}
-
-.scard-art {
-  aspect-ratio: 4 / 5;
-  padding: clamp(12px, 1.15vw, 17px);
-  border-radius: 20px;
-  overflow: hidden;
-  display: grid;
-  place-items: center;
-  background: #000;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
-}
-
-.scard figcaption {
-  margin-top: 15px;
-  font-size: 14px;
-  line-height: 1.45;
-  color: var(--grey);
-}
-
-.scard figcaption b {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.s-art {
-  width: 100%;
-}
-
-.s-sdk {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-}
-
-.s-sdk div {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 9px 12px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.s-sdk div[data-lead='true'] {
-  background: color-mix(in oklab, var(--rose) 16%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--rose) 30%, transparent);
-}
-
-.s-sdk b {
-  font-size: 21px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.s-sdk span {
-  font-size: 11.5px;
-  color: var(--grey);
-}
-
-.s-code {
-  margin: 0;
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
-  font-size: 10.5px;
-  line-height: 1.7;
-  color: rgba(255, 255, 255, 0.82);
-  white-space: pre;
-  overflow: hidden;
-}
-
-.s-kw {
-  color: #ff7b9c;
-}
-
-.s-fn {
-  color: #7fd0ff;
-}
-
-.s-ty {
-  color: #c6a2ff;
-}
-
-.s-an {
-  color: #ffb86b;
-}
-
-.s-doc b {
-  display: block;
-  font-size: 11.5px;
-  font-weight: 600;
-  line-height: 1.3;
-  letter-spacing: 0.01em;
-}
-
-.s-doc span {
-  display: block;
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--grey);
-}
-
-.s-lines {
-  margin-top: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.s-lines i {
-  height: 5px;
-  border-radius: 99px;
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.s-abi {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.s-abi span {
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
-  font-size: 11.5px;
-  padding: 9px 11px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--grey);
-}
-
-.s-abi span[data-on='true'] {
-  background: color-mix(in oklab, var(--iris) 20%, transparent);
-  color: var(--ink);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--iris) 34%, transparent);
-}
-
-.s-release {
-  text-align: center;
-}
-
-.s-release b {
-  display: block;
-  font-size: clamp(24px, 2.8vw, 32px);
-  font-weight: 600;
-  letter-spacing: -0.025em;
-}
-
-.s-release span {
-  display: block;
-  margin-top: 6px;
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
-  font-size: 11px;
-  color: var(--grey);
-}
-
-.s-tagrow {
-  margin-top: 16px;
-}
-
-.s-tag {
-  font-size: 11.5px;
-  padding: 7px 11px;
-  border-radius: 99px;
-  background: rgba(255, 255, 255, 0.07);
 }
 
 /* ============================================================= download */
@@ -2652,18 +2148,14 @@ video.phone-shot {
     --phone-scale: 0.62;
   }
 
-  /* Centred text is a wide-screen luxury.
-     In a 342px column a centred paragraph gives every line a different start,
-     so the eye has to re-find the left edge on every line. Centred is a
-     wide-screen luxury. */
-  .statement.center,
-  .build .center {
+  /* Centred text is a wide-screen luxury. In a 342px column a centred
+     paragraph gives every line a different start, so the eye has to re-find
+     the left edge on every line. */
+  .statement.center {
     text-align: left;
   }
 
-  .statement .lede,
-  .build .lede,
-  .build .subnote {
+  .statement .lede {
     margin-inline: 0;
     max-width: none;
   }
@@ -2687,67 +2179,6 @@ video.phone-shot {
     scroll-behavior: smooth;
   }
 
-  /* A card that is nearly as wide as the screen has to be much taller to hold
-     a four-line caption AND the miniature under it. */
-  .gcard {
-    aspect-ratio: 3 / 4.4;
-    padding: 24px 20px;
-  }
-
-  /* Eight live backdrop blurs, seven of them off screen, on the device least
-     able to afford one. What they blur is a soft radial on near-black, and a
-     flat tint matches it for free. */
-  .g-panel {
-    width: 100%;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    background: rgba(255, 255, 255, 0.07);
-  }
-
-  .gcard-cap {
-    max-width: none;
-  }
-
-  /* The gallery's controls are the one thing on the page a thumb has to hit
-     precisely, so on a phone they grow rather than shrink with everything
-     else. */
-  .gallery-nav {
-    margin-top: 22px;
-    gap: 14px;
-  }
-
-  .gnav-dots {
-    gap: 10px;
-    padding: 13px 18px;
-  }
-
-  .gnav-dots button {
-    width: 9px;
-    height: 9px;
-  }
-
-  .gnav-dots button[data-on='true'] {
-    width: 40px;
-  }
-
-  .gnav-toggle {
-    width: 52px;
-    height: 52px;
-  }
-
-  .gnav-toggle svg {
-    width: 18px;
-    height: 18px;
-  }
-
-  /* No pinning on a phone.
-     Sticky keeps the device in place while everything after it scrolls
-     *underneath*, which on a wide screen is the point, because the copy
-     is in the other column. In one column it means the device parks on top of
-     the paragraph you are trying to read. There is no arrangement of sticky
-     that fixes that: the text would have to be forbidden from entering space
-     the device is not occupying in layout. So on narrow screens the device is
-     shown once, at the top of the section, and the beats simply follow it. */
   /* The hero is the object on this page, and at 78vw by 4.4:1 it was 304 by 69
      CSS pixels on a phone: a hairline that reads as a progress bar. Wider and
      much less flat, so it is something to look at. */
@@ -2755,35 +2186,6 @@ video.phone-shot {
     width: 92vw;
     aspect-ratio: 2.5 / 1;
     max-height: 34vh;
-  }
-
-  .stage-device {
-    position: static;
-    /* Static means it starts at the top of the section, which is exactly where
-       the sticky pill bar is, so it needs the bar's height as clearance or
-       the phone's status bar ends up behind the pills. */
-    margin-top: var(--seg-h);
-    margin-bottom: 8px;
-  }
-
-  /* Five columns is five columns of nothing at phone width, so below this the
-     row goes back to being a rail. */
-  .cardrow {
-    width: auto;
-    display: flex;
-    padding-inline: max(22px, (100% - 1120px) / 2);
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    scroll-padding-inline-start: max(22px, (100% - 1120px) / 2);
-    scrollbar-width: none;
-  }
-
-  .cardrow::-webkit-scrollbar {
-    display: none;
-  }
-
-  .scard {
-    flex: 0 0 min(74vw, 260px);
   }
 
   /* The outer pair of the fan are off the screen entirely by this width, and
@@ -2794,25 +2196,6 @@ video.phone-shot {
   .fan-card:nth-child(5),
   .fan-card:nth-child(6) {
     display: none;
-  }
-
-  /* Taller, because the caption takes three or four lines once the card is
-     narrow and the miniature still needs room under it. And the neighbours
-     stay legible: on a small screen there is no room for a card that is only
-     present as a hint. */
-  .gcard {
-    aspect-ratio: 3 / 3.4;
-    border-radius: 22px;
-    opacity: 0.72;
-  }
-
-  .beat {
-    min-height: 0;
-    max-width: none;
-    padding-block: 28px;
-    /* Nothing is tracking the beats any more, so dimming them would just be
-       three-quarters of the page greyed out for no reason. */
-    opacity: 1;
   }
 
   /* Narrow: the project row keeps the mark, the two things anyone actually
@@ -2851,9 +2234,7 @@ video.phone-shot {
     transition-duration: 0.001ms !important;
   }
 
-  .reveal,
-  .scard,
-  .stage-device {
+  .reveal {
     opacity: 1;
     transform: none;
   }
@@ -2864,10 +2245,6 @@ video.phone-shot {
 
   .words span {
     color: var(--ink);
-  }
-
-  .beat {
-    opacity: 1;
   }
 }
 
@@ -3578,7 +2955,6 @@ html:has(.release) {
     transition: none;
   }
 }
-
 
 /* ==================================================== release: the object */
 

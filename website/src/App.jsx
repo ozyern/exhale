@@ -2,21 +2,22 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Changelog from './components/Changelog.jsx'
 import { AnnounceBar, RELEASE_PATH, SiteFooter, TopBar } from './components/Chrome.jsx'
 import Dock from './components/Dock.jsx'
-import Gallery from './components/Gallery.jsx'
+import Features from './components/Features.jsx'
 import Words from './components/Words.jsx'
 import Phone from './components/Phone.jsx'
 import Ribbon from './components/Ribbon.jsx'
 import Segments from './components/Segments.jsx'
-import Specs from './components/Specs.jsx'
 import {
   ABOUT_FACTS,
   FEATURES,
   LYRICS_VIDEO,
+  OPEN_FACTS,
   RELEASES,
   REPO,
   SHOT,
   SHOTS,
-  SPECS,
+  SHOTS_304,
+  SHOT304,
   TAGLINE,
   VERSION,
 } from './content.js'
@@ -25,9 +26,9 @@ import { Link } from './router.jsx'
 
 const SECTIONS = [
   { id: 'overview', label: 'Overview' },
-  { id: 'material', label: 'Material' },
   { id: 'lyrics', label: 'Lyrics' },
-  { id: 'color', label: 'Color' },
+  { id: 'design', label: 'Design' },
+  { id: 'features', label: 'Features' },
   { id: 'download', label: 'Download' },
 ]
 
@@ -124,66 +125,99 @@ function HeroDevice({ running }) {
   )
 }
 
-/* ----------------------------------------------------------------- stage */
+/* ------------------------------------------------------------------ tour */
 
 /**
- * Three claims, one device. An observer watches which beat is crossing the
- * middle of the viewport and that picks what the pinned phone shows. Scroll
- * only selects a state; the transitions are springs, so flicking past all
- * three still resolves cleanly.
+ * Lyrics, as one wide panel.
+ *
+ * The claim is entirely in the timing, so this is the one place on the page
+ * that plays the recording rather than showing a still — and it plays only
+ * while the panel is on screen and the page has not been paused.
  */
-function Stage({ running }) {
-  const [beat, setBeat] = useState(0)
-  const [dock, setDock] = useState(0)
-  const beatsRef = useRef(null)
-
-  useEffect(() => {
-    const nodes = beatsRef.current?.querySelectorAll('.beat')
-    if (!nodes?.length || !('IntersectionObserver' in window)) return
-
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) setBeat(Number(entry.target.dataset.index))
-        })
-      },
-      // A thin band across the middle: whichever beat is in it owns the
-      // device. Wider bands let two beats claim it at once.
-      { rootMargin: '-48% 0px -48% 0px', threshold: 0 },
-    )
-
-    nodes.forEach((node) => io.observe(node))
-    return () => io.disconnect()
-  }, [])
-
-  const shown = [SHOT.home, SHOT.lyrics, SHOT.player][beat] ?? SHOT.home
+function LyricsPanel({ running }) {
+  const ref = useRef(null)
+  const live = useOnScreen(ref, '0px')
 
   return (
-    <div className="stage shell">
-      <div className="stage-device reveal">
-        {/* The lyrics beat gets the recording rather than the still: the whole
-            claim is in the timing, and a frozen frame of it is just text with
-            one word lit. */}
-        <Phone
-          shots={SHOTS}
-          index={shown}
-          video={{ ...LYRICS_VIDEO, on: beat === 1, running }}
+    <section className="tour-lyrics reveal" id="lyrics" ref={ref}>
+      <div className="tour-copy">
+        <p className="kicker">Lyrics</p>
+        <h2 className="headline">Every word, on time.</h2>
+        <p className="lede">
+          Synced lyrics that light a word at a time, with the lines you have
+          not reached falling out of focus behind them. Matched on title and
+          artist, not duration alone — this song’s words, not a same-length
+          stranger’s.
+        </p>
+        <p className="tour-note">A screen recording of the shipping build, at normal speed.</p>
+      </div>
+      <div className="tour-lyrics-device">
+        <Phone shots={SHOTS} index={SHOT.lyrics} video={{ ...LYRICS_VIDEO, on: true, running: running && live }} />
+      </div>
+    </section>
+  )
+}
+
+/**
+ * A tile with a real screen rising out of its bottom edge.
+ *
+ * No device frame: at this size a frame is a border around a screenshot that
+ * spends its pixels on bezel. The screen is cropped by the tile instead, so it
+ * reads as the app coming up through the page rather than a picture of a
+ * phone lying on it.
+ */
+function ShotTile({ kicker, title, body, shot, crop = 'top', delay = 0 }) {
+  return (
+    <article className="ft reveal" style={{ '--d': `${delay}ms` }}>
+      <div className="ft-copy">
+        <p className="ft-kicker">{kicker}</p>
+        <h3 className="ft-title">{title}</h3>
+        <p className="ft-body">{body}</p>
+      </div>
+      <div className="ft-shot" data-crop={crop}>
+        <img
+          src={SHOTS_304[shot].src}
+          alt={SHOTS_304[shot].alt}
+          width="720"
+          height="1280"
+          loading="lazy"
+          decoding="async"
         />
       </div>
+    </article>
+  )
+}
 
-      <div className="stage-beats" ref={beatsRef}>
-        <section className="beat" data-index="0" data-on={beat === 0} id="material">
-          <p className="kicker">The material</p>
-          <h2 className="headline-sm">Liquid glass, not a picture of one.</h2>
-          <p className="lede">
-            The dock, the sheets and the search field blur what is actually
-            behind them and bend it at the rim, every frame, from the pixels the
-            app has already drawn.
-          </p>
+function Design() {
+  const [dock, setDock] = useState(0)
 
-          {/* Rebuilt rather than photographed: this is the part you can put
-              your hands on, and a screenshot can't be dragged. */}
-          <div className="dock-demo">
+  return (
+    <section className="tour-design shell" id="design">
+      <div className="tour-head">
+        <p className="kicker reveal">Design</p>
+        <h2 className="headline reveal" style={{ '--d': '80ms' }}>
+          Built like the phone
+          <br />
+          it runs on.
+        </h2>
+      </div>
+
+      <div className="ft-grid">
+        {/* The one tile you can put your hands on: the dock is rebuilt in
+            markup rather than photographed, and a screenshot can't be
+            dragged. */}
+        <article className="ft ft-wide reveal">
+          <div className="ft-copy">
+            <p className="ft-kicker">The material</p>
+            <h3 className="ft-title">Liquid glass, not a picture of one.</h3>
+            <p className="ft-body">
+              The dock, the sheets and the search field blur what is actually
+              behind them and bend it at the rim, every frame. Drag the
+              capsule — it stretches the way it travels and overshoots before
+              it settles.
+            </p>
+          </div>
+          <div className="dock-demo ft-dock">
             <div className="dock-demo-art" aria-hidden="true">
               <span />
               <span />
@@ -191,49 +225,37 @@ function Stage({ running }) {
             </div>
             <Dock active={dock} onSelect={setDock} compact />
           </div>
+        </article>
 
-          <p className="footnote">
-            Drag it. The selected tab is a capsule that stretches in the
-            direction it travels and overshoots before it settles — one object
-            to follow, rather than a highlight blinking between slots.
-          </p>
-        </section>
-
-        <section className="beat" data-index="1" data-on={beat === 1} id="lyrics">
-          <p className="kicker">Lyrics</p>
-          <h2 className="headline-sm">Every word, on time.</h2>
-          <p className="lede">
-            Line-by-line synced lyrics from LRCLIB, matched on title and artist
-            rather than duration alone — so you get this song's words, not a
-            same-length stranger's.
-          </p>
-          <p className="footnote">
-            The active line lifts and sharpens a beat before it lands, and the
-            lines around it fall away by distance. Cached for offline, and
-            adjustable per track when a file runs early.
-          </p>
-          <p className="footnote credit">
-            Above: a screen recording of the shipping build, at normal speed.
-          </p>
-        </section>
-
-        <section className="beat" data-index="2" data-on={beat === 2} id="color">
-          <p className="kicker">Color</p>
-          <h2 className="headline-sm">The song brings its own color.</h2>
-          <p className="lede">
-            Open a track and the player takes its palette from the cover — the
-            background wash, the progress bar, the lyric highlight. Close it and
-            the rest of the app is back to the color you chose. Nothing here
-            was picked by hand; it is the artwork, sampled.
-          </p>
-          <p className="footnote">
-            The player above is tinted by the art behind it. The artist and
-            About screens in the same build are not — they keep your theme,
-            which is the point: the color follows the music, not the app.
-          </p>
-        </section>
+        <ShotTile
+          kicker="Color"
+          title="The song brings its own color."
+          body="The player takes its palette from the cover, with the artwork filling the screen behind the controls."
+          shot={SHOT304.player}
+          crop="middle"
+        />
+        <ShotTile
+          kicker="Offline"
+          title="It plays with the radio off."
+          body="Downloads play with no network at all, and the queue skips to what is actually on the phone."
+          shot={SHOT304.downloads}
+          delay={90}
+        />
+        <ShotTile
+          kicker="Home"
+          title="It leads with what you play."
+          body="Top Picks for You, learned from your own listening, then Recently Played — at Apple Music’s rhythm."
+          shot={SHOT304.home}
+        />
+        <ShotTile
+          kicker="Settings"
+          title="One material, everywhere."
+          body="Grouped glass tables, hairlines inset to the label, and a coloured glyph on every row."
+          shot={SHOT304.settings}
+          delay={90}
+        />
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -327,92 +349,83 @@ export default function App() {
           </div>
         </section>
 
-        <div className="block-tight">
-          <Stage running={ambient} />
+        <div className="tour shell">
+          <LyricsPanel running={ambient} />
         </div>
 
-        {/* Eight features as a self-running gallery. Each card holds a working
-            miniature of the thing it names; eight abstract gradients on a rail
-            would be filler with a scrollbar. */}
-        <section className="everything" id="everything">
-          <div className="shell">
-            <h2 className="bigtitle">
-              <Words text="Everything else it does." />
-            </h2>
-          </div>
-          <Gallery items={FEATURES} />
+        <Design />
+
+        <section className="tour-features shell" id="features">
+          <h2 className="bigtitle">
+            <Words text="And everything else." />
+          </h2>
+          <Features items={FEATURES} />
         </section>
 
-        {/* Build and download were two sections making one argument back to
-            back. Joined, the cards are the evidence and the panel under them
-            is the conclusion. */}
-        <section className="block build" id="build">
-          <div className="shell center">
-            <p className="kicker reveal">The build</p>
-            <h2 className="headline reveal" style={{ '--d': '80ms' }}>
-              Yours to read.
-              <br />
-              Yours to compile.
+        <section className="finale shell" id="download">
+          <div className="getit">
+            <img className="getit-icon reveal" src="/logo.png" alt="" width="96" height="96" />
+            <h2 className="headline">
+              <Words text="Put it on your phone." />
             </h2>
             <p className="lede reveal" style={{ '--d': '160ms' }}>
-              Every figure below comes out of the same{' '}
-              <code>build.gradle.kts</code> the release APK is built from.
-              Nothing here is rounded, and nothing is a plan.
+              One APK for every Android 13 phone. No account, no ads, nothing
+              phoning home, and no store deciding whether you may have it.
             </p>
+
+            <div className="btnrow reveal" style={{ '--d': '240ms' }}>
+              <a className="btn" href={RELEASES} target="_blank" rel="noreferrer">
+                Download v{VERSION}
+              </a>
+              <button type="button" className="btn btn-ghost" onClick={openNotes}>
+                What&rsquo;s new
+              </button>
+            </div>
+
+            {/* Two documents, and the difference is length. The sheet is four
+                groups and a sentence each, for someone deciding. This is the
+                long read, for someone who has already decided. */}
+            <Link className="textlink getit-read" to={RELEASE_PATH}>
+              Read the full {VERSION} release notes <i>&rsaquo;</i>
+            </Link>
+
+            <dl className="facts reveal" style={{ '--d': '300ms' }}>
+              {ABOUT_FACTS.map((fact) => (
+                <div key={fact.label}>
+                  <dt>{fact.label}</dt>
+                  <dd>{fact.value}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
 
-          <Specs items={SPECS} />
-
-          <div className="shell">
-            <div className="getit reveal" id="download">
-              <h2 className="headline-sm">
-                <Words text="So put it on your phone." />
-              </h2>
-              <p className="lede reveal" style={{ '--d': '160ms' }}>
-                One APK that runs on every architecture. No account, no ads,
-                nothing phoning home, and no store deciding whether you may have
-                it. If you would rather build it yourself, it is three commands.
-              </p>
-
-              <div className="btnrow reveal" style={{ '--d': '240ms' }}>
-                <a className="btn" href={RELEASES} target="_blank" rel="noreferrer">
-                  Download v{VERSION}
-                </a>
-                <button type="button" className="btn btn-ghost" onClick={openNotes}>
-                  What&rsquo;s new in {VERSION}
-                </button>
-              </div>
-
-              {/* Two documents, and the difference is length. The sheet above is
-                  four groups and a sentence each, for someone deciding. This is
-                  the long read, for someone who has already decided. */}
-              <Link className="textlink getit-read" to={RELEASE_PATH}>
-                Read the full {VERSION} release notes <i>&rsaquo;</i>
-              </Link>
-
-              <dl className="facts reveal" style={{ '--d': '300ms' }}>
-                {ABOUT_FACTS.map((fact) => (
-                  <div key={fact.label}>
-                    <dt>{fact.label}</dt>
-                    <dd>{fact.value}</dd>
+          <div className="open">
+            <div className="open-copy reveal">
+              <p className="ft-kicker">Open source</p>
+              <h3 className="ft-title">Yours to read. Yours to compile.</h3>
+              <dl className="open-facts">
+                {OPEN_FACTS.map((fact) => (
+                  <div key={fact.value}>
+                    <dt>{fact.value}</dt>
+                    <dd>{fact.body}</dd>
                   </div>
                 ))}
               </dl>
-
-              <pre className="code reveal" style={{ '--d': '360ms' }}>
+            </div>
+            <div className="open-build reveal" style={{ '--d': '90ms' }}>
+              <p className="ft-kicker">Build it yourself</p>
+              <pre className="code">
                 <b>git</b> clone {REPO}.git{'\n'}
                 <b>cd</b> Exhale{'\n'}
                 <b>./gradlew</b> assembleUniversalDebug
               </pre>
-
-              <p className="subnote getit-note">
-                Android 13 or newer. Sideloading asks for permission once; the
-                app checks GitHub for its own updates after that.
+              <p className="subnote">
+                Sideloading asks for permission once; the app checks GitHub for
+                its own updates after that.
               </p>
             </div>
           </div>
         </section>
-
       </main>
 
       <SiteFooter onNotes={openNotes} />

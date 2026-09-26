@@ -112,13 +112,13 @@ export function SiteFooter({ onNotes }) {
                 <Link to="/">Overview</Link>
               </li>
               <li>
-                <a href="/#material">Material</a>
-              </li>
-              <li>
                 <a href="/#lyrics">Lyrics</a>
               </li>
               <li>
-                <a href="/#color">Color</a>
+                <a href="/#design">Design</a>
+              </li>
+              <li>
+                <a href="/#features">Features</a>
               </li>
               <li>
                 <a href="/#download">Download</a>

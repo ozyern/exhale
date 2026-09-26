@@ -124,80 +124,37 @@ export const LYRICS = [
 ]
 
 /**
- * `visual` names the miniature drawn on the card (see `Gallery`). Ordered:
- * the two everyone wants, the two that leave the phone, the two that talk to
- * other services, the two about keeping things.
+ * The grid under the tour: everything that is real but is not a headline.
+ *
+ * One line each, because a feature that needs a paragraph to explain is a
+ * feature that should have been a tile above. `glyph` names a drawing in
+ * `Features.jsx`. Only what ships in the current build goes here.
  */
 export const FEATURES = [
-  {
-    visual: 'downloads',
-    title: 'Stream it or keep it',
-    body: 'Play straight through, or take a track, an album or a whole playlist off the network and listen with the radio off.',
-  },
-  {
-    visual: 'eq',
-    title: 'A real equalizer',
-    body: 'Full band EQ with presets, plus playback speed and pitch that stay exactly where you left them between sessions.',
-  },
-  {
-    visual: 'sleep',
-    title: 'Sleep timer',
-    body: 'Set it and stop thinking about it. The queue fades out when the time is up instead of cutting mid-bar.',
-  },
-  {
-    visual: 'auto',
-    title: 'Android Auto',
-    body: 'Liked songs, history, downloads and your YouTube playlists on the dashboard, with a simplified mode for the road.',
-  },
-  {
-    visual: 'discord',
-    title: 'Discord Rich Presence',
-    body: 'What you are playing, on your profile, with the cover art and buttons — and the option to keep showing it while paused.',
-  },
-  {
-    visual: 'scrobble',
-    title: 'Last.fm and ListenBrainz',
-    body: 'Scrobble to either service or to both, so the record of what you listened to belongs to you rather than to this app.',
-  },
-  {
-    visual: 'together',
-    title: 'Music Together',
-    body: 'Host a session, share the code, and everyone hears the same song at the same second. Guests can queue, if you let them.',
-  },
-  {
-    visual: 'backup',
-    title: 'Backup and restore',
-    body: 'Library, playlists and settings out to a file and back again. Changing phones should not mean starting over.',
-  },
+  { glyph: 'update', title: 'Updates itself', body: 'Checks, downloads and installs new builds without a browser.' },
+  { glyph: 'lossless', title: 'Your lossless files', body: 'A FLAC, WAV or AIFF you already own plays instead of the stream.' },
+  { glyph: 'save', title: 'Save to device', body: 'A tagged .m4a with cover art and synced lyrics, for any player.' },
+  { glyph: 'spatial', title: 'Spatial stages', body: 'Natural, Wide and Cinema — the width of the stage, on two speakers.' },
+  { glyph: 'eq', title: 'Equalizer', body: 'Full-band EQ and presets, with tempo and pitch that stay put.' },
+  { glyph: 'moon', title: 'Sleep timer', body: 'A countdown dial, in minutes or in songs, that fades rather than cuts.' },
+  { glyph: 'together', title: 'Music Together', body: 'Everyone hears the same second — now over a phone hotspot too.' },
+  { glyph: 'car', title: 'Android Auto', body: 'Liked songs, downloads and playlists on the dashboard.' },
+  { glyph: 'scrobble', title: 'Last.fm and ListenBrainz', body: 'Scrobble to either or both, so your history stays yours.' },
+  { glyph: 'discord', title: 'Discord presence', body: 'Listening to the song, the artist and the real cover.' },
+  { glyph: 'language', title: 'Twenty languages', body: 'Per-app language, named in each one’s own script. Beta.' },
+  { glyph: 'backup', title: 'Backup and restore', body: 'Library, playlists and settings to a file and back again.' },
 ]
 
-/** `art` names the card's illustration (see `Specs`). Numbers off Gradle. */
-export const SPECS = [
-  {
-    art: 'sdk',
-    value: 'Android 13+',
-    body: 'Compiled against 37, targeting 36, with a floor of API 33 — so it uses what those releases added rather than working around their absence.',
-  },
-  {
-    art: 'kotlin',
-    value: '100% Kotlin',
-    body: 'Jetpack Compose top to bottom. There is not a single XML layout in the project; the glass, the dock and the lyrics are all drawn by the same composition.',
-  },
-  {
-    art: 'license',
-    value: 'GPL-3.0',
-    body: 'Source you can read, build and fork, with the same freedom passed on to whoever you hand it to. The repository is the whole app, not a wrapper around a binary.',
-  },
-  {
-    art: 'abi',
-    value: 'One APK',
-    body: 'arm64, arm32 and both x86 targets in a single universal build, so there is nothing to pick. The project still defines a flavour per ABI if you would rather compile a smaller one yourself.',
-  },
-  {
-    art: 'release',
-    value: `v${VERSION}`,
-    body: 'The current release, checked straight against GitHub Releases. No store, no account, and nothing phoning home to ask permission.',
-  },
+/**
+ * The open-source half of the download panel. Numbers off
+ * app/build.gradle.kts; if the build changes and this doesn't, the page is
+ * wrong.
+ */
+export const OPEN_FACTS = [
+  { value: 'Android 13+', body: 'compileSdk 37, targetSdk 36, minSdk 33' },
+  { value: '100% Kotlin', body: 'Jetpack Compose, not one XML layout' },
+  { value: 'GPL-3.0', body: 'Read it, build it, fork it, pass it on' },
+  { value: 'One APK', body: 'arm64, arm32 and x86 in a single file' },
 ]
 
 /** What's worth knowing before tapping Download. Read off the release. */
