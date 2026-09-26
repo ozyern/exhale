@@ -283,7 +283,7 @@ export const RELEASE_NOTES = [
           },
           {
             title: 'Lyrics',
-            body: 'Linotte and the staggered line motion from the Windows build, and only the line being sung reads the clock — the rest of the column no longer recomposes sixty times a second.',
+            body: 'Linotte and a staggered line motion, and only the line being sung reads the clock — the rest of the column no longer recomposes sixty times a second.',
           },
           {
             title: 'Motion',
