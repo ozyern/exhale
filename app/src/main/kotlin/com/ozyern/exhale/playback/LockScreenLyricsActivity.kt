@@ -91,6 +91,7 @@ class LockScreenLyricsActivity : ComponentActivity() {
             window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
         }
         enableEdgeToEdge()
+        LockScreenLyrics.showing = true
         // Up: the notification that may have opened it has done its job.
         runCatching {
             getSystemService(android.app.NotificationManager::class.java)?.cancel(LockScreenLyrics.NOTIFICATION_ID)
@@ -132,6 +133,7 @@ class LockScreenLyricsActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        LockScreenLyrics.showing = false
         unlockReceiver?.let { runCatching { unregisterReceiver(it) } }
         super.onDestroy()
     }

@@ -48,43 +48,68 @@ object LockScreenLyrics {
     fun canShow(context: Context): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
 
-    /** Listens for the screen going off for as long as the service lives. */
+    /** Set by [LockScreenLyricsActivity] while it is on screen, so a second launch is not stacked. */
+    @Volatile var showing: Boolean = false
+
+    /**
+     * Listens for the screen for as long as the service lives.
+     *
+     * The screen is put up when the display goes off, so it is already in place when the phone is
+     * next woken. Some ROMs drop a launch made while the display is off, so waking to a locked
+     * phone without it showing tries once more.
+     */
     fun register(context: Context, player: Player): BroadcastReceiver {
         playerRef = WeakReference(player)
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(c: Context, intent: Intent) {
-                if (intent.action != Intent.ACTION_SCREEN_OFF) return
-                val p = player
-                if (!enabled || !p.isPlaying || _lines.value.isEmpty()) return
-                if (!canShow(c) && !canUseFullScreen(c)) return
-                launch(c)
+                when (intent.action) {
+                    Intent.ACTION_SCREEN_OFF -> if (shouldShow(c, player)) launch(c)
+                    Intent.ACTION_SCREEN_ON -> {
+                        val locked = c.getSystemService(android.app.KeyguardManager::class.java)?.isKeyguardLocked == true
+                        if (locked && !showing && shouldShow(c, player)) launch(c)
+                    }
+                }
             }
         }
         ContextCompat.registerReceiver(
             context,
             receiver,
-            IntentFilter(Intent.ACTION_SCREEN_OFF),
+            IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+            },
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         return receiver
     }
 
-    /**
-     * Puts the screen up from the background.
-     *
-     * Android 15 narrowed the "Display over other apps" exemption: holding the permission is no
-     * longer enough to start an activity from the background — the app must also have an overlay
-     * window *showing* at that moment. So a one-pixel, invisible, untouchable overlay is added for
-     * the instant of the launch and taken away again a second later.
-     */
+    private fun shouldShow(c: Context, player: Player): Boolean =
+        enabled && player.isPlaying && _lines.value.isNotEmpty() && (canShow(c) || canUseFullScreen(c))
+
+    /** Opens the screen now, from Settings, so it can be seen without locking the phone. */
+    fun preview(context: Context) {
+        context.startActivity(
+            Intent(context, LockScreenLyricsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
+
     private const val CHANNEL_ID = "lock_screen_lyrics"
     const val NOTIFICATION_ID = 0x4C59
 
     /** Whether Android will let a full-screen notification open the screen (Android 14+ asks). */
     fun canUseFullScreen(context: Context): Boolean {
+        if (!androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
         if (Build.VERSION.SDK_INT < 34) return true
         val nm = context.getSystemService(android.app.NotificationManager::class.java) ?: return false
         return nm.canUseFullScreenIntent()
+    }
+
+    /** Whether the user has quietened the channel the screen is opened through. */
+    fun channelMuted(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        val channel = context.getSystemService(android.app.NotificationManager::class.java)
+            ?.getNotificationChannel(CHANNEL_ID) ?: return false
+        return channel.importance < android.app.NotificationManager.IMPORTANCE_HIGH
     }
 
     /**
@@ -128,6 +153,14 @@ object LockScreenLyrics {
         runCatching { nm.notify(NOTIFICATION_ID, notification) }
     }
 
+    /**
+     * Puts the screen up from the background.
+     *
+     * Android 15 narrowed the "Display over other apps" exemption: holding the permission is no
+     * longer enough to start an activity from the background — the app must also have an overlay
+     * window *showing* at that moment. So a one-pixel, invisible, untouchable overlay is added for
+     * the instant of the launch and taken away again a second later.
+     */
     private fun launch(c: Context) {
         if (canUseFullScreen(c)) postFullScreen(c)
         val wm = c.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager

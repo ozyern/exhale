@@ -380,57 +380,19 @@ fun ContentSettings(
             // The path that works on stock ColorOS: Exhale's own screen over the keyguard.
             val (lockOverlay, onLockOverlayChange) = rememberPreference(
                 com.ozyern.exhale.constants.LockScreenLyricsOverlayKey,
-                defaultValue = false,
+                defaultValue = true,
             )
-            val overlayContext = androidx.compose.ui.platform.LocalContext.current
             SwitchPreference(
                 title = { Text("Lyrics screen on the lock screen") },
-                description = "When the screen turns off while music plays, Exhale puts its lyrics over the lock screen. Works on ColorOS without root. Needs permission for full-screen notifications (asked when you switch it on); on ColorOS also allow \"Pop-up windows\" / \"Show on lock screen\" in Exhale's app permissions.",
+                description = "While music plays, Exhale's own lyrics screen sits over the lock screen. " +
+                    "Works on any phone, ColorOS included, without root.",
                 icon = { Icon(painterResource(R.drawable.lyrics), null) },
                 checked = lockOverlay,
-                onCheckedChange = { on ->
-                    onLockOverlayChange(on)
-                    // Android 14+ asks separately for the full-screen notification this rides on.
-                    if (on && !com.ozyern.exhale.playback.LockScreenLyrics.canUseFullScreen(overlayContext) &&
-                        android.os.Build.VERSION.SDK_INT >= 34
-                    ) {
-                        runCatching {
-                            overlayContext.startActivity(
-                                android.content.Intent(
-                                    android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
-                                    android.net.Uri.parse("package:${overlayContext.packageName}"),
-                                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-                            )
-                        }
-                    } else if (on && !com.ozyern.exhale.playback.LockScreenLyrics.canShow(overlayContext)) {
-                        runCatching {
-                            overlayContext.startActivity(
-                                android.content.Intent(
-                                    android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                    android.net.Uri.parse("package:${overlayContext.packageName}"),
-                                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-                            )
-                        }
-                    }
-                },
+                onCheckedChange = onLockOverlayChange,
             )
 
             if (lockOverlay) {
-                PreferenceEntry(
-                    title = { Text("Open Exhale's app permissions") },
-                    description = "For ColorOS's own \"Pop-up windows\" and \"Show on lock screen\" switches",
-                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                    onClick = {
-                        runCatching {
-                            overlayContext.startActivity(
-                                android.content.Intent(
-                                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                    android.net.Uri.parse("package:${overlayContext.packageName}"),
-                                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-                            )
-                        }
-                    },
-                )
+                LockScreenLyricsSetup()
             }
 
             // Independent of the Live Space switch above, and on by default. See
@@ -540,4 +502,81 @@ private fun lockScreenLyricsStatus(): String {
         else -> "Live Lyrics Bridge not found: stock ColorOS only shows lyrics from its partner apps, so the " +
             "current line is shown on the media card instead. Install the Bridge (LSPosed) for full lock-screen lyrics"
     }
+}
+
+/**
+ * What the lock-screen lyrics screen needs from the system, each row saying whether it has it and
+ * opening the right page when it does not. Re-read every time the page comes back into view, so
+ * a permission granted in Settings shows as granted on return.
+ */
+@Composable
+private fun LockScreenLyricsSetup() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var checks by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        checks++
+        onPauseOrDispose { }
+    }
+    val lock = com.ozyern.exhale.playback.LockScreenLyrics
+    val fullScreen = androidx.compose.runtime.remember(checks) { lock.canUseFullScreen(context) && !lock.channelMuted(context) }
+    val overlay = androidx.compose.runtime.remember(checks) { lock.canShow(context) }
+
+    fun open(action: String) {
+        runCatching {
+            context.startActivity(
+                android.content.Intent(action, android.net.Uri.parse("package:${context.packageName}"))
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }.onFailure {
+            runCatching {
+                context.startActivity(
+                    android.content.Intent(
+                        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        android.net.Uri.parse("package:${context.packageName}"),
+                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+        }
+    }
+
+    PreferenceEntry(
+        title = { Text("Full-screen notifications") },
+        description = if (fullScreen) "Allowed" else "Not allowed — tap to allow. This is what opens the lyrics screen when the phone locks",
+        icon = { Icon(painterResource(if (fullScreen) R.drawable.check else R.drawable.info), null) },
+        onClick = {
+            when {
+                !androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled() ||
+                    lock.channelMuted(context) -> runCatching {
+                    context.startActivity(
+                        android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+                android.os.Build.VERSION.SDK_INT >= 34 -> open(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT)
+                else -> open(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            }
+        },
+    )
+    PreferenceEntry(
+        title = { Text("Display over other apps") },
+        description = if (overlay) "Allowed" else "Not allowed — tap to allow. A second way in, for phones that hold back full-screen notifications",
+        icon = { Icon(painterResource(if (overlay) R.drawable.check else R.drawable.info), null) },
+        onClick = { open(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION) },
+    )
+    if (com.ozyern.exhale.utils.DeviceAudio.isOplusDevice) {
+        PreferenceEntry(
+            title = { Text("ColorOS permissions") },
+            description = "In Exhale's app info, under Permissions → Other permissions, allow " +
+                "\"Show on Lock screen\" and \"Display pop-up windows while running in the background\"",
+            icon = { Icon(painterResource(R.drawable.settings), null) },
+            onClick = { open(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS) },
+        )
+    }
+    PreferenceEntry(
+        title = { Text("Preview") },
+        description = "Open the lyrics screen now. Play a song with synced lyrics first",
+        icon = { Icon(painterResource(R.drawable.lyrics), null) },
+        onClick = { lock.preview(context) },
+    )
 }

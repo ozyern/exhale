@@ -915,7 +915,7 @@ class MusicService :
         // Exhale's own lyrics over the lock screen (see LockScreenLyrics).
         lockLyricsReceiver = LockScreenLyrics.register(this, player)
         dataStore.data
-            .map { it[com.ozyern.exhale.constants.LockScreenLyricsOverlayKey] ?: false }
+            .map { it[com.ozyern.exhale.constants.LockScreenLyricsOverlayKey] ?: true }
             .distinctUntilChanged()
             .collectLatest(scope) { LockScreenLyrics.enabled = it }
 
@@ -1865,7 +1865,8 @@ class MusicService :
         val preferences = dataStore.data.first()
         val liveSpaceEnabled = preferences[EnableLockScreenLyricsKey] ?: true
         val mediaCardEnabled = preferences[LyricsOnMediaCardKey] ?: true
-        if (!liveSpaceEnabled && !mediaCardEnabled) return
+        val lockScreenEnabled = preferences[com.ozyern.exhale.constants.LockScreenLyricsOverlayKey] ?: true
+        if (!liveSpaceEnabled && !mediaCardEnabled && !lockScreenEnabled) return
 
         val usable = lyrics?.takeIf { it != LyricsEntity.LYRICS_NOT_FOUND }
         // Normalise once. `toLrc` is the TTML flattener for word-synced providers, and both the
