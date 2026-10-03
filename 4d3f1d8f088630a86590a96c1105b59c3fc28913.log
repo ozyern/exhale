@@ -1,0 +1,188 @@
+
+Welcome to Gradle 9.5.0!
+
+Here are the highlights of this release:
+ - Task provenance in reports and failure messages
+ - Type-safe accessors for precompiled Kotlin Settings plugins
+
+For more details see https://docs.gradle.org/9.5.0/release-notes.html
+
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.5.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Calculating task graph as no cached configuration is available for tasks: assembleUniversalRelease
+
+> Configure project :app
+Git commit (local): 4d3f1d8
+WARNING: [CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+Add android.sync.suppressAgpWarnings=EXTERNAL_NATIVE_BUILD_CONFIGURATION to the gradle.properties file to suppress this warning.
+[CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+Add android.sync.suppressAgpWarnings=EXTERNAL_NATIVE_BUILD_CONFIGURATION to the gradle.properties file to suppress this warning.
+[CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+Add android.sync.suppressAgpWarnings=EXTERNAL_NATIVE_BUILD_CONFIGURATION to the gradle.properties file to suppress this warning.
+[CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+Add android.sync.suppressAgpWarnings=EXTERNAL_NATIVE_BUILD_CONFIGURATION to the gradle.properties file to suppress this warning.
+[CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+
+> Task :innertube:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :spotify:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :spotify:processResources NO-SOURCE
+> Task :kugou:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :innertube:processResources NO-SOURCE
+> Task :kugou:processResources NO-SOURCE
+> Task :lrclib:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :lrclib:compileKotlin FROM-CACHE
+> Task :kugou:compileKotlin FROM-CACHE
+> Task :lrclib:compileJava NO-SOURCE
+> Task :kugou:compileJava NO-SOURCE
+> Task :kugou:classes UP-TO-DATE
+> Task :lrclib:processResources NO-SOURCE
+> Task :lrclib:classes UP-TO-DATE
+> Task :spotify:compileKotlin FROM-CACHE
+> Task :spotify:compileJava NO-SOURCE
+> Task :spotify:classes UP-TO-DATE
+> Task :lrclib:jar
+> Task :lastfm:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :kugou:jar
+> Task :lastfm:processResources NO-SOURCE
+> Task :betterlyrics:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :lastfm:compileKotlin FROM-CACHE
+> Task :lastfm:compileJava NO-SOURCE
+> Task :lastfm:classes UP-TO-DATE
+> Task :spotify:jar
+> Task :betterlyrics:compileKotlin FROM-CACHE
+> Task :betterlyrics:compileJava NO-SOURCE
+> Task :kizzy:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :betterlyrics:processResources NO-SOURCE
+> Task :betterlyrics:classes UP-TO-DATE
+> Task :lastfm:jar
+> Task :kizzy:processResources NO-SOURCE
+> Task :simpmusic:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :betterlyrics:jar
+> Task :simpmusic:processResources NO-SOURCE
+> Task :canvas:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :simpmusic:compileKotlin FROM-CACHE
+> Task :simpmusic:compileJava NO-SOURCE
+> Task :simpmusic:classes UP-TO-DATE
+> Task :simpmusic:jar
+> Task :canvas:processResources NO-SOURCE
+> Task :shazamkit:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :shazamkit:compileKotlin FROM-CACHE
+> Task :shazamkit:compileJava NO-SOURCE
+> Task :shazamkit:processResources NO-SOURCE
+> Task :shazamkit:classes UP-TO-DATE
+> Task :shazamkit:jar
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preArm64ReleaseBuild UP-TO-DATE
+
+> Task :app:configureCMakeRelWithDebInfo[arm64-v8a]
+Checking the license for package CMake 3.22.1 in /usr/local/lib/android/sdk/licenses
+License for package CMake 3.22.1 accepted.
+Preparing "Install CMake 3.22.1 v.3.22.1".
+"Install CMake 3.22.1 v.3.22.1" ready.
+Installing CMake 3.22.1 in /usr/local/lib/android/sdk/cmake/3.22.1
+"Install CMake 3.22.1 v.3.22.1" complete.
+"Install CMake 3.22.1 v.3.22.1" finished.
+
+> Task :canvas:compileKotlin
+> Task :canvas:compileJava NO-SOURCE
+> Task :canvas:classes UP-TO-DATE
+> Task :canvas:jar
+> Task :kizzy:compileKotlin
+> Task :kizzy:compileJava NO-SOURCE
+> Task :kizzy:classes UP-TO-DATE
+> Task :app:preArmeabiReleaseBuild UP-TO-DATE
+> Task :kizzy:jar
+> Task :app:preX86ReleaseBuild UP-TO-DATE
+> Task :app:configureCMakeRelWithDebInfo[armeabi-v7a]
+> Task :app:configureCMakeRelWithDebInfo[x86]
+> Task :innertube:compileKotlin
+> Task :app:buildCMakeRelWithDebInfo[arm64-v8a]
+> Task :app:preX86_64ReleaseBuild UP-TO-DATE
+> Task :app:buildCMakeRelWithDebInfo[x86]
+> Task :app:preUniversalReleaseBuild UP-TO-DATE
+> Task :app:mergeUniversalReleaseJniLibFolders
+> Task :app:configureCMakeRelWithDebInfo[x86_64]
+> Task :app:buildCMakeRelWithDebInfo[armeabi-v7a]
+> Task :app:mergeUniversalReleaseArtProfile
+> Task :app:generateUniversalReleaseBuildConfig
+> Task :app:checkUniversalReleaseDuplicateClasses
+> Task :app:mapUniversalReleaseSourceSetPaths
+> Task :app:generateUniversalReleaseResources
+> Task :app:extractUniversalReleaseSupportedLocales
+> Task :app:generateUniversalReleaseLocaleConfig FROM-CACHE
+> Task :app:processUniversalReleaseNavigationResources
+> Task :app:javaPreCompileUniversalRelease FROM-CACHE
+> Task :app:checkUniversalReleaseAarMetadata
+> Task :app:compileUniversalReleaseNavigationResources FROM-CACHE
+> Task :app:packageUniversalReleaseResources
+> Task :app:buildCMakeRelWithDebInfo[x86_64]
+> Task :app:createUniversalReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksUniversalRelease FROM-CACHE
+> Task :app:processUniversalReleaseMainManifest
+> Task :app:parseUniversalReleaseLocalResources
+> Task :app:processUniversalReleaseManifest
+> Task :app:processUniversalReleaseManifestForPackage
+> Task :app:extractProguardFiles
+> Task :app:mergeUniversalReleaseStartupProfile
+> Task :app:generateUniversalReleaseAssets UP-TO-DATE
+> Task :app:generateUniversalReleaseRFile
+> Task :app:extractUniversalReleaseVersionControlInfo
+> Task :app:validateSigningUniversalRelease
+> Task :app:writeUniversalReleaseAppMetadata
+> Task :app:writeUniversalReleaseSigningConfigVersions
+> Task :app:mergeUniversalReleaseAssets
+> Task :app:compressUniversalReleaseAssets FROM-CACHE
+
+> Task :innertube:compileKotlin
+w: file:///home/runner/work/exhale/exhale/innertube/src/main/kotlin/com/ozyern/exhale/innertube/proxy/RotatingProxyClient.kt:57:17 Unnecessary safe call on a non-null receiver of type 'String'.
+
+> Task :innertube:compileJava NO-SOURCE
+> Task :innertube:classes UP-TO-DATE
+> Task :innertube:jar
+> Task :app:mergeUniversalReleaseNativeLibs
+> Task :app:stripUniversalReleaseDebugSymbols
+> Task :app:extractUniversalReleaseNativeSymbolTables
+> Task :app:mergeUniversalReleaseNativeDebugMetadata
+> Task :app:mergeUniversalReleaseResources
+> Task :app:processUniversalReleaseResources
+> Task :app:kspUniversalReleaseKotlin
+> Task :app:compileUniversalReleaseKotlin
+> Task :app:processUniversalReleaseJavaRes
+> Task :app:mergeUniversalReleaseJavaResource
+> Task :app:compileUniversalReleaseJavaWithJavac
+> Task :app:hiltCollectClassesUniversalRelease
+> Task :app:generateUniversalReleaseLintVitalReportModel
+> Task :app:hiltAggregateDepsUniversalRelease FROM-CACHE
+> Task :app:hiltJavaCompileUniversalRelease
+> Task :app:transformUniversalReleaseClassesWithAsm
+> Task :app:mergeUniversalReleaseGeneratedProguardFiles
+> Task :app:expandUniversalReleaseArtProfileWildcards
+> Task :app:produceUniversalReleaseComposeMapping
+> Task :app:reportUniversalReleaseComposeMappingErrors
+> Task :app:lintVitalAnalyzeUniversalRelease
+> Task :app:minifyUniversalReleaseWithR8
+> Task :app:lintVitalReportUniversalRelease
+> Task :app:lintVitalUniversalRelease
+> Task :app:convertShrunkResourcesToBinaryUniversalRelease
+> Task :app:optimizeUniversalReleaseResources
+> Task :app:mergeUniversalReleaseComposeMapping
+> Task :app:compileUniversalReleaseArtProfile
+> Task :app:packageUniversalRelease
+> Task :app:assembleUniversalRelease
+> Task :app:createUniversalReleaseApkListingFileRedirect
+
+1 problem was found storing the configuration cache.
+- Build file 'app/build.gradle.kts': external process started 'git rev-parse --short HEAD'
+  See https://docs.gradle.org/9.5.0/userguide/configuration_cache_requirements.html#config_cache:requirements:external_processes
+
+See the complete report at file:///home/runner/work/exhale/exhale/build/reports/configuration-cache/5qu45mkrgzd6nhbruqcnpnly2/bxe3keu40dtpjqtb2hrerce2p/configuration-cache-report.html
+
+[Incubating] Problems report is available at: file:///home/runner/work/exhale/exhale/build/reports/problems/problems-report.html
+
+BUILD SUCCESSFUL in 9m 12s
+85 actionable tasks: 72 executed, 13 from cache
+Configuration cache entry stored with 1 problem.
+GRADLE_EXIT=0
