@@ -8,6 +8,13 @@
 
 package com.ozyern.exhale.ui.screens.playlist
 
+import androidx.compose.foundation.layout.PaddingValues
+import com.ozyern.exhale.ui.component.PlaylistArtwork
+import com.ozyern.exhale.ui.component.CollectionPlay
+import com.ozyern.exhale.ui.component.CollectionAction
+import com.ozyern.exhale.ui.component.CollectionHero
+import com.ozyern.exhale.ui.component.rememberScrollEdge
+import com.ozyern.exhale.ui.component.scrollEdgeScrim
 import com.ozyern.exhale.ui.component.PlayShuffleButton
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -217,62 +224,11 @@ fun OnlinePlaylistScreen(
 
     val showTopBarTitle by remember { derivedStateOf { lazyListState.firstVisibleItemIndex > 0 } }
 
-    // Gradient colors state for playlist cover
-    var gradientColors by remember { mutableStateOf<List<Color>>(emptyList()) }
-    val fallbackColor = MaterialTheme.colorScheme.surface.toArgb()
-    val surfaceColor = MaterialTheme.colorScheme.surface
+    // Tinted from the cover.
+    val releasePalette = com.ozyern.exhale.ui.component.rememberReleasePalette(playlist?.thumbnail)
+    val surfaceColor = releasePalette.background
 
-    // Extract gradient colors from playlist cover
-    LaunchedEffect(playlist?.thumbnail) {
-        val thumbnailUrl = playlist?.thumbnail
-        if (thumbnailUrl != null) {
-            val request =
-                ImageRequest.Builder(context)
-                    .data(thumbnailUrl)
-                    .size(
-                        PlayerColorExtractor.Config.IMAGE_SIZE,
-                        PlayerColorExtractor.Config.IMAGE_SIZE
-                    )
-                    .allowHardware(false)
-                    .build()
 
-            val result = runCatching { context.imageLoader.execute(request) }.getOrNull()
-
-            if (result != null) {
-                val bitmap = result.image?.toBitmap()
-                if (bitmap != null) {
-                    val palette =
-                        withContext(Dispatchers.Default) {
-                            Palette.from(bitmap)
-                                .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
-                                .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
-                                .generate()
-                        }
-
-                    val extractedColors =
-                        PlayerColorExtractor.extractGradientColors(
-                            palette = palette,
-                            fallbackColor = fallbackColor
-                        )
-                    gradientColors = extractedColors
-                }
-            }
-        } else {
-            gradientColors = emptyList()
-        }
-    }
-
-    // Calculate gradient opacity based on scroll position
-    val gradientAlpha by remember {
-        derivedStateOf {
-            if (lazyListState.firstVisibleItemIndex == 0) {
-                val offset = lazyListState.firstVisibleItemScrollOffset
-                (1f - (offset / 600f)).coerceIn(0f, 1f)
-            } else {
-                0f
-            }
-        }
-    }
 
     val transparentAppBar by remember {
         derivedStateOf { !disableBlur && !selection && !showTopBarTitle }
@@ -308,164 +264,14 @@ fun OnlinePlaylistScreen(
                 onRefresh = viewModel::refresh
             ),
     ) {
-        // Mesh gradient background layer
-        if (!disableBlur && gradientColors.isNotEmpty()) {
-            Box(
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .fillMaxSize(0.55f)
-                        .align(Alignment.TopCenter)
-                        .zIndex(-1f)
-                        .drawBehind {
-                            val width = size.width
-                            val height = size.height
-
-                            // Draw-phase read: `gradientAlpha` tracks the scroll offset, so testing it
-                            // up in composition invalidated this whole screen on every scrolled pixel.
-                            // Bailing here instead keeps the check but pays for it in the draw pass.
-                            if (gradientAlpha <= 0f) return@drawBehind
-
-                            if (gradientColors.size >= 3) {
-                                val c0 = gradientColors[0]
-                                val c1 = gradientColors[1]
-                                val c2 = gradientColors[2]
-                                val c3 = gradientColors.getOrElse(3) { c0 }
-                                val c4 = gradientColors.getOrElse(4) { c1 }
-                                // Primary color blob - top center
-                                drawRect(
-                                    brush =
-                                        Brush.radialGradient(
-                                            colors =
-                                                listOf(
-                                                    c0.copy(
-                                                        alpha = gradientAlpha * 0.75f
-                                                    ),
-                                                    c0.copy(
-                                                        alpha = gradientAlpha * 0.4f
-                                                    ),
-                                                    Color.Transparent
-                                                ),
-                                            center = Offset(width * 0.5f, height * 0.15f),
-                                            radius = width * 0.8f
-                                        )
-                                )
-
-                                // Secondary color blob - left side
-                                drawRect(
-                                    brush =
-                                        Brush.radialGradient(
-                                            colors =
-                                                listOf(
-                                                    c1.copy(
-                                                        alpha = gradientAlpha * 0.55f
-                                                    ),
-                                                    c1.copy(
-                                                        alpha = gradientAlpha * 0.3f
-                                                    ),
-                                                    Color.Transparent
-                                                ),
-                                            center = Offset(width * 0.1f, height * 0.4f),
-                                            radius = width * 0.6f
-                                        )
-                                )
-
-                                // Third color blob - right side
-                                drawRect(
-                                    brush =
-                                        Brush.radialGradient(
-                                            colors =
-                                                listOf(
-                                                    c2.copy(
-                                                        alpha = gradientAlpha * 0.5f
-                                                    ),
-                                                    c2.copy(
-                                                        alpha = gradientAlpha * 0.25f
-                                                    ),
-                                                    Color.Transparent
-                                                ),
-                                            center = Offset(width * 0.9f, height * 0.35f),
-                                            radius = width * 0.55f
-                                        )
-                                )
-
-                                drawRect(
-                                    brush =
-                                        Brush.radialGradient(
-                                            colors =
-                                                listOf(
-                                                    c3.copy(
-                                                        alpha = gradientAlpha * 0.35f
-                                                    ),
-                                                    c3.copy(
-                                                        alpha = gradientAlpha * 0.18f
-                                                    ),
-                                                    Color.Transparent
-                                                ),
-                                            center = Offset(width * 0.25f, height * 0.65f),
-                                            radius = width * 0.75f
-                                        )
-                                )
-
-                                drawRect(
-                                    brush =
-                                        Brush.radialGradient(
-                                            colors =
-                                                listOf(
-                                                    c4.copy(
-                                                        alpha = gradientAlpha * 0.3f
-                                                    ),
-                                                    c4.copy(
-                                                        alpha = gradientAlpha * 0.15f
-                                                    ),
-                                                    Color.Transparent
-                                                ),
-                                            center = Offset(width * 0.55f, height * 0.85f),
-                                            radius = width * 0.9f
-                                        )
-                                )
-                            } else if (gradientColors.isNotEmpty()) {
-                                drawRect(
-                                    brush =
-                                        Brush.radialGradient(
-                                            colors =
-                                                listOf(
-                                                    gradientColors[0].copy(
-                                                        alpha = gradientAlpha * 0.7f
-                                                    ),
-                                                    gradientColors[0].copy(
-                                                        alpha = gradientAlpha * 0.35f
-                                                    ),
-                                                    Color.Transparent
-                                                ),
-                                            center = Offset(width * 0.5f, height * 0.25f),
-                                            radius = width * 0.85f
-                                        )
-                                )
-                            }
-
-                            drawRect(
-                                brush =
-                                    Brush.verticalGradient(
-                                        colors =
-                                            listOf(
-                                                Color.Transparent,
-                                                Color.Transparent,
-                                                surfaceColor.copy(alpha = gradientAlpha * 0.22f),
-                                                surfaceColor.copy(alpha = gradientAlpha * 0.55f),
-                                                surfaceColor
-                                            ),
-                                        startY = height * 0.4f,
-                                        endY = height
-                                    )
-                            )
-                        }
-            )
-        }
 
         LazyColumn(
             state = lazyListState,
-            contentPadding =
-                LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime).asPaddingValues(),
+            // No top inset: the cover runs under the status bar, as on the album page.
+            contentPadding = PaddingValues(
+                top = if (isSearching) systemBarsTopPadding + AppBarHeight else 0.dp,
+                bottom = LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime).asPaddingValues().calculateBottomPadding(),
+            ),
         ) {
             playlist.let { playlist ->
                 if (isLoading) {
@@ -554,114 +360,20 @@ fun OnlinePlaylistScreen(
                     if (!isSearching) {
                         // Hero Header
                         item(key = "header") {
-                            Column(
-                                modifier =
-                                    Modifier.fillMaxWidth()
-                                        .padding(top = systemBarsTopPadding + AppBarHeight)
-                                        .animateItem(),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                // Playlist Thumbnail - Large centered with shadow
-                                Box(modifier = Modifier.padding(top = 8.dp, bottom = 20.dp)) {
-                                    Surface(
-                                        modifier =
-                                            Modifier.size(240.dp)
-                                                .shadow(
-                                                    elevation = 24.dp,
-                                                    shape = RoundedCornerShape(16.dp),
-                                                    spotColor =
-                                                        gradientColors
-                                                            .getOrNull(0)
-                                                            ?.copy(alpha = 0.5f)
-                                                            ?: MaterialTheme.colorScheme.primary
-                                                                .copy(alpha = 0.3f)
-                                                ),
-                                        shape = RoundedCornerShape(16.dp)
-                                    ) {
-                                        AsyncImage(
-                                            model = playlist.thumbnail,
-                                            contentDescription = null,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                }
-
-                                // Playlist Title
-                                Text(
-                                    text = playlist.title,
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.Center,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(horizontal = 32.dp)
-                                )
-
-                                // Author (Clickable)
-                                playlist.author?.let { artist ->
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text =
-                                            buildAnnotatedString {
-                                                withStyle(
-                                                    style =
-                                                        MaterialTheme.typography.titleMedium
-                                                            .copy(
-                                                                fontWeight = FontWeight.Normal,
-                                                                color =
-                                                                    MaterialTheme.colorScheme
-                                                                        .primary
-                                                            )
-                                                            .toSpanStyle()
-                                                ) {
-                                                    if (artist.id != null) {
-                                                        val link =
-                                                            LinkAnnotation.Clickable(artist.id!!) {
-                                                                navController.navigate(
-                                                                    "artist/${artist.id}"
-                                                                )
-                                                            }
-                                                        withLink(link) { append(artist.name) }
-                                                    } else {
-                                                        append(artist.name)
-                                                    }
-                                                }
-                                            },
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.padding(horizontal = 32.dp)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                // Metadata Row - Song Count
-                                playlist.songCountText?.let { songCountText ->
-                                    Row(
-                                        modifier =
-                                            Modifier.fillMaxWidth().padding(horizontal = 48.dp),
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        MetadataChip(
-                                            icon = R.drawable.music_note,
-                                            text = songCountText
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(24.dp))
-
-                                // Action Buttons Row
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                                    horizontalArrangement =
-                                        Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Like/Save Button
+                            CollectionHero(
+                                palette = releasePalette,
+                                title = playlist.title,
+                                credit = playlist.author?.name,
+                                meta = listOfNotNull("Playlist", playlist.songCountText).joinToString("  \u00b7  "),
+                                lazyListState = lazyListState,
+                                artwork = { PlaylistArtwork(listOfNotNull(playlist.thumbnail), R.drawable.queue_music) },
+                                actions = {
                                     if (playlist.id != "LM") {
-                                        Surface(
+                                        val liked = dbPlaylist?.playlist?.bookmarkedAt != null
+                                        CollectionAction(
+                                            icon = if (liked) R.drawable.favorite else R.drawable.favorite_border,
+                                            contentDescription = null,
+                                            tint = if (liked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                                             onClick = {
                                                 if (dbPlaylist?.playlist == null) {
                                                     database.transaction {
@@ -705,75 +417,31 @@ fun OnlinePlaylistScreen(
                                                     }
                                                 }
                                             },
-                                            shape = CircleShape,
-                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                                            modifier = Modifier.size(50.dp)
-                                        ) {
-                                            Box(
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(
-                                                    painter =
-                                                        painterResource(
-                                                            if (
-                                                                dbPlaylist
-                                                                    ?.playlist
-                                                                    ?.bookmarkedAt != null
-                                                            )
-                                                                R.drawable.favorite
-                                                            else R.drawable.favorite_border
-                                                        ),
-                                                    contentDescription = null,
-                                                    tint =
-                                                        if (
-                                                            dbPlaylist?.playlist?.bookmarkedAt !=
-                                                                null
-                                                        )
-                                                            MaterialTheme.colorScheme.error
-                                                        else
-                                                            MaterialTheme.colorScheme
-                                                                .onSurfaceVariant,
-                                                    modifier = Modifier.size(24.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    // Shuffle Button
-                                    playlist.shuffleEndpoint?.let { shuffleEndpoint ->
-                                        PlayShuffleButton(
-                                            iconRes = R.drawable.shuffle,
-                                            label = stringResource(R.string.shuffle),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(50.dp),
-                                            onClick = {
-                                                playerConnection.playQueue(
-                                                    YouTubeQueue(shuffleEndpoint)
-                                                )
-                                                },
                                         )
                                     }
-
-                                    // Radio Button
                                     playlist.radioEndpoint?.let { radioEndpoint ->
-                                        PlayShuffleButton(
-                                            iconRes = R.drawable.radio,
-                                            label = stringResource(R.string.radio),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(50.dp),
-                                            onClick = {
-                                                playerConnection.playQueue(
-                                                    YouTubeQueue(radioEndpoint)
-                                                )
-                                                },
+                                        CollectionAction(
+                                            icon = R.drawable.radio,
+                                            contentDescription = stringResource(R.string.radio),
+                                            onClick = { playerConnection.playQueue(YouTubeQueue(radioEndpoint)) },
                                         )
                                     }
-
-                                    // More Options Button
-                                    Surface(
+                                    (playlist.playEndpoint ?: playlist.shuffleEndpoint)?.let { playEndpoint ->
+                                        CollectionPlay(
+                                            contentDescription = stringResource(R.string.play),
+                                            onClick = { playerConnection.playQueue(YouTubeQueue(playEndpoint)) },
+                                        )
+                                    }
+                                    playlist.shuffleEndpoint?.let { shuffleEndpoint ->
+                                        CollectionAction(
+                                            icon = R.drawable.shuffle,
+                                            contentDescription = stringResource(R.string.shuffle),
+                                            onClick = { playerConnection.playQueue(YouTubeQueue(shuffleEndpoint)) },
+                                        )
+                                    }
+                                    CollectionAction(
+                                        icon = R.drawable.more_vert,
+                                        contentDescription = null,
                                         onClick = {
                                             menuState.show {
                                                 YouTubePlaylistMenu(
@@ -787,51 +455,9 @@ fun OnlinePlaylistScreen(
                                                 )
                                             }
                                         },
-                                        shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                                        modifier = Modifier.size(50.dp)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.more_vert),
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 20.dp, vertical = 20.dp),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    val mixEndpoint = playlist.shuffleEndpoint ?: playlist.radioEndpoint
-                                    if (mixEndpoint != null) {
-                                        Button(
-                                            onClick = {
-                                                playerConnection.playQueue(YouTubeQueue(mixEndpoint))
-                                            },
-                                            shape = RoundedCornerShape(24.dp),
-                                            modifier = Modifier.weight(1f).height(48.dp)
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.mix),
-                                                contentDescription = "Start Mix",
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(24.dp))
-                            }
+                                    )
+                                },
+                            )
                         }
                     }
 
@@ -1017,12 +643,14 @@ fun OnlinePlaylistScreen(
                 )
             } else {
                 TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent
                 )
             }
 
+        val scrollEdge = rememberScrollEdge(!transparentAppBar)
         TopAppBar(
+            modifier = Modifier.scrollEdgeScrim(surfaceColor) { scrollEdge.value },
             colors = topAppBarColors,
             title = {
                 if (selection) {

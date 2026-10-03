@@ -33,6 +33,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -68,6 +69,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
@@ -178,6 +182,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import com.ozyern.exhale.ui.component.scrollEdgeVisibility
+import com.ozyern.exhale.ui.component.scrollEdgeScrim
 import com.ozyern.exhale.utils.PreferenceStore
 import kotlinx.coroutines.withContext
 import com.ozyern.exhale.constants.AppBarHeight
@@ -205,6 +211,7 @@ import com.ozyern.exhale.constants.CompactMiniPlayerTopInset
 import com.ozyern.exhale.constants.MiniPlayerPillHorizontalInset
 import com.ozyern.exhale.constants.NavBarPillCornerRadius
 import com.ozyern.exhale.constants.NavBarPillHeight
+import com.ozyern.exhale.constants.NavBarRowHeight
 import com.ozyern.exhale.constants.NavBarPillSideSlot
 import com.ozyern.exhale.constants.NavigationBarAnimationSpec
 import com.ozyern.exhale.constants.PauseSearchHistoryKey
@@ -262,6 +269,9 @@ import com.ozyern.exhale.ui.component.liquid.LocalAppBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.ozyern.exhale.ui.component.liquid.LocalPageBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
+import com.ozyern.exhale.ui.component.LiquidGlassMark
+import com.ozyern.exhale.ui.component.clearGlass
+import com.ozyern.exhale.ui.component.clearGlassContentColor
 import com.ozyern.exhale.ui.component.liquid.rememberAppBackdrop
 import com.ozyern.exhale.ui.component.LocalHazeState
 import com.ozyern.exhale.ui.component.IconButton
@@ -357,6 +367,15 @@ class MainActivity : ComponentActivity() {
     private var pendingIntent: Intent? = null
     private var pendingDeepLinkSong: PendingDeepLinkSong? = null
     private var pendingTogetherJoinLink: String? = null
+
+    /**
+     * A Listen Together link that arrived from outside the app, waiting for a yes.
+     *
+     * Any web page can fire an `exhale://together` link, and joining hands the session's host
+     * control of what plays and this phone's address. So a link from outside is asked about first;
+     * nothing is joined until the listener says so.
+     */
+    private var togetherInviteToConfirm by mutableStateOf<String?>(null)
     private var latestVersionName by mutableStateOf(BuildConfig.VERSION_NAME)
 
     private var playerConnection by mutableStateOf<PlayerConnection?>(null)
@@ -557,6 +576,31 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
+            togetherInviteToConfirm?.let { link ->
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { togetherInviteToConfirm = null },
+                    title = { androidx.compose.material3.Text("Join Listen Together?") },
+                    text = {
+                        androidx.compose.material3.Text(
+                            "A link is asking Exhale to join a shared listening session. " +
+                                "Whoever runs it will control what plays. Only join if you trust who sent it.",
+                        )
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(onClick = {
+                            pendingTogetherJoinLink = link
+                            togetherInviteToConfirm = null
+                            startMusicServiceSafely()
+                            joinPendingTogetherIfReady()
+                        }) { androidx.compose.material3.Text("Join") }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(onClick = { togetherInviteToConfirm = null }) {
+                            androidx.compose.material3.Text("Not now")
+                        }
+                    },
+                )
+            }
             val notificationPermissionLauncher =
                 rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
                     if (isGranted) {
@@ -923,11 +967,24 @@ class MainActivity : ComponentActivity() {
 
                     val haptic = LocalHapticFeedback.current
                     val (enableHapticFeedback) = rememberPreference(EnableHapticFeedbackKey, true)
-                    val customHaptic = remember(haptic, enableHapticFeedback) {
+                    // Off means off everywhere: views that vibrate for themselves rather than through
+                    // Compose (system controls, the Android Auto page) ask the window, so the window
+                    // is told too.
+                    LaunchedEffect(enableHapticFeedback) {
+                        window.decorView.isHapticFeedbackEnabled = enableHapticFeedback
+                    }
+                    val (hapticIntensity) = rememberPreference(com.ozyern.exhale.constants.HapticIntensityKey, 0.75f)
+                    val hapticFeel by rememberEnumPreference(com.ozyern.exhale.constants.HapticFeelKey, com.ozyern.exhale.utils.HapticFeel.CRISP)
+                    val hapticContext = androidx.compose.ui.platform.LocalContext.current
+                    val customHaptic = remember(haptic, enableHapticFeedback, hapticIntensity, hapticFeel) {
                         object : HapticFeedback {
                             override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) {
-                                if (enableHapticFeedback) {
+                                if (!enableHapticFeedback) return
+                                // Exhale's own feel, at the chosen strength; or the phone's, as it was.
+                                if (hapticFeel == com.ozyern.exhale.utils.HapticFeel.SYSTEM) {
                                     haptic.performHapticFeedback(hapticFeedbackType)
+                                } else {
+                                    com.ozyern.exhale.utils.ExhaleHaptics.perform(hapticContext, hapticFeedbackType, hapticFeel, hapticIntensity)
                                 }
                             }
                         }
@@ -1042,13 +1099,26 @@ class MainActivity : ComponentActivity() {
                     // that is briefly the wrong size.
                     val useCompactPlayer = currentRoute != null && currentRoute != Screens.Home.route
 
+                    val isTabRoute =
+                        navBackStackEntry?.destination?.route == null ||
+                            navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route }
+                    // Off the tabs — Settings, an album, an artist — the dock comes along folded,
+                    // as State B: home | the song | search. It used to drop away and leave the
+                    // full mini player floating on its own there.
+                    // In Settings the dock only comes along while something plays: with nothing to
+                    // show it is two buttons hovering over the foot of a page that has its own
+                    // back button and its own search capsule there.
+                    val dockSong by remember(playerConnection) {
+                        playerConnection?.mediaMetadata ?: MutableStateFlow(null)
+                    }.collectAsState()
+                    val onSettingsRoute =
+                        navBackStackEntry?.destination?.route?.startsWith("settings") == true
+                    val dockOnPage = !active && !isTabRoute && !isSearchResultsRoute &&
+                        !(onSettingsRoute && dockSong == null)
+
                     val shouldShowNavigationBar =
-                        remember(navBackStackEntry, active, isSearchResultsRoute) {
-                            !active && (
-                                navBackStackEntry?.destination?.route == null ||
-                                    navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route } ||
-                                    isSearchResultsRoute
-                                )
+                        remember(navBackStackEntry, active, isSearchResultsRoute, dockOnPage) {
+                            !active && (isTabRoute || isSearchResultsRoute || dockOnPage)
                         }
 
                     val shouldShowHomeShuffleButton =
@@ -1200,6 +1270,7 @@ class MainActivity : ComponentActivity() {
                             bottomInset,
                             shouldShowNavigationBar,
                             playerBottomSheetState.isDismissed,
+                            dockOnPage,
                         ) {
                             var bottom = bottomInset
                             if (shouldShowNavigationBar && !useRail) bottom += getBottomNavPadding()
@@ -1208,7 +1279,9 @@ class MainActivity : ComponentActivity() {
                             // shortening it, because the sheet's collapsed bound is captured once
                             // in `rememberBottomSheetState` and cannot be re-derived per route
                             // without resetting the sheet.
-                            if (!playerBottomSheetState.isDismissed) {
+                            // Off the tabs the song rides inside the folded dock, so there is no separate
+                            // mini player above it to leave room for — that room was the empty band.
+                            if (!playerBottomSheetState.isDismissed && !(dockOnPage && !useRail)) {
                                 bottom += MiniPlayerHeight
                             }
                             windowsInsets
@@ -1427,6 +1500,7 @@ class MainActivity : ComponentActivity() {
                     // off-screen recording of the NavHost (published below via
                     // `Modifier.layerBackdrop`), NOT the empty canvas it used to be.
                     val appBackdrop = rememberAppBackdrop()
+                    val iosOverscrollFactory = com.ozyern.exhale.ui.utils.rememberIosOverscrollFactory()
                     // Drives the State-B mini-player pill in the bottom bar.
                     val nowPlayingMetadata by remember(playerConnection) {
                         playerConnection?.mediaMetadata ?: MutableStateFlow(null)
@@ -1434,6 +1508,8 @@ class MainActivity : ComponentActivity() {
 
                     CompositionLocalProvider(
                         LocalAppBackdrop provides appBackdrop,
+                        // iOS rubber-band at every list's edge instead of Android's stretch.
+                        androidx.compose.foundation.LocalOverscrollFactory provides iosOverscrollFactory,
                         // What glass *inside* the NavHost refracts. The ambient colour field
                         // painted at the very back of the window, which every screen is drawn
                         // over. Pages that lay down their own opaque ground (Settings) override
@@ -1453,10 +1529,25 @@ class MainActivity : ComponentActivity() {
                     ) {
                         Row {
                             AnimatedVisibility(useRail && shouldShowNavigationBar) {
-                                NavigationRail(
-                                    containerColor = if(pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer,
-                                    contentColor = if(pureBlack) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    header = { Spacer(Modifier.height(24.dp)) }
+                                // A floating pill of the dock's own liquid glass, centred on the
+                                // edge, rather than a flat strip the full height of the screen.
+                                val railShape = androidx.compose.foundation.shape.RoundedCornerShape(36.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .then(Modifier.fillMaxHeight())
+                                        .then(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.Start)))
+                                        .padding(start = 12.dp, end = 4.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier
+                                        .shadow(18.dp, railShape, ambientColor = Color.Black.copy(alpha = 0.3f), spotColor = Color.Black.copy(alpha = 0.3f))
+                                        .clip(railShape)
+                                        .liquidGlassSurface(railShape)
+                                        .width(84.dp)
+                                        .padding(vertical = 14.dp),
                                 ) {
                                     navigationItems.fastForEach { screen ->
                                         val isSelected =
@@ -1515,6 +1606,7 @@ class MainActivity : ComponentActivity() {
                                         )
                                     }
                                 }
+                                }
                             }
 
                             Scaffold(
@@ -1526,47 +1618,49 @@ class MainActivity : ComponentActivity() {
                                                     navBackStackEntry?.destination?.route == Screens.MoodAndGenres.route ||
                                                     navBackStackEntry?.destination?.route == Screens.Library.route
                                         }
-                                        val shouldShowBlurBackground = remember(navBackStackEntry) {
-                                            shouldUseFloatingTopBar
-                                        }
 
                                         val surfaceColor = MaterialTheme.colorScheme.surface
                                         val currentScrollBehavior = if (shouldUseFloatingTopBar) searchBarScrollBehavior else topAppBarScrollBehavior
 
+                                        // Held in place on the tab pages. The logo and account
+                                        // discs used to ride the scroll offset up and out of the
+                                        // window, which read as the chrome running away from the
+                                        // thumb; they stay put now, and the
+                                        // page's colour rising behind them is what scrolling changes.
                                         Box(
                                             modifier = Modifier.offset {
                                                 IntOffset(
                                                     x = 0,
-                                                    y = currentScrollBehavior.state.heightOffset.toInt()
+                                                    y = if (shouldUseFloatingTopBar) 0
+                                                    else currentScrollBehavior.state.heightOffset.toInt()
                                                 )
                                             }
                                         ) {
-                                            // Gradient shadow background
-                                            if (shouldShowBlurBackground) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        // `windowsInsets` is systemBars ∪ cutout:
-                                                        // on a device whose Fluid Cloud capsule is
-                                                        // taller than the status bar, sizing this
-                                                        // to systemBars alone left a strip of raw
-                                                        // content showing beside the camera, above
-                                                        // where the gradient stopped.
-                                                        .height(AppBarHeight + with(density) {
-                                                            windowsInsets.getTop(density).toDp()
-                                                        })
-                                                        .background(
-                                                            Brush.verticalGradient(
-                                                                colors = listOf(
-                                                                    surfaceColor.copy(alpha = 0.95f),
-                                                                    surfaceColor.copy(alpha = 0.85f),
-                                                                    surfaceColor.copy(alpha = 0.6f),
-                                                                    Color.Transparent
-                                                                )
-                                                            )
-                                                        )
-                                                )
-                                            }
+                                            // The bar is transparent on every page. This is the
+                                            // page's colour rising behind it only once content
+                                            // scrolls beneath, so the title never sits on a list.
+                                            val edgeColor = if (pureBlack) Color.Black else surfaceColor
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    // `windowsInsets` is systemBars ∪ cutout:
+                                                    // on a device whose Fluid Cloud capsule is
+                                                    // taller than the status bar, sizing this
+                                                    // to systemBars alone left a strip of raw
+                                                    // content showing beside the camera, above
+                                                    // where the gradient stopped.
+                                                    .height(AppBarHeight + with(density) {
+                                                        windowsInsets.getTop(density).toDp()
+                                                    })
+                                                    // Never fully down: some of the page's colour
+                                                    // always sits behind the logo and account disc,
+                                                    // so a heading scrolled up under them fades out
+                                                    // instead of colliding, even before the bar's
+                                                    // scroll state has noticed anything.
+                                                    .scrollEdgeScrim(edgeColor) {
+                                                        maxOf(0.7f, currentScrollBehavior.scrollEdgeVisibility())
+                                                    }
+                                            )
 
                                             TopAppBar(
                                                 windowInsets = WindowInsets.safeDrawing.only(
@@ -1611,19 +1705,29 @@ class MainActivity : ComponentActivity() {
                                                         // square, never letterboxed. The hairline
                                                         // ring keeps the mark's dark backdrop from
                                                         // dissolving into a dark app bar.
-                                                        Image(
-                                                            painter = painterResource(appIconPack.logoRes),
+                                                        // The splash's own transparent mark, in a
+                                                        // disc of live liquid glass over whatever
+                                                        // scrolls beneath the bar — the same lens
+                                                        // the dock is made of. Legal here: the bar
+                                                        // is a sibling of the NavHost it refracts.
+                                                        // The mark: the logo as a silhouette
+                                                        // in white (black in light theme) on a 44dp
+                                                        // disc of clear glass, matched by the account
+                                                        // disc opposite. Taps home to the top.
+                                                        LiquidGlassMark(
+                                                            // Exhale's own mark, in its own colours —
+                                                            // the one the icon pack in Settings picks.
+                                                            markRes = appIconPack.splashLogoRes,
+                                                            backdrop = appBackdrop,
                                                             contentDescription = stringResource(R.string.app_name),
-                                                            contentScale = ContentScale.Crop,
-                                                            alignment = Alignment.Center,
-                                                            modifier = Modifier
-                                                                .size(32.dp)
-                                                                .clip(CircleShape)
-                                                                .border(
-                                                                    width = 0.5.dp,
-                                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
-                                                                    shape = CircleShape,
-                                                                )
+                                                            diameter = 44.dp,
+                                                            tint = Color.Unspecified,
+                                                            modifier = Modifier.bounceClick(
+                                                                onClick = {
+                                                                    navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
+                                                                },
+                                                                shape = CircleShape,
+                                                            ),
                                                         )
                                                     }
                                                 },
@@ -1646,25 +1750,48 @@ class MainActivity : ComponentActivity() {
                                                         BuildConfig.VERSION_NAME,
                                                     )
                                                     val signedIn = accountImageUrl != null
-                                                    val accountRing = if (signedIn) {
-                                                        MaterialTheme.colorScheme.primary
-                                                    } else {
-                                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                                    }
                                                     Box(
                                                         modifier = Modifier.padding(end = 4.dp),
                                                         contentAlignment = Alignment.Center,
                                                     ) {
+                                                        // The account motion: tapped, the glass ring lets
+                                                        // go first and the face shrinks to a point as the panel
+                                                        // grows out of this corner; closing, it grows back.
+                                                        val discCollapse by animateFloatAsState(
+                                                            targetValue = if (showAccountDialog) 1f else 0f,
+                                                            animationSpec = spring(dampingRatio = 0.82f, stiffness = 420f),
+                                                            label = "accountDisc",
+                                                        )
                                                         Box(
                                                             modifier = Modifier
-                                                                .size(38.dp)
+                                                                .size(44.dp)
                                                                 .bounceClick(
                                                                     onClick = { showAccountDialog = true },
                                                                     shape = CircleShape,
-                                                                )
-                                                                .liquidGlassSurface(CircleShape),
+                                                                ),
                                                             contentAlignment = Alignment.Center,
                                                         ) {
+                                                            Box(
+                                                                Modifier
+                                                                    .matchParentSize()
+                                                                    .graphicsLayer {
+                                                                        val ring = (1f - discCollapse * 1.8f).coerceIn(0f, 1f)
+                                                                        alpha = ring
+                                                                        val s = 0.85f + 0.15f * ring
+                                                                        scaleX = s
+                                                                        scaleY = s
+                                                                    }
+                                                                    .clearGlass(CircleShape, appBackdrop),
+                                                            )
+                                                            Box(
+                                                                Modifier.graphicsLayer {
+                                                                    val s = (1f - discCollapse).coerceIn(0f, 1f)
+                                                                    scaleX = s
+                                                                    scaleY = s
+                                                                    alpha = (s * 1.4f).coerceAtMost(1f)
+                                                                },
+                                                                contentAlignment = Alignment.Center,
+                                                            ) {
                                                             if (signedIn) {
                                                                 AsyncImage(
                                                                     model = accountImageUrl,
@@ -1674,13 +1801,8 @@ class MainActivity : ComponentActivity() {
                                                                         .size(28.dp)
                                                                         .clip(CircleShape)
                                                                         .border(
-                                                                            width = 1.5.dp,
-                                                                            brush = Brush.linearGradient(
-                                                                                listOf(
-                                                                                    accountRing.copy(alpha = 0.85f),
-                                                                                    accountRing.copy(alpha = 0.20f),
-                                                                                ),
-                                                                            ),
+                                                                            width = 0.5.dp,
+                                                                            color = Color.White.copy(alpha = 0.18f),
                                                                             shape = CircleShape,
                                                                         ),
                                                                 )
@@ -1692,17 +1814,18 @@ class MainActivity : ComponentActivity() {
                                                                     modifier = Modifier
                                                                         .size(28.dp)
                                                                         .clip(CircleShape)
-                                                                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f)),
+                                                                        .background(clearGlassContentColor().copy(alpha = 0.16f)),
                                                                     contentAlignment = Alignment.Center,
                                                                 ) {
                                                                     Icon(
                                                                         painter = painterResource(R.drawable.account),
                                                                         contentDescription = stringResource(R.string.account),
-                                                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.92f),
+                                                                        tint = clearGlassContentColor(),
                                                                         modifier = Modifier.size(19.dp),
                                                                     )
                                                                 }
                                                             }
+                                                        }
                                                         }
 
                                                         if (hasUpdate) {
@@ -1724,25 +1847,16 @@ class MainActivity : ComponentActivity() {
                                                     }
                                                 },
                                                 scrollBehavior = if (shouldUseFloatingTopBar) {
-                                                    searchBarScrollBehavior
+                                                    null
                                                 } else {
                                                     topAppBarScrollBehavior
                                                 },
+                                                // No colour of its own on any page; what it sits
+                                                // on once content scrolls under is the scroll
+                                                // edge above.
                                                 colors = TopAppBarDefaults.topAppBarColors(
-                                                    containerColor = if (shouldUseFloatingTopBar) {
-                                                        Color.Transparent
-                                                    } else if (pureBlack) {
-                                                        Color.Black
-                                                    } else {
-                                                        MaterialTheme.colorScheme.surface
-                                                    },
-                                                    scrolledContainerColor = if (shouldUseFloatingTopBar) {
-                                                        Color.Transparent
-                                                    } else if (pureBlack) {
-                                                        Color.Black
-                                                    } else {
-                                                        MaterialTheme.colorScheme.surface
-                                                    },
+                                                    containerColor = Color.Transparent,
+                                                    scrolledContainerColor = Color.Transparent,
                                                     titleContentColor = MaterialTheme.colorScheme.onSurface,
                                                     actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                                     navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2025,6 +2139,14 @@ class MainActivity : ComponentActivity() {
                                         // `collapsedFraction` changes every scroll frame and
                                         // reading it in composition is what recomposed this whole
                                         // Box sixty times a second.
+                                        // The top bar no longer rides the scroll, so it no longer
+                                        // tells the scroll state how far there is to go — and without
+                                        // that limit `collapsedFraction` stayed at zero and the dock
+                                        // never folded into its home | song | search form. Given here.
+                                        val appBarTravelPx = with(LocalDensity.current) { AppBarHeight.toPx() }
+                                        LaunchedEffect(searchBarScrollBehavior, appBarTravelPx) {
+                                            searchBarScrollBehavior.state.heightOffsetLimit = -appBarTravelPx
+                                        }
                                         var collapsedLatch by remember { mutableStateOf(false) }
                                         LaunchedEffect(searchBarScrollBehavior) {
                                             snapshotFlow {
@@ -2039,6 +2161,7 @@ class MainActivity : ComponentActivity() {
                                         }
 
                                         val bottomBarCollapsed by remember(
+                                            dockOnPage,
                                             isSettingsScreen,
                                             isSearchScreen,
                                             isSearchResultsRoute,
@@ -2048,17 +2171,15 @@ class MainActivity : ComponentActivity() {
                                             nowPlayingMetadata,
                                         ) {
                                             derivedStateOf {
+                                                (dockOnPage && !useRail) ||
                                                 shouldShowNavigationBar &&
                                                         !useRail &&
                                                         !isSettingsScreen &&
                                                         !isSearchScreen &&
                                                         !isSearchResultsRoute &&
                                                         !active &&
-                                                        // Nothing playing, nothing to collapse into: the
-                                                        // compact dock is a place for the mini player, and
-                                                        // without one it was a Home circle beside an empty
-                                                        // pill that said "Home" again.
-                                                        nowPlayingMetadata != null &&
+                                                        // Nothing playing folds too: to the two circles
+                                                        // alone.
                                                         collapsedLatch
                                             }
                                         }
@@ -2103,7 +2224,7 @@ class MainActivity : ComponentActivity() {
                                             if (mergeIntoNavBar) {
                                                 (playerBottomSheetState.collapsedBound -
                                                     bottomInset - floatingBarsBottomPadding -
-                                                    NavBarPillHeight).coerceAtLeast(0.dp)
+                                                    (NavBarRowHeight + NavBarPillHeight) / 2).coerceAtLeast(0.dp)
                                             } else {
                                                 0.dp
                                             }
@@ -2165,12 +2286,15 @@ class MainActivity : ComponentActivity() {
                                                                 y = navSlideDistance.roundToPx(),
                                                             )
                                                         } else {
+                                                            // Still while it fades, then out of the
+                                                            // way once it is invisible: sliding while
+                                                            // it was still on screen pulled it apart
+                                                            // from the mini player rising above it,
+                                                            // which is what read as a glitch.
                                                             val slideOffset =
                                                                 navSlideDistance *
-                                                                        playerBottomSheetState.progress.coerceIn(
-                                                                            0f,
-                                                                            1f,
-                                                                        )
+                                                                        ((playerBottomSheetState.progress - 0.45f) / 0.55f)
+                                                                            .coerceIn(0f, 1f)
                                                             val hideOffset =
                                                                 navSlideDistance *
                                                                         (1 - bottomNavigationBarHeight.coerceAtMost(
@@ -2195,10 +2319,21 @@ class MainActivity : ComponentActivity() {
                                                     // makes the player look like it is replacing
                                                     // the bar rather than growing behind it.
                                                     .graphicsLayer {
-                                                        alpha = 1f - (
-                                                            playerBottomSheetState.progress
-                                                                .coerceIn(0f, 1f) / 0.45f
-                                                            ).coerceIn(0f, 1f)
+                                                        val leave = androidx.compose.animation.core.FastOutSlowInEasing.transform(
+                                                            (
+                                                                playerBottomSheetState.progress
+                                                                    .coerceIn(0f, 1f) / 0.45f
+                                                                ).coerceIn(0f, 1f),
+                                                        )
+                                                        alpha = 1f - leave
+                                                        // And it steps back as it goes: a few
+                                                        // percent smaller about its own foot, so
+                                                        // the player rises *over* the bar into
+                                                        // the foreground instead of wiping it.
+                                                        val recede = 1f - 0.04f * leave
+                                                        scaleX = recede
+                                                        scaleY = recede
+                                                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
                                                     },
                                         ) {
                                             if ((isSearchScreen || isSearchResultsRoute) && !active) {
@@ -2322,6 +2457,17 @@ class MainActivity : ComponentActivity() {
                                                         coroutineScope.launch {
                                                             searchBarScrollBehavior.state.resetHeightOffset()
                                                         }
+                                                    } else if ((!isTabRoute || screen.route == Screens.Home.route) &&
+                                                        navController.popBackStack(screen.route, inclusive = false)
+                                                    ) {
+                                                        // Home is the start of everything, so it is always
+                                                        // underneath: step straight down to it. Switching to it
+                                                        // as a tab restored whatever page had last been opened
+                                                        // from Home instead, which read as Home not working.
+                                                        // From a page above a tab (Settings, an album): step
+                                                        // back down to that tab. A tab switch here saved the
+                                                        // page as the tab's history and restored it straight
+                                                        // back, so Home looked like it did nothing.
                                                     } else {
                                                         // Search navigates like every other tab — it is a
                                                         // peer-level destination in the NavHost, so the top
@@ -2422,14 +2568,11 @@ class MainActivity : ComponentActivity() {
                                         // transparent over the root surface, so sliding both at once would show
                                         // them through each other for the whole transition — the far page
                                         // recedes on scale instead, which reads as depth and never ghosts.
+                                        // iOS push: the page arrives from the full
+                                        // width on UIKit's navigation curve.
                                         slideInHorizontally(
-                                            initialOffsetX = { (it * 0.18f).toInt() },
-                                            animationSpec = spring(
-                                                dampingRatio = 0.92f,
-                                                stiffness = 340f
-                                            )
-                                        ) + fadeIn(
-                                            animationSpec = tween(200)
+                                            initialOffsetX = { it },
+                                            animationSpec = tween(PushMillis, easing = PushEasing),
                                         )
                                         }
                                     },
@@ -2450,11 +2593,14 @@ class MainActivity : ComponentActivity() {
                                         } else {
                                         // The page being covered. It falls away from the viewer rather than
                                         // sliding, so the incoming screen is the only thing in motion.
-                                        fadeOut(
-                                            animationSpec = tween(180)
-                                        ) + scaleOut(
-                                            targetScale = 0.94f,
-                                            animationSpec = tween(220)
+                                        // ...while the one it covers slips a third of the way left
+                                        // and dims: the parallax is what reads as depth.
+                                        slideOutHorizontally(
+                                            targetOffsetX = { -(it * PushParallax).toInt() },
+                                            animationSpec = tween(PushMillis, easing = PushEasing),
+                                        ) + fadeOut(
+                                            animationSpec = tween(PushMillis, easing = PushEasing),
+                                            targetAlpha = PushDimAlpha,
                                         )
                                         }
                                     },
@@ -2479,14 +2625,12 @@ class MainActivity : ComponentActivity() {
                                         // Coming back: the screen underneath rises out of depth, from exactly
                                         // the 0.94 it receded to. The mirror of the exit above, which is what
                                         // makes back feel like an undo rather than another forward step.
-                                        fadeIn(
-                                            animationSpec = tween(220)
-                                        ) + scaleIn(
-                                            initialScale = 0.94f,
-                                            animationSpec = spring(
-                                                dampingRatio = 0.9f,
-                                                stiffness = 320f
-                                            )
+                                        slideInHorizontally(
+                                            initialOffsetX = { -(it * PushParallax).toInt() },
+                                            animationSpec = tween(PushMillis, easing = PushEasing),
+                                        ) + fadeIn(
+                                            animationSpec = tween(PushMillis, easing = PushEasing),
+                                            initialAlpha = PushDimAlpha,
                                         )
                                         }
                                     },
@@ -2505,14 +2649,11 @@ class MainActivity : ComponentActivity() {
                                         } else {
                                         // The screen you backed out of leaves along the axis it came in on, and
                                         // a little further than it arrived from so it clears the frame cleanly.
+                                        // Back: the page slides off to the right, the whole way —
+                                        // and under predictive back the gesture drags it, as on iOS.
                                         slideOutHorizontally(
-                                            targetOffsetX = { (it * 0.24f).toInt() },
-                                            animationSpec = spring(
-                                                dampingRatio = 0.95f,
-                                                stiffness = 340f
-                                            )
-                                        ) + fadeOut(
-                                            animationSpec = tween(180)
+                                            targetOffsetX = { it },
+                                            animationSpec = tween(PushMillis, easing = PushEasing),
                                         )
                                         }
                                     },
@@ -2698,11 +2839,24 @@ class MainActivity : ComponentActivity() {
         val uri = intent.data ?: intent.extras?.getString(Intent.EXTRA_TEXT)?.toUri() ?: return
         val coroutineScope = lifecycleScope
 
+        // A song file handed over by "Open with": play the file itself, as it is.
+        if (uri.scheme.equals("content", ignoreCase = true) || uri.scheme.equals("file", ignoreCase = true)) {
+            // Kept past this activity where the sender allows it, so the queue survives a restart.
+            runCatching {
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            coroutineScope.launch {
+                val metadata = com.ozyern.exhale.utils.LocalMediaScanner.describeOpened(this@MainActivity, uri)
+                pendingDeepLinkSong = PendingDeepLinkSong(mediaItem = metadata.toMediaItem())
+                startMusicServiceSafely()
+                playPendingDeepLinkSongIfReady()
+            }
+            return
+        }
+
         val authority = uri.authority?.lowercase()
         if (uri.scheme.equals("exhale", ignoreCase = true) && authority == "together") {
-            pendingTogetherJoinLink = uri.toString()
-            startMusicServiceSafely()
-            joinPendingTogetherIfReady()
+            togetherInviteToConfirm = uri.toString()
             return
         }
 
@@ -2809,3 +2963,9 @@ val LocalPlayerAwareWindowInsets =
     compositionLocalOf<WindowInsets> { error("No WindowInsets provided") }
 val LocalDownloadUtil = staticCompositionLocalOf<DownloadUtil> { error("No DownloadUtil provided") }
 val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils provided") }
+
+/** UIKit's push timing and curve, and the covered page's parallax and dim. */
+private const val PushMillis = 260
+private val PushEasing = androidx.compose.animation.core.CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
+private const val PushParallax = 0.30f
+private const val PushDimAlpha = 0.85f

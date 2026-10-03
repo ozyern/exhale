@@ -20,26 +20,88 @@ fun filterSettingsGroups(
 ): List<SettingsGroup> {
     if (query.isBlank()) return groups
     return groups.mapNotNull { group ->
-        if (group.title.contains(query, ignoreCase = true)) {
-            group
-        } else {
-            val filtered = group.items.filter { matchesQuery(it, query) }
-            if (filtered.isEmpty()) null else group.copy(items = filtered)
-        }
+        val filtered = group.items
+            .map { it to searchScore(it, query) }
+            .filter { it.second > 0 }
+            .sortedByDescending { it.second }
+            .map { it.first }
+        if (filtered.isEmpty()) null else group.copy(items = filtered)
     }
 }
 
 fun matchesQuery(
     item: SettingsItem,
     query: String,
-): Boolean {
-    if (item.title.contains(query, ignoreCase = true)) return true
-    if (item.subtitle?.contains(query, ignoreCase = true) == true) return true
-    if (item.badge?.contains(query, ignoreCase = true) == true) return true
-    return item.keywords.any { keyword ->
-        keyword.contains(query, ignoreCase = true) ||
-            query.contains(keyword, ignoreCase = true)
+): Boolean = searchScore(item, query) > 0
+
+/**
+ * How well [item] answers [query], 0 when it doesn't.
+ *
+ * Every word typed has to be found, in any order: in the title (best), a word of the keywords or
+ * of the page and section line, or through a synonym ("vibration" finds Haptics). A word matches
+ * the start of a word, anywhere inside a longer one, or — past three letters — with one letter
+ * wrong, so "crosfade" and "equaliser" still land.
+ */
+fun searchScore(item: SettingsItem, query: String): Int {
+    val tokens = searchWords(query)
+    if (tokens.isEmpty()) return 0
+    val title = searchWords(item.title)
+    val rest = searchWords(
+        listOfNotNull(item.subtitle, item.badge).joinToString(" ") + " " + item.keywords.joinToString(" "),
+    )
+    var total = 0
+    for (token in tokens) {
+        val alternatives = listOf(token) + SettingsSynonyms[token].orEmpty().flatMap { searchWords(it) }
+        val best = alternatives.maxOf { word ->
+            val synonym = if (word == token) 0 else 8
+            maxOf(wordScore(word, title) * 2, wordScore(word, rest)) - synonym
+        }
+        if (best <= 0) return 0
+        total += best
     }
+    // A title that reads like what was typed comes first.
+    if (item.title.lowercase().startsWith(query.trim().lowercase())) total += 40
+    return total
+}
+
+private fun searchWords(text: String): List<String> =
+    text.lowercase().split(Regex("[^\\p{L}\\p{N}.]+")).filter { it.isNotBlank() }
+
+private fun wordScore(token: String, words: List<String>): Int {
+    var best = 0
+    for (word in words) {
+        val score = when {
+            word == token -> 30
+            word.startsWith(token) -> 24
+            token.length >= 3 && word.contains(token) -> 14
+            token.length >= 4 && withinOneEdit(token, word.take(token.length + 1)) -> 10
+            token.length >= 4 && withinOneEdit(token, word) -> 10
+            else -> 0
+        }
+        if (score > best) best = score
+    }
+    return best
+}
+
+/** True when [a] becomes [b] with at most one letter added, dropped or changed. */
+private fun withinOneEdit(a: String, b: String): Boolean {
+    if (kotlin.math.abs(a.length - b.length) > 1) return false
+    var i = 0
+    var j = 0
+    var edits = 0
+    while (i < a.length && j < b.length) {
+        if (a[i] == b[j]) {
+            i++; j++
+            continue
+        }
+        if (++edits > 1) return false
+        when {
+            a.length > b.length -> i++
+            a.length < b.length -> j++
+            else -> { i++; j++ }
+        }
+    }
+    return edits + (a.length - i) + (b.length - j) <= 1
 }
 
 fun filterInternalItems(
@@ -47,7 +109,12 @@ fun filterInternalItems(
     query: String,
 ): List<SettingsItem> {
     if (query.isBlank()) return emptyList()
-    return items.filter { matchesQuery(it, query) }
+    return items
+        .map { it to searchScore(it, query) }
+        .filter { it.second > 0 }
+        .sortedByDescending { it.second }
+        .take(30)
+        .map { it.first }
 }
 
 fun filterIntegrations(

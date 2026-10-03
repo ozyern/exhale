@@ -358,6 +358,12 @@ fun NavGraphBuilder.navigationBuilder(
     settingsComposable("settings/appearance/ui_scale") {
         UiScaleScreen(navController)
     }
+    settingsComposable("settings/haptics") {
+        com.ozyern.exhale.ui.screens.settings.HapticsScreen(navController, scrollBehavior)
+    }
+    settingsComposable("settings/appearance/player_style") {
+        com.ozyern.exhale.ui.screens.settings.PlayerStyleScreen(navController, scrollBehavior)
+    }
     settingsComposable("settings/appearance/app_icon") {
         AppIconScreen(navController)
     }
@@ -406,6 +412,12 @@ fun NavGraphBuilder.navigationBuilder(
     settingsComposable("settings/player") {
         PlayerSettings(navController, scrollBehavior)
     }
+    settingsComposable("settings/content/lyrics_sources") {
+        com.ozyern.exhale.ui.screens.settings.LyricsSourcesScreen(navController, scrollBehavior)
+    }
+    settingsComposable("settings/player/equalizer") {
+        com.ozyern.exhale.ui.screens.settings.SoundEqualizerScreen(navController, scrollBehavior)
+    }
     settingsComposable("settings/storage") {
         StorageSettings(navController, scrollBehavior)
     }
@@ -427,6 +439,9 @@ fun NavGraphBuilder.navigationBuilder(
     settingsComposable("settings/lastfm") {
         LastFMSettings(navController, scrollBehavior)
     }
+    settingsComposable("settings/discord/advanced") {
+        com.ozyern.exhale.ui.screens.settings.DiscordAdvanced(navController)
+    }
     settingsComposable("settings/discord/experimental") {
         com.ozyern.exhale.ui.screens.settings.DiscordExperimental(navController)
     }
@@ -441,6 +456,9 @@ fun NavGraphBuilder.navigationBuilder(
     // here is cheaper than threading NavBackStackEntry through all thirty settings destinations.
     settingsComposable("settings/update/download") {
         UpdateScreen(navController, scrollBehavior, autoStart = true)
+    }
+    settingsComposable("settings/update/notes") {
+        com.ozyern.exhale.ui.screens.settings.UpdateNotesScreen(navController)
     }
     settingsComposable("settings/changelog") {
         ChangelogScreen(navController, scrollBehavior)

@@ -59,6 +59,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import com.kyant.backdrop.backdrops.layerBackdrop
 import androidx.compose.ui.unit.dp
 import android.content.res.Configuration
 import androidx.compose.ui.window.Dialog
@@ -178,11 +181,16 @@ fun LyricsScreen(
 
     BackHandler(onBack = onBackClick)
 
+    // What the buttons' liquid glass refracts: the artwork wash, recorded beneath them.
+    val glassBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
     Box(modifier = modifier.fillMaxSize()) {
         // Apple-Music lyrics backdrop: ALWAYS the current track's album art, blown up and
         // blurred into a glowing liquid wash — regardless of the player-background
         // preference (that preference still drives the main player screen).
-        AppleLyricsBackground(mediaMetadata = mediaMetadata)
+        Box(Modifier.fillMaxSize().layerBackdrop(glassBackdrop)) {
+            AppleLyricsBackground(mediaMetadata = mediaMetadata)
+        }
+        androidx.compose.runtime.CompositionLocalProvider(LocalPlayerBackdrop provides glassBackdrop) {
 
         // Check orientation and layout accordingly
         when (LocalConfiguration.current.orientation) {
@@ -205,7 +213,9 @@ fun LyricsScreen(
                         // Down arrow button (left)
                         Box(
                             modifier = Modifier
-                                .size(32.dp)
+                                .size(40.dp)
+                                .playerGlass(CircleShape)
+                                .clip(CircleShape)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = ripple(
@@ -245,7 +255,9 @@ fun LyricsScreen(
                         // More button (right)
                         Box(
                             modifier = Modifier
-                                .size(32.dp)
+                                .size(40.dp)
+                                .playerGlass(CircleShape)
+                                .clip(CircleShape)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = ripple(
@@ -402,7 +414,7 @@ fun LyricsScreen(
                                 // Play/Pause button
                                 IconButton(
                                     onClick = { player.togglePlayPause() },
-                                    modifier = Modifier.size(56.dp)
+                                    modifier = Modifier.size(64.dp).playerGlass(CircleShape, lit = true)
                                 ) {
                                     if (isLoading) {
                                         LoadingRing(
@@ -509,7 +521,9 @@ fun LyricsScreen(
                         // Down arrow button (left)
                         Box(
                             modifier = Modifier
-                                .size(32.dp)
+                                .size(40.dp)
+                                .playerGlass(CircleShape)
+                                .clip(CircleShape)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = ripple(
@@ -549,7 +563,9 @@ fun LyricsScreen(
                         // More button (right)
                         Box(
                             modifier = Modifier
-                                .size(32.dp)
+                                .size(40.dp)
+                                .playerGlass(CircleShape)
+                                .clip(CircleShape)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = ripple(
@@ -690,7 +706,7 @@ fun LyricsScreen(
                             // Play/Pause button (largest)
                             IconButton(
                                 onClick = { player.togglePlayPause() },
-                                modifier = Modifier.size(56.dp) // Slightly smaller but still prominent
+                                modifier = Modifier.size(64.dp).playerGlass(CircleShape, lit = true)
                             ) {
                                 if (isLoading) {
                                     LoadingRing(
@@ -782,6 +798,7 @@ fun LyricsScreen(
                     }
                 }
             }
+        }
         }
     }
     if (showLyricsMenu) {

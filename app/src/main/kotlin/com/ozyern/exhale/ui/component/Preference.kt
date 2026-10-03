@@ -37,6 +37,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.RadioButton
@@ -131,6 +133,8 @@ fun PreferenceEntry(
     trailingContent: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     isEnabled: Boolean = true,
+    /** The current choice, drawn at the right before the chevron. */
+    value: String? = null,
 ) {
     val inGroup = LocalPreferenceInGroup.current
     val sequence = LocalPreferenceIconSequence.current
@@ -168,8 +172,10 @@ fun PreferenceEntry(
                         onClick?.invoke()
                     },
                 )
-                .alpha(if (isEnabled) 1f else 0.5f)
-                .padding(horizontal = 16.dp, vertical = 11.dp),
+                .alpha(if (isEnabled) 1f else 0.45f)
+                // The rows breathe: taller, and the title a size up.
+                .heightIn(min = 60.dp)
+                .padding(horizontal = 18.dp, vertical = 15.dp),
         ) {
             if (icon != null) {
                 // The same puck the top-level Settings list uses: a solid iOS system colour with a
@@ -185,8 +191,10 @@ fun PreferenceEntry(
                     contentAlignment = Alignment.Center,
                 ) {
                     // The glyph carries the colour itself - see the note on the Settings row.
+                    // One quiet ink for every glyph: a page of rows in eight
+                    // colours read as noise, and the glyph is a signpost, not decoration.
                     CompositionLocalProvider(
-                        LocalContentColor provides iconColor,
+                        LocalContentColor provides MaterialTheme.colorScheme.onSurface.copy(alpha = 0.86f),
                     ) {
                         icon()
                     }
@@ -200,7 +208,9 @@ fun PreferenceEntry(
             ) {
                 ProvideTextStyle(
                     MaterialTheme.typography.bodyLarge.copy(
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface,
                     ),
                 ) {
                     title()
@@ -221,7 +231,7 @@ fun PreferenceEntry(
                     Spacer(Modifier.height(2.dp))
                     Text(
                         text = description,
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -236,6 +246,26 @@ fun PreferenceEntry(
                 ) {
                     trailingContent()
                 }
+            } else if (value != null || onClick != null) {
+                // A row that opens something says so: its current value, then a chevron.
+                Spacer(Modifier.width(12.dp))
+                if (value != null) {
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 150.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                }
+                Icon(
+                    painter = painterResource(R.drawable.chevron_right),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.size(18.dp),
+                )
             }
         }
     }
@@ -293,7 +323,7 @@ fun <T> ListPreference(
     Box(modifier = modifier) {
         PreferenceEntry(
             title = title,
-            description = valueText(selectedValue),
+            value = valueText(selectedValue),
             icon = icon,
             onClick = { showMenu = true },
             isEnabled = isEnabled,
@@ -708,10 +738,10 @@ fun PreferenceGroup(
     Column(modifier = modifier.padding(horizontal = 16.dp)) {
         if (title != null) {
             Text(
-                text = title,
-                style = MaterialTheme.typography.bodySmall,
+                text = title.uppercase(java.util.Locale.getDefault()),
+                style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 0.7.sp, fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 18.dp, bottom = 8.dp),
+                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 30.dp, bottom = 10.dp),
             )
         }
         // The same plate the Settings page floats its groups on - `settingsGlassGroup`, not a
@@ -758,10 +788,11 @@ fun PreferenceGroupTitle(
     // At headlineSmall/Bold this was larger and heavier than the row titles underneath it, so a
     // sub-page read as a stack of competing headlines with the settings squeezed between them,
     // and nothing on the page matched the page that linked to it.
+    // The section caption: small capitals over the card, set in from its edge.
     Text(
-        text = title,
-        style = MaterialTheme.typography.bodySmall,
+        text = title.uppercase(java.util.Locale.getDefault()),
+        style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 0.7.sp, fontWeight = FontWeight.SemiBold),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier.padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 8.dp),
+        modifier = modifier.padding(start = 24.dp, end = 24.dp, top = 30.dp, bottom = 10.dp),
     )
 }

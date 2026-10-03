@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Only the private cache is shareable: shared lyric cards land in cache/images, and an update in
+    cache/update.apk. Exposing the whole of external storage here let any URI the app ever granted
+    be widened into a path under it.
+-->
 <paths>
-    <external-path
-        name="external_files"
-        path="." />
     <cache-path
         name="cache"
-        path="." />
-    <external-cache-path
-        name="external_cache"
         path="." />
 </paths>

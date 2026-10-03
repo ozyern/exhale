@@ -152,6 +152,19 @@ private sealed interface UpdateCheckState {
 fun UpdateScreen(
     navController: NavController,
     scrollBehavior: TopAppBarScrollBehavior,
+    autoStart: Boolean = false,
+) {
+    // The whole page in OPPO Sans, as ColorOS sets its own update page.
+    com.ozyern.exhale.ui.component.ColorOsType {
+        UpdateScreenContent(navController, scrollBehavior, autoStart)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun UpdateScreenContent(
+    navController: NavController,
+    scrollBehavior: TopAppBarScrollBehavior,
     /**
      * Arrive checking, and start the transfer as soon as there is something to fetch.
      *
@@ -252,8 +265,36 @@ fun UpdateScreen(
         scrollBehavior.state.contentOffset = 0f
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        AuroraBackdrop()
+    val statusTitle = when (val state = updateCheckState) {
+        UpdateCheckState.Loading -> stringResource(R.string.update_status_checking)
+        UpdateCheckState.UpToDate -> "Version up to date"
+        is UpdateCheckState.UpdateAvailable -> "Exhale ${state.info.versionName} is available"
+        is UpdateCheckState.Error -> "Couldn't check for updates"
+        UpdateCheckState.Idle -> if (updateAvailable) "Update available" else "Version up to date"
+    }
+    val canDownload = updateAvailable || pendingUpdateInfo?.let { Updater.hasUpdate(it.versionName, BuildConfig.VERSION_NAME) } == true
+
+    // ColorOS 17's software update page: the artwork is the whole screen, the release mark sits
+    // large in its upper half, and everything you can read or press is in one frosted card at
+    // the foot, where the thumb already is.
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        androidx.compose.foundation.Image(
+            painter = painterResource(R.drawable.exhale_update_bg),
+            contentDescription = null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.35f),
+                        0.4f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.25f),
+                    ),
+                ),
+        )
 
         Scaffold(
             containerColor = Color.Transparent,
@@ -261,8 +302,9 @@ fun UpdateScreen(
                 TopAppBar(
                     title = {
                         Text(
-                            text = stringResource(R.string.updates),
+                            text = "Software update",
                             fontWeight = FontWeight.Bold,
+                            color = Color.White,
                         )
                     },
                     navigationIcon = {
@@ -289,131 +331,105 @@ fun UpdateScreen(
                             WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
                         )
                     )
-                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.weight(0.5f))
+                com.ozyern.exhale.ui.component.ExhaleGlowWordmark(fontSize = 66.sp)
+                com.ozyern.exhale.ui.component.ColorOsVersionText(BuildConfig.VERSION_NAME, fontSize = 22.sp, modifier = Modifier.padding(top = 12.dp))
+                Spacer(Modifier.weight(1f))
 
-                // The poster, then the build. Two blocks, in that order, because that is the
-                // order the question is asked in: am I current, and what am I running.
-                //
-                // Inside the card the mark sits high and the state sits at the foot, which is
-                // where a system update page puts them - centring the whole column left the
-                // bottom third of the artwork empty and the card read as a placeholder.
-                SettingsPosterCard(
+                // The card: what state you are in, the build, and the two things you can do.
+                val cardShape = RoundedCornerShape(32.dp)
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(0.78f),
+                        .clip(cardShape)
+                        .background(
+                            androidx.compose.ui.graphics.Brush.verticalGradient(
+                                listOf(Color(0xCC2A1C08), Color(0xE60E0A05)),
+                            ),
+                        )
+                        .border(0.8.dp, Color.White.copy(alpha = 0.14f), cardShape)
+                        .padding(horizontal = 24.dp, vertical = 26.dp),
                 ) {
-                    Spacer(Modifier.weight(1f))
-
-                    SettingsPosterMark(
-                        name = stringResource(R.string.app_name),
-                        version = BuildConfig.VERSION_NAME,
-                        markRes = R.drawable.splash_logo_gold,
-                        markSize = 104.dp,
+                    Text(
+                        text = statusTitle,
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
                     )
-
-                    Spacer(Modifier.weight(1.25f))
-
-                    SettingsPosterStatus(
-                        status = when (val state = updateCheckState) {
-                            UpdateCheckState.Loading -> stringResource(R.string.update_status_checking)
-                            UpdateCheckState.UpToDate -> stringResource(R.string.update_status_up_to_date)
-                            is UpdateCheckState.UpdateAvailable ->
-                                stringResource(R.string.update_version_label, state.info.versionName)
-
-                            is UpdateCheckState.Error ->
-                                stringResource(R.string.update_status_failed, state.message)
-
-                            UpdateCheckState.Idle ->
-                                if (updateAvailable) {
-                                    stringResource(R.string.update_status_available)
-                                } else {
-                                    stringResource(R.string.update_status_up_to_date)
-                                }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Exhale_${BuildConfig.VERSION_NAME}_${BuildConfig.ARCHITECTURE}(${BuildConfig.GIT_COMMIT})",
+                        fontSize = 15.sp,
+                        color = Color.White.copy(alpha = 0.7f),
+                    )
+                    (updateCheckState as? UpdateCheckState.Error)?.let {
+                        Spacer(Modifier.height(4.dp))
+                        Text(it.message, fontSize = 13.sp, color = Color.White.copy(alpha = 0.55f))
+                    }
+                    Spacer(Modifier.height(22.dp))
+                    UpdatePill(
+                        label = if (canDownload) "Download & install" else "Check for updates",
+                        loading = updateCheckState == UpdateCheckState.Loading,
+                        filled = true,
+                        onClick = {
+                            val pending = pendingUpdateInfo
+                            if (pending != null && Updater.hasUpdate(pending.versionName, BuildConfig.VERSION_NAME)) {
+                                showUpdateDialog = true
+                            } else {
+                                checkForUpdate()
+                            }
                         },
                     )
-
-                    Spacer(Modifier.height(2.dp))
-                }
-
-                // The build, stated once, under the card - the line the system page puts there.
-                // Without it the page was a picture and a button, with nothing on it you could
-                // read back to someone.
-                Spacer(Modifier.height(22.dp))
-                Text(
-                    text = stringResource(R.string.software_version),
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(start = 12.dp),
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    // The shape a system page states a build in: product, version, the variant and
-                    // the commit it was cut from. Not "1.0.304.304" - the version name already
-                    // carries the build number, so printing both said the same number twice.
-                    text = "Exhale_${BuildConfig.VERSION_NAME}_${BuildConfig.ARCHITECTURE}(${BuildConfig.GIT_COMMIT})",
-                    fontSize = 15.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 12.dp),
-                )
-
-                // What is waiting, if anything. Stated here rather than only inside the sheet,
-                // so the page still answers "what would I be installing" after the sheet closes.
-                pendingUpdateInfo?.takeIf {
-                    Updater.hasUpdate(it.versionName, BuildConfig.VERSION_NAME)
-                }?.let { pending ->
-                    Spacer(Modifier.height(18.dp))
-                    Text(
-                        text = stringResource(R.string.update_status_available),
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(start = 12.dp),
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "Exhale_${pending.versionName}  \u00b7  ${pending.publishedAt.take(10)}",
-                        fontSize = 15.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 12.dp),
+                    Spacer(Modifier.height(12.dp))
+                    UpdatePill(
+                        label = "View update notes",
+                        loading = false,
+                        filled = false,
+                        onClick = { navController.navigate("settings/update/notes") },
                     )
                 }
-
-                // The action, last.
-                //
-                // It used to float inside the artwork, which put the one button on the page on top
-                // of the one picture on the page. A system update screen ends with it: you read
-                // the release, you read the build you are on, and then there is a single full-width
-                // button. Nothing competes with it because nothing is under it.
-                Spacer(Modifier.height(24.dp))
-                // Two jobs, one button.
-                //
-                // With nothing pending it checks. With an update already found it reopens the
-                // transfer sheet, rather than asking GitHub the same question again - closing the
-                // sheet by accident used to mean a second round trip before you could get back to
-                // the download you had just been offered.
-                UpdateActionButton(
-                    loading = updateCheckState == UpdateCheckState.Loading,
-                    label = stringResource(
-                        if (updateAvailable) R.string.update_check_download
-                        else R.string.update_check_now
-                    ),
-                    emphasised = updateAvailable,
-                    onClick = {
-                        val pending = pendingUpdateInfo
-                        if (pending != null && Updater.hasUpdate(pending.versionName, BuildConfig.VERSION_NAME)) {
-                            showUpdateDialog = true
-                        } else {
-                            checkForUpdate()
-                        }
-                    },
-                )
-
-                Spacer(Modifier.height(28.dp))
+                Spacer(Modifier.height(16.dp))
             }
+        }
+    }
+}
+
+/** ColorOS's two card buttons: a bright pill for the action, a dark one for the notes. */
+@Composable
+private fun UpdatePill(label: String, loading: Boolean, filled: Boolean, onClick: () -> Unit) {
+    val haptic = LocalHapticFeedback.current
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.97f else 1f, spring(dampingRatio = 0.75f, stiffness = 900f), label = "updatePill")
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(54.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(CircleShape)
+            .background(
+                if (filled) {
+                    androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFFF7F3EC), Color(0xFFD9D4CC)))
+                } else {
+                    androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.18f), Color.White.copy(alpha = 0.10f)))
+                },
+            )
+            .clickable(interactionSource = source, indication = null, enabled = !loading) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            },
+    ) {
+        if (loading) {
+            LoadingRing(modifier = Modifier.size(20.dp), stroke = 2.dp, color = if (filled) Color.Black else Color.White)
+        } else {
+            Text(label, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = if (filled) Color(0xFF141414) else Color.White)
         }
     }
 }
@@ -421,89 +437,6 @@ fun UpdateScreen(
 private const val GitHubReleasesUrl = "https://github.com/ozyern/Exhale/releases"
 
 // ─── Hero ─────────────────────────────────────────────────────────────────────
-
-/**
- * The identity block: a glass disc holding the update glyph, ringed by two halos that breathe
- * outward, over the app name and a status line that swaps as the check runs.
- *
- * The halos are pure `graphicsLayer` scale and alpha on two fixed-size circles — no layout, no
- * redraw, so the animation runs on the render thread and keeps running while the check is in
- * flight. They are the whole reason the page feels alive rather than static.
- */
-/**
- * The page's one action: a full-width capsule under everything else.
- *
- * 52dp and the full measure, which is the size a primary action is given on a phone - big enough
- * to be the obvious thing to press, at the bottom where a thumb already is. It fills with the
- * accent only when there is genuinely something to fetch; when you are current it is the quiet
- * glass version, because "Check for Updates" on an up-to-date app is a button you are being
- * offered, not one you are being told to press.
- */
-@Composable
-private fun UpdateActionButton(
-    loading: Boolean,
-    label: String,
-    emphasised: Boolean,
-    onClick: () -> Unit,
-) {
-    val haptic = LocalHapticFeedback.current
-    val source = remember { MutableInteractionSource() }
-    val pressed by source.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.97f else 1f,
-        animationSpec = spring(dampingRatio = 0.75f, stiffness = 900f),
-        label = "updateActionPress",
-    )
-    val shape = CircleShape
-    val accent = MaterialTheme.colorScheme.primary
-    val ink = if (emphasised) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(52.dp)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .clip(shape)
-            .then(
-                if (emphasised) {
-                    Modifier.background(accent)
-                } else {
-                    Modifier.settingsGlassGroup(shape)
-                }
-            )
-            .clickable(interactionSource = source, indication = null, enabled = !loading) {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                onClick()
-            },
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (loading) {
-            LoadingRing(
-                modifier = Modifier.size(20.dp),
-                stroke = 2.dp,
-                color = ink,
-            )
-        } else {
-            Icon(
-                painter = painterResource(R.drawable.update),
-                contentDescription = null,
-                tint = ink,
-                modifier = Modifier.size(20.dp),
-            )
-            Spacer(Modifier.width(9.dp))
-            Text(
-                text = label,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = ink,
-            )
-        }
-    }
-}
 
 @Composable
 private fun UpdateHero(

@@ -264,28 +264,19 @@ fun AODSettings(
         containerColor = Color.Transparent,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            // Opaque as the page, not as a plate over it. See SettingsBarGround: the bar has
-            // to hide the rows sliding under it, and spelling that as a flat fill is what stopped
-            // the album-art wash dead at the bar's bottom edge on every page but the root one.
-            Box {
-                SettingsBarGround(modifier = Modifier.matchParentSize())
-
-                LargeFlexibleTopAppBar(
-                    title = { Text(stringResource(R.string.aod_screen_title)) },
-                    navigationIcon = {
-                        LiquidBackButton(
-                            onClick = navController::navigateUp,
-                            onLongClick = navController::backToMain,
-                            icon = R.drawable.chevron_back,
-                        )
-                    },
-                    colors = TopAppBarDefaults.largeTopAppBarColors(
-                        containerColor = Color.Transparent,
-                        scrolledContainerColor = Color.Transparent,
-                    ),
-                    scrollBehavior = scrollBehavior,
-                )
-            }
+            // The app's own settings bar, as every other settings page has — not Material's large
+            // flexible one, which was the last Material 3 Expressive piece on this page.
+            SettingsTopAppBar(
+                title = { Text(stringResource(R.string.aod_screen_title)) },
+                navigationIcon = {
+                    LiquidBackButton(
+                        onClick = navController::navigateUp,
+                        onLongClick = navController::backToMain,
+                        icon = R.drawable.chevron_back,
+                    )
+                },
+                scrollBehavior = scrollBehavior,
+            )
         },
     ) { paddingValues ->
         Column(
@@ -337,7 +328,7 @@ fun AODSettings(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.width(32.dp)
                         )
-                        SquigglySlider(
+                        LiquidSlider(
                             value = autoTimeoutIndex.toFloat(),
                             onValueChange = { v ->
                                 val idx = (v + 0.5f).toInt().coerceIn(0, 4)
@@ -576,124 +567,53 @@ private fun AodOverviewCard(
     showClock: Boolean,
     onShowClockChange: (Boolean) -> Unit,
 ) {
-    val heroBrush = Brush.linearGradient(
-        colors = listOf(
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
-            MaterialTheme.colorScheme.surfaceContainerHigh,
-        ),
-    )
-    val uncheckedColors = ToggleButtonDefaults.toggleButtonColors(
-        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-        contentColor = MaterialTheme.colorScheme.onSurface,
-    )
-    val checkedColors = ToggleButtonDefaults.toggleButtonColors(
-        checkedContainerColor = MaterialTheme.colorScheme.primary,
-        checkedContentColor = MaterialTheme.colorScheme.onPrimary,
-        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-        contentColor = MaterialTheme.colorScheme.onSurface,
-    )
-    val secondaryCheckedColors = ToggleButtonDefaults.toggleButtonColors(
-        checkedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
-        checkedContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-        contentColor = MaterialTheme.colorScheme.onSurface,
-    )
-
-    Surface(
+    // A preview of what the screen will look like, on one pane of the app's glass. The two
+    // Material toggle buttons that sat under it duplicated the switches further down the page.
+    val shape = RoundedCornerShape(24.dp)
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(32.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        tonalElevation = 6.dp,
+            .padding(horizontal = 16.dp)
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+            .border(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f), shape)
+            .padding(16.dp),
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .background(heroBrush)
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
+                .size(92.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color(0xFF070707))
+                .padding(12.dp)
+                .clip(currentShape.toShape()),
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Surface(
-                    modifier = Modifier.size(92.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    color = Color(0xFF070707),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(12.dp)
-                            .clip(currentShape.toShape()),
-                    ) {
-                        AodStylePreview(style = currentStyle)
-                    }
-                }
-
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.aod_screen_title),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = aodStyleLabel(currentStyle),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Text(
-                        text = stringResource(R.string.aod_auto_activation_description),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                ExpressivePill(text = aodShapeLabel(currentShape))
-                ExpressivePill(text = stringResource(aodTimeoutLabelRes(autoTimeoutSecs)))
-                ExpressivePill(text = stringResource(R.string.aod_controls_title))
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ToggleButton(
-                    checked = fullscreen,
-                    onCheckedChange = onFullscreenChange,
-                    modifier = Modifier.weight(1f),
-                    shapes = ButtonGroupDefaults.connectedLeadingButtonShapes(),
-                    colors = if (fullscreen) checkedColors else uncheckedColors,
-                ) {
-                    AodHeroToggleLabel(
-                        icon = R.drawable.fullscreen,
-                        text = stringResource(R.string.aod_fullscreen_label),
-                    )
-                }
-                ToggleButton(
-                    checked = showClock,
-                    onCheckedChange = onShowClockChange,
-                    modifier = Modifier.weight(1f),
-                    shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
-                    colors = if (showClock) secondaryCheckedColors else uncheckedColors,
-                ) {
-                    AodHeroToggleLabel(
-                        icon = R.drawable.timer,
-                        text = stringResource(R.string.aod_show_clock_label),
-                    )
-                }
-            }
+            AodStylePreview(style = currentStyle)
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = aodStyleLabel(currentStyle),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = listOf(
+                    aodShapeLabel(currentShape),
+                    stringResource(aodTimeoutLabelRes(autoTimeoutSecs)),
+                ).joinToString("  ·  "),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = stringResource(R.string.aod_auto_activation_description),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+            )
         }
     }
 }
@@ -764,21 +684,23 @@ private fun AodSettingsSection(
     content: @Composable () -> Unit,
 ) {
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+        // The same group the rest of Settings uses: a quiet uppercase label over one glass pane.
         Text(
-            text = title,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(bottom = 10.dp, start = 4.dp)
+            text = title.uppercase(),
+            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.6.sp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 8.dp, start = 8.dp)
         )
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            modifier = Modifier.fillMaxWidth()
+        val shape = RoundedCornerShape(20.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                .border(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f), shape)
+                .padding(vertical = 8.dp),
         ) {
-            Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                content()
-            }
+            content()
         }
     }
     Spacer(Modifier.height(8.dp))
@@ -806,19 +728,19 @@ private fun AodSwitchRow(
             )
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            modifier = Modifier.size(40.dp)
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
         ) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                Icon(
-                    painter = painterResource(icon),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(20.dp)
+            )
         }
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -898,13 +820,13 @@ private fun ExpressivePill(text: String) {
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .clip(RoundedCornerShape(50))
-            .background(MaterialTheme.colorScheme.primaryContainer)
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
             .padding(horizontal = 10.dp, vertical = 3.dp)
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.SemiBold
         )
     }
@@ -926,9 +848,9 @@ private fun ControlStyleChip(
         label = "control_chip_border"
     )
     val bgColor = if (selected)
-        MaterialTheme.colorScheme.primaryContainer
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
     else
-        MaterialTheme.colorScheme.surfaceVariant
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
 
     val label = when (style) {
         AodControlStyle.ROUNDED -> stringResource(R.string.aod_control_style_rounded)
@@ -1063,7 +985,7 @@ private fun AodStyleCard(
                 shape = RoundedCornerShape(20.dp)
             )
             .background(
-                if (selected) MaterialTheme.colorScheme.primaryContainer.copy(0.25f)
+                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
                 else MaterialTheme.colorScheme.surfaceContainerHigh
             )
             .clickable(
@@ -1528,7 +1450,7 @@ private fun AodShapeCard(
                 shape = RoundedCornerShape(14.dp)
             )
             .background(
-                if (selected) MaterialTheme.colorScheme.primaryContainer.copy(0.30f)
+                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
                 else MaterialTheme.colorScheme.surfaceContainerHigh
             )
             .clickable(

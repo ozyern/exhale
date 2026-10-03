@@ -243,9 +243,9 @@ private fun BrowseCategoryCard(
         modifier = Modifier
             .fillMaxWidth()
             // Apple Music reference card geometry: just under 2:1.
-            .aspectRatio(1.85f)
+            .aspectRatio(1.62f)
             .scale(scale)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(
                 Brush.linearGradient(
                     listOf(category.start, category.end),
@@ -272,6 +272,9 @@ private fun BrowseCategoryCard(
                 },
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
+                // Apple's duotone: the photo's light and shade redrawn in the card's own colour,
+                // so every tile is one colour with a picture in it rather than a photo under a scrim.
+                colorFilter = remember(category) { duotone(category.end, category.start) },
                 modifier = Modifier.matchParentSize(),
             )
         }
@@ -284,22 +287,24 @@ private fun BrowseCategoryCard(
                     // these cards use is promo art with its own title set across it: at the old
                     // 0.62 the category's name ("Holiday") sat on top of the picture's name
                     // ("Summer Dance Classics") and the two read as one scrambled line.
+                    // Only enough shade at the foot to seat the label; the duotone already keeps
+                    // the promo art's own lettering from competing with it.
                     Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.10f),
-                        0.45f to Color.Black.copy(alpha = 0.30f),
-                        1f to Color.Black.copy(alpha = 0.84f),
+                        0.55f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.32f),
                     )
                 )
         )
         Text(
             text = category.title,
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 17.sp,
+            letterSpacing = (-0.2).sp,
             color = Color.White,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
         )
     }
 
@@ -309,4 +314,20 @@ private fun BrowseCategoryCard(
             pressed = false
         }
     }
+}
+
+/**
+ * Maps a photo's luminance onto the line from [shade] (its darks) to [light] (its highlights), a
+ * duotone in one colour matrix: grey = 0.299R + 0.587G + 0.114B, then out = shade + grey·(light − shade).
+ */
+private fun duotone(shade: Color, light: Color): androidx.compose.ui.graphics.ColorFilter {
+    val dark = androidx.compose.ui.graphics.lerp(shade, Color.Black, 0.45f)
+    val bright = androidx.compose.ui.graphics.lerp(light, Color.White, 0.30f)
+    fun row(d: Float, l: Float): FloatArray {
+        val span = l - d
+        return floatArrayOf(0.299f * span, 0.587f * span, 0.114f * span, 0f, d * 255f)
+    }
+    val m = row(dark.red, bright.red) + row(dark.green, bright.green) + row(dark.blue, bright.blue) +
+        floatArrayOf(0f, 0f, 0f, 1f, 0f)
+    return androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix(m))
 }

@@ -171,7 +171,28 @@ class SongExporter @Inject constructor(
             muxed.delete()
 
             val name = sanitize(listOfNotNull(artists.firstOrNull(), song.title).joinToString(" - "))
-            SavedFiles.remember(context, song.id, publish(tagged, "$name.m4a"))
+            val asMp3 = context.dataStore.get(com.ozyern.exhale.constants.SaveAsMp3Key, false) && Mp3Encoder.available
+            if (asMp3) {
+                // Converted from the file just made, once, at MP3's best rate; tags and cover carried over.
+                val mp3 = File(work, "${song.id}.mp3")
+                try {
+                    Mp3Encoder.convert(
+                        tagged, mp3,
+                        Mp3Encoder.Tags(
+                            title = song.title,
+                            artist = artists.joinToString(", ").ifBlank { null },
+                            album = song.album?.title ?: entity?.song?.albumName,
+                            year = year?.toString(),
+                            cover = coverFor(song),
+                        ),
+                    )
+                    SavedFiles.remember(context, song.id, publish(mp3, "$name.mp3", "audio/mpeg"))
+                } finally {
+                    mp3.delete()
+                }
+            } else {
+                SavedFiles.remember(context, song.id, publish(tagged, "$name.m4a"))
+            }
         } finally {
             raw.delete(); muxed.delete(); tagged.delete()
         }
@@ -279,7 +300,7 @@ class SongExporter @Inject constructor(
     private suspend fun lyricsFor(song: MediaMetadata): String? {
         val stored = database.getLyricsById(song.id)?.lyrics
         val text = stored?.takeUnless { it == LyricsEntity.LYRICS_NOT_FOUND }
-            ?: withTimeoutOrNull(20_000) { runCatching { lyricsHelper.getLyrics(song) }.getOrNull() }
+            ?: withTimeoutOrNull(20_000) { runCatching { lyricsHelper.getLyrics(song, trackLookup = false) }.getOrNull() }
                 ?.takeUnless { it.isBlank() || it == LyricsEntity.LYRICS_NOT_FOUND }
             ?: return null
         return toLrc(text)
@@ -315,7 +336,7 @@ class SongExporter @Inject constructor(
     }.getOrNull()
 
     /** Into Music/Exhale through MediaStore — no storage permission, and it shows up in every player at once. */
-    private fun publish(file: File, displayName: String): Uri {
+    private fun publish(file: File, displayName: String, mimeType: String = "audio/mp4"): Uri {
         val resolver = context.contentResolver
         val collection = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
 
@@ -329,7 +350,7 @@ class SongExporter @Inject constructor(
 
         val values = ContentValues().apply {
             put(MediaStore.Audio.Media.DISPLAY_NAME, displayName)
-            put(MediaStore.Audio.Media.MIME_TYPE, "audio/mp4")
+            put(MediaStore.Audio.Media.MIME_TYPE, mimeType)
             put(MediaStore.Audio.Media.RELATIVE_PATH, RELATIVE_PATH)
             put(MediaStore.Audio.Media.IS_PENDING, 1)
         }

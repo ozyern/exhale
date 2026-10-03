@@ -6,6 +6,8 @@
 
 package com.ozyern.exhale.ui.menu
 
+import com.ozyern.exhale.extensions.toMediaItem
+import androidx.compose.foundation.border
 import com.ozyern.exhale.ui.component.SettingsGroupCornerRadius
 import com.ozyern.exhale.ui.component.settingsGlassGroup
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -619,6 +621,57 @@ fun ColumnScope.PlayerMenu(
                         onClick = { showSleepTimerDialog = true },
                     )
 
+                    // The queue actions, for the song playing: hear it again straight after
+                    // itself, or once more at the end of everything queued.
+                    Divider()
+                    PlayerMenuRow(
+                        icon = R.drawable.playlist_play,
+                        title = stringResource(R.string.play_next),
+                        subtitle = "Hear this again right after it ends",
+                        onClick = {
+                            playerConnection.playNext(mediaMetadata.toMediaItem())
+                            Toast.makeText(context, R.string.play_next, Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        },
+                    )
+                    Divider()
+                    PlayerMenuRow(
+                        icon = R.drawable.queue_music,
+                        title = stringResource(R.string.add_to_queue),
+                        subtitle = "Once more after everything queued",
+                        onClick = {
+                            playerConnection.addToQueue(mediaMetadata.toMediaItem())
+                            Toast.makeText(context, R.string.add_to_queue, Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        },
+                    )
+                    // The "Copy log": what is playing and where it came from, for a bug report.
+                    Divider()
+                    PlayerMenuRow(
+                        icon = R.drawable.content_copy,
+                        title = "Copy playback details",
+                        subtitle = "For a bug report",
+                        onClick = {
+                            val format = playerConnection.player.audioFormat
+                            val report = buildString {
+                                appendLine("Exhale playback")
+                                appendLine("id: ${mediaMetadata.id}")
+                                appendLine("title: ${mediaMetadata.title}")
+                                appendLine("artists: ${mediaMetadata.artists.joinToString { it.name }}")
+                                appendLine("album: ${mediaMetadata.album?.title}")
+                                appendLine("codec: ${format?.sampleMimeType} ${format?.codecs.orEmpty()}")
+                                appendLine("bitrate: ${format?.bitrate}")
+                                appendLine("sample rate: ${format?.sampleRate} Hz, channels: ${format?.channelCount}")
+                                appendLine("position: ${playerConnection.player.currentPosition} / ${playerConnection.player.duration} ms")
+                                append("device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE}")
+                            }
+                            val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Exhale playback", report))
+                            Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        },
+                    )
+
                     Divider()
                     PlayerMenuRow(
                         icon = if (isInSpeedDial) R.drawable.bookmark_filled else R.drawable.bookmark,
@@ -726,6 +779,32 @@ fun ColumnScope.PlayerMenu(
                         )
                     }
 
+                    // The Share, and which file is playing: the JioSaavn upgrade is invisible
+                    // otherwise, and "why does this sound different" deserves an answer.
+                    Divider()
+                    PlayerMenuRow(
+                        icon = R.drawable.share,
+                        title = stringResource(R.string.share),
+                        onClick = {
+                            val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(android.content.Intent.EXTRA_TEXT, "https://music.youtube.com/watch?v=${mediaMetadata.id}")
+                            }
+                            context.startActivity(android.content.Intent.createChooser(send, null))
+                            onDismiss()
+                        },
+                    )
+
+                    playerConnection.service.streamSourceLabel(mediaMetadata.id)?.let { source ->
+                        Divider()
+                        PlayerMenuRow(
+                            icon = R.drawable.graphic_eq,
+                            title = "Playing from",
+                            subtitle = source,
+                            onClick = {},
+                        )
+                    }
+
                     Divider()
                     PlayerMenuRow(
                         icon = R.drawable.info,
@@ -762,7 +841,7 @@ private fun PlayerQuickAction(
 ) {
     val accent = if (activeColor == Color.Unspecified) MaterialTheme.colorScheme.primary else activeColor
     val container by animateColorAsState(
-        if (active) accent.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceContainerHighest,
+        if (active) accent.copy(alpha = 0.18f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
         label = "quickActionBg",
     )
     val content by animateColorAsState(
@@ -791,6 +870,8 @@ private fun PlayerQuickAction(
                 .graphicsLayer { scaleX = scale; scaleY = scale }
                 .clip(CircleShape)
                 .background(container)
+                // The glass rim the circles carry.
+                .border(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f), CircleShape)
                 .clickable(
                     interactionSource = interactionSource,
                     indication = null,

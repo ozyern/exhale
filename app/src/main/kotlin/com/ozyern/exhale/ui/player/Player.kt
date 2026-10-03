@@ -135,6 +135,7 @@ import com.ozyern.exhale.LocalPlayerConnection
 import com.ozyern.exhale.constants.DarkModeKey
 import com.ozyern.exhale.constants.PlayerDesignStyle
 import com.ozyern.exhale.constants.PlayerDesignStyleKey
+import com.ozyern.exhale.constants.ClassicPlayerKey
 import com.ozyern.exhale.constants.UseNewMiniPlayerDesignKey
 import com.ozyern.exhale.constants.PlayerBackgroundStyle
 import com.ozyern.exhale.constants.PlayerBackgroundStyleKey
@@ -231,6 +232,12 @@ fun BottomSheetPlayer(
         key = PlayerDesignStyleKey,
         defaultValue = PlayerDesignStyle.V8
     )
+
+    val (classicPlayer) = rememberPreference(ClassicPlayerKey, defaultValue = false)
+    val (liquidGlassPlayer) = rememberPreference(com.ozyern.exhale.constants.LiquidGlassPlayerKey, false)
+    // The Now Playing screen is a portrait layout; a phone on its side keeps the chosen design.
+    val nowPlaying = !classicPlayer &&
+        LocalConfiguration.current.orientation != Configuration.ORIENTATION_LANDSCAPE
 
     val playerBackground by rememberEnumPreference(
         key = PlayerBackgroundStyleKey,
@@ -709,7 +716,7 @@ fun BottomSheetPlayer(
         // here (and re-run on every animation frame, recomposing the whole player) now happens
         // once per frame in BottomSheet's draw phase, with the identical ramp curve.
         backgroundColor = when {
-            playerDesignStyle == PlayerDesignStyle.V7 -> Color.Black
+            nowPlaying || playerDesignStyle == PlayerDesignStyle.V7 -> Color.Black
             playerBackground == PlayerBackgroundStyle.BLUR ||
                 playerBackground == PlayerBackgroundStyle.GRADIENT -> MaterialTheme.colorScheme.surface
             useBlackBackground -> Color.Black
@@ -721,6 +728,7 @@ fun BottomSheetPlayer(
         pillHorizontalInset = morphPillHorizontalInset,
         pillCornerRadius = morphPillCornerRadius,
         pillTopOffset = morphPillTopOffset,
+        collapsedTapToExpand = !hideMiniPlayer,
         onDismiss = {
             playerConnection.service.stopAndClearPlayback()
         },
@@ -823,7 +831,7 @@ fun BottomSheetPlayer(
             )
         }
 
-        if (!state.isCollapsed && playerDesignStyle != PlayerDesignStyle.V5 && playerDesignStyle != PlayerDesignStyle.V7) {
+        if (!state.isCollapsed && !nowPlaying && playerDesignStyle != PlayerDesignStyle.V5 && playerDesignStyle != PlayerDesignStyle.V7) {
             PlayerBackground(
                 playerBackground = playerBackground,
                 mediaMetadata = mediaMetadata,
@@ -952,6 +960,8 @@ fun BottomSheetPlayer(
                             disableBlur = disableBlur,
                             label = "v8BackdropLandscape",
                             meshColors = gradientColors,
+                            mediaMetadata = mediaMetadata,
+                            isPlaying = isPlaying && state.isExpanded,
                         )
 
                         Column(
@@ -1046,7 +1056,60 @@ fun BottomSheetPlayer(
             }
 
             else -> {
-                if (playerDesignStyle == PlayerDesignStyle.V5) {
+                if (nowPlaying) {
+                    enrichedMetadata?.let { metadata ->
+                        // A phone on its side gets the two-column player; the portrait
+                        // layouts are tall and ran off a short, wide window.
+                        val landscapeWindow = androidx.compose.ui.platform.LocalConfiguration.current.let {
+                            it.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                        }
+                        if (landscapeWindow) LandscapeNowPlaying(
+                            playerSheetState = state,
+                            navController = navController,
+                            mediaMetadata = metadata,
+                            playbackState = playbackState,
+                            isPlaying = isPlaying,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            currentFormat = currentFormat,
+                            positionProvider = { position },
+                            durationProvider = { duration },
+                            sliderPositionProvider = { sliderPosition },
+                            onSliderValueChange = onSliderValueChange,
+                            onSliderValueChangeFinished = onSliderValueChangeFinished,
+                        ) else if (liquidGlassPlayer) LiquidGlassPlayerScreen(
+                            playerSheetState = state,
+                            navController = navController,
+                            mediaMetadata = metadata,
+                            playbackState = playbackState,
+                            isPlaying = isPlaying,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            currentFormat = currentFormat,
+                            positionProvider = { position },
+                            durationProvider = { duration },
+                            sliderPositionProvider = { sliderPosition },
+                            onSliderValueChange = onSliderValueChange,
+                            onSliderValueChangeFinished = onSliderValueChangeFinished,
+                        ) else NowPlayingScreen(
+                            playerSheetState = state,
+                            navController = navController,
+                            mediaMetadata = metadata,
+                            playbackState = playbackState,
+                            isPlaying = isPlaying,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            currentFormat = currentFormat,
+                            // Read where they are drawn: the playhead ticks ten times a second and
+                            // must not recompose the whole player to move the scrubber.
+                            positionProvider = { position },
+                            durationProvider = { duration },
+                            sliderPositionProvider = { sliderPosition },
+                            onSliderValueChange = onSliderValueChange,
+                            onSliderValueChangeFinished = onSliderValueChangeFinished,
+                        )
+                    }
+                } else if (playerDesignStyle == PlayerDesignStyle.V5) {
                     val littleBackground = MaterialTheme.colorScheme.primaryContainer
                     val littleTextColor = MaterialTheme.colorScheme.onPrimaryContainer
                     val displayPositionMs = sliderPosition ?: position
@@ -1161,6 +1224,8 @@ fun BottomSheetPlayer(
                             disableBlur = disableBlur,
                             label = "v8BackdropPortrait",
                             meshColors = gradientColors,
+                            mediaMetadata = mediaMetadata,
+                            isPlaying = isPlaying && state.isExpanded,
                         )
 
                         Column(
@@ -1256,6 +1321,8 @@ fun BottomSheetPlayer(
             )
         }
 
+        // The Now Playing screen carries its own lyrics and queue.
+        if (!nowPlaying) {
         Queue(
             state = queueSheetState,
             playerBottomSheetState = state,
@@ -1309,6 +1376,7 @@ fun BottomSheetPlayer(
                     )
                 }
             }
+        }
         }
     }
 }

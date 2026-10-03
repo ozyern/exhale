@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -44,12 +45,22 @@ class PlayerConnection(
     val service = binder.service
     val player = service.player
 
-    val playbackState = MutableStateFlow(player.playbackState)
+    private val rawPlaybackState = MutableStateFlow(player.playbackState)
     private val playWhenReady = MutableStateFlow(player.playWhenReady)
     val playbackParameters = MutableStateFlow(player.playbackParameters)
+
+    /**
+     * The player's state as the listener experiences it. Through an Automix hand-off the main
+     * player re-cues the arriving song and buffers while the second player keeps it playing; that
+     * buffering is not something anyone hears, so it is reported as ready.
+     */
+    val playbackState =
+        combine(rawPlaybackState, AutomixTransition.active) { state, mixing ->
+            if (mixing && state == Player.STATE_BUFFERING) Player.STATE_READY else state
+        }.stateIn(scope, SharingStarted.Eagerly, player.playbackState)
     val isPlaying =
-        combine(playbackState, playWhenReady) { playbackState, playWhenReady ->
-            playWhenReady && playbackState != STATE_ENDED
+        combine(rawPlaybackState, playWhenReady, AutomixTransition.active) { playbackState, playWhenReady, mixing ->
+            playWhenReady && (mixing || playbackState != STATE_ENDED)
         }.stateIn(
             scope,
             SharingStarted.Lazily,
@@ -60,8 +71,11 @@ class PlayerConnection(
         mediaMetadata.flatMapLatest {
             database.song(it?.id)
         }
+    // Lyrics saved before masked words were restored are restored on the way out, too.
     val currentLyrics = mediaMetadata.flatMapLatest { mediaMetadata ->
         database.lyrics(mediaMetadata?.id)
+    }.map { entity ->
+        entity?.let { it.copy(lyrics = com.ozyern.exhale.lyrics.Uncensor.restore(it.lyrics) ?: it.lyrics) }
     }
     val currentFormat =
         mediaMetadata.flatMapLatest { mediaMetadata ->
@@ -86,7 +100,7 @@ class PlayerConnection(
     init {
         player.addListener(this)
 
-        playbackState.value = player.playbackState
+        rawPlaybackState.value = player.playbackState
         playWhenReady.value = player.playWhenReady
         playbackParameters.value = player.playbackParameters
         queueTitle.value = service.queueTitle
@@ -156,7 +170,7 @@ class PlayerConnection(
     }
 
     override fun onPlaybackStateChanged(state: Int) {
-        playbackState.value = state
+        rawPlaybackState.value = state
         error.value = player.playerError
     }
 

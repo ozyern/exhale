@@ -65,7 +65,11 @@ class FilebinService(
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
             // Crear un bin name único basado en timestamp y nombre de app
-            val binName = "exhale_backup_${System.currentTimeMillis()}"
+            // Unguessable: a bin on filebin.net is readable by anyone who knows its name, and a
+            // timestamp could be walked in a few minutes.
+            val binName = "exhale-" + java.security.SecureRandom().let { random ->
+                ByteArray(18).also(random::nextBytes).joinToString("") { "%02x".format(it) }
+            }
             val fileName = file.name
             
             // Construir la request multipart

@@ -153,13 +153,13 @@ inline fun ListItem(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
+            // The playing row: a wash of the accent the full width of the
+            // list, edge to edge — not a rounded card floating inside it.
+            .then(
+                if (isActive) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)) else Modifier
+            )
             .height(ListItemHeight)
             .padding(horizontal = 8.dp)
-            .then(
-                if (isActive) Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.secondaryContainer) else Modifier
-            )
     ) {
         Box(Modifier.padding(6.dp), contentAlignment = Alignment.Center) { thumbnailContent() }
         Column(Modifier
@@ -168,7 +168,8 @@ inline fun ListItem(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
+                color = if (isActive) MaterialTheme.colorScheme.primary else Color.Unspecified,
                 maxLines = 1, overflow = TextOverflow.Ellipsis
             )
             if (subtitle != null) Row(verticalAlignment = Alignment.CenterVertically) { subtitle() }
@@ -2276,12 +2277,14 @@ private object Icon {
 
     @Composable
     fun Explicit() {
+        // A small solid tile in the line's own ink, a touch quieter than the text beside it.
         Icon(
             painter = painterResource(R.drawable.explicit),
-            contentDescription = null,
+            contentDescription = "Explicit",
+            tint = LocalContentColor.current.copy(alpha = 0.7f),
             modifier = Modifier
-                .size(18.dp)
-                .padding(end = 2.dp)
+                .padding(end = 5.dp)
+                .size(13.dp)
         )
     }
 }

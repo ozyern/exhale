@@ -10,6 +10,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -62,12 +70,10 @@ import com.ozyern.exhale.ui.component.NavigationTitle
 import com.ozyern.exhale.ui.utils.resize
 
 /**
- * "Made for You", the big cards at the top of Home — the phone's take on the Windows app's Top picks.
- *
- * The first suggestion is a spotlight: its own cover blurred into the whole card, the sharp cover
- * above the words, the reason it was picked, and Play / Play Next. The rest are tall cards whose
- * lower half is the cover's colour. Every card takes its colour from its artwork by drawing that
- * artwork, stretched and blurred — nothing is sampled or guessed.
+ * "Top Picks for You", the big cards at the top of Home, after the hero shelf and Apple's
+ * Listen Now: tall cards, the artwork whole, and the caption laid over a frosted strip of that same
+ * artwork — blurred where it sits, so the words rest on the cover's own colour rather than on a
+ * panel that guesses at it. A glass play disc in the corner plays the pick without opening it.
  */
 @Composable
 fun HomeMadeForYou(
@@ -80,30 +86,28 @@ fun HomeMadeForYou(
 ) {
     Column(modifier.fillMaxWidth()) {
         NavigationTitle(title = "Top Picks for You")
-        LazyRow(
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            itemsIndexed(picks, key = { _, pick -> pick.song.id }) { index, pick ->
-                val active = pick.song.id == activeId
-                // Uniform tall cards, two and a bit to a screen, as Apple's Top Picks are.
-                PickCard(pick, active, isPlaying, onPlay = { onPlay(pick.song) })
+        BoxWithConstraints {
+            // A share of the row with a ceiling, so the next card always peeks in — and a tablet
+            // doesn't get one card the size of a poster.
+            val cardWidth = minOf(maxWidth * 0.74f, 320.dp)
+            LazyRow(
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                itemsIndexed(picks, key = { _, pick -> pick.song.id }) { _, pick ->
+                    HeroPickCard(
+                        pick = pick,
+                        active = pick.song.id == activeId,
+                        playing = isPlaying,
+                        onPlay = { onPlay(pick.song) },
+                        onPlayNext = { onPlayNext(pick.song) },
+                        modifier = Modifier.width(cardWidth),
+                    )
+                }
             }
         }
     }
 }
-
-private val CardWidth = 172.dp
-
-/**
- * Square, because an album cover is square.
- *
- * The card was a 176x220 portrait crop with the song title set 19sp bold across its foot. That is
- * the shape of a video thumbnail with a headline on it - a YouTube shelf - and it made every cover
- * on Home a letterboxed fragment of itself. Apple's shelves show the artwork whole and put the
- * words underneath, where they can be read at a caption size instead of shouting over the picture.
- */
-private val CardArtHeight = CardWidth
 
 @Composable
 private fun pressScale(source: MutableInteractionSource): Float {
@@ -112,63 +116,141 @@ private fun pressScale(source: MutableInteractionSource): Float {
     return scale
 }
 
-/** The artwork, stretched far past its edges and blurred down to its colour, as a card's ground. */
+/** How much of the card the frosted caption takes, from the bottom. */
+private const val CAPTION_FRACTION = 0.30f
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PickCard(pick: Recommendation, active: Boolean, playing: Boolean, onPlay: () -> Unit) {
+private fun HeroPickCard(
+    pick: Recommendation,
+    active: Boolean,
+    playing: Boolean,
+    onPlay: () -> Unit,
+    onPlayNext: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val song = pick.song
+    val haptic = LocalHapticFeedback.current
     val source = remember { MutableInteractionSource() }
     val scale = pressScale(source)
-    val shape = RoundedCornerShape(12.dp)
-    Column(
-        Modifier
-            .width(CardWidth)
+    val shape = RoundedCornerShape(20.dp)
+    val art = song.thumbnail.resize(720, 720)
+    Box(
+        modifier
+            .aspectRatio(0.86f)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
             }
-            .clickable(interactionSource = source, indication = null, onClick = onPlay),
+            .shadow(14.dp, shape, clip = false, ambientColor = Color.Black.copy(alpha = 0.35f), spotColor = Color.Black.copy(alpha = 0.35f))
+            .clip(shape)
+            .background(Color(0xFF1C1C1E))
+            .combinedClickable(
+                interactionSource = source,
+                indication = null,
+                onClick = onPlay,
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onPlayNext()
+                },
+            ),
     ) {
+        AsyncImage(
+            model = art,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+        // The same artwork again, blurred, and only its lower strip shown: frosted glass cut from
+        // the cover itself, lined up with it exactly.
+        AsyncImage(
+            model = art,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithContent {
+                    clipRect(top = size.height * (1f - CAPTION_FRACTION)) {
+                        this@drawWithContent.drawContent()
+                    }
+                }
+                .blur(26.dp),
+        )
         Box(
             Modifier
-                .fillMaxWidth()
-                .height(CardArtHeight)
-                .clip(shape)
-                .background(Color(0xFF1C1C1E)),
-        ) {
-            AsyncImage(
-                model = song.thumbnail.resize(544, 544),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-            if (active) {
-                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.30f)), contentAlignment = Alignment.Center) {
-                    Icon(
-                        painterResource(if (playing) R.drawable.pause else R.drawable.play),
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(42.dp),
+                .fillMaxSize()
+                .drawBehind {
+                    val top = size.height * (1f - CAPTION_FRACTION)
+                    // A soft seam into the strip, then a light darkening under the words.
+                    drawRect(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.18f),
+                            startY = top - 28.dp.toPx(),
+                            endY = top,
+                        ),
+                        topLeft = androidx.compose.ui.geometry.Offset(0f, top - 28.dp.toPx()),
+                        size = androidx.compose.ui.geometry.Size(size.width, 28.dp.toPx()),
                     )
-                }
+                    drawRect(
+                        Color.Black.copy(alpha = 0.26f),
+                        topLeft = androidx.compose.ui.geometry.Offset(0f, top),
+                        size = androidx.compose.ui.geometry.Size(size.width, size.height - top),
+                    )
+                    drawLine(
+                        Color.White.copy(alpha = 0.16f),
+                        androidx.compose.ui.geometry.Offset(0f, top),
+                        androidx.compose.ui.geometry.Offset(size.width, top),
+                        0.6.dp.toPx(),
+                    )
+                },
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .fillMaxHeight(CAPTION_FRACTION)
+                .padding(start = 16.dp, end = 12.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    song.title,
+                    fontSize = 19.sp,
+                    lineHeight = 23.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = (-0.2).sp,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    pick.reason,
+                    fontSize = 13.sp,
+                    lineHeight = 17.sp,
+                    color = Color.White.copy(alpha = 0.74f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            // Glass play disc: what the card does, said on the card.
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.22f))
+                    .border(0.8.dp, Color.White.copy(alpha = 0.35f), CircleShape)
+                    .clickable(onClick = onPlay),
+            ) {
+                Icon(
+                    painterResource(if (active && playing) R.drawable.pause else R.drawable.play),
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp),
+                )
             }
         }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            song.title,
-            fontSize = 15.sp,
-            lineHeight = 19.sp,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            pick.reason,
-            fontSize = 13.sp,
-            lineHeight = 17.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }

@@ -38,6 +38,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import com.ozyern.exhale.ui.component.lightGlass
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,7 +61,8 @@ import androidx.compose.ui.unit.sp
 import com.ozyern.exhale.R
 
 /**
- * iOS Settings' search: a frosted capsule floating at the bottom of the page — magnifier, "Search",
+ * iOS Settings' search: a capsule of clear liquid glass floating at the foot of the page, just
+ * above the dock — magnifier, "Search",
  * microphone — that rides up with the keyboard and narrows the list above it as you type.
  *
  * Frosted rather than live glass: this sits inside the NavHost, and in-content glass must not sample
@@ -87,27 +90,22 @@ internal fun SettingsBottomSearch(
     Box(
         modifier
             .fillMaxWidth()
-            // Above the mini player when one is showing, and above the keyboard while typing.
+            // Above the dock (and the mini player in it), and above the keyboard while typing.
             .windowInsetsPadding(
                 com.ozyern.exhale.LocalPlayerAwareWindowInsets.current
                     .only(androidx.compose.foundation.layout.WindowInsetsSides.Bottom)
                     .union(androidx.compose.foundation.layout.WindowInsets.ime),
             )
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp)
-                .shadow(18.dp, CircleShape, clip = false, ambientColor = Color.Black.copy(alpha = 0.4f), spotColor = Color.Black.copy(alpha = 0.4f))
+                // iOS's capsule, in the search page's material: clear liquid glass.
+                .lightGlass(CircleShape)
                 .clip(CircleShape)
-                .background(if (dark) Color(0xEB2A2A2E) else Color(0xF2F4F4F7))
-                .border(
-                    0.8.dp,
-                    Brush.verticalGradient(listOf(Color.White.copy(alpha = if (dark) 0.22f else 0.8f), Color.White.copy(alpha = 0.04f))),
-                    CircleShape,
-                )
-                .padding(start = 16.dp, end = 8.dp),
+                .padding(start = 16.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(painterResource(R.drawable.search), null, tint = ink.copy(alpha = 0.6f), modifier = Modifier.size(22.dp))

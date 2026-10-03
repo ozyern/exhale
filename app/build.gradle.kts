@@ -84,8 +84,8 @@ android {
         applicationId = "com.ozyern.exhale"
         minSdk = 33
         targetSdk = 36
-        versionCode = 304
-        versionName = "1.0.304"
+        versionCode = 405
+        versionName = "1.0.405"
 //        versionName = "3.0.2-$gitCommit"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -221,6 +221,14 @@ android {
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
+    }
+
+    // Automix's native analyzer (src/main/cpp): a few hundred kilobytes per ABI.
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     lint {

@@ -183,9 +183,7 @@ private fun CompactSettingsLayout(
         modifier = modifier
             .fillMaxSize()
             .windowInsetsPadding(
-                LocalPlayerAwareWindowInsets.current.only(
-                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
-                )
+                LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal)
             ),
         contentPadding = PaddingValues(top = topPadding, bottom = settingsBottomClearance()),
     ) {
@@ -336,9 +334,7 @@ private fun MediumSettingsLayout(
         modifier = modifier
             .fillMaxSize()
             .windowInsetsPadding(
-                LocalPlayerAwareWindowInsets.current.only(
-                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
-                )
+                LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal)
             )
             .padding(horizontal = pad),
         horizontalArrangement = Arrangement.spacedBy(pad),
@@ -474,9 +470,7 @@ private fun ExpandedSettingsLayout(
         modifier = modifier
             .fillMaxSize()
             .windowInsetsPadding(
-                LocalPlayerAwareWindowInsets.current.only(
-                    WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
-                )
+                LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal)
             )
             .padding(horizontal = pad),
         horizontalArrangement = Arrangement.spacedBy(pad),

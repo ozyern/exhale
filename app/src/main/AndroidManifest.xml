@@ -28,7 +28,14 @@
         <intent>
             <action android:name="android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL" />
         </intent>
+        <!-- ColorOS Live Lyrics Bridge: without this Android 11+ hides it, the check always said
+             "not installed", and the per-line subtitle kept rewriting metadata under a lock
+             screen that was trying to draw the lyric document. -->
+        <package android:name="io.github.andrealtb.lockscreenlyrics" />
     </queries>
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
     <application
         android:name=".App"
         android:allowBackup="true"
@@ -64,6 +71,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density"
             android:theme="@style/Theme.Exhale"
             android:windowSoftInputMode="adjustResize">
             <!--
@@ -150,6 +158,21 @@
                 <data android:scheme="vnd.youtube.launch" />
             </intent-filter>
 
+            <!-- Open with: song files from a file manager, a download or an attachment -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="application/ogg" />
+                <data android:mimeType="application/x-ogg" />
+                <data android:mimeType="application/x-flac" />
+            </intent-filter>
+
             <!-- Share filter -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -226,8 +249,18 @@
             android:resource="@drawable/status" />
 
         <activity
+            android:name=".playback.LockScreenLyricsActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity="com.ozyern.exhale.locklyrics"
+            android:showWhenLocked="true"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Exhale" />
+
+        <activity
             android:name=".DebugActivity"
-            android:exported="true"
+            android:exported="false"
             android:process=":crash"
             android:theme="@style/Theme.Exhale">
         </activity>

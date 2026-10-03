@@ -89,7 +89,10 @@ val CompactMiniPlayerTopInset = (MiniPlayerHeight - CompactMiniPlayerHeight) / 2
  * They must stay in lockstep with `LiquidGlassBottomBar` — if they drift, the player shrinks into
  * a rectangle that is not the bar and the hand-off visibly jumps.
  */
-val NavBarPillHeight = 64.dp
+val NavBarPillHeight = 50.dp
+
+/** The dock row the State B pill is centred in: taller than the pill, so the pill sits inset in it. */
+val NavBarRowHeight = 64.dp
 private val NavBarPillGap = 10.dp
 val NavBarPillSideSlot = FloatingToolbarHorizontalPadding + NavBarPillHeight + NavBarPillGap
 val NavBarPillCornerRadius = NavBarPillHeight / 2
@@ -150,8 +153,11 @@ const val AquamorphicStiffness = 330f
  * only ever appears on the way *down*, which is the direction the transition is about.
  */
 val BottomSheetAnimationSpec = spring<Dp>(
-	dampingRatio = AquamorphicDampingRatio,
-	stiffness = AquamorphicStiffness
+	dampingRatio = 0.84f,
+	stiffness = 380f,
+	// Stops on the last visible pixel rather than easing through sub-pixel motion for another
+	// hundred milliseconds, which is what made a fling feel like it never quite landed.
+	visibilityThreshold = 0.5.dp,
 )
 
 /**
@@ -167,5 +173,20 @@ val BottomSheetAnimationSpec = spring<Dp>(
  */
 val BottomSheetSoftAnimationSpec = spring<Dp>(
 	dampingRatio = 0.86f,
-	stiffness = 210f
+	stiffness = 210f,
+	visibilityThreshold = 0.5.dp,
+)
+
+/** Tapping the mini player open: a little weight, and the faintest settle as it seats. */
+val BottomSheetOpenAnimationSpec = spring<Dp>(
+	dampingRatio = 0.86f,
+	stiffness = 250f,
+	visibilityThreshold = 0.5.dp,
+)
+
+/** Closing into the dock: quicker and with no bounce, so it lands in the pill and stays there. */
+val BottomSheetCloseAnimationSpec = spring<Dp>(
+	dampingRatio = 0.95f,
+	stiffness = 340f,
+	visibilityThreshold = 0.5.dp,
 )

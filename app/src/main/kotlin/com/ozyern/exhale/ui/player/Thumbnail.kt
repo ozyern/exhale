@@ -277,7 +277,7 @@ fun Thumbnail(
     val view = LocalView.current
 
     val hidePlayerThumbnail by rememberPreference(HidePlayerThumbnailKey, false)
-    val archiveTuneCanvasEnabled by rememberPreference(ExhaleCanvasKey, false)
+    val archiveTuneCanvasEnabled by rememberPreference(ExhaleCanvasKey, true)
     val playerDesignStyle by rememberEnumPreference(
         key = PlayerDesignStyleKey,
         defaultValue = PlayerDesignStyle.V8,
@@ -649,10 +649,14 @@ fun Thumbnail(
                                             storefront = storefront,
                                         )
                                     }
-                                canvasArtwork = fetched as CanvasArtwork?
+                                // The resolver and this cache use two copies of the same model;
+                                // a cast between them can never succeed and threw the moment a
+                                // cover was found. Convert instead.
+                                val playbackArtwork = fetched?.toPlaybackArtwork()
+                                canvasArtwork = playbackArtwork
                                 canvasFetchedAtMs = now
-                                if (fetched != null) {
-                                    CanvasArtworkPlaybackCache.put(item.mediaId, fetched)
+                                if (playbackArtwork != null) {
+                                    CanvasArtworkPlaybackCache.put(item.mediaId, playbackArtwork)
                                 }
                                 canvasFetchInFlight = false
                             }

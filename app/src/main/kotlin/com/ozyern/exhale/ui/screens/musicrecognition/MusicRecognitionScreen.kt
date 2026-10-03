@@ -219,7 +219,7 @@ fun MusicRecognitionScreen(
     Scaffold(
         topBar = {
             LargeFlexibleTopAppBar(
-                title = { Text(stringResource(R.string.music_recognition)) },
+                title = { com.ozyern.exhale.ui.component.HeadingStyle { Text(stringResource(R.string.music_recognition)) } },
                 navigationIcon = {
                     LiquidBackButton(
                         onClick = navController::navigateUp,
@@ -230,7 +230,7 @@ fun MusicRecognitionScreen(
                 colors =
                     TopAppBarDefaults.largeTopAppBarColors(
                         containerColor = Color.Transparent,
-                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        scrolledContainerColor = Color.Transparent,
                     ),
                 scrollBehavior = scrollBehavior,
             )

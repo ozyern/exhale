@@ -182,10 +182,10 @@ fun DiscordSettings(
     ) { innerPadding ->
         Column(
             Modifier
-                .windowInsetsPadding(
-                    LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
-                )
+                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
                 .verticalScroll(rememberScrollState())
+                // Below the content, not around the viewport: the page scrolls on under the dock.
+                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Bottom))
         ) {
         Spacer(
             Modifier.windowInsetsPadding(
@@ -276,15 +276,34 @@ fun DiscordSettings(
             isEnabled = discordRPC,
         )
 
-        // What the presence is made of. Read, not offered: these are the desktop build's answers.
-        val nameSource = ActivitySource.APP
-        val detailsSource = ActivitySource.SONG
-        val stateSource = ActivitySource.ARTIST
-        val activityType = "LISTENING"
-        val largeImageType = "thumbnail"
-        val largeImageCustomUrl = ""
-        val smallImageType = "artist"
-        val smallImageCustomUrl = ""
+        val (advancedOn) = rememberPreference(com.ozyern.exhale.constants.DiscordAdvancedKey, false)
+        PreferenceEntry(
+            title = { Text("Advanced") },
+            description = if (advancedOn) "On — your own presence" else "Off — Exhale, the song and the artist",
+            icon = { Icon(painterResource(R.drawable.tune), null) },
+            onClick = { navController.navigate("settings/discord/advanced") },
+            isEnabled = discordRPC,
+        )
+
+        // What the presence is made of: the standard answers, or Advanced's when it is on.
+        val (advName) = rememberPreference(DiscordActivityNameKey, "APP")
+        val (advDetails) = rememberPreference(DiscordActivityDetailsKey, "SONG")
+        val (advState) = rememberPreference(DiscordActivityStateKey, "ARTIST")
+        val (advType) = rememberPreference(DiscordActivityTypeKey, "LISTENING")
+        val (advLarge) = rememberPreference(DiscordLargeImageTypeKey, "thumbnail")
+        val (advLargeUrl) = rememberPreference(DiscordLargeImageCustomUrlKey, "")
+        val (advSmall) = rememberPreference(DiscordSmallImageTypeKey, "artist")
+        val (advSmallUrl) = rememberPreference(DiscordSmallImageCustomUrlKey, "")
+        fun source(v: String, fallback: ActivitySource) =
+            runCatching { ActivitySource.valueOf(v) }.getOrDefault(fallback)
+        val nameSource = if (advancedOn) source(advName, ActivitySource.APP) else ActivitySource.APP
+        val detailsSource = if (advancedOn) source(advDetails, ActivitySource.SONG) else ActivitySource.SONG
+        val stateSource = if (advancedOn) source(advState, ActivitySource.ARTIST) else ActivitySource.ARTIST
+        val activityType = if (advancedOn) advType else "LISTENING"
+        val largeImageType = if (advancedOn) advLarge else "thumbnail"
+        val largeImageCustomUrl = if (advancedOn) advLargeUrl else ""
+        val smallImageType = if (advancedOn) advSmall else "artist"
+        val smallImageCustomUrl = if (advancedOn) advSmallUrl else ""
         val button1Enabled = true
         val button2Enabled = true
 
@@ -333,6 +352,19 @@ fun DiscordSettings(
                 expanded = threeDotMenuExpanded,
                 onDismissRequest = { threeDotMenuExpanded = false }
             ) {
+                DropdownMenuItem(
+                    text = { Text("Advanced") },
+                    onClick = {
+                        threeDotMenuExpanded = false
+                        navController.navigate("settings/discord/advanced")
+                    },
+                    leadingIcon = {
+                        Icon(
+                            painter = painterResource(R.drawable.tune),
+                            contentDescription = null
+                        )
+                    }
+                )
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.experiment_settings)) },
                     onClick = {

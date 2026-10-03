@@ -96,6 +96,13 @@ import com.ozyern.exhale.R
 import com.ozyern.exhale.constants.AudioNormalizationKey
 import com.ozyern.exhale.constants.AudioOffload
 import com.ozyern.exhale.constants.AudioCrossfadeDurationKey
+import com.ozyern.exhale.constants.AutomixEnabledKey
+import com.ozyern.exhale.constants.AutomixPerformanceKey
+import com.ozyern.exhale.playback.automix.AutomixPerformance
+import com.ozyern.exhale.playback.automix.MixAnalyzer
+import com.ozyern.exhale.playback.automix.StreamAudioSource
+import com.ozyern.exhale.playback.automix.TransitionFilterProcessor
+import com.ozyern.exhale.playback.automix.TransitionFilters
 import com.ozyern.exhale.constants.AudioCodecKey
 import com.ozyern.exhale.constants.AudioQualityKey
 import com.ozyern.exhale.constants.AutoLoadMoreKey
@@ -134,6 +141,16 @@ import com.ozyern.exhale.constants.RepeatModeKey
 import com.ozyern.exhale.constants.SkipSilenceKey
 import com.ozyern.exhale.constants.PreferLocalLosslessKey
 import com.ozyern.exhale.constants.SpatialAudioKey
+import com.ozyern.exhale.constants.SoundBalanceKey
+import com.ozyern.exhale.constants.OutputFloatKey
+import com.ozyern.exhale.constants.PreferMusicOnlyKey
+import com.ozyern.exhale.constants.PreferUsbDacKey
+import com.ozyern.exhale.constants.SoundEqBandsKey
+import com.ozyern.exhale.constants.SoundEqEnabledKey
+import com.ozyern.exhale.constants.SoundEqFocusedKey
+import com.ozyern.exhale.constants.SoundEqModeKey
+import com.ozyern.exhale.constants.SoundEqToneXKey
+import com.ozyern.exhale.constants.SoundEqToneYKey
 import com.ozyern.exhale.constants.MaxSongCacheSizeKey
 import com.ozyern.exhale.constants.SmartTrimmerKey
 import com.ozyern.exhale.constants.StopMusicOnTaskClearKey
@@ -221,6 +238,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -307,6 +326,39 @@ class MusicService :
     /** Read on the loader thread for every stream, so kept here rather than asked of the datastore. */
     @Volatile
     private var preferLocalLossless = true
+
+    /** See [PreferMusicOnlyKey]. */
+    @Volatile
+    private var preferMusicOnly = false
+
+    /** A music video's id to the catalogue song played in its place (or itself, where there is none). */
+    private val musicOnlyIds = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** See [com.ozyern.exhale.constants.JioSaavnUpgradeKey]. Read on the loader thread. */
+    @Volatile
+    private var jioSaavnUpgrade = true
+
+    /** Queue songs' details, captured on the main thread so the loader can match them. */
+    private val queueMetadata = ConcurrentHashMap<String, com.ozyern.exhale.models.MediaMetadata>()
+
+    /** One JioSaavn lookup per song, shared by prefetch and playback. */
+    private val saavnLookups = ConcurrentHashMap<String, kotlinx.coroutines.Deferred<JioSaavn.Stream?>>()
+
+    /**
+     * Which file a song is playing from this session: a JioSaavn URL, or [YOUTUBE_SOURCE].
+     * Decided at the song's first open and then kept, so a later range request can never splice
+     * one file's bytes onto another's.
+     */
+    private val streamSource = ConcurrentHashMap<String, String>()
+
+    /** What the audio track was actually opened with, for the output readout in settings. */
+    val outputStatus = MutableStateFlow<OutputStatus?>(null)
+
+    private var preferUsbDac = false
+    private val usbDeviceCallback = object : android.media.AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out android.media.AudioDeviceInfo>?) = applyUsbPreference()
+        override fun onAudioDevicesRemoved(removedDevices: Array<out android.media.AudioDeviceInfo>?) = applyUsbPreference()
+    }
     private var streamPrefetchJob: Job? = null
     @Volatile
     private var streamPrefetchMediaId: String? = null
@@ -378,6 +430,13 @@ class MusicService :
     private val crossfadeDurationMs = MutableStateFlow(0)
     private val audioNormalizationEnabled = MutableStateFlow(true)
     private var crossfadeAudio: CrossfadeAudio? = null
+
+    // Automix. Each player's audio chain carries its own transition filter: the main player's is
+    // the song leaving, the overlap player's the song arriving.
+    private val automixEnabled = MutableStateFlow(false)
+    private val mainTransitionFilter = TransitionFilterProcessor()
+    private val overlapTransitionFilter = TransitionFilterProcessor()
+    private var mixAnalyzer: MixAnalyzer? = null
     private var lyricsPreloadManager: LyricsPreloadManager? = null
 
     private fun isAppInForeground(): Boolean {
@@ -470,6 +529,8 @@ class MusicService :
 
     /** The line index last pushed to the session, so the ticker only writes on a change. */
     private var liveLyricLineIndex = -1
+
+    private var lockLyricsReceiver: android.content.BroadcastReceiver? = null
 
     /** The ticker itself; one at a time, cancelled on every track change. */
     private var liveLyricTickerJob: Job? = null
@@ -707,6 +768,19 @@ class MusicService :
                 }
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.registerAudioDeviceCallback(usbDeviceCallback, android.os.Handler(android.os.Looper.getMainLooper()))
+        player.addAnalyticsListener(object : androidx.media3.exoplayer.analytics.AnalyticsListener {
+            override fun onAudioTrackInitialized(
+                eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                audioTrackConfig: androidx.media3.exoplayer.audio.AudioSink.AudioTrackConfig,
+            ) {
+                outputStatus.value = OutputStatus(
+                    sampleRateHz = audioTrackConfig.sampleRate,
+                    encoding = audioTrackConfig.encoding,
+                    offload = audioTrackConfig.offload,
+                )
+            }
+        })
         wakeLock = (getSystemService(Context.POWER_SERVICE) as PowerManager)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Exhale:Playback")
             .also { it.setReferenceCounted(false) }
@@ -806,7 +880,10 @@ class MusicService :
             .collectLatest(ioScope) { mediaMetadata ->
                 if (mediaMetadata == null) return@collectLatest
 
-                val cached = database.lyrics(mediaMetadata.id).first()
+                // Saved lyrics a source censored beyond repair are looked up again.
+                val cached = database.lyrics(mediaMetadata.id).first()?.takeUnless {
+                    com.ozyern.exhale.lyrics.Uncensor.isCensored(com.ozyern.exhale.lyrics.Uncensor.restore(it.lyrics))
+                }
                 val lyrics = if (cached == null) {
                     lyricsHelper.getLyrics(mediaMetadata).also { fetched ->
                         database.query {
@@ -835,6 +912,13 @@ class MusicService :
                 if (!enabled) publishMediaCardLine(null)
             }
 
+        // Exhale's own lyrics over the lock screen (see LockScreenLyrics).
+        lockLyricsReceiver = LockScreenLyrics.register(this, player)
+        dataStore.data
+            .map { it[com.ozyern.exhale.constants.LockScreenLyricsOverlayKey] ?: false }
+            .distinctUntilChanged()
+            .collectLatest(scope) { LockScreenLyrics.enabled = it }
+
         dataStore.data
             .map { it[EnableLockScreenLyricsKey] ?: true }
             .distinctUntilChanged()
@@ -843,6 +927,33 @@ class MusicService :
                 // Turning the document channel on hands the lock screen back to it, so the
                 // subtitle goes back to being the artist.
                 if (enabled) publishMediaCardLine(null)
+            }
+
+        dataStore.data
+            .map { it[com.ozyern.exhale.constants.JioSaavnUpgradeKey] ?: true }
+            .distinctUntilChanged()
+            .collectLatest(scope) { enabled ->
+                jioSaavnUpgrade = enabled
+                if (!enabled) {
+                    saavnLookups.clear()
+                    streamSource.clear()
+                }
+            }
+
+        dataStore.data
+            .map { it[PreferMusicOnlyKey] ?: false }
+            .distinctUntilChanged()
+            .collectLatest(scope) {
+                preferMusicOnly = it
+                musicOnlyIds.clear()
+            }
+
+        dataStore.data
+            .map { it[PreferUsbDacKey] ?: false }
+            .distinctUntilChanged()
+            .collectLatest(scope) {
+                preferUsbDac = it
+                applyUsbPreference()
             }
 
         dataStore.data
@@ -887,6 +998,31 @@ class MusicService :
                 }
             }
 
+        // Exhale's equaliser: the processor reads a static target, so a change is heard at the
+        // next audio buffer, gliding there without a click, and never rebuilds the player.
+        dataStore.data
+            .map { prefs ->
+                val enabled = prefs[SoundEqEnabledKey] ?: false
+                val mode = prefs[SoundEqModeKey]?.let { runCatching { SoundEqMode.valueOf(it) }.getOrNull() }
+                    ?: SoundEqMode.DYNAMIC
+                val curve = when (mode) {
+                    SoundEqMode.DYNAMIC -> toneCurve(
+                        prefs[SoundEqToneXKey] ?: 0,
+                        prefs[SoundEqToneYKey] ?: 0,
+                        prefs[SoundEqFocusedKey] ?: false,
+                    )
+                    SoundEqMode.MANUAL -> manualCurve(decodeSoundBands(prefs[SoundEqBandsKey]))
+                }
+                Triple(enabled, curve, prefs[SoundBalanceKey] ?: 0f)
+            }
+            .distinctUntilChanged { a, b ->
+                a.first == b.first && a.third == b.third &&
+                    a.second.gainsDb.contentEquals(b.second.gainsDb) && a.second.qs.contentEquals(b.second.qs)
+            }
+            .collectLatest(scope) { (enabled, curve, balance) ->
+                ToneEqualizerProcessor.setTuning(enabled, curve, balance)
+            }
+
         dataStore.data
             .map { it[PauseOnDeviceMuteKey] ?: false }
             .distinctUntilChanged()
@@ -926,6 +1062,10 @@ class MusicService :
                     if (crossfadeSeconds != 0) {
                         dataStore.edit { it[AudioCrossfadeDurationKey] = 0 }
                     }
+                    // Offloaded audio skips the processors Automix blends through.
+                    if (dataStore.get(AutomixEnabledKey, false)) {
+                        dataStore.edit { it[AutomixEnabledKey] = false }
+                    }
                 }
             }
         
@@ -934,6 +1074,44 @@ class MusicService :
             .distinctUntilChanged()
             .collectLatest(scope) {
                 crossfadeDurationMs.value = it
+            }
+
+        mixAnalyzer = MixAnalyzer(this) { id, abort -> automixSource(id, abort) }
+        // Music-video lyrics: how far into the video its song starts, measured from the two
+        // recordings. Nothing to move when music-only is already playing the song's own audio.
+        com.ozyern.exhale.lyrics.VideoLyricsAlignment.aligner = { videoId, songId ->
+            if (preferMusicOnly && musicOnlyIds[videoId] == songId) {
+                0L
+            } else {
+                withContext(Dispatchers.IO) {
+                    val video = automixSource(videoId, { false }, followMusicOnly = false)
+                    val song = automixSource(songId, { false }, followMusicOnly = false)
+                    if (video == null || song == null) {
+                        runCatching { video?.close() }
+                        runCatching { song?.close() }
+                        null
+                    } else {
+                        runCatching {
+                            com.ozyern.exhale.playback.automix.VersionAligner.offsetMs(video, song)
+                        }.getOrNull()
+                    }
+                }
+            }
+        }
+        dataStore.data
+            .map { it[AutomixEnabledKey] ?: false }
+            .distinctUntilChanged()
+            .collectLatest(scope) {
+                automixEnabled.value = it
+            }
+        dataStore.data
+            .map { prefs ->
+                runCatching { AutomixPerformance.valueOf(prefs[AutomixPerformanceKey] ?: "") }
+                    .getOrDefault(AutomixPerformance.BALANCED)
+            }
+            .distinctUntilChanged()
+            .collectLatest(scope) {
+                mixAnalyzer?.performance = it
             }
 
         dataStore.data
@@ -958,7 +1136,7 @@ class MusicService :
                     ExoPlayer
                         .Builder(this)
                         .setMediaSourceFactory(createMediaSourceFactory())
-                        .setRenderersFactory(createRenderersFactory())
+                        .setRenderersFactory(createRenderersFactory(overlapTransitionFilter))
                         .setTrackSelector(createTrackSelector())
                         .setHandleAudioBecomingNoisy(false)
                         .setWakeMode(C.WAKE_MODE_NETWORK)
@@ -972,6 +1150,20 @@ class MusicService :
                         ).setSeekBackIncrementMs(5000)
                         .setSeekForwardIncrementMs(5000)
                         .build()
+                },
+                automixEnabled = automixEnabled,
+                analyzer = mixAnalyzer,
+                filters = object : TransitionFilters {
+                    override fun incoming(lowPassHz: Float, highPassHz: Float) =
+                        overlapTransitionFilter.setCutoffs(lowPassHz, highPassHz)
+
+                    override fun outgoing(lowPassHz: Float, highPassHz: Float) =
+                        mainTransitionFilter.setCutoffs(lowPassHz, highPassHz)
+                },
+                // Every listener in a session starts the next song at their own moment, so a
+                // transition planned on one phone would land differently on the others.
+                automixAllowed = {
+                    togetherSessionState.value is com.ozyern.exhale.together.TogetherSessionState.Idle
                 },
                 onCrossfadeStart = { mediaItem ->
                     val metadata = mediaItem.metadata
@@ -1762,6 +1954,7 @@ class MusicService :
             liveLyricTickerJob?.cancel()
             liveLyricLineIndex = -1
             liveLyricLines = parsed
+            LockScreenLyrics.publishLines(parsed)
 
             if (parsed.isEmpty()) {
                 // Clear, so a previous track's words can never sit under a new one.
@@ -1848,6 +2041,8 @@ class MusicService :
      * [OplusLiveLyrics.CURRENT_LINE_KEY_ALIASES], or clears them when [line] is null.
      */
     private fun publishSessionCurrentLine(line: String?, timeMs: Long) {
+        // The same rule as the subtitle: no per-line churn where the native page is reading.
+        if (line != null && cardLineWouldFightDocument) return
         val extras = Bundle(mediaSession.sessionExtras)
         OplusLiveLyrics.CURRENT_LINE_KEY_ALIASES.forEach { key ->
             if (line == null) extras.remove(key) else extras.putString(key, line)
@@ -1922,9 +2117,16 @@ class MusicService :
      * otherwise the subtitle is the only lyric anyone is going to see on that lock screen, and
      * standing down would mean showing nothing at all.
      */
+    // ColorOS 16.1+ draws `lyricInfo` natively, Bridge or not (Live Lyrics Bridge 4.0 contract,
+    // docs/PLAYER_INTEGRATION.md): SystemUI takes the timeline from the document and the progress
+    // from PlaybackState, and metadata rewritten for lyric progress is what it names as the thing
+    // that breaks it. The per-line subtitle was exactly such a rewrite, on every line, which is
+    // why the native lyric page stayed empty. On ColorOS the document now owns the lock screen.
+    // Only where something will actually draw the document: stock ColorOS admits lyricInfo from
+    // its partner players alone, and the Live Lyrics Bridge is what admits the rest. Without the
+    // Bridge the per-line subtitle is the only lyric the lock screen shows, so it stays on.
     private val cardLineWouldFightDocument: Boolean
-        get() = liveLyricsDocument &&
-            com.ozyern.exhale.utils.DeviceAudio.isOplusDevice &&
+        get() = liveLyricsDocument && com.ozyern.exhale.utils.DeviceAudio.isOplusDevice &&
             lockScreenLyricBridgeInstalled
 
     /**
@@ -1990,11 +2192,14 @@ class MusicService :
      * [OplusLiveLyrics.METADATA_KEY_ALIASES], clearing them when there are no timed lyrics so a
      * previous track's words can never linger on the lock screen. Main thread.
      */
-    private fun publishSessionLyricExtras(payload: String?) {
+    private fun publishSessionLyricExtras(@Suppress("UNUSED_PARAMETER") payload: String?) {
+        // Clears only. The document belongs in the track's metadata, once, under `lyricInfo`: the
+        // contract rules out extras-only copies, and a second copy here is a duplicate publication
+        // to a Bridge-patched SystemUI. What earlier builds left on the session is removed.
         val extras = Bundle(mediaSession.sessionExtras)
-        OplusLiveLyrics.METADATA_KEY_ALIASES.forEach { key ->
-            if (payload == null) extras.remove(key) else extras.putString(key, payload)
-        }
+        val keys = OplusLiveLyrics.METADATA_KEY_ALIASES + OplusLiveLyrics.RETIRED_KEYS
+        if (keys.none { extras.containsKey(it) }) return
+        keys.forEach { extras.remove(it) }
         mediaSession.sessionExtras = extras
     }
 
@@ -2299,13 +2504,15 @@ class MusicService :
             }
             if (initialStatus.items.isEmpty()) return@launch
             if (queue.preloadItem != null) {
+                // A source can report a start index past its own list; clamp rather than crash.
+                val startAt = initialStatus.mediaItemIndex.coerceIn(0, initialStatus.items.lastIndex)
                 player.addMediaItems(
                     0,
-                    initialStatus.items.subList(0, initialStatus.mediaItemIndex)
+                    initialStatus.items.subList(0, startAt)
                 )
                 player.addMediaItems(
                     initialStatus.items.subList(
-                        initialStatus.mediaItemIndex + 1,
+                        startAt + 1,
                         initialStatus.items.size
                     )
                 )
@@ -2314,7 +2521,7 @@ class MusicService :
                 }
             } else {
                 val items = initialStatus.items
-                val index = initialStatus.mediaItemIndex
+                val index = initialStatus.mediaItemIndex.coerceIn(0, items.lastIndex)
                 
                 // Chunk Loading: Only load a window around the current item initially
                 // to prevent blocking the Main Thread for seconds with large queues.
@@ -2791,10 +2998,11 @@ class MusicService :
             return
         }
         suppressAutoPlayback = false
-        player.addMediaItems(
-            if (player.mediaItemCount == 0) 0 else player.currentMediaItemIndex + 1,
-            items
-        )
+        // Queued, and straight after the current track — in the play order too, with shuffle on.
+        val queued = items.map { it.withQueueTier(QueueTier.USER) }
+        val insertAt = if (player.mediaItemCount == 0) 0 else player.currentMediaItemIndex + 1
+        player.addMediaItems(insertAt, queued)
+        player.placeInShuffle(insertAt until insertAt + queued.size, afterQueued = false)
         player.prepare()
     }
 
@@ -2820,8 +3028,23 @@ class MusicService :
             return
         }
         suppressAutoPlayback = false
-        player.addMediaItems(items)
+        // After what is already queued, ahead of the rest of the album and of Autoplay — not at
+        // the very end of everything, where a queued song used to wait out a whole playlist.
+        val queued = items.map { it.withQueueTier(QueueTier.USER) }
+        val insertAt = player.userQueueEnd()
+        player.addMediaItems(insertAt, queued)
+        player.placeInShuffle(insertAt until insertAt + queued.size, afterQueued = true)
         player.prepare()
+    }
+
+    /** Empties Next in Queue; the album and Autoplay stay. */
+    fun clearQueuedTracks() {
+        player.clearUserQueue()
+    }
+
+    /** Plays a queue entry the way the queue means it; see [jumpToQueueItem]. */
+    fun playQueueEntry(timelineIndex: Int) {
+        player.jumpToQueueItem(timelineIndex)
     }
 
     fun startTogetherHost(
@@ -4219,8 +4442,23 @@ class MusicService :
         )
     }
 
-    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+    override fun onMediaItemTransition(mediaItem: MediaItem?, rawReason: Int) {
+    // The crossfade catching up with the song already fading in is that song playing on, not a
+    // skip, whatever the player calls it — so the queue, the radio and Together all see it as one.
+    val reason =
+        if (rawReason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK && crossfadeAudio?.adoptsTransitionTo(mediaItem) == true) {
+            Player.MEDIA_ITEM_TRANSITION_REASON_AUTO
+        } else {
+            rawReason
+        }
     super.onMediaItemTransition(mediaItem, reason)
+    rememberQueueMetadata()
+
+    // Back in the album after a run of queued tracks: those are spent. Posted, so everything
+    // below still sees the timeline this transition happened in.
+    if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED && mediaItem?.queueTier == QueueTier.CONTEXT) {
+        scope.launch { player.consumePlayedUserQueue() }
+    }
 
     clearStreamRefreshGuards(
         mediaItem?.mediaId
@@ -4344,6 +4582,7 @@ class MusicService :
             if (existingAutomix.isNotEmpty()) {
                 if (player.playbackState == STATE_IDLE) return@launch
                 val filteredAutomix = existingAutomix.filter { it.mediaId !in queueIds }
+                    .map { it.withQueueTier(QueueTier.AUTOPLAY) }
                 if (filteredAutomix.isNotEmpty()) {
                     player.addMediaItems(filteredAutomix)
                     filteredAutomix.forEach { autoAddedMediaIds.add(it.mediaId) }
@@ -4862,6 +5101,20 @@ class MusicService :
             return
         }
 
+        // Any other network-side failure — a read timing out, a connection reset part-way through a
+        // range — is transient: pick the song up again from where it was rather than stopping.
+        // The same per-song allowance as the recoveries above keeps a truly broken stream from
+        // looping.
+        val ioError = error.errorCode in 2000..2999
+        if (ioError && currentMediaId != null && markAndCheckRecoveryAllowance(currentMediaId)) {
+            Timber.tag("MusicService").w(
+                "Transient IO error for $currentMediaId (code=${error.errorCode}) — resuming at ${player.currentPosition}ms",
+            )
+            player.prepare()
+            player.playWhenReady = true
+            return
+        }
+
         val skipSilenceCurrentlyEnabled = dataStore.get(SkipSilenceKey, false)
         val causeText = (error.cause?.stackTraceToString() ?: error.stackTraceToString()).lowercase()
         val looksLikeSilenceProcessor = skipSilenceCurrentlyEnabled && (
@@ -5019,9 +5272,125 @@ class MusicService :
         return track
     }
 
+    /**
+     * The catalogue song a music video is a video of: searched by its title and artist, and
+     * accepted only when the title and artist agree and the length is close — a video's intro and
+     * outro allow some drift, a different song does not get through.
+     */
+    private suspend fun findCatalogueAudio(video: com.ozyern.exhale.innertube.models.response.PlayerResponse.VideoDetails): String? {
+        val title = com.ozyern.exhale.lyrics.SongQuery.cleanTitle(video.title)
+        val artist = video.author.removeSuffix(" - Topic").removeSuffix("VEVO").trim()
+        val seconds = video.lengthSeconds.toIntOrNull() ?: 0
+        val results = YouTube.search("$title $artist", YouTube.SearchFilter.FILTER_SONG).getOrNull()?.items
+            ?.filterIsInstance<com.ozyern.exhale.innertube.models.SongItem>()
+            .orEmpty()
+        fun norm(text: String) = text.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+        val wantedTitle = norm(title)
+        val wantedArtist = norm(artist)
+        return results.mapNotNull { song ->
+            val name = norm(com.ozyern.exhale.lyrics.SongQuery.cleanTitle(song.title))
+            val titleScore = when {
+                name == wantedTitle -> 50
+                name.isNotEmpty() && (name.contains(wantedTitle) || wantedTitle.contains(name)) -> 30
+                else -> return@mapNotNull null
+            }
+            val artists = song.artists.joinToString(" ") { norm(it.name) }
+            val artistScore = if (wantedArtist.isNotEmpty() && (artists.contains(wantedArtist) || wantedArtist.contains(artists))) 30 else 0
+            val drift = song.duration?.let { kotlin.math.abs(it - seconds) } ?: 999
+            val lengthScore = when {
+                seconds <= 0 -> 0
+                drift <= 3 -> 25
+                drift <= 15 -> 15
+                drift <= 45 -> 5
+                else -> return@mapNotNull null
+            }
+            song.id to titleScore + artistScore + lengthScore
+        }.filter { it.second >= 60 }.maxByOrNull { it.second }?.first
+    }
+
+    /** "This song: ready · Next: measuring", for the settings page; empty while Automix is off. */
+    fun automixStatus(): String {
+        if (!automixEnabled.value || !::player.isInitialized) return ""
+        val analyzer = mixAnalyzer ?: return ""
+        if (togetherSessionState.value !is com.ozyern.exhale.together.TogetherSessionState.Idle) {
+            return "Paused while listening together"
+        }
+        fun stateOf(id: String?): String = when {
+            id == null -> "—"
+            analyzer.isMeasured(id) -> "ready"
+            analyzer.isAnalysing(id) -> "measuring…"
+            analyzer.analysisFor(id).status.isNotEmpty() -> "plain fade"
+            else -> "waiting"
+        }
+        val current = player.currentMediaItem?.mediaId ?: return ""
+        val next = player.nextMediaItemIndex.takeIf { it != C.INDEX_UNSET }
+            ?.let { runCatching { player.getMediaItemAt(it).mediaId }.getOrNull() }
+        return "This song: ${stateOf(current)} · Next: ${stateOf(next)}"
+    }
+
+    /**
+     * [mediaId]'s audio, for Automix to measure: the file itself for music on the phone or saved
+     * from Exhale, otherwise the stream, read through the player's own data source so every byte
+     * is cached on the way past and the player finds it there. Null when its length isn't known
+     * even after asking — the analyzer tries again later.
+     */
+    private fun automixSource(
+        mediaId: String,
+        abort: () -> Boolean,
+        followMusicOnly: Boolean = true,
+    ): android.media.MediaDataSource? {
+        val id = if (followMusicOnly && preferMusicOnly) musicOnlyIds[mediaId] ?: mediaId else mediaId
+        val file = com.ozyern.exhale.utils.LocalMediaScanner.uriFor(id)
+            ?: com.ozyern.exhale.export.SavedFiles.uriFor(this, id)
+            ?: if (preferLocalLossless) losslessCopyOf(id)?.uri else null
+        if (file != null) return com.ozyern.exhale.playback.automix.LocalAudioSource.open(contentResolver, file)
+
+        fun knownLength(): Long? =
+            runCatching { downloadCache.getContentMetadata(id).get(ContentMetadata.KEY_CONTENT_LENGTH, -1L) }
+                .getOrNull()?.takeIf { it > 0L }
+                ?: runCatching { playerCache.getContentMetadata(id).get(ContentMetadata.KEY_CONTENT_LENGTH, -1L) }
+                    .getOrNull()?.takeIf { it > 0L }
+                ?: runBlocking(Dispatchers.IO) { database.format(id).first()?.contentLength }?.takeIf { it > 0L }
+
+        val factory = createDataSourceFactory()
+        val length = knownLength() ?: run {
+            // Resolving the stream records its length; one small read is enough to make that happen.
+            runCatching {
+                val source = factory.createDataSource()
+                try {
+                    source.open(androidx.media3.datasource.DataSpec.Builder().setUri(id).setKey(id).setLength(1).build())
+                    source.read(ByteArray(1), 0, 1)
+                } finally {
+                    source.close()
+                }
+            }
+            knownLength()
+        } ?: return null
+        return StreamAudioSource(factory, id, length, abort)
+    }
+
+    /** Routes to a USB DAC while one is connected and the setting is on; otherwise, the phone's choice. */
+    private fun applyUsbPreference() {
+        if (!::player.isInitialized || !::audioManager.isInitialized) return
+        val usb = if (preferUsbDac) {
+            audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).firstOrNull {
+                it.type == android.media.AudioDeviceInfo.TYPE_USB_DEVICE ||
+                    it.type == android.media.AudioDeviceInfo.TYPE_USB_HEADSET ||
+                    it.type == android.media.AudioDeviceInfo.TYPE_USB_ACCESSORY
+            }
+        } else {
+            null
+        }
+        runCatching { player.setPreferredAudioDevice(usb) }
+    }
+
     private fun createDataSourceFactory(): DataSource.Factory {
-        return ResolvingDataSource.Factory(createCacheDataSource()) { dataSpec ->
-            val mediaId = dataSpec.key ?: error("No media id")
+        return ResolvingDataSource.Factory(createCacheDataSource()) { requestSpec ->
+            val requestedId = requestSpec.key ?: error("No media id")
+            // A music video already matched to its catalogue song plays that song's audio, under
+            // the song's own id so its bytes are never cached as the video's.
+            val mediaId = if (preferMusicOnly) musicOnlyIds[requestedId] ?: requestedId else requestedId
+            val dataSpec = if (mediaId != requestedId) requestSpec.buildUpon().setKey(mediaId).build() else requestSpec
 
             // Music from this phone is the file itself: nothing to look up, cache or fetch.
             com.ozyern.exhale.utils.LocalMediaScanner.uriFor(mediaId)?.let { return@Factory dataSpec.withUri(it) }
@@ -5084,9 +5453,61 @@ class MusicService :
                     downloadCache.isCached(mediaId, dataSpec.position, requiredCachedLength) ||
                         playerCache.isCached(mediaId, dataSpec.position, requiredCachedLength)
                 if (isFullyCached) {
+                    streamSource.putIfAbsent(mediaId, YOUTUBE_SOURCE)
                     scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
                     return@Factory dataSpec
                 }
+            }
+
+            // JioSaavn, when this song is already playing from there, or when an exact match is in
+            // hand before YouTube's answer would be.
+            streamSource[mediaId]?.takeIf { it != YOUTUBE_SOURCE }?.let { url ->
+                return@Factory dataSpec.buildUpon().setUri(url.toUri()).setKey("saavn:$mediaId").build()
+            }
+            if (streamSource[mediaId] == null) {
+                val lookup = saavnLookup(mediaId)
+                if (lookup != null) {
+                    // A cached YouTube URL is a head start, not a reason to settle for less: a
+                    // lookup already running gets a moment to land.
+                    val picked = runBlocking(Dispatchers.IO) {
+                        val cachedUrl = playbackUrlCache[mediaId]?.takeIf { it.second > System.currentTimeMillis() }
+                        if (cachedUrl != null) {
+                            withTimeoutOrNull(SAAVN_HEAD_START_GRACE_MS) { lookup.await() }
+                        } else {
+                            val youtube = ioScope.async {
+                                YTPlayerUtils.playerResponseForPlayback(
+                                    mediaId,
+                                    audioQuality = audioQuality,
+                                    connectivityManager = connectivityManager,
+                                    preferredStreamClient = preferredStreamClient,
+                                    avoidCodecs = avoidStreamCodecs,
+                                    preferredCodec = preferredAudioCodec,
+                                )
+                            }
+                            val first = kotlinx.coroutines.selects.select<JioSaavn.Stream?> {
+                                lookup.onAwait { it }
+                                youtube.onAwait { withTimeoutOrNull(SAAVN_GRACE_MS) { lookup.await() } }
+                            }
+                            // YouTube's answer still carries the loudness figure and the format row,
+                            // and is the fallback: stored either way.
+                            if (first != null) {
+                                ioScope.launch {
+                                    youtube.await().getOrNull()?.let { storeResolvedStream(mediaId, it) }
+                                }
+                            } else {
+                                // Stored where the lines below look first, so it is not asked twice.
+                                youtube.await().getOrNull()?.let { storeResolvedStream(mediaId, it) }
+                            }
+                            first
+                        }
+                    }
+                    if (picked != null) {
+                        streamSource[mediaId] = picked.url
+                        Timber.tag("JioSaavn").i("%s playing from JioSaavn at %d kbps", mediaId, picked.kbps)
+                        return@Factory dataSpec.buildUpon().setUri(picked.url.toUri()).setKey("saavn:$mediaId").build()
+                    }
+                }
+                streamSource[mediaId] = YOUTUBE_SOURCE
             }
 
             playbackUrlCache[mediaId]?.takeIf { it.second > System.currentTimeMillis() }?.let {
@@ -5144,6 +5565,40 @@ class MusicService :
 
             val nonNullPlayback = requireNotNull(playbackData) {
                 getString(R.string.error_unknown)
+            }
+            // Prefer music-only: the first time a music video comes through, find the catalogue song
+            // it is a video of and play that instead — the video's details stay on screen.
+            if (preferMusicOnly && mediaId == requestedId && !musicOnlyIds.containsKey(requestedId)) {
+                val type = nonNullPlayback.videoDetails?.musicVideoType
+                val isMusicVideo = type == "MUSIC_VIDEO_TYPE_OMV" || type == "MUSIC_VIDEO_TYPE_UGC"
+                val counterpart = if (isMusicVideo) {
+                    runBlocking(Dispatchers.IO) {
+                        withTimeoutOrNull(4_000) { findCatalogueAudio(nonNullPlayback.videoDetails!!) }
+                    }
+                } else {
+                    null
+                }
+                musicOnlyIds[requestedId] = counterpart ?: requestedId
+                if (counterpart != null) {
+                    val audio = runBlocking(Dispatchers.IO) {
+                        YTPlayerUtils.playerResponseForPlayback(
+                            counterpart,
+                            audioQuality = audioQuality,
+                            connectivityManager = connectivityManager,
+                            preferredStreamClient = preferredStreamClient,
+                            avoidCodecs = avoidStreamCodecs,
+                            preferredCodec = preferredAudioCodec,
+                        )
+                    }.getOrNull()
+                    if (audio != null) {
+                        val streamUrl = storeResolvedStream(counterpart, audio)
+                        val chunk = if (dataSpec.position > 0L) LATER_CHUNK_LENGTH else CHUNK_LENGTH
+                        val length = if (dataSpec.length >= 0) minOf(dataSpec.length, chunk) else chunk
+                        return@Factory dataSpec.buildUpon().setKey(counterpart).build()
+                            .withUri(streamUrl.toUri()).subrange(dataSpec.uriPositionOffset, length)
+                    }
+                    musicOnlyIds[requestedId] = requestedId
+                }
             }
             run {
                 val streamUrl = storeResolvedStream(mediaId, nonNullPlayback)
@@ -5252,6 +5707,43 @@ class MusicService :
      * same call for real and raise a proper error then. It must never throw, never retry, and
      * never surface anything to the user.
      */
+    /** Where [mediaId] is playing from this session, for the menu: "JioSaavn · 320 kbps", "YouTube". */
+    fun streamSourceLabel(mediaId: String): String? {
+        if (com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaId)) return "This phone"
+        val source = streamSource[mediaId] ?: return null
+        if (source == YOUTUBE_SOURCE) {
+            return "YouTube"
+        }
+        val kbps = Regex("_(\\d+)\\.(mp4|aac|mp3)").find(source)?.groupValues?.get(1)
+        return "JioSaavn" + (kbps?.let { " · $it kbps AAC" } ?: "")
+    }
+
+    /** Captures the current and next few songs' details for [saavnLookup]. Main thread. */
+    private fun rememberQueueMetadata() {
+        val index = player.currentMediaItemIndex
+        if (index == C.INDEX_UNSET) return
+        val end = minOf(player.mediaItemCount, index + 4)
+        for (i in index until end) {
+            val item = runCatching { player.getMediaItemAt(i) }.getOrNull() ?: continue
+            item.metadata?.let { queueMetadata[item.mediaId] = it }
+        }
+        if (queueMetadata.size > 400) queueMetadata.clear()
+    }
+
+    /**
+     * The JioSaavn lookup for [mediaId], started if it has not been, or null where it does not
+     * apply: switched off, the low-data setting, a phone file, or a song whose details are unknown.
+     */
+    private fun saavnLookup(mediaId: String): kotlinx.coroutines.Deferred<JioSaavn.Stream?>? {
+        if (!jioSaavnUpgrade || audioQuality == com.ozyern.exhale.constants.AudioQuality.LOW) return null
+        if (com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaId)) return null
+        saavnLookups[mediaId]?.let { return it }
+        val song = queueMetadata[mediaId] ?: return null
+        return saavnLookups.getOrPut(mediaId) {
+            ioScope.async { withTimeoutOrNull(SAAVN_LOOKUP_TIMEOUT_MS) { JioSaavn.streamFor(song) } }
+        }
+    }
+
     private fun prefetchNextStreamUrl() {
         val nextIndex = player.nextMediaItemIndex
         if (nextIndex == C.INDEX_UNSET) return
@@ -5260,6 +5752,8 @@ class MusicService :
             ?.takeIf { it.isNotBlank() }
             ?: return
 
+        rememberQueueMetadata()
+        saavnLookup(mediaId)
         if (mediaId == streamPrefetchMediaId && streamPrefetchJob?.isActive == true) return
         // Already covered: a URL that has not expired yet.
         if (playbackUrlCache[mediaId]?.second?.let { it > System.currentTimeMillis() } == true) return
@@ -5498,40 +5992,71 @@ class MusicService :
                     ).build()
         }
 
-    private fun createRenderersFactory() =
+    private fun createRenderersFactory(transitionFilter: TransitionFilterProcessor = mainTransitionFilter) =
         object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(
                 context: Context,
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean,
-            ) = DefaultAudioSink
-                .Builder(this@MusicService)
-                // Forced on rather than passed through: when a source *is* high-resolution
-                // (32-bit float PCM), this keeps it in float all the way to the AudioTrack
-                // instead of having the sink quantise it down to 16-bit first. Ignored by the
-                // sink for ordinary 16-bit input, so there is no cost for the common case.
-                .setEnableFloatOutput(true)
-                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                .setAudioProcessorChain(
-                    DefaultAudioSink.DefaultAudioProcessorChain(
-                        SilenceSkippingAudioProcessor(
-                            1_500_000L,
-                            0.35f,
-                            500_000L,
-                            10,
-                            150.toShort(),
+            ): androidx.media3.exoplayer.audio.AudioSink {
+                val sink = DefaultAudioSink
+                    .Builder(this@MusicService)
+                    // Always able to carry float; whether a track *gets* float is decided per track
+                    // by `floatAllowed` below, so the switch takes effect from the next song on.
+                    .setEnableFloatOutput(true)
+                    // On the float path the sink runs no processors of its own, Sonic included,
+                    // so speed has to be the AudioTrack's job there.
+                    .setEnableAudioTrackPlaybackParams(true)
+                    .setAudioProcessorChain(
+                        DefaultAudioSink.DefaultAudioProcessorChain(
+                            SilenceSkippingAudioProcessor(
+                                1_500_000L,
+                                0.35f,
+                                500_000L,
+                                10,
+                                150.toShort(),
+                            ),
+                            SonicAudioProcessor(),
                         ),
-                        // Cavern-derived spatial upscaler: every decoded stereo
-                        // buffer passes through it on the audio thread. It lifts
-                        // the stream to 48 kHz / 32-bit float internally, runs the
-                        // virtualization there, and re-quantizes once on the way
-                        // out. Must sit *before* SonicAudioProcessor, which is the
-                        // reason its output is 16-bit rather than float.
+                    ).build()
+                // Exhale's own processors run in front of the sink, where float cannot skip them.
+                // See PrecisionAudioSink for the whole story.
+                return PrecisionAudioSink(
+                    delegate = sink,
+                    processors = listOf(
+                        // The equaliser first, so it shapes the mix the way it was made.
+                        ToneEqualizerProcessor(),
+                        // Automix's filter sweeps and bass swaps; a straight copy between transitions.
+                        transitionFilter,
                         CavernSpatialAudioProcessor(),
-                        SonicAudioProcessor(),
+                        // Last: it only measures what everything before it made.
+                        LevelMeterAudioProcessor(),
                     ),
-                ).build()
+                    floatAllowed = { dataStore.get(OutputFloatKey, true) && externalOutputActive() },
+                )
+            }
         }
+
+    /**
+     * Whether sound is leaving by something other than the phone's own speaker: headphones,
+     * Bluetooth, USB or HDMI. Float stays off on the speaker, where OEM mixers have distorted it.
+     */
+    private fun externalOutputActive(): Boolean = runCatching {
+        val external = setOf(
+            android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+            android.media.AudioDeviceInfo.TYPE_BLE_HEADSET,
+            android.media.AudioDeviceInfo.TYPE_BLE_SPEAKER,
+            android.media.AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+            android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET,
+            android.media.AudioDeviceInfo.TYPE_USB_HEADSET,
+            android.media.AudioDeviceInfo.TYPE_USB_DEVICE,
+            android.media.AudioDeviceInfo.TYPE_USB_ACCESSORY,
+            android.media.AudioDeviceInfo.TYPE_HDMI,
+            android.media.AudioDeviceInfo.TYPE_LINE_ANALOG,
+            android.media.AudioDeviceInfo.TYPE_LINE_DIGITAL,
+        )
+        audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { it.type in external }
+    }.getOrDefault(false)
 
     override fun onPlaybackStatsReady(
         eventTime: AnalyticsListener.EventTime,
@@ -5801,6 +6326,9 @@ class MusicService :
 
 
     override fun onDestroy() {
+        LockScreenLyrics.unregister(this, lockLyricsReceiver)
+        lockLyricsReceiver = null
+        if (::audioManager.isInitialized) runCatching { audioManager.unregisterAudioDeviceCallback(usbDeviceCallback) }
         super.onDestroy()
         unregisterBluetoothReceiver()
         try {
@@ -6030,6 +6558,14 @@ class MusicService :
     }
 
     companion object {
+        /** [streamSource] marker for a song playing from YouTube. */
+        private const val YOUTUBE_SOURCE = "youtube"
+        /** How long a JioSaavn lookup may take before the song simply plays from YouTube. */
+        private const val SAAVN_LOOKUP_TIMEOUT_MS = 4_000L
+        /** How long YouTube's ready answer waits for a lookup still in flight. */
+        private const val SAAVN_GRACE_MS = 350L
+        /** The same, when a prefetched YouTube URL is already in hand. */
+        private const val SAAVN_HEAD_START_GRACE_MS = 600L
         internal fun shouldStopServiceOnTaskRemoved(
             stopMusicOnTaskClearEnabled: Boolean,
             isHostSessionActive: Boolean,

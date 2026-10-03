@@ -39,11 +39,64 @@ object LocalMediaScanner {
 
     fun isLocalId(id: String): Boolean = id.startsWith(Prefix)
 
+    /**
+     * A file handed to Exhale from outside — "Open with" in a file manager, a download, an attachment.
+     * It has no MediaStore id to stand on, so its id carries the address it was given.
+     */
+    private const val OpenedPrefix = "${Prefix}uri:"
+
+    fun idForOpened(uri: Uri): String = OpenedPrefix + uri
+
     /** The file a local song id stands for, or null if [id] isn't one. */
     fun uriFor(id: String): Uri? {
+        if (id.startsWith(OpenedPrefix)) return Uri.parse(id.removePrefix(OpenedPrefix))
         if (!isLocalId(id)) return null
         val mediaStoreId = id.removePrefix(Prefix).toLongOrNull() ?: return null
         return ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, mediaStoreId)
+    }
+
+    /**
+     * What a file opened from outside is, from its own tags: title, artist, album, length and its
+     * embedded cover (written to the cache, since the player loads art by address). Whatever is
+     * missing falls back to the file's name, so the player always has something to say.
+     */
+    suspend fun describeOpened(context: Context, uri: Uri): MediaMetadata = withContext(Dispatchers.IO) {
+        val id = idForOpened(uri)
+        val displayName = runCatching {
+            context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+        }.getOrNull() ?: uri.lastPathSegment?.substringAfterLast('/')
+        var title: String? = null
+        var artist: String? = null
+        var durationMs = 0L
+        var art: String? = null
+        val retriever = android.media.MediaMetadataRetriever()
+        runCatching {
+            retriever.setDataSource(context, uri)
+            title = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_TITLE)
+            artist = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                ?: retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST)
+            durationMs = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull() ?: 0L
+            retriever.embeddedPicture?.let { bytes ->
+                val file = java.io.File(context.cacheDir, "opened_art/${id.hashCode().toUInt()}.jpg")
+                file.parentFile?.mkdirs()
+                file.writeBytes(bytes)
+                art = Uri.fromFile(file).toString()
+            }
+        }.onFailure { Timber.tag(TAG).w(it, "could not read tags of %s", uri) }
+        runCatching { retriever.release() }
+        MediaMetadata(
+            id = id,
+            title = title?.trim()?.takeUnless { it.isBlank() }
+                ?: displayName?.substringBeforeLast('.')?.takeUnless { it.isBlank() }
+                ?: "Unknown title",
+            artists = listOf(MediaMetadata.Artist(id = null, name = artist?.trim()?.takeUnless { it.isBlank() } ?: "Unknown artist")),
+            duration = (durationMs / 1000L).toInt(),
+            thumbnailUrl = art,
+            // No album link: there is no album page for a file that isn't in the library.
+            album = null,
+        )
     }
 
     fun hasPermission(context: Context): Boolean =

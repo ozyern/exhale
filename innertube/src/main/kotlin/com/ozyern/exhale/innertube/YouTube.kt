@@ -419,6 +419,36 @@ object YouTube {
         return SearchSummary(title = title, items = items)
     }
 
+    /**
+     * The editorial blurb YouTube Music writes for a release ("About this album")
+     * it: from the description shelf on a current-layout page, or from the header where older
+     * responses put it. Null for a release that has none.
+     */
+    suspend fun albumDescription(browseId: String): Result<String?> = runCatching {
+        val root = innerTube.browse(WEB_REMIX, browseId).body<kotlinx.serialization.json.JsonElement>()
+        fun runsText(element: kotlinx.serialization.json.JsonElement?): String? {
+            val runs = (element as? kotlinx.serialization.json.JsonObject)?.get("runs") as? kotlinx.serialization.json.JsonArray
+                ?: return null
+            return runs.joinToString("") { run ->
+                ((run as? kotlinx.serialization.json.JsonObject)?.get("text") as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+            }.trim().takeIf { it.isNotBlank() }
+        }
+        fun find(element: kotlinx.serialization.json.JsonElement, key: String): kotlinx.serialization.json.JsonObject? = when (element) {
+            is kotlinx.serialization.json.JsonObject ->
+                (element[key] as? kotlinx.serialization.json.JsonObject)
+                    ?: element.values.firstNotNullOfOrNull { find(it, key) }
+            is kotlinx.serialization.json.JsonArray -> element.firstNotNullOfOrNull { find(it, key) }
+            else -> null
+        }
+        runsText(find(root, "musicDescriptionShelfRenderer")?.get("description"))
+            ?: listOf("musicResponsiveHeaderRenderer", "musicDetailHeaderRenderer", "musicImmersiveHeaderRenderer")
+                .firstNotNullOfOrNull { name ->
+                    val header = find(root, name) ?: return@firstNotNullOfOrNull null
+                    runsText(header["description"])
+                        ?: runsText(find(header, "musicDescriptionShelfRenderer")?.get("description"))
+                }
+    }
+
     suspend fun album(browseId: String, withSongs: Boolean = true): Result<AlbumPage> = runCatching {
         val response = innerTube.browse(WEB_REMIX, browseId).body<BrowseResponse>()
         val playlistId = AlbumPage.getPlaylistId(response)

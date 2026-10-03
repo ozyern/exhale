@@ -16,8 +16,17 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,13 +41,20 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import com.ozyern.exhale.R
 import com.ozyern.exhale.utils.rememberAppIconPack
@@ -46,34 +62,46 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.cos
 import kotlin.math.hypot
+import kotlin.math.sin
 
 /**
  * The cold-start boot animation, drawn as the TOP-MOST layer of the root composition.
  *
  * The beats, in order:
  *
- *  1. **Bloom.** A warm amber glow swells out of pure black behind the mark. It starts on
+ *  1. **Bloom.** A warm amber glow swells out of pure black behind the mark, and drifts: two
+ *     light sources circling slowly, so the black is lit rather than printed. It starts on
  *     frame one — before the logo is even decoded — so the screen is never a dead black slab.
- *  2. **Arrival.** The mark fades up and settles from 0.90x on a near-critically-damped spring.
- *     One gesture, no bounce.
- *  3. **Breath.** Through the hold the mark expands by 3.5% on a dead-linear ramp — slow enough
+ *  2. **Arrival.** The mark comes into focus: it fades up out of a soft blur and settles from
+ *     0.92x on a near-critically-damped spring, the way a lens pulls focus. One gesture, no bounce.
+ *  3. **Glint.** Once, a band of warm light crosses the mark's glossy black body — the only
+ *     highlight the whole sequence has, masked to the mark so it reads as a reflection on it.
+ *  4. **Name.** "Exhale" tracks in beneath: the letters start apart and draw together as they
+ *     fade up, in the mark's own gold.
+ *  5. **Breath.** Through the hold the mark expands by 3.5% on a dead-linear ramp — slow enough
  *     that you never catch it moving, fast enough that the frame is never frozen. The app is
  *     called Exhale; the launch mark should be alive rather than parked.
- *  4. **Iris.** The exit is not a crossfade. A circular hole opens out of the centre of the mark
- *     (`BlendMode.Clear` into an offscreen layer) while the logo itself scales past the camera
- *     and fades — the app is revealed *through* the logo, like an aperture opening. The bloom
- *     goes with it, so the last frames are clean rather than a coloured wash handing over to a
- *     fully drawn app.
+ *  6. **Exhale.** Through that same hold a few specks of the mark's gold drift out of it and rise,
+ *     like breath on cold air — sparse, slow, and gone before the exit.
+ *  7. **Iris, and home.** The exit is not a crossfade. A circular hole opens out of the centre
+ *     (`BlendMode.Clear` into an offscreen layer) and the app is revealed through it — while the
+ *     mark, drawn above that layer rather than in it, flies to its own place in Home's top bar and
+ *     lands on the glass disc the logo lives in there. The launch mark doesn't vanish; it goes
+ *     home. The bloom goes with the iris, so the last frames are clean.
  *
- * ### What was taken out
+ * ### What was taken out, and what came back
  *
- * Two expanding shockwave rings, a 10° entrance tilt, and a specular band sweeping diagonally
- * across the mark. Each was defensible in isolation; together they were four things competing for
- * attention inside one second, which is what a splash screen looks like when it is trying to
- * impress you. An Apple launch does exactly one thing — the app opens out of its own icon — and
- * the reason it reads as expensive is that nothing else happens at the same time. The aperture is
- * that one thing here, and everything left now serves it.
+ * Two expanding shockwave rings and a 10° entrance tilt are gone for good: together with a sheen
+ * running over the mark on the same beat, they were four things competing for attention inside one
+ * second, which is what a splash screen looks like when it is trying to impress you.
+ *
+ * The sheen came back, changed. It no longer arrives with the mark; it crosses it once, after the
+ * mark has settled into focus, and it is masked to the mark so it reads as light moving over the
+ * gloss of the black body. Things happen one after another — focus, glint, name, opening — which
+ * is the difference between a sequence and a pile-up. The aperture is still the moment the whole
+ * animation exists for.
  *
  * ### Why it used to be slow
  *
@@ -81,7 +109,7 @@ import kotlin.math.hypot
  *
  *  - **~1.8s of mandatory animation.** The old timeline waited for the *slowest* of three intro
  *    tweens (720ms) to fully settle, then held 480ms, then crossfaded 440ms + 40ms of slack.
- *    That is the whole of it spent staring at a static mark. The budget below is ~1.16s, and
+ *    That is the whole of it spent staring at a static mark. The budget below is ~1.4s, and
  *    every phase is doing something.
  *  - **A main-thread image decode at the worst possible moment.** `splash_logo.png` is a
  *    1024x1024 / 1.4MB PNG; `painterResource` decodes it *synchronously, on the main thread,
@@ -100,7 +128,7 @@ import kotlin.math.hypot
 
 // ---- Timeline (ms) -------------------------------------------------------------------------
 /** How long the mark is on screen before the aperture opens. Short: it is a flourish, not a wait. */
-private const val ENTRANCE_MS = 720L
+private const val ENTRANCE_MS = 760L
 /**
  * The aperture opening. Also the fade, the zoom and the hand-off — one motion on one easing,
  * because two eases running at once is how a single gesture stops reading as single.
@@ -109,7 +137,10 @@ private const val ENTRANCE_MS = 720L
  * it was over before the eye had followed the edge outward — the extra 120ms is the difference
  * between a cut and an opening.
  */
-private const val IRIS_MS = 500
+private const val IRIS_MS = 520
+
+/** Apple's emphasized curve: leaves quickly and takes its time arriving. */
+private val EmphasizedEasing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
 /** Fraction of the shorter viewport edge the square splash artwork occupies. */
 private const val SPLASH_ARTWORK_FRACTION = 0.56f
@@ -131,6 +162,11 @@ private val SplashBase = Color.Black
 private val BloomDeep = Color(0xFFE0A020)   // warm amber core, the mark's mid-gold pushed brighter
 private val BloomDark = Color(0xFF33200A)   // deep brown-amber mid-tone, the mark's own shadow
 
+// The rim's highlight, mid and shadow, top to bottom — the wordmark wears the mark's own gold.
+private val WordmarkGold = listOf(Color(0xFFFFF07F), Color(0xFFDEB41A), Color(0xFF9A6A0C))
+private const val WORDMARK = "Exhale"
+private val WordmarkFont = FontFamily(Font(R.font.sfprodisplaybold, FontWeight.Bold))
+
 @Composable
 fun BootSplash(
     onFinished: () -> Unit,
@@ -143,6 +179,8 @@ fun BootSplash(
     val artworkSize = remember(configuration.screenWidthDp, configuration.screenHeightDp) {
         (minOf(configuration.screenWidthDp, configuration.screenHeightDp) * SPLASH_ARTWORK_FRACTION).dp
     }
+    var screenWidthPx by remember { mutableStateOf(0f) }
+    var screenHeightPx by remember { mutableStateOf(0f) }
 
     val context = LocalContext.current
     // Whichever mark the user picked in Settings -> Appearance -> App icon. Read from
@@ -155,15 +193,32 @@ fun BootSplash(
     val bloom = remember { Animatable(0f) }
     // 0.90, not 0.70. A mark arriving from two thirds of its size has visibly *travelled*, which
     // needs a bounce to land and then reads as a bounce. From 0.90 it simply settles.
-    val logoScale = remember { Animatable(0.90f) }
+    val logoScale = remember { Animatable(0.92f) }
     val logoAlpha = remember { Animatable(0f) }
+    // The focus pull: blur radius in dp, from soft to sharp.
+    val logoBlur = remember { Animatable(14f) }
+    // -0.3 to 1.3 across the mark, so the band enters and leaves entirely off it.
+    val glint = remember { Animatable(-0.3f) }
+    val wordmark = remember { Animatable(0f) }
+    val wordmarkExit = remember { Animatable(0f) }
+    // The bloom's two light sources, circling. Runs from frame one to the last.
+    val drift = remember { Animatable(0f) }
     val iris = remember { Animatable(0f) }
+    // The mark's flight to the top bar, and the breath of dust through the hold.
+    val flight = remember { Animatable(0f) }
+    val dust = remember { Animatable(0f) }
+    val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val statusBarTop = WindowInsets.statusBars.getTop(density)
 
     // Frame one: the bloom is already breathing in while the artwork is still being decoded on a
     // background thread. The user never sees an empty black hold.
     LaunchedEffect(markRes) {
         launch {
             bloom.animateTo(1f, tween(durationMillis = 380, easing = LinearOutSlowInEasing))
+        }
+        launch {
+            drift.animateTo(1f, tween(durationMillis = 2_400, easing = LinearEasing))
         }
         val decoded = withContext(Dispatchers.IO) {
             runCatching {
@@ -180,7 +235,21 @@ fun BootSplash(
         if (!ready) return@LaunchedEffect
 
         // --- Arrival, then the breath ---
-        launch { logoAlpha.animateTo(1f, tween(durationMillis = 260, easing = LinearOutSlowInEasing)) }
+        launch { logoAlpha.animateTo(1f, tween(durationMillis = 300, easing = LinearOutSlowInEasing)) }
+        launch {
+            logoBlur.animateTo(0f, tween(durationMillis = 520, easing = FastOutSlowInEasing))
+            // The one tactile beat: the lens clicking into focus.
+            haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
+        }
+        launch { dust.animateTo(1f, tween(durationMillis = (ENTRANCE_MS + IRIS_MS).toInt(), easing = LinearEasing)) }
+        launch {
+            delay(260)
+            glint.animateTo(1.3f, tween(durationMillis = 700, easing = FastOutSlowInEasing))
+        }
+        launch {
+            delay(200)
+            wordmark.animateTo(1f, tween(durationMillis = 620, easing = FastOutSlowInEasing))
+        }
         launch {
             // Damping 0.88: it settles rather than bounces. The old 0.62 gave a visible rebound,
             // which is a *toy* gesture — right for a game splash, wrong for the screen that opens
@@ -197,18 +266,22 @@ fun BootSplash(
 
         delay(ENTRANCE_MS)
 
+        // A breath in before it leaves: a few percent smaller for a beat, so the flight reads as
+        // the mark pushing off rather than being pulled away.
+        logoScale.animateTo(0.97f, tween(durationMillis = 110, easing = FastOutSlowInEasing))
+
         // --- Exit: the aperture opens and the mark flies past the camera ---
         // The breath is still running here; `animateTo` on the same Animatable cancels it and
         // carries on from wherever it had reached, so the hand-off has no seam in it.
-        launch {
-            logoScale.animateTo(1.38f, tween(durationMillis = IRIS_MS, easing = FastOutSlowInEasing))
-        }
-        launch { logoAlpha.animateTo(0f, tween(durationMillis = 340, easing = FastOutSlowInEasing)) }
+        // The mark goes home: to the logo's disc in the top bar, on the aperture's own curve.
+        launch { flight.animateTo(1f, tween(durationMillis = IRIS_MS, easing = EmphasizedEasing)) }
+        // The name leaves first and upward, clearing the way for the mark to open.
+        launch { wordmarkExit.animateTo(1f, tween(durationMillis = 240, easing = FastOutSlowInEasing)) }
         // The glow leaves with the mark. Left up, it is a warm haze lying over the first frames of
         // a fully drawn app, which is the one thing that can make an otherwise clean hand-off look
         // like a rendering fault.
         launch { bloom.animateTo(0f, tween(durationMillis = 340, easing = FastOutSlowInEasing)) }
-        iris.animateTo(1f, tween(durationMillis = IRIS_MS, easing = FastOutSlowInEasing))
+        iris.animateTo(1f, tween(durationMillis = IRIS_MS, easing = EmphasizedEasing))
 
         onFinished()
     }
@@ -216,9 +289,19 @@ fun BootSplash(
     Box(
         modifier = modifier
             .fillMaxSize()
+            .onSizeChanged {
+                screenWidthPx = it.width.toFloat()
+                screenHeightPx = it.height.toFloat()
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
             // Offscreen compositing is what makes the aperture possible: BlendMode.Clear can only
             // punch a true hole through pixels that live in their own layer. Without this, Clear
-            // would blend against the window and paint black instead of revealing the app.
+            // would blend against the window and paint black instead of revealing the app. The
+            // mark is drawn above this layer, not in it, so the aperture never erases it mid-flight.
             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
             .drawWithContent {
                 drawContent()
@@ -239,7 +322,7 @@ fun BootSplash(
             .background(SplashBase),
         contentAlignment = Alignment.Center,
     ) {
-        // ---- Gradient bloom (deep crimson-magenta -> pure black) ----
+        // ---- Bloom: the mark's own amber, lit from two slowly circling sources ----
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -249,18 +332,61 @@ fun BootSplash(
                         colors = listOf(BloomDark.copy(alpha = 0.55f), SplashBase),
                     ),
                 )
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            BloomDeep.copy(alpha = 0.60f),
-                            BloomDark.copy(alpha = 0.28f),
-                            Color.Transparent,
-                        ),
-                        center = Offset.Unspecified,
-                        radius = Float.POSITIVE_INFINITY,
-                    ),
-                ),
+                .drawWithContent {
+                    drawContent()
+                    val turn = drift.value * 1.2f
+                    val reach = size.minDimension * 0.62f
+                    listOf(0f to 0.62f, 2.4f to 0.36f).forEach { (phase, strength) ->
+                        val center = Offset(
+                            x = size.width / 2f + size.minDimension * 0.10f * cos(turn + phase),
+                            y = size.height / 2f + size.minDimension * 0.08f * sin(turn * 0.8f + phase),
+                        )
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    BloomDeep.copy(alpha = strength),
+                                    BloomDark.copy(alpha = strength * 0.45f),
+                                    Color.Transparent,
+                                ),
+                                center = center,
+                                radius = reach,
+                            ),
+                            radius = reach,
+                            center = center,
+                        )
+                    }
+                },
         )
+
+        // ---- Exhale: gold dust drifting out of the mark through the hold ----
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithContent {
+                    val t = dust.value
+                    if (t <= 0f || t >= 1f) return@drawWithContent
+                    val origin = center
+                    val from = artworkSize.toPx() * 0.30f
+                    DUST.forEach { speck ->
+                        val local = ((t - speck.delay) / 0.62f).coerceIn(0f, 1f)
+                        if (local <= 0f || local >= 1f) return@forEach
+                        val travel = size.minDimension * speck.reach * (1f - (1f - local) * (1f - local))
+                        val x = origin.x + cos(speck.angle) * (from + travel)
+                        val y = origin.y + sin(speck.angle) * (from + travel) - local * 38.dp.toPx()
+                        val a = sin(local * Math.PI.toFloat()) * speck.strength * bloom.value
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                listOf(WordmarkGold[0].copy(alpha = a), WordmarkGold[1].copy(alpha = a * 0.4f), Color.Transparent),
+                                center = Offset(x, y),
+                                radius = speck.size.dp.toPx() * 2.2f,
+                            ),
+                            radius = speck.size.dp.toPx() * 2.2f,
+                            center = Offset(x, y),
+                        )
+                    }
+                },
+        )
+    }
 
         // ---- The mark ----
         // The transform lives on this Box rather than on the Image inside it, so the whole thing
@@ -270,9 +396,51 @@ fun BootSplash(
             modifier = Modifier
                 .size(artworkSize)
                 .graphicsLayer {
-                    scaleX = logoScale.value
-                    scaleY = logoScale.value
-                    alpha = logoAlpha.value
+                    // Home is the top bar's logo disc: its mark is about 28dp across, 16dp in from
+                    // the start edge and centred in the 64dp bar under the status bar.
+                    val f = flight.value
+                    val markInk = artworkSize.toPx() * 0.78f
+                    val homeScale = 28.dp.toPx() / markInk
+                    val homeX = (16.dp + 19.dp).toPx() - size.width / 2f
+                    val homeY = statusBarTop + 32.dp.toPx() - size.height / 2f
+                    // The splash is centred on the window; its own centre is where we start from.
+                    val fromCentre = Offset(
+                        (screenWidthPx - size.width) / 2f,
+                        (screenHeightPx - size.height) / 2f,
+                    )
+                    translationX = (homeX - fromCentre.x) * f
+                    translationY = (homeY - fromCentre.y) * f
+                    val scale = logoScale.value * (1f + (homeScale - 1f) * f)
+                    scaleX = scale
+                    scaleY = scale
+                    // Solid for most of the flight, handing over to the real logo as it lands.
+                    alpha = logoAlpha.value * (1f - ((f - 0.72f) / 0.28f).coerceIn(0f, 1f))
+                    val blurPx = logoBlur.value.dp.toPx()
+                    renderEffect = if (blurPx > 0.5f) BlurEffect(blurPx, blurPx, TileMode.Decal) else null
+                    // The glint is masked to the mark's own pixels, which needs a layer of its own.
+                    compositingStrategy = CompositingStrategy.Offscreen
+                }
+                .drawWithContent {
+                    drawContent()
+                    val g = glint.value
+                    if (g > -0.3f && g < 1.3f) {
+                        // A diagonal band of warm light, drawn only where the mark is (SrcAtop):
+                        // a reflection travelling across the gloss, not a stripe across the screen.
+                        val band = size.width * 0.22f
+                        val x = size.width * g
+                        drawRect(
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color(0xFFFFF6D8).copy(alpha = 0.55f),
+                                    Color.Transparent,
+                                ),
+                                start = Offset(x - band, 0f),
+                                end = Offset(x + band, size.height * 0.55f),
+                            ),
+                            blendMode = BlendMode.SrcAtop,
+                        )
+                    }
                 },
             contentAlignment = Alignment.Center,
         ) {
@@ -297,5 +465,53 @@ fun BootSplash(
                 )
             }
         }
+
+        // ---- The name, tracking in beneath the mark ----
+        // Placed off the mark's drawn bottom edge (the artwork has transparent margin; its ink ends
+        // about 38% of the box below centre), and letter by letter so the tracking is a draw-phase
+        // translation rather than a letter-spacing relayout every frame.
+        Row(
+            modifier = Modifier
+                .offset(y = artworkSize * 0.38f + 34.dp)
+                .graphicsLayer {
+                    alpha = 1f - wordmarkExit.value
+                    translationY = -10.dp.toPx() * wordmarkExit.value
+                },
+        ) {
+            val letters = WORDMARK.toList()
+            letters.forEachIndexed { index, letter ->
+                val fromCentre = index - (letters.size - 1) / 2f
+                Text(
+                    text = letter.toString(),
+                    style = TextStyle(
+                        fontFamily = WordmarkFont,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 26.sp,
+                        letterSpacing = 1.5.sp,
+                        brush = Brush.verticalGradient(WordmarkGold),
+                    ),
+                    modifier = Modifier.graphicsLayer {
+                        val t = wordmark.value
+                        alpha = t
+                        translationX = fromCentre * 9.dp.toPx() * (1f - t)
+                    },
+                )
+            }
+        }
     }
+}
+
+/** One speck of the exhaled dust: its direction, how far and how late it goes, its size and glow. */
+private class DustSpeck(val angle: Float, val reach: Float, val delay: Float, val size: Float, val strength: Float)
+
+/** Fixed, not random per launch: the same breath every morning. */
+private val DUST: List<DustSpeck> = List(22) { i ->
+    val golden = 2.39996f // the golden angle, so the specks never bunch
+    DustSpeck(
+        angle = i * golden,
+        reach = 0.10f + ((i * 37) % 11) / 11f * 0.16f,
+        delay = 0.18f + ((i * 53) % 13) / 13f * 0.30f,
+        size = 1.2f + ((i * 29) % 7) / 7f * 1.6f,
+        strength = 0.35f + ((i * 17) % 5) / 5f * 0.45f,
+    )
 }

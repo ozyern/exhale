@@ -57,6 +57,7 @@ import com.ozyern.exhale.ui.component.LocalMenuState
 import com.ozyern.exhale.ui.component.YouTubeListItem
 import com.ozyern.exhale.ui.menu.*
 import com.ozyern.exhale.R
+import com.ozyern.exhale.ui.component.liquidGlassSurface
 import com.ozyern.exhale.viewmodels.OnlineSearchSuggestionViewModel
 import kotlinx.coroutines.flow.drop
 import androidx.compose.ui.graphics.Color
@@ -153,14 +154,14 @@ fun OnlineSearchScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 28.dp, end = 20.dp, top = 8.dp, bottom = 6.dp)
+                        .padding(start = 18.dp, end = 12.dp, top = 12.dp, bottom = 4.dp)
                         .animateItem(),
                 ) {
                     Text(
                         text = stringResource(R.string.search_recent),
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.2).sp,
+                        letterSpacing = (-0.3).sp,
                         color = if (pureBlack) Color.White else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
                     )
@@ -169,12 +170,11 @@ fun OnlineSearchScreen(
                     // is, and it had no visible bounds to aim at.
                     Text(
                         text = stringResource(R.string.clear),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(percent = 50))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                            .clip(RoundedCornerShape(8.dp))
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 database.query {
@@ -214,15 +214,15 @@ fun OnlineSearchScreen(
             item(key = "suggestions_header") {
                 Text(
                     text = stringResource(R.string.search_suggestions),
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = (-0.2).sp,
+                    letterSpacing = (-0.3).sp,
                     color = if (pureBlack) Color.White else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(
-                            start = 28.dp,
-                            end = 24.dp,
+                            start = 18.dp,
+                            end = 18.dp,
                             top = if (historyCount > 0) 20.dp else 8.dp,
                             bottom = 6.dp,
                         )
@@ -252,31 +252,27 @@ fun OnlineSearchScreen(
         if (viewState.items.isNotEmpty() && viewState.history.size + viewState.suggestions.size > 0) {
             item {
                 Spacer(Modifier.height(12.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .width(3.dp)
-                            .height(16.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(MaterialTheme.colorScheme.primary)
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        text = stringResource(R.string.top_results),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (pureBlack) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                // A plain section title, as the results page sets its own — no accent bar.
+                Text(
+                    text = stringResource(R.string.top_results),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+                )
             }
         }
 
         // Already de-duplicated in the view model. Doing it here re-allocated the entire
         // list inside the LazyColumn's content lambda on every recomposition.
-        items(viewState.items, key = { "item_${it.id}" }) { item ->
+        itemsIndexed(viewState.items, key = { _, it -> "item_${it.id}" }) { rowIndex, item ->
+            val count = viewState.items.size
+            val rowShape = when {
+                count <= 1 -> RoundedCornerShape(22.dp)
+                rowIndex == 0 -> RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
+                rowIndex == count - 1 -> RoundedCornerShape(bottomStart = 22.dp, bottomEnd = 22.dp)
+                else -> RoundedCornerShape(0.dp)
+            }
+            Box(Modifier.animateItem()) {
             YouTubeListItem(
                 item = item,
                 isActive = when (item) {
@@ -404,8 +400,8 @@ fun OnlineSearchScreen(
                             }
                         }
                     )
-                    .animateItem()
             )
+            }
         }
     }
 }
@@ -444,11 +440,8 @@ fun SuggestionItem(
         MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.55f)
     }
 
-    val iconTint = if (pureBlack) {
-        Color.White.copy(alpha = 0.55f)
-    } else {
-        MaterialTheme.colorScheme.primary
-    }
+    // Quiet grey glyphs: the text is the content, the icon only says what kind of row it is.
+    val iconTint = if (pureBlack) Color.White.copy(alpha = 0.42f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
 
     val corner = 22.dp
     val shape = when (position) {
@@ -461,18 +454,12 @@ fun SuggestionItem(
     // Trailing glyphs were drawn at 16dp and 0.35 alpha — below the threshold at which a control
     // reads as a control at all, so the row looked like it had two smudges on it. Both are now
     // legible.
-    val trailingTint = if (pureBlack) {
-        Color.White.copy(alpha = 0.62f)
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
+    val trailingTint = if (pureBlack) Color.White.copy(alpha = 0.4f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
 
+    // Rows on the page itself, as Apple Music lists them: no card, no slab per row — a line of
+    // text, a quiet glyph, and a hairline between rows.
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .clip(shape)
-            .background(cardColor)
+        modifier = modifier.fillMaxWidth()
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -480,13 +467,13 @@ fun SuggestionItem(
                 .fillMaxWidth()
                 .focusable()
                 .clickable(onClick = onClick)
-                .padding(start = 12.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
+                .padding(start = 18.dp, end = 10.dp, top = 12.dp, bottom = 12.dp),
         ) {
             // A bare glyph, like every other row in the app now. The grey disc behind it was the
             // last puck left standing after settings dropped theirs, and on a list of plain text
             // queries it is the only shape on the screen.
             Box(
-                modifier = Modifier.size(34.dp),
+                modifier = Modifier.size(24.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -502,8 +489,7 @@ fun SuggestionItem(
             Text(
                 text = query,
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                letterSpacing = (-0.2).sp,
+                fontWeight = FontWeight.Normal,
                 color = if (pureBlack) Color.White.copy(alpha = 0.92f) else MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -520,12 +506,12 @@ fun SuggestionItem(
                         painter = painterResource(R.drawable.close),
                         contentDescription = null,
                         tint = trailingTint,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
 
-            IconButton(onClick = onFillTextField, modifier = Modifier.size(38.dp)) {
+            if (online) IconButton(onClick = onFillTextField, modifier = Modifier.size(38.dp)) {
                 Icon(
                     painter = painterResource(R.drawable.arrow_top_left),
                     contentDescription = null,
@@ -539,8 +525,8 @@ fun SuggestionItem(
             // Hairline divider inset past the icon column — the iOS grouped-list separator.
             HorizontalDivider(
                 thickness = 0.5.dp,
-                color = if (pureBlack) Color.White.copy(alpha = 0.08f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                modifier = Modifier.padding(start = 58.dp)
+                color = if (pureBlack) Color.White.copy(alpha = 0.08f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                modifier = Modifier.padding(start = 60.dp, end = 18.dp)
             )
         }
     }

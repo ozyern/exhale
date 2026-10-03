@@ -99,6 +99,10 @@ import com.ozyern.exhale.constants.PlayerButtonsStyle
 import com.ozyern.exhale.constants.PlayerButtonsStyleKey
 import com.ozyern.exhale.constants.LyricsAnimationStyleKey
 import com.ozyern.exhale.constants.LyricsAnimationStyle
+import com.ozyern.exhale.constants.LyricsLayout
+import com.ozyern.exhale.constants.LyricsLayoutKey
+import com.ozyern.exhale.constants.ArtistNameFontKey
+import com.ozyern.exhale.ui.screens.artist.ArtistNameFont
 import com.ozyern.exhale.constants.LyricsTextSizeKey
 import com.ozyern.exhale.constants.LyricsLineSpacingKey
 import com.ozyern.exhale.constants.SliderStyle
@@ -114,6 +118,9 @@ import com.ozyern.exhale.constants.SwipeThumbnailKey
 import com.ozyern.exhale.constants.SwipeSensitivityKey
 import com.ozyern.exhale.constants.SwipeToSongKey
 import com.ozyern.exhale.constants.HidePlayerThumbnailKey
+import com.ozyern.exhale.constants.ClassicPlayerKey
+import com.ozyern.exhale.constants.ReactiveBackdropKey
+import com.ozyern.exhale.constants.ExhaleCanvasKey
 import com.ozyern.exhale.constants.ExhaleCanvasKey
 import com.ozyern.exhale.constants.ThumbnailCornerRadiusKey
 import com.ozyern.exhale.constants.CropThumbnailToSquareKey
@@ -175,6 +182,19 @@ fun AppearanceSettings(
         HidePlayerThumbnailKey,
         defaultValue = false
     )
+    val (liquidGlassPlayer) = rememberPreference(com.ozyern.exhale.constants.LiquidGlassPlayerKey, false)
+    val (classicPlayer, onClassicPlayerChange) = rememberPreference(
+        ClassicPlayerKey,
+        defaultValue = false
+    )
+    val (animatedCovers, onAnimatedCoversChange) = rememberPreference(
+        ExhaleCanvasKey,
+        defaultValue = true
+    )
+    val (reactiveBackdrop, onReactiveBackdropChange) = rememberPreference(
+        ReactiveBackdropKey,
+        defaultValue = true
+    )
     val (canvasSource, setCanvasSource) = rememberEnumPreference(
         key = CanvasSourceKey,
         defaultValue = CanvasSource.AUTO,
@@ -213,6 +233,9 @@ fun AppearanceSettings(
     defaultValue = LyricsAnimationStyle.APPLE
     )
     val (lyricsClick, onLyricsClickChange) = rememberPreference(LyricsClickKey, defaultValue = true)
+    val (lyricsLayout, onLyricsLayoutChange) = rememberEnumPreference(LyricsLayoutKey, defaultValue = LyricsLayout.GLASS)
+    val (artistNameFontName, onArtistNameFontChange) = rememberPreference(ArtistNameFontKey, defaultValue = ArtistNameFont.CLASSIC.name)
+    val artistNameFont = ArtistNameFont.of(artistNameFontName) ?: ArtistNameFont.CLASSIC
     val (lyricsScroll, onLyricsScrollChange) = rememberPreference(LyricsScrollKey, defaultValue = true)
     val (uiScale) = rememberPreference(UiScaleKey, defaultValue = UiScaleDefault)
 
@@ -391,13 +414,6 @@ fun AppearanceSettings(
                 onCheckedChange = onPlayerFullscreenChange,
             )
 
-            PreferenceGroupDivider()
-            SwitchPreference(
-                title = { Text("Haptic feedback") },
-                icon = { Icon(painterResource(R.drawable.haptic), null) },
-                checked = hapticEnabled,
-                onCheckedChange = onHapticEnabledChange,
-            )
 
             AnimatedVisibility(visible = !sabrinaTheme && (!dynamicTheme || Build.VERSION.SDK_INT < Build.VERSION_CODES.S)) {
                 SwitchPreference(
@@ -522,6 +538,22 @@ fun AppearanceSettings(
             }
 
             SwitchPreference(
+                title = { Text("Music-reactive player") },
+                description = "The player's colours breathe with the song and light up on the beat",
+                icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                checked = reactiveBackdrop,
+                onCheckedChange = onReactiveBackdropChange
+            )
+
+            SwitchPreference(
+                title = { Text("Animated covers") },
+                description = "Play a song's motion artwork where it has one",
+                icon = { Icon(painterResource(R.drawable.motion_photos_on), null) },
+                checked = animatedCovers,
+                onCheckedChange = onAnimatedCoversChange
+            )
+
+            SwitchPreference(
                 title = { Text(stringResource(R.string.hide_player_thumbnail)) },
                 description = stringResource(R.string.hide_player_thumbnail_desc),
                 icon = { Icon(painterResource(R.drawable.hide_image), null) },
@@ -544,7 +576,28 @@ fun AppearanceSettings(
                 },
                 onValueSelected = setCanvasSource,
             )
-      
+
+            PreferenceGroupDivider()
+            ListPreference(
+                title = { Text("Lyrics layout") },
+                icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                selectedValue = lyricsLayout,
+                values = LyricsLayout.entries,
+                valueText = {
+                    when (it) {
+                        LyricsLayout.GLASS -> "Liquid glass"
+                        LyricsLayout.CLASSIC -> "Classic"
+                    }
+                },
+                onValueSelected = onLyricsLayoutChange,
+            )
+
+            PreferenceGroupDivider()
+            com.ozyern.exhale.ui.screens.artist.ArtistNameFontPicker(
+                selected = artistNameFont,
+                onSelect = { onArtistNameFontChange(it.name) },
+            )
+
 
             ThumbnailCornerRadiusSelectorButton(
                 modifier = Modifier.padding(16.dp),

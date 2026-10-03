@@ -39,6 +39,20 @@ val GridItemsSizeKey = stringPreferencesKey("gridItemSize")
 val SliderStyleKey = stringPreferencesKey("sliderStyle")
 val SwipeToSongKey = booleanPreferencesKey("SwipeToSong")
 val PlayerDesignStyleKey = stringPreferencesKey("playerDesignStyle")
+/**
+ * Off by default: the player is the Now Playing screen (cover up top, lyrics and queue inside it).
+ * On, it falls back to the earlier designs, chosen by [PlayerDesignStyleKey].
+ */
+val ClassicPlayerKey = booleanPreferencesKey("classicPlayer")
+
+/** With the classic layouts off: the Liquid Glass player instead of Now Playing. */
+val LiquidGlassPlayerKey = booleanPreferencesKey("liquidGlassPlayer")
+
+/** Home's Recently Played as pages of rows rather than a row of covers. */
+val HomeRecentsAsListKey = booleanPreferencesKey("homeRecentsAsList")
+
+/** On by default: the Now Playing backdrop breathes with the music's loudness and lights on the beat. */
+val ReactiveBackdropKey = booleanPreferencesKey("reactiveBackdrop")
 val UseNewLibraryDesignKey = booleanPreferencesKey("useNewLibraryDesign")
 val UseNewMiniPlayerDesignKey = booleanPreferencesKey("useNewMiniPlayerDesign")
 val HidePlayerThumbnailKey = booleanPreferencesKey("hidePlayerThumbnail")
@@ -75,15 +89,48 @@ val MiniPlayerLastAnchorKey = intPreferencesKey("miniPlayerLastAnchor")
  */
 val LastSeenVersionCodeKey = intPreferencesKey("lastSeenVersionCode")
 val EnableHapticFeedbackKey = booleanPreferencesKey("enableHapticFeedback")
+/** 0..1: how strong Exhale's own haptics are. */
+val HapticIntensityKey = floatPreferencesKey("hapticIntensity")
+/** HapticFeel name: SYSTEM, CRISP, SOFT or RICH. */
+val HapticFeelKey = stringPreferencesKey("hapticFeel")
 val PlayerFullscreenKey = booleanPreferencesKey("player_fullscreen")
 
 val ProviderOrderKey = stringPreferencesKey("lyrics_provider_order")
 
+/**
+ * Word-timed sources first, then line-timed, then plain text. Every enabled source is asked at
+ * once; this order only decides between the ones that answer (see LyricsHelper).
+ */
+/**
+ * The order lyrics are asked for out of the box: the Apple-catalogue hosts first —
+ * Binimum leading, because it matches the recording itself and names it (by ISRC) for the others —
+ * then the syllable-timed community sources, then the line-timed databases, and plain text last.
+ */
 val DefaultProviderOrder = listOf(
-    PreferredLyricsProvider.LRCLIB,
-    PreferredLyricsProvider.KUGOU,
+    PreferredLyricsProvider.BINIMUM,
     PreferredLyricsProvider.BETTER_LYRICS,
+    PreferredLyricsProvider.PAXSENIX,
+    PreferredLyricsProvider.LYRICS_PLUS,
     PreferredLyricsProvider.SIMPMUSIC,
+    PreferredLyricsProvider.UNISON,
+    PreferredLyricsProvider.MUSIXMATCH,
+    PreferredLyricsProvider.MEGALOBIZ,
+    PreferredLyricsProvider.KUGOU,
+    PreferredLyricsProvider.LRCLIB,
+    PreferredLyricsProvider.GENIUS,
+)
+
+/** The order shipped before 1.0.405. A saved order identical to it was never chosen, only kept. */
+val LegacyDefaultProviderOrder = listOf(
+    PreferredLyricsProvider.LYRICS_PLUS,
+    PreferredLyricsProvider.BINIMUM,
+    PreferredLyricsProvider.BETTER_LYRICS,
+    PreferredLyricsProvider.LRCLIB,
+    PreferredLyricsProvider.UNISON,
+    PreferredLyricsProvider.SIMPMUSIC,
+    PreferredLyricsProvider.KUGOU,
+    PreferredLyricsProvider.MEGALOBIZ,
+    PreferredLyricsProvider.GENIUS,
 )
 
 fun PreferredLyricsProvider.displayName(): String = when (this) {
@@ -91,7 +138,38 @@ fun PreferredLyricsProvider.displayName(): String = when (this) {
     PreferredLyricsProvider.KUGOU -> "KuGou"
     PreferredLyricsProvider.BETTER_LYRICS -> "BetterLyrics"
     PreferredLyricsProvider.SIMPMUSIC -> "SimpMusic"
+    PreferredLyricsProvider.LYRICS_PLUS -> "LyricsPlus"
+    PreferredLyricsProvider.BINIMUM -> "Binimum"
+    PreferredLyricsProvider.UNISON -> "Unison"
+    PreferredLyricsProvider.MEGALOBIZ -> "Megalobiz"
+    PreferredLyricsProvider.GENIUS -> "Genius"
+    PreferredLyricsProvider.PAXSENIX -> "PaxSenix"
+    PreferredLyricsProvider.MUSIXMATCH -> "Musixmatch"
 }
+
+/** One line on what a source is good for, for the sources list. */
+fun PreferredLyricsProvider.detail(): String = when (this) {
+    PreferredLyricsProvider.BINIMUM -> "Apple Music timings, matched on the recording itself"
+    PreferredLyricsProvider.BETTER_LYRICS -> "Apple Music timings, word by word"
+    PreferredLyricsProvider.PAXSENIX -> "Apple Music timings, found through Apple's own catalogue"
+    PreferredLyricsProvider.LYRICS_PLUS -> "Syllable by syllable, on community mirrors"
+    PreferredLyricsProvider.SIMPMUSIC -> "Matched on the video, so never the wrong edit"
+    PreferredLyricsProvider.UNISON -> "Contributed by listeners — has what nobody licensed"
+    PreferredLyricsProvider.MUSIXMATCH -> "The biggest lyrics database; word timing where it has it"
+    PreferredLyricsProvider.MEGALOBIZ -> "Community-made, whole-line LRC"
+    PreferredLyricsProvider.KUGOU -> "Whole lines, strong outside the English catalogue"
+    PreferredLyricsProvider.LRCLIB -> "Whole lines only, and always up"
+    PreferredLyricsProvider.GENIUS -> "Plain text, for songs no synced source has"
+}
+
+/** Whether a source can return per-word timing, or only whole lines. */
+val PreferredLyricsProvider.wordSynced: Boolean
+    get() = when (this) {
+        PreferredLyricsProvider.BINIMUM, PreferredLyricsProvider.BETTER_LYRICS, PreferredLyricsProvider.PAXSENIX,
+        PreferredLyricsProvider.LYRICS_PLUS, PreferredLyricsProvider.SIMPMUSIC, PreferredLyricsProvider.UNISON,
+        PreferredLyricsProvider.MUSIXMATCH -> true
+        else -> false
+    }
 
 enum class SliderStyle {
     Standard,
@@ -109,6 +187,18 @@ val EnableKugouKey = booleanPreferencesKey("enableKugou")
 val EnableLrcLibKey = booleanPreferencesKey("enableLrclib")
 val EnableBetterLyricsKey = booleanPreferencesKey("enableBetterLyrics")
 val EnableSimpMusicLyricsKey = booleanPreferencesKey("enableSimpMusicLyrics")
+val EnableLyricsPlusKey = booleanPreferencesKey("enableLyricsPlus")
+val EnableBinimumLyricsKey = booleanPreferencesKey("enableBinimumLyrics")
+val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
+val EnableMegalobizLyricsKey = booleanPreferencesKey("enableMegalobizLyrics")
+val EnableGeniusLyricsKey = booleanPreferencesKey("enableGeniusLyrics")
+val EnablePaxSenixLyricsKey = booleanPreferencesKey("enablePaxSenixLyrics")
+val EnableMusixmatchLyricsKey = booleanPreferencesKey("enableMusixmatchLyrics")
+/**
+ * Off by default: the highest-placed source that has *synced* lyrics wins, word- or
+ * line-timed. On, a line-timed answer is only kept until something lower down turns up word timing.
+ */
+val PreferWordSyncedLyricsKey = booleanPreferencesKey("preferWordSyncedLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
 val ProxyEnabledKey = booleanPreferencesKey("proxyEnabled")
@@ -245,6 +335,40 @@ val ShowTagsInLibraryKey = booleanPreferencesKey("showTagsInLibrary")
 val LiquidGlassNavBarKey = booleanPreferencesKey("liquid_glass_nav_bar")
 
 val EqualizerEnabledKey = booleanPreferencesKey("equalizerEnabled")
+
+/**
+ * Exhale's own equaliser (see playback/ToneEqualizer.kt), separate from the phone's AudioEffect one
+ * above. Off by default: until it is switched on the processor is a straight copy.
+ */
+
+/** For music videos: show the video, play the catalogue song's audio. Off by default. */
+val PreferMusicOnlyKey = booleanPreferencesKey("preferMusicOnly")
+/**
+ * 32-bit float output (true, the default, as Exhale has always played) or 16-bit PCM. Read when the
+ * player is built, so a change applies the next time playback starts from scratch.
+ */
+val OutputFloatKey = booleanPreferencesKey("outputFloat")
+/** Send audio to a USB DAC whenever one is connected, over whatever the phone would choose. */
+val PreferUsbDacKey = booleanPreferencesKey("preferUsbDac")
+/** Automix: transitions timed and blended from the songs themselves. */
+/** Save to device writes an MP3 (converted, 320 kbps) instead of the stream's own M4A. */
+val SaveAsMp3Key = booleanPreferencesKey("saveAsMp3")
+val AutomixEnabledKey = booleanPreferencesKey("automixEnabled")
+
+/** Play an exact JioSaavn match at up to 320 kbps AAC in place of YouTube's stream. On by default. */
+val JioSaavnUpgradeKey = booleanPreferencesKey("jioSaavnUpgrade")
+/** AutomixPerformance name: EFFICIENT, BALANCED (default) or PERFORMANCE. */
+val AutomixPerformanceKey = stringPreferencesKey("automixPerformance")
+val SoundEqEnabledKey = booleanPreferencesKey("soundEqEnabled")
+/** SoundEqMode name: DYNAMIC (the tone pad) or MANUAL (seven faders). */
+val SoundEqModeKey = stringPreferencesKey("soundEqMode")
+val SoundEqToneXKey = intPreferencesKey("soundEqToneX")
+val SoundEqToneYKey = intPreferencesKey("soundEqToneY")
+val SoundEqFocusedKey = booleanPreferencesKey("soundEqFocused")
+/** Seven gains in dB, comma separated. */
+val SoundEqBandsKey = stringPreferencesKey("soundEqBands")
+/** Left/right trim, -1..1. */
+val SoundBalanceKey = floatPreferencesKey("soundBalance")
 val EqualizerBandLevelsMbKey = stringPreferencesKey("equalizerBandLevelsMb")
 val EqualizerOutputGainEnabledKey = booleanPreferencesKey("equalizerOutputGainEnabled")
 val EqualizerOutputGainMbKey = intPreferencesKey("equalizerOutputGainMb")
@@ -285,6 +409,8 @@ val DiscordActivityButton2EnabledKey = booleanPreferencesKey("discordActivityBut
 val DiscordShowWhenPausedKey = booleanPreferencesKey("discordShowWhenPaused")
 // Activity type for Discord presence (PLAYING, STREAMING, LISTENING, WATCHING, COMPETING)
 val DiscordActivityTypeKey = stringPreferencesKey("discordActivityType")
+/** Discord's Advanced mode: when on, the presence reads the Advanced page's choices; off, it is fixed. */
+val DiscordAdvancedKey = booleanPreferencesKey("discordAdvanced")
 val DiscordPresenceIntervalValueKey = intPreferencesKey("discordPresenceIntervalValue")
 val DiscordPresenceIntervalUnitKey = stringPreferencesKey("discordPresenceIntervalUnit") // "S", "M", "H"
 val DiscordPresenceStatusKey = stringPreferencesKey("discordPresenceStatus") // "ONLINE", "IDLE", "DND", "INVISIBLE"
@@ -489,6 +615,13 @@ enum class PreferredLyricsProvider {
     KUGOU,
     BETTER_LYRICS,
     SIMPMUSIC,
+    LYRICS_PLUS,
+    BINIMUM,
+    UNISON,
+    MEGALOBIZ,
+    GENIUS,
+    PAXSENIX,
+    MUSIXMATCH,
 }
 
 enum class PlayerButtonsStyle {
@@ -536,6 +669,16 @@ enum class LyricsAnimationStyle {
     APPLE,
 }
 
+/** Which full-screen lyrics view the player opens: the classic one, or the Apple Music glass one. */
+val LyricsLayoutKey = stringPreferencesKey("lyricsLayout")
+enum class LyricsLayout {
+    CLASSIC,
+    GLASS,
+}
+
+/** The default face artist names are set in; a single artist's own choice overrides it. */
+val ArtistNameFontKey = stringPreferencesKey("artistNameFont")
+
 val LyricsTextSizeKey = floatPreferencesKey("lyricsTextSize")
 val LyricsLineSpacingKey = floatPreferencesKey("lyricsLineSpacing")
 
@@ -550,7 +693,13 @@ val LyricsClickKey = booleanPreferencesKey("lyricsClick")
 val LyricsScrollKey = booleanPreferencesKey("lyricsScrollKey")
 val LyricsRomanizeJapaneseKey = booleanPreferencesKey("lyricsRomanizeJapanese")
 val LyricsRomanizeKoreanKey = booleanPreferencesKey("lyricsRomanizeKorean")
+/** The globe in the lyrics: pronunciation under lines in another script. On by default. */
+val LyricsShowPronunciationKey = booleanPreferencesKey("lyricsShowPronunciation")
+/** The translate button in the lyrics: each line in the phone's language beneath it. */
+val LyricsShowTranslationKey = booleanPreferencesKey("lyricsShowTranslation")
 val TranslateLyricsKey = booleanPreferencesKey("translateLyrics")
+/** The language lyric translations are written in; blank follows the phone. */
+val LyricsTranslateLanguageKey = stringPreferencesKey("lyricsTranslateLanguage")
 val UseLyricsV2Key = booleanPreferencesKey("useLyricsV2")
 
 // Queue lyrics pre-load settings
@@ -564,6 +713,12 @@ val PreloadQueueLyricsEnabledKey = booleanPreferencesKey("preload_queue_lyrics_e
  * not leave the app at all.
  */
 val EnableLockScreenLyricsKey = booleanPreferencesKey("enableLockScreenLyrics")
+
+/**
+ * Exhale's own lyrics screen over the lock screen, put up when the screen goes off while music
+ * plays. The one lock-screen lyric path that works on stock ColorOS; needs "Display over other apps".
+ */
+val LockScreenLyricsOverlayKey = booleanPreferencesKey("lockScreenLyricsOverlay")
 
 /**
  * Write the line currently playing into the media session's own subtitle, so it appears on the

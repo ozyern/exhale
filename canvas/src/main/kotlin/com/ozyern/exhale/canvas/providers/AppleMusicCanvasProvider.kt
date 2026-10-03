@@ -108,6 +108,49 @@ object AppleMusicCanvasProvider {
         return result
     }
 
+    /**
+     * The artist's own motion artwork — the full-bleed loop Apple Music 7 plays behind an artist's
+     * name — or null when the catalogue has none for them. Matched on the exact name first, so a
+     * search for "IVE" does not come back with someone whose name merely contains it.
+     */
+    suspend fun getArtistMotion(
+        artist: String,
+        storefront: String = "us",
+    ): String? {
+        val key = cacheKey("artist", artist, storefront)
+        cache[key]?.takeIf { it.expiresAtMs > System.currentTimeMillis() }?.let { return it.value?.animated }
+        val url = runCatching {
+            val response = client.get("$AMP_BASE_URL/v1/catalog/$storefront/search") {
+                header("Authorization", "Bearer $APPLE_MUSIC_TOKEN")
+                header("Origin", "https://music.apple.com")
+                header("Referer", "https://music.apple.com/")
+                header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                parameter("term", artist)
+                parameter("types", "artists")
+                parameter("limit", "5")
+                parameter("extend", "editorialVideo")
+            }
+            if (response.status != HttpStatusCode.OK) return@runCatching null
+            val data = response.body<JsonObject>()["results"]?.jsonObject
+                ?.get("artists")?.jsonObject?.get("data")?.jsonArray ?: return@runCatching null
+            val candidates = data.mapNotNull { it.jsonObject["attributes"]?.jsonObject }
+            val match = candidates.firstOrNull {
+                it["name"]?.jsonPrimitive?.contentOrNull.equals(artist, ignoreCase = true)
+            } ?: return@runCatching null
+            val ev = match["editorialVideo"]?.jsonObject ?: return@runCatching null
+            listOf(
+                "motionArtistFullscreen16x9", "motionArtistWide16x9", "motionArtistSquare1x1",
+                "motionDetailTall", "motionDetailSquare",
+            ).firstNotNullOfOrNull { name ->
+                ev[name]?.jsonObject?.let { asset ->
+                    asset["video"]?.jsonPrimitive?.contentOrNull ?: asset["url"]?.jsonPrimitive?.contentOrNull
+                }?.takeIf { it.isNotBlank() }
+            }
+        }.onFailure { if (it is CancellationException) throw it }.getOrNull()
+        cache[key] = CacheEntry(url?.let { CanvasArtwork(name = artist, artist = artist, animated = it) }, System.currentTimeMillis() + CACHE_TTL_MS)
+        return url
+    }
+
     // -------------------------------------------------------------------------
     // Implementación interna
     // -------------------------------------------------------------------------

@@ -90,6 +90,8 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -130,6 +132,7 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import com.ozyern.exhale.LocalPlayerConnection
 import com.ozyern.exhale.R
+import com.ozyern.exhale.ui.player.playerGlass
 import com.ozyern.exhale.constants.LyricsClickKey
 import com.ozyern.exhale.constants.LyricsLineSpacingKey
 import com.ozyern.exhale.constants.LyricsRomanizeJapaneseKey
@@ -228,6 +231,12 @@ private val HEAD_LYRICS_ENTRY = LyricsEntry(time = 0L, text = "")
 // ──────────────────────────────────────────────────────────────────────
 
 
+/**
+ * The colour of the glow around the word being sung. Unspecified means the text's own colour; the
+ * Now Playing screen provides its cover's accent, so the light coming off a held note is the song's.
+ */
+val LocalLyricsGlowColor = compositionLocalOf { Color.Unspecified }
+
 @SuppressLint("UnusedBoxWithConstraintsScope", "LocalContextGetResourceValueCall",
     "StringFormatInvalid"
 )
@@ -236,6 +245,8 @@ private val HEAD_LYRICS_ENTRY = LyricsEntry(time = 0L, text = "")
 fun LyricsV2(
     sliderPositionProvider: () -> Long?,
     modifier: Modifier = Modifier,
+    /** False where the screen around the lyrics carries its own translate control. */
+    cornerButtons: Boolean = true,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val player = playerConnection.player
@@ -252,6 +263,9 @@ fun LyricsV2(
     val (lyricsLineSpacing) = rememberPreference(LyricsLineSpacingKey, defaultValue = 1.3f)
     val (romanizeJapanese) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = true)
     val (romanizeKorean) = rememberPreference(LyricsRomanizeKoreanKey, defaultValue = true)
+    val (showPronunciation, setShowPronunciation) = rememberPreference(com.ozyern.exhale.constants.LyricsShowPronunciationKey, true)
+    val (showTranslation, setShowTranslation) = rememberPreference(com.ozyern.exhale.constants.LyricsShowTranslationKey, false)
+    var translating by remember { mutableStateOf(false) }
     val (useSystemFont) = rememberPreference(UseSystemFontKey, defaultValue = false)
     val lyricsFontFamily = remember(useSystemFont) {
         if (useSystemFont) null else FontFamily(Font(R.font.linotte))
@@ -403,6 +417,55 @@ fun LyricsV2(
                 }
                 if (romanized != null) entry.romanizedTextFlow.value = romanized
             }
+        }
+    }
+
+    // Whether this song has any lines in another script to pronounce — the globe only shows then.
+    val hasPronunciation = remember(entriesWithWords) {
+        entriesWithWords.any { isJapanese(it.text) || isKorean(it.text) }
+    }
+
+    // ── Translation, beneath each line, in the language chosen in the lyric settings ──
+    val (translateTo) = rememberPreference(com.ozyern.exhale.constants.LyricsTranslateLanguageKey, "")
+    // Only a change the listener just made earns a message; a song that loads with translation
+    // already on stays quiet, or every English song would say so.
+    val translationRequest = remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+    val announceResult = remember { mutableStateOf(false) }
+    LaunchedEffect(showTranslation, translateTo) {
+        val previous = translationRequest.value
+        translationRequest.value = showTranslation to translateTo
+        announceResult.value = previous != null && showTranslation && previous != (showTranslation to translateTo)
+    }
+    LaunchedEffect(entriesWithWords, showTranslation, translateTo) {
+        if (!showTranslation) return@LaunchedEffect
+        val target = translateTo.ifBlank { com.ozyern.exhale.lyrics.LyricsTranslator.deviceLanguage() }
+        // A new target language means every line is translated afresh.
+        val pending = entriesWithWords.filter { it.text.isNotBlank() }
+        if (pending.isEmpty()) return@LaunchedEffect
+        translating = true
+        try {
+            val result = com.ozyern.exhale.lyrics.LyricsTranslator.translate(pending.map { it.text }, target)
+            var any = false
+            result.lines.forEachIndexed { index, text ->
+                val entry = pending.getOrNull(index) ?: return@forEachIndexed
+                entry.translatedTextFlow.value = text
+                if (text != null) any = true
+            }
+            if (!any && announceResult.value) {
+                announceResult.value = false
+                val sameLanguage = result.sourceLanguage?.substringBefore('-')
+                    ?.equals(target.substringBefore('-'), ignoreCase = true) == true
+                val message = when {
+                    sameLanguage -> "These lyrics are already in " +
+                        java.util.Locale.forLanguageTag(target).getDisplayLanguage(java.util.Locale.getDefault()) +
+                        ". Pick another language in lyric settings."
+                    result.sourceLanguage == null -> "Couldn't reach the translator. Check your connection."
+                    else -> "Nothing to translate here."
+                }
+                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+            }
+        } finally {
+            translating = false
         }
     }
 
@@ -973,7 +1036,7 @@ fun LyricsV2(
 
                     // ── Romanization ──
                     val romanizedText by item.romanizedTextFlow.collectAsState()
-                    if (romanizedText != null) {
+                    if (showPronunciation && romanizedText != null) {
                         Text(
                             text = romanizedText!!,
                             style = MaterialTheme.typography.bodyMedium.copy(
@@ -990,6 +1053,25 @@ fun LyricsV2(
                                 .padding(top = (lyricsTextSize * 0.3f).dp),
                         )
                     }
+
+                    // ── Translation ──
+                    val translatedText by item.translatedTextFlow.collectAsState()
+                    if (showTranslation && translatedText != null) {
+                        Text(
+                            text = translatedText!!,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = (lyricsTextSize * 0.6f).sp,
+                                lineHeight = (lyricsTextSize * 0.8f).sp,
+                                fontWeight = FontWeight.Medium,
+                                fontFamily = lyricsFontFamily ?: MaterialTheme.typography.bodyMedium.fontFamily,
+                            ),
+                            color = textColor.copy(alpha = if (isActive) 0.72f else inactiveAlpha * 0.7f),
+                            textAlign = textAlign,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = (lyricsTextSize * 0.25f).dp),
+                        )
+                    }
                 }
             }
 
@@ -997,6 +1079,33 @@ fun LyricsV2(
             item {
                 Spacer(modifier = Modifier.height(300.dp))
             }
+        }
+
+        // ── Pronunciation and translation, as Apple Music puts them: a disc at each corner ──
+        if (cornerButtons && entriesWithWords.isNotEmpty() && !isSelectionModeActive) {
+            if (hasPronunciation) {
+                LyricsCornerButton(
+                    icon = R.drawable.language,
+                    active = showPronunciation,
+                    busy = false,
+                    tint = textColor,
+                    onClick = { setShowPronunciation(!showPronunciation) },
+                    // Beside translate: the bottom-left corner belongs to the sources disc.
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 58.dp, bottom = 18.dp),
+                )
+            }
+            LyricsCornerButton(
+                icon = R.drawable.translate,
+                active = showTranslation,
+                busy = translating,
+                tint = textColor,
+                onClick = { setShowTranslation(!showTranslation) },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 4.dp, bottom = 18.dp),
+            )
         }
 
         // ── Back to the line that is playing ──
@@ -1668,7 +1777,9 @@ private fun AnimatedWordV2(
         ),
         label = "wordGlow",
     )
-    val glowAlpha = glow * 0.5f
+    val glowTint = LocalLyricsGlowColor.current
+    // A coloured glow needs a little more strength than white to read as light rather than a tint.
+    val glowAlpha = glow * if (glowTint.isSpecified) 0.7f else 0.5f
     val glowRadius = glow * 14f
 
     // How bright a word is *before* the highlight reaches it.
@@ -1752,7 +1863,7 @@ private fun AnimatedWordV2(
                 // and `null` changes the text style's shape, and a changed style re-measures the
                 // text - at the exact moment the word stops glowing, which is the line change.
                 shadow = Shadow(
-                    color = textColor.copy(alpha = glowAlpha),
+                    color = (if (glowTint.isSpecified) glowTint else textColor).copy(alpha = glowAlpha),
                     offset = Offset.Zero,
                     blurRadius = glowRadius.coerceAtLeast(0.01f),
                 ),
@@ -1997,5 +2108,38 @@ private fun LyricsSyncPill(
             fontWeight = FontWeight.SemiBold,
             color = tint,
         )
+    }
+}
+
+
+/** A round, frosted corner control over the lyrics: lit when its mode is on, a ring while it works. */
+@Composable
+private fun LyricsCornerButton(
+    icon: Int,
+    active: Boolean,
+    busy: Boolean,
+    tint: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // Liquid glass, lit while its mode is on: the player's own material where it has one.
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(44.dp)
+            .playerGlass(CircleShape, lit = active)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+    ) {
+        if (busy) {
+            LoadingRing(modifier = Modifier.size(20.dp), color = tint.copy(alpha = 0.85f), stroke = 2.dp)
+        } else {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = null,
+                tint = tint.copy(alpha = if (active) 1f else 0.75f),
+                modifier = Modifier.size(22.dp),
+            )
+        }
     }
 }

@@ -76,6 +76,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -221,24 +227,82 @@ fun LiquidGlassBottomBar(
     )
     val homeGap = 10.dp * (homeCircleSize / CollapsedCircleSize).coerceIn(0f, 1f)
 
+    // Folded with nothing playing: the dock is just the two circles, side by side in the
+    // middle — no empty pill between them saying the name of the page you are already on. The
+    // change between that and the full dock is a soft cross-dissolve with a little scale, not a cut.
+    val idleFold = collapsed && !hasNowPlaying
+    // One bar narrowing into the two circles rather than two layouts trading places: the row's
+    // width springs from the full dock down to exactly two circles and their gap, the empty middle
+    // closing between them as they slide together.
+    val idle by animateFloatAsState(
+        targetValue = if (idleFold) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = 360f),
+        label = "dockIdleFold",
+    )
+    androidx.compose.foundation.layout.BoxWithConstraints(
+        modifier = modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center,
+    ) {
+    val compactWidth = CollapsedCircleSize * 2 + 20.dp
+    val rowWidth = androidx.compose.ui.unit.lerp(maxWidth, compactWidth.coerceAtMost(maxWidth), idle)
+    run {
     Row(
         // Fixed height (the tallest child is 64dp) instead of IntrinsicSize.Min — this drops the
         // intrinsic-measurement pass the morph used to trigger on every animation frame.
-        modifier = modifier.fillMaxWidth().height(64.dp),
+        modifier = Modifier.width(rowWidth).height(64.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (homeTab != null && homeCircleSize > 1.dp) {
+        // The folded dock's first circle is the page you are on — the tab strip
+        // folds into its own selected tab — falling back to Home off the tabs. A faint ring says
+        // "you are here"; tapping it there scrolls the page to its top, which unfolds the dock.
+        // Holding it fans the other tabs out above it, so you can change page without unfolding.
+        val leftTab = activeTab ?: homeTab
+        if (leftTab != null && homeCircleSize > 1.dp) {
+            val here = isSelected(leftTab)
+            var fanOpen by remember { mutableStateOf(false) }
+            val accent = MaterialTheme.colorScheme.primary
             FrostedCircle(
                 size = homeCircleSize,
-                onClick = { onItemClickHaptic(homeTab, isSelected(homeTab)) },
+                modifier = Modifier.drawWithContent {
+                    drawContent()
+                    if (here) {
+                        drawCircle(
+                            accent.copy(alpha = 0.55f),
+                            radius = size.minDimension / 2f - 1.dp.toPx(),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()),
+                        )
+                    }
+                },
+                onClick = { onItemClickHaptic(leftTab, here) },
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    fanOpen = true
+                },
             ) {
-                NavGlyph(
-                    iconRes = if (isSelected(homeTab)) homeTab.iconIdActive else homeTab.iconIdInactive,
-                    contentDescription = stringResource(homeTab.titleId),
-                    tint = if (isSelected(homeTab)) MaterialTheme.colorScheme.primary
-                    else itemContentColor(pureBlack),
-                    scale = (homeCircleSize / DockCircleSize).coerceAtMost(1f),
-                )
+                androidx.compose.animation.Crossfade(
+                    targetState = leftTab,
+                    animationSpec = tween(180),
+                    label = "dockLeftTab",
+                ) { tab ->
+                    NavGlyph(
+                        iconRes = if (isSelected(tab)) tab.iconIdActive else tab.iconIdInactive,
+                        contentDescription = stringResource(tab.titleId),
+                        tint = if (isSelected(tab)) accent else itemContentColor(pureBlack),
+                        scale = (homeCircleSize / DockCircleSize).coerceAtMost(1f),
+                    )
+                }
+                if (fanOpen) {
+                    DockTabFan(
+                        tabs = tabs.filter { it != leftTab },
+                        pureBlack = pureBlack,
+                        anchorHeight = homeCircleSize,
+                        onPick = { tab ->
+                            fanOpen = false
+                            onItemClickHaptic(tab, isSelected(tab))
+                        },
+                        onDismiss = { fanOpen = false },
+                    )
+                }
             }
         }
         Spacer(Modifier.width(homeGap))
@@ -330,6 +394,9 @@ fun LiquidGlassBottomBar(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     FrostedPill(
+                        // Level with the circles either side: one
+                        // band of three pieces of glass, not a tall pill between two buttons.
+                        height = CollapsedCircleSize,
                         // The same accessory that was above the bar a moment ago, flown down into it.
                         sharedAccessoryScope = if (hasNowPlaying) this@AnimatedContent else null,
                         // Frostier than the rest of the dock when it carries the now-playing row:
@@ -347,7 +414,7 @@ fun LiquidGlassBottomBar(
                             // left to right. Anchoring it to its left edge makes both directions
                             // the same reversible motion — the pill lives behind the circle.
                             .graphicsLayer {
-                                alpha = pillInk
+                                alpha = pillInk * (1f - idle)
                                 transformOrigin = TransformOrigin(0f, 0.5f)
                                 scaleX = 0.14f + 0.86f * pillShape
                                 scaleY = 0.88f + 0.12f * pillShape
@@ -355,19 +422,6 @@ fun LiquidGlassBottomBar(
                     ) {
                         if (hasNowPlaying) {
                             MiniPlayerPill(pureBlack = pureBlack, onExpand = onMiniPlayerClickHaptic)
-                        } else if (activeTab != null) {
-                            // Nothing playing: center shows the active-tab compact pill.
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Center,
-                            ) {
-                                TabButton(
-                                    screen = activeTab,
-                                    selected = true,
-                                    pureBlack = pureBlack,
-                                    onClick = { onItemClickHaptic(activeTab, true) },
-                                )
-                            }
                         }
                     }
 
@@ -394,6 +448,8 @@ fun LiquidGlassBottomBar(
             }
         }
     }
+    }
+    }
 }
 
 /* ----------------------------------------------------------------------- */
@@ -413,7 +469,7 @@ private val DockCircleSize = 64.dp
  * row between them and the pill was the narrowest thing in a bar that exists, in that state, to
  * show what is playing.
  */
-private val CollapsedCircleSize = 52.dp
+private val CollapsedCircleSize = 50.dp
 
 /**
  * Opacity: the outgoing state leaves before the incoming one arrives.
@@ -502,42 +558,6 @@ internal const val MiniPlayerGlassExtraTint = 0.46f
 internal val MiniPlayerGlassBlurRadius = 130.dp
 
 @Composable
-private fun frostedGlassModifier(
-    shape: androidx.compose.ui.graphics.Shape,
-    /**
-     * Extra opacity for chrome that has to stay readable over *anything*.
-     *
-     * Every piece of dock chrome takes the defaults — see [DockGlassExtraTint]. The parameters
-     * exist for the search row, which is half the dock's height and therefore cannot carry the
-     * dock's opacity without reading as a solid slab. A difference of degree, not a second
-     * material.
-     */
-    extraTint: Float = DockGlassExtraTint,
-    blurRadius: Dp = DockGlassBlurRadius,
-): Modifier {
-    // Real backdrop blur of the app content scrolling underneath. The bar lives in the
-    // Scaffold's bottomBar slot — a sibling of the NavHost, drawn over it — so reading the
-    // NavHost's haze source here is safe and not a re-entrant layer draw.
-    //
-    // This used to reach for Kyant's `drawBackdrop(LocalAppBackdrop.current, …)`. That local
-    // is `rememberDefaultBackdrop()`, an EMPTY passthrough canvas: blurring and refracting it
-    // yields no pixels at all, so the only thing the bar ever painted was its own 0.34-alpha
-    // film. That is the "dock is fully transparent" bug — the glass was never glass.
-    val isDark = isSystemInDarkTheme()
-    return rememberChromeGlassModifier(
-        shape = shape,
-        dark = isDark,
-        // Apple Music's dock is milky enough to read white-on-glass labels at any scroll
-        // position. Under a real blur this is a tint, not a substitute for one.
-        tintAlpha = (if (isDark) 0.30f else 0.26f) + extraTint,
-        blurRadius = blurRadius,
-        // The dock sits over a scrolling list, so its blur is recomputed every frame the
-        // user scrolls. Half-resolution is invisible at this radius and halves that cost.
-        quality = 0.5f,
-    )
-}
-
-@Composable
 private fun FrostedPill(
     modifier: Modifier = Modifier,
     height: Dp = 64.dp,
@@ -551,15 +571,19 @@ private fun FrostedPill(
         modifier = modifier
             .height(height)
             .nowPlayingAccessory(sharedAccessoryScope)
-            .then(frostedGlassModifier(shape, extraTint, blurRadius)),
+            // The clear glass rather than the frosted plate: the pill is a lens over the
+            // page, which is what the reference's accessory is.
+            .clearGlass(shape),
         contentAlignment = Alignment.Center,
     ) { content() }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun FrostedCircle(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
     size: Dp = 64.dp,
     extraTint: Float = DockGlassExtraTint,
     blurRadius: Dp = DockGlassBlurRadius,
@@ -580,7 +604,7 @@ private fun FrostedCircle(
         modifier = modifier
             .size(size)
             .scale(pressScale)
-            .then(frostedGlassModifier(CircleShape, extraTint, blurRadius))
+            .clearGlass(CircleShape)
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
@@ -589,10 +613,11 @@ private fun FrostedCircle(
                     pressed = false
                 }
             }
-            .clickable(
+            .combinedClickable(
                 interactionSource = interactionSource,
                 indication = null,
                 role = Role.Button,
+                onLongClick = onLongClick,
                 onClick = onClick,
             ),
         contentAlignment = Alignment.Center,
@@ -969,7 +994,7 @@ private fun LiquidTabBar(
     val glassBackdrop = rememberLayerBackdrop()
     val tabsBackdrop = rememberLayerBackdrop()
     val combinedBackdrop = rememberCombinedBackdrop(glassBackdrop, tabsBackdrop)
-    val containerGlass = frostedGlassModifier(shape)
+    val containerGlass = Modifier.clearGlass(shape)
 
     Box(
         // The gesture belongs to the whole bar, as on iOS: press any tab and the glass comes to
@@ -1267,97 +1292,6 @@ private fun RowScope.LiquidTabItem(
     }
 }
 
-@Composable
-private fun TabButton(
-    screen: Screens,
-    selected: Boolean,
-    pureBlack: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val transition = updateTransition(targetState = selected, label = "tab_${screen.route}")
-    val contentColor by transition.animateColor(
-        transitionSpec = { spring(stiffness = Spring.StiffnessMedium) },
-        label = "tabColor",
-    ) { sel ->
-        if (sel) MaterialTheme.colorScheme.primary else itemContentColor(pureBlack)
-    }
-    // Overshoots on the way in. At damping 0.8 the icon simply grew, which reads as a size
-    // difference between two tabs rather than as one tab reacting to being chosen; the
-    // under-damped spring gives it a beat of its own, so selection is something you watch happen
-    // instead of something you notice afterwards.
-    val iconScale by transition.animateFloat(
-        transitionSpec = { spring(dampingRatio = 0.42f, stiffness = 700f) },
-        label = "tabIconScale",
-    ) { sel -> if (sel) 1.18f else 1f }
-
-    // The label used to jump straight from Medium to SemiBold on the frame the route changed --
-    // the one part of the transition that was instant while everything around it eased. Animating
-    // the numeric weight lets it thicken with the rest; on a font with no variable axis the
-    // renderer snaps to the nearest face, which is exactly the old behaviour and no worse.
-    val labelWeight by transition.animateFloat(
-        transitionSpec = { spring(dampingRatio = 0.9f, stiffness = 400f) },
-        label = "tabLabelWeight",
-    ) { sel -> if (sel) 600f else 500f }
-
-    var pressed by remember { mutableStateOf(false) }
-    val pressScale by animateFloatAsState(
-        targetValue = if (pressed) 0.90f else 1f,
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f),
-        label = "tabPress",
-    )
-    val interactionSource = remember { MutableInteractionSource() }
-
-    Column(
-        modifier = modifier
-            .scale(pressScale)
-            .clip(RoundedCornerShape(percent = 50))
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                    pressed = true
-                    waitForUpOrCancellation(pass = PointerEventPass.Initial)
-                    pressed = false
-                }
-            }
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                role = Role.Tab,
-                onClick = onClick,
-            )
-            // Tight vertical padding + generous horizontal so the four tabs breathe across the
-            // pill without a background chip; labels stay centered under their icons.
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Crossfade(
-            targetState = if (selected) screen.iconIdActive else screen.iconIdInactive,
-            animationSpec = tween(170),
-            label = "tabGlyph",
-        ) { res ->
-            Icon(
-                painter = painterResource(res),
-                contentDescription = stringResource(screen.titleId),
-                tint = contentColor,
-                modifier = Modifier.size(26.dp).scale(iconScale),
-            )
-        }
-        Spacer(Modifier.size(3.dp))
-        Text(
-            text = stringResource(screen.dockTitleId),
-            color = contentColor,
-            style = MaterialTheme.typography.labelSmall,
-            fontSize = 11.sp,
-            fontWeight = FontWeight(labelWeight.fastRoundToInt().coerceIn(1, 1000)),
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
 /* ----------------------------------------------------------------------- */
 /* State B center mini-player pill                                          */
 /* ----------------------------------------------------------------------- */
@@ -1372,10 +1306,63 @@ private fun MiniPlayerPill(
     val isPlaying by playerConnection.isPlaying.collectAsState()
     val haptic = LocalHapticFeedback.current
 
+    // Where the song is, for the ring round play/pause: read from the player a few times a second
+    // while it plays, still while it doesn't.
+    var progress by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(isPlaying, mediaMetadata?.id) {
+        while (true) {
+            val p = playerConnection.player
+            val d = p.duration
+            progress = if (d > 0) (p.currentPosition.toFloat() / d).coerceIn(0f, 1f) else 0f
+            if (!isPlaying) break
+            kotlinx.coroutines.delay(250)
+        }
+    }
+    val ringProgress by animateFloatAsState(progress, tween(260, easing = LinearEasing), label = "pillRing")
+
+    // Swipes on the pill: sideways to skip, upwards to open the player. Which one is decided by the
+    // axis the finger mostly travelled, so a slightly diagonal flick still does what it looked like.
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val skipDistance = with(density) { 56.dp.toPx() }
+    val openDistance = with(density) { 36.dp.toPx() }
+    var dragX by remember { mutableFloatStateOf(0f) }
+    var dragY by remember { mutableFloatStateOf(0f) }
+    val nudge by animateFloatAsState(
+        targetValue = (dragX / skipDistance).coerceIn(-1f, 1f),
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = 600f),
+        label = "pillNudge",
+    )
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onExpand)
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragEnd = {
+                        val horizontal = kotlin.math.abs(dragX) > kotlin.math.abs(dragY)
+                        when {
+                            horizontal && dragX <= -skipDistance -> {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                playerConnection.player.seekToNext()
+                            }
+                            horizontal && dragX >= skipDistance -> {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                playerConnection.player.seekToPrevious()
+                            }
+                            !horizontal && dragY <= -openDistance -> onExpand()
+                        }
+                        dragX = 0f
+                        dragY = 0f
+                    },
+                    onDragCancel = { dragX = 0f; dragY = 0f },
+                    onDrag = { change, amount ->
+                        change.consume()
+                        dragX += amount.x
+                        dragY += amount.y
+                    },
+                )
+            }
             .padding(start = 10.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1398,7 +1385,13 @@ private fun MiniPlayerPill(
                     SizeTransform(clip = false) { _, _ -> snap() }
             },
             label = "miniPillTrack",
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                // Follows the finger a little, so a skip swipe is visibly the song being pushed.
+                .graphicsLayer {
+                    translationX = nudge * 18.dp.toPx()
+                    alpha = 1f - kotlin.math.abs(nudge) * 0.35f
+                },
         ) { metadata ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1407,8 +1400,8 @@ private fun MiniPlayerPill(
                 // Album art (clean circle — no wavy/floral shapes).
                 Box(
                     modifier = Modifier
-                        .size(34.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(9.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -1443,13 +1436,26 @@ private fun MiniPlayerPill(
                     // one thing and the song's name is the thing.
                     Text(
                         text = metadata?.title.orEmpty(),
-                        style = MaterialTheme.typography.titleMedium,
+                        fontSize = 15.sp,
+                        lineHeight = 18.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = clearGlassContentColor(),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.basicMarquee(),
                     )
+                    // Who it is by, quieter, under the name: the pill stops at the title.
+                    val artists = metadata?.artists?.joinToString(", ") { it.name }.orEmpty()
+                    if (artists.isNotBlank()) {
+                        Text(
+                            text = artists,
+                            fontSize = 12.sp,
+                            lineHeight = 14.sp,
+                            color = clearGlassContentColor().copy(alpha = 0.62f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         }
@@ -1457,6 +1463,7 @@ private fun MiniPlayerPill(
         // Play / pause, as glass: the same lens the dock is made of, holding the accent inside it
         // rather than sitting on it as a coloured chip. Shape carries the state — a rounded square
         // while playing, a circle when paused — so the pill reads at a glance without a label.
+        val ink = clearGlassContentColor()
         Box(
             modifier = Modifier
                 .size(44.dp)
@@ -1464,15 +1471,108 @@ private fun MiniPlayerPill(
                 .clickable {
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     playerConnection.player.togglePlayPause()
+                }
+                // How far through the song: a thin ring that fills clockwise from the top.
+                .drawBehind {
+                    val stroke = 2.2.dp.toPx()
+                    val inset = stroke / 2 + 2.dp.toPx()
+                    val arcSize = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2)
+                    val topLeft = androidx.compose.ui.geometry.Offset(inset, inset)
+                    drawArc(ink.copy(alpha = 0.16f), 0f, 360f, false, topLeft, arcSize, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
+                    drawArc(
+                        ink.copy(alpha = 0.9f), -90f, 360f * ringProgress, false, topLeft, arcSize,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round),
+                    )
                 },
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                painter = painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.size(26.dp),
-            )
+            AnimatedContent(
+                targetState = isPlaying,
+                transitionSpec = {
+                    (scaleIn(spring(dampingRatio = 0.55f, stiffness = 700f), initialScale = 0.6f) + fadeIn(tween(120))) togetherWith
+                        (scaleOut(tween(120), targetScale = 0.6f) + fadeOut(tween(100)))
+                },
+                label = "pillPlayPause",
+            ) { playing ->
+                Icon(
+                    painter = painterResource(if (playing) R.drawable.pause else R.drawable.play),
+                    contentDescription = null,
+                    tint = ink,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The other tabs, fanned up out of the folded dock's first circle on a long press: each a small
+ * glass capsule with its glyph and name, rising one after another from the circle. Tap one to go
+ * there; tap anywhere else to put them away.
+ */
+@Composable
+private fun DockTabFan(
+    tabs: List<Screens>,
+    pureBlack: Boolean,
+    anchorHeight: Dp,
+    onPick: (Screens) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val lift = with(density) { (anchorHeight + 12.dp).roundToPx() }
+    androidx.compose.ui.window.Popup(
+        alignment = Alignment.BottomStart,
+        offset = androidx.compose.ui.unit.IntOffset(0, -lift),
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.PopupProperties(focusable = true),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Nearest the circle first, so the list reads upward from the finger.
+            tabs.reversed().forEachIndexed { index, tab ->
+                val order = tabs.size - 1 - index
+                val appear = remember { androidx.compose.animation.core.Animatable(0f) }
+                LaunchedEffect(Unit) {
+                    kotlinx.coroutines.delay(order * 35L)
+                    appear.animateTo(1f, spring(dampingRatio = 0.62f, stiffness = 520f))
+                }
+                val shape = RoundedCornerShape(percent = 50)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .graphicsLayer {
+                            alpha = appear.value.coerceIn(0f, 1f)
+                            val s = 0.6f + 0.4f * appear.value
+                            scaleX = s
+                            scaleY = s
+                            transformOrigin = TransformOrigin(0f, 1f)
+                            translationY = (1f - appear.value) * 18.dp.toPx() * (order + 1)
+                        }
+                        .height(46.dp)
+                        .clip(shape)
+                        .background(
+                            if (pureBlack) Color(0xF2111111)
+                            else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
+                        )
+                        .border(0.5.dp, Color.White.copy(alpha = 0.12f), shape)
+                        .clickable { onPick(tab) }
+                        .padding(start = 14.dp, end = 18.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(tab.iconIdInactive),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = stringResource(tab.titleId),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                    )
+                }
+            }
         }
     }
 }
@@ -1491,7 +1591,7 @@ private fun MiniPlayerPill(
  * height anyway: it was the row hanging at the bottom of a taller reservation, which is fixed at
  * the call site by filling that band and centring in it.
  */
-private val SearchRowHeight = 48.dp
+private val SearchRowHeight = 58.dp
 
 /**
  * See [frostedGlassModifier]'s `extraTint` for why the search row is not dock-strength glass.
@@ -1563,7 +1663,7 @@ fun SearchBottomBar(
                     if (leadingIsBack) R.string.back else R.string.home,
                 ),
                 tint = itemContentColor(pureBlack),
-                modifier = Modifier.size(22.dp),
+                modifier = Modifier.size(26.dp),
             )
         }
 
@@ -1585,18 +1685,18 @@ fun SearchBottomBar(
                     .clip(RoundedCornerShape(percent = 50))
                     .clickable(onClick = onSearchClick),
             ) {
-                Spacer(Modifier.width(16.dp))
+                Spacer(Modifier.width(20.dp))
                 Icon(
                     painter = painterResource(R.drawable.search),
                     contentDescription = null,
                     tint = if (committedQuery != null) MaterialTheme.colorScheme.primary
                     else itemContentColor(pureBlack),
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(22.dp),
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = committedQuery ?: placeholder,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyLarge,
                     fontWeight = if (committedQuery != null) FontWeight.SemiBold else FontWeight.Normal,
                     color = if (committedQuery != null) MaterialTheme.colorScheme.primary
                     else itemContentColor(pureBlack),
@@ -1610,9 +1710,9 @@ fun SearchBottomBar(
                     ),
                     contentDescription = null,
                     tint = itemContentColor(pureBlack),
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(22.dp),
                 )
-                Spacer(Modifier.width(16.dp))
+                Spacer(Modifier.width(20.dp))
             }
         }
     }

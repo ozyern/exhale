@@ -8,6 +8,8 @@
 
 package com.ozyern.exhale.ui.screens
 
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
 import com.ozyern.exhale.extensions.toMediaItem
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
@@ -51,7 +53,10 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -316,6 +321,13 @@ fun HomeScreen(
                     )
                 }
 
+                // Signed out: the card, one line of why and a white Sign in pill.
+                if (!isLoggedIn) {
+                    item(key = "home_sign_in", contentType = "sign_in") {
+                        HomeSignInCard(onSignIn = { navController.navigate("login") })
+                    }
+                }
+
                 // Cold start with nothing cached used to be a black page with a title on it for
                 // as long as the first request took. Three placeholder shelves say the same thing
                 // a spinner would — something is coming — while also showing its shape, so the
@@ -490,6 +502,8 @@ fun HomeScreen(
                 }
             }
 
+            // The feed leads with its first shelf as big cards, whatever is in it.
+            val heroSectionIndex = homePage?.sections?.indexOfFirst { it.items.size >= 2 } ?: -1
             homePage?.sections?.forEachIndexed { index, section ->
                 val sectionKey = sectionKeys.getOrElse(index) { "section_$index" }
 
@@ -509,6 +523,7 @@ fun HomeScreen(
 
                 item(key = "home_section_content_$sectionKey", contentType = "home_section") {
                     HomePageSectionContent(
+                        hero = index == heroSectionIndex,
                         modifier = Modifier.feedIntro(introOrder, introProgress),
                         section = section,
                         mediaMetadata = mediaMetadata,
@@ -556,6 +571,7 @@ fun HomeScreen(
  * result was two account circles stacked twenty pixels apart. The app bar's is the original and
  * the one that is present on every tab; this is a title, and titles do not carry controls.
  */
+
 @Composable
 private fun HomeLargeTitle(
     modifier: Modifier = Modifier,
@@ -573,12 +589,13 @@ private fun HomeLargeTitle(
         // The eyebrow steps back: semibold at label size, not bold at title size. It was
         // competing with the line under it, and an eyebrow that competes with its own headline
         // is just a two-line heading.
+        // The "Listen Now": a heavy system face, tight, not a display font.
         Text(
-            text = stringResource(R.string.home),
-            // Tracked in hard. At 36sp the default fitting leaves visible gaps between letters
-            // — the difference between a word that has been *set* and one that has been typed.
-            // This is the largest type in the app, so it is where loose tracking shows most.
-            style = MaterialTheme.typography.headlineLarge,
+            text = "Listen Now",
+            style = MaterialTheme.typography.headlineLarge.copy(
+                fontSize = 32.sp,
+                letterSpacing = (-0.6).sp,
+            ),
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
         )
@@ -688,6 +705,49 @@ private fun HomeEmptyAction(
             .clickable(onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 11.dp),
     )
+}
+
+@Composable
+private fun HomeSignInCard(onSignIn: () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f))
+            .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = "Sign in to YouTube Music",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "Get personalised recommendations and your library",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(Modifier.size(10.dp))
+        Text(
+            text = "Sign in",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.Black,
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(Color.White)
+                .clickable(onClick = onSignIn)
+                .padding(horizontal = 16.dp, vertical = 9.dp),
+        )
+    }
 }
 
 /* ------------------------------------------------------------------------------------------- */

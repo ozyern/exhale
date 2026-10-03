@@ -73,7 +73,8 @@ class KizzyRepository {
 
     suspend fun getImage(url: String): String? {
         imageCache.get(url)?.let { return it }
-        val result = api.getImage(url).getOrNull()?.toImageAsset()
+        val result = DiscordAssets.externalize(url)
+            ?: api.getImage(url).getOrNull()?.toImageAsset()
         if (result != null) imageCache.put(url, result)
         return result
     }

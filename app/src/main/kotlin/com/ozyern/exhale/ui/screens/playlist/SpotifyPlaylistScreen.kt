@@ -91,6 +91,8 @@ import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.ozyern.exhale.ui.component.rememberScrollEdge
+import com.ozyern.exhale.ui.component.scrollEdgeScrim
 import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.LocalPlayerAwareWindowInsets
 import com.ozyern.exhale.LocalPlayerConnection
@@ -247,8 +249,8 @@ fun SpotifyPlaylistScreen(
             )
         } else {
             TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-                scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
             )
         }
 
@@ -755,7 +757,9 @@ fun SpotifyPlaylistScreen(
             headerItems = if (!isSearching && playlist != null) 1 else 0,
         )
 
+        val scrollEdge = rememberScrollEdge(!transparentAppBar)
         TopAppBar(
+            modifier = Modifier.scrollEdgeScrim(MaterialTheme.colorScheme.surface) { scrollEdge.value },
             colors = topAppBarColors,
             title = {
                 if (isSearching) {

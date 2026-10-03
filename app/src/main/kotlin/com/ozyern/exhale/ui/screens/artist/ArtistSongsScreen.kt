@@ -190,7 +190,7 @@ fun ArtistSongsScreen(
         }
 
         TopAppBar(
-            title = { Text(artist?.artist?.name.orEmpty()) },
+            title = { com.ozyern.exhale.ui.component.HeadingStyle { Text(artist?.artist?.name.orEmpty()) } },
             navigationIcon = {
                 LiquidBackButton(
                     onClick = navController::navigateUp,

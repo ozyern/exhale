@@ -137,7 +137,7 @@ import com.ozyern.exhale.ui.component.LiquidBackButton
      }
  
      TopAppBar(
-         title = { Text(title ?: "") },
+         title = { com.ozyern.exhale.ui.component.HeadingStyle { Text(title ?: "") } },
          navigationIcon = {
              LiquidBackButton(
                  onClick = navController::navigateUp,

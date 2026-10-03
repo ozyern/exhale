@@ -6,6 +6,7 @@
 
 package com.ozyern.exhale.ui.screens.settings
 
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.offset
@@ -25,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -162,6 +164,17 @@ fun AboutScreen(
     navController: NavController,
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
+    com.ozyern.exhale.ui.component.ColorOsType {
+        AboutScreenContent(navController, scrollBehavior)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AboutScreenContent(
+    navController: NavController,
+    scrollBehavior: TopAppBarScrollBehavior,
+) {
     val uriHandler = LocalUriHandler.current
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
@@ -221,11 +234,12 @@ fun AboutScreen(
             modifier = Modifier
                 .padding(innerPadding)
                 .windowInsetsPadding(
-                    LocalPlayerAwareWindowInsets.current.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
-                    )
+                    LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal)
                 ),
-            contentPadding = PaddingValues(start = pad, end = pad, top = 4.dp, bottom = 40.dp),
+            contentPadding = PaddingValues(
+                start = pad, end = pad, top = 4.dp,
+                bottom = 40.dp + LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding(),
+            ),
         ) {
             item(key = "hero") {
                 AboutHero(
@@ -445,13 +459,8 @@ private fun AboutHero(
         label = "aboutHeroPress",
     )
 
-    // The turn itself. Under-damped on purpose: it should overshoot a few degrees and settle, the
-    // way a card thrown onto a table does, rather than rotate to 180 and stop dead.
-    val flip by animateFloatAsState(
-        targetValue = if (flipped) 180f else 0f,
-        animationSpec = spring(dampingRatio = 0.78f, stiffness = 180f),
-        label = "aboutHeroFlip",
-    )
+    // Each tap on the hidden side throws another handful of confetti.
+    var burst by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(taps) {
         if (taps in 1 until SecretTapCount) {
@@ -474,27 +483,23 @@ private fun AboutHero(
         }
     }
 
-    val iconPack = rememberAppIconPack()
     val haptic = LocalHapticFeedback.current
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(1.06f)
+            .aspectRatio(1f)
             .graphicsLayer {
                 scaleX = press
                 scaleY = press
-                rotationY = flip
-                // Without this the card rotates in a flat orthographic space and reads as being
-                // squashed horizontally rather than turned. 14 is about a hand's distance.
-                cameraDistance = 14f * density
             }
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = {
                     if (flipped) {
-                        // On the back, taps are the older egg: seven of them and it breathes.
+                        burst++
+                        // On the hidden side, taps are also the older egg: seven of them and it breathes.
                         val next = taps + 1
                         if (next >= SecretTapCount) {
                             taps = 0
@@ -509,112 +514,97 @@ private fun AboutHero(
                 onLongClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     flipped = !flipped
+                    burst = 0
                     taps = 0
                 },
             ),
     ) {
-        if (flip <= 90f) {
-            SettingsPosterCard(modifier = Modifier.fillMaxSize()) {
-                Spacer(Modifier.weight(1f))
-
-                SettingsPosterMark(
-                    name = stringResource(R.string.app_name),
-                    version = BuildConfig.VERSION_NAME,
-                    markRes = iconPack.splashLogoRes,
-                    markSize = 84.dp,
+        // The About egg: hold the card and it turns graphite, confetti falls and piles up,
+        // and the tagline comes up behind it. Hold again for the release card.
+        androidx.compose.animation.AnimatedContent(
+            targetState = flipped,
+            transitionSpec = {
+                (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(260)) +
+                    androidx.compose.animation.scaleIn(androidx.compose.animation.core.tween(320), initialScale = 0.97f)) togetherWith
+                    androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(200))
+            },
+            label = "aboutEgg",
+            modifier = Modifier.fillMaxSize(),
+        ) { hidden ->
+            if (!hidden) {
+                AboutReleaseCard(status = status, modifier = Modifier.fillMaxSize())
+            } else {
+                AboutConfettiEgg(
+                    tagline = stringResource(R.string.about_tagline).replace(", ", ",\n"),
+                    burst = burst,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(30.dp)),
                 )
-
-                Spacer(Modifier.weight(1f))
-
-                if (status != null) {
-                    SettingsPosterStatus(status = status)
-                }
             }
-        } else {
-            // The back of the card, counter-rotated so it is not a mirror image of itself.
-            AboutStatementCard(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { rotationY = 180f },
-            )
         }
     }
 }
 
 /**
- * The other side of the About card.
- *
- * Every phone hides one of these behind its About page - hold the release card and it turns over
- * to whatever the company would put on a poster. This is ours: the line the project describes
- * itself with, set large and quiet, over a drift of the app's own colours pooling along the
- * bottom. Nothing here is a control; it exists to be found.
+ * The front of the About card, laid out like ColorOS 17's "About device": the release's gold
+ * artwork filling a rounded square, the glowing wordmark across its middle, the version under it in
+ * light figures, and a frosted pill at the foot saying whether this release is current.
  */
 @Composable
-private fun AboutStatementCard(modifier: Modifier = Modifier) {
-    val scheme = MaterialTheme.colorScheme
-    val confetti = remember(scheme.primary, scheme.secondary, scheme.tertiary) {
-        listOf(scheme.primary, scheme.secondary, scheme.tertiary, Color(0xFFFFC53D), Color.White)
-    }
-    // Fixed, not random per frame: a scatter that reshuffles on every recomposition is a bug, and
-    // a scatter that reshuffles on every *open* is a card you can never recognise twice.
-    val shapes = remember {
-        List(34) { index ->
-            val rng = kotlin.random.Random(index * 7919)
-            ConfettiShape(
-                x = rng.nextFloat(),
-                y = 0.72f + rng.nextFloat() * 0.26f,
-                size = 10f + rng.nextFloat() * 16f,
-                aspect = 0.35f + rng.nextFloat() * 1.3f,
-                angle = rng.nextFloat() * 360f,
-                colorIndex = rng.nextInt(5),
-                round = rng.nextFloat() < 0.32f,
-            )
-        }
-    }
-
+private fun AboutReleaseCard(status: String?, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(30.dp)
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(28.dp))
-            .background(if (isSystemInDarkTheme()) Color(0xFF1A1C1F) else Color(0xFFE9EAEE)),
+            .clip(shape)
+            .border(1.dp, Color.White.copy(alpha = 0.12f), shape),
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            shapes.forEach { shape ->
-                val colour = confetti[shape.colorIndex % confetti.size].copy(alpha = 0.85f)
-                val w = shape.size * density
-                val h = w * shape.aspect
-                withTransform({
-                    rotate(shape.angle, Offset(size.width * shape.x, size.height * shape.y))
-                }) {
-                    val topLeft = Offset(
-                        size.width * shape.x - w / 2f,
-                        size.height * shape.y - h / 2f,
-                    )
-                    if (shape.round) {
-                        drawCircle(colour, radius = w / 2f, center = Offset(topLeft.x + w / 2f, topLeft.y + h / 2f))
-                    } else {
-                        drawRoundRect(
-                            color = colour,
-                            topLeft = topLeft,
-                            size = Size(w, h),
-                            cornerRadius = CornerRadius(w * 0.18f, w * 0.18f),
-                        )
-                    }
-                }
+        Image(
+            painter = painterResource(R.drawable.exhale_about_card),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.matchParentSize(),
+        )
+        // A faint darkening at the foot so the pill and the version sit on the picture rather
+        // than fight its brightest highlights.
+        Box(
+            Modifier
+                .matchParentSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        0.6f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.35f),
+                    ),
+                ),
+        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 24.dp, vertical = 22.dp),
+        ) {
+            Spacer(Modifier.weight(1f))
+            com.ozyern.exhale.ui.component.ExhaleGlowWordmark(fontSize = 58.sp)
+            com.ozyern.exhale.ui.component.ColorOsVersionText(BuildConfig.VERSION_NAME, fontSize = 19.sp, modifier = Modifier.padding(top = 10.dp))
+            Spacer(Modifier.weight(1f))
+            if (status != null) {
+                val pillShape = RoundedCornerShape(50)
+                Text(
+                    text = status,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.White,
+                    modifier = Modifier
+                        .clip(pillShape)
+                        .background(Color.White.copy(alpha = 0.16f))
+                        .border(0.5.dp, Color.White.copy(alpha = 0.28f), pillShape)
+                        .padding(horizontal = 18.dp, vertical = 8.dp),
+                )
+            } else {
+                Spacer(Modifier.height(36.dp))
             }
         }
-
-        Text(
-            text = stringResource(R.string.about_tagline),
-            fontSize = 44.sp,
-            lineHeight = 50.sp,
-            fontWeight = FontWeight.Normal,
-            letterSpacing = (-0.5).sp,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(horizontal = 28.dp)
-                .offset(y = (-28).dp),
-        )
     }
 }
 

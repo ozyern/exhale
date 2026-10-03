@@ -17,6 +17,7 @@ import com.my.kizzy.gateway.entities.presence.Metadata
 import com.my.kizzy.gateway.entities.presence.Presence
 import com.my.kizzy.gateway.entities.presence.Timestamps
 import com.my.kizzy.repository.KizzyRepository
+import com.my.kizzy.repository.DiscordAssets
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -87,6 +88,7 @@ open class KizzyRPC(private val token: String, private val injectedLogger: Kizzy
         status: String? = "online",
         since: Long? = null,
     ): Presence {
+        DiscordAssets.use(token, applicationId)
         // Resolve image ids once so we have consistent values to log and send.
         val resolvedLarge = largeImage?.resolveImage(kizzyRepository)
         val resolvedSmall = smallImage?.resolveImage(kizzyRepository)

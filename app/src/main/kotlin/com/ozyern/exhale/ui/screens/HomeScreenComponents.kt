@@ -8,6 +8,8 @@
 
 package com.ozyern.exhale.ui.screens
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -97,6 +99,7 @@ import com.ozyern.exhale.innertube.models.PlaylistItem
 import com.ozyern.exhale.innertube.models.SongItem
 import com.ozyern.exhale.innertube.models.WatchEndpoint
 import com.ozyern.exhale.innertube.models.YTItem
+import com.ozyern.exhale.ui.utils.resize
 import com.ozyern.exhale.innertube.pages.HomePage
 import com.ozyern.exhale.models.ItemMetadata
 import com.ozyern.exhale.models.MediaMetadata
@@ -166,136 +169,137 @@ fun QuickPicksSection(
     haptic: HapticFeedback,
     metadataMap: Map<String, ItemMetadata> = emptyMap(),
     modifier: Modifier = Modifier
-) {
+){
     val distinctQuickPicks = remember(quickPicks) { quickPicks.distinctBy { it.id } }
-    val listState = rememberLazyListState()
 
-    // A snapping row of cards, not Material's hero carousel.
-    //
-    // The carousel was the most Material-Expressive thing on the home page: items squeeze as they
-    // approach the edges, so a card's artwork is being re-masked to a different width on every
-    // scroll frame and no two cards on screen are the same shape. Apple Music's shelves do the
-    // opposite - a card holds its proportions, snaps to the margin, and lets the next one peek in
-    // from the right so the row reads as continuing. That peek is the whole affordance, which is
-    // why the cards are sized off the screen width instead of a fixed 250dp.
-    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val cardWidth = (maxWidth - 32.dp - 26.dp).coerceIn(240.dp, 420.dp)
-        val cardHeight = cardWidth * 0.78f
-        LazyRow(
-            state = listState,
-            flingBehavior = rememberSnapFlingBehavior(
-                lazyListState = listState,
-                snapPosition = SnapPosition.Start,
-            ),
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.height(cardHeight),
-        ) {
-            items(items = distinctQuickPicks, key = { it.id }) { song ->
-                val isActive = song.id == mediaMetadata?.id
-                Box(
-                    modifier = Modifier
-                        .width(cardWidth)
-                        .height(cardHeight)
-                        // 16dp and no border. The outlineVariant hairline round every card is a
-                        // Material list convention; artwork that runs to its own edge is the
-                        // Apple one, and a card whose whole face is a photograph needs no frame.
-                        .clip(RoundedCornerShape(16.dp))
-                        .combinedClickable(
-                            onClick = {
-                                if (isActive) {
-                                    playerConnection.player.togglePlayPause()
-                                } else {
-                                    playerConnection.playQueue(
-                                        YouTubeQueue.radio(song.toMediaMetadata())
-                                    )
-                                }
-                            },
-                            onLongClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                menuState.show {
-                                    SongMenu(
-                                        originalSong = song,
-                                        navController = navController,
-                                        metadata = metadataMap[song.id],
-                                        onDismiss = menuState::dismiss
-                                    )
-                                }
-                            }
-                        )
-                ) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(song.song.thumbnailUrl)
-                            // Pin hero art in Coil's memory cache: the row re-binds pages as it
-                            // snaps, and a memory hit means zero decode work on the frame it lands.
-                            .memoryCachePolicy(CachePolicy.ENABLED)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-
-                    // The scrim starts lower and ends darker than a mid-card fade would: the type
-                    // sits in the bottom sixth, and everything above it should still be artwork.
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    0f to Color.Transparent,
-                                    0.55f to Color.Transparent,
-                                    1f to Color.Black.copy(alpha = 0.78f),
-                                )
-                            )
-                    )
-
-                    if (isActive && isPlaying) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(12.dp)
-                                .size(30.dp)
-                                // Glass, not a filled accent disc: on top of a photograph the
-                                // solid primary circle is a sticker.
-                                .background(Color.Black.copy(alpha = 0.34f), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.volume_up),
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
+    // The list shelf: four songs to a page, the next page peeking in from the right, so a
+    // long list is a swipe rather than a scroll past it.
+    Column(modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.quick_picks),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 22.dp, bottom = 10.dp),
+        )
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val columnWidth = minOf(maxWidth * 0.88f, 400.dp)
+            val listState = rememberLazyListState()
+            LazyRow(
+                state = listState,
+                flingBehavior = rememberSnapFlingBehavior(lazyListState = listState, snapPosition = SnapPosition.Start),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(distinctQuickPicks.chunked(4), key = { it.first().id }) { page ->
+                    Column(Modifier.width(columnWidth)) {
+                        page.forEach { song ->
+                            val isActive = song.id == mediaMetadata?.id
+                            QuickPickRow(
+                                song = song,
+                                active = isActive,
+                                isPlaying = isPlaying,
+                                onClick = {
+                                    if (isActive) playerConnection.player.togglePlayPause()
+                                    else playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
+                                },
+                                onMore = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    menuState.show {
+                                        SongMenu(
+                                            originalSong = song,
+                                            navController = navController,
+                                            metadata = metadataMap[song.id],
+                                            onDismiss = menuState::dismiss,
+                                        )
+                                    }
+                                },
                             )
                         }
                     }
-
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(horizontal = 16.dp, vertical = 14.dp)
-                    ) {
-                        Text(
-                            text = song.song.title,
-                            fontSize = 19.sp,
-                            lineHeight = 23.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = (-0.3).sp,
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = song.artists.joinToString { it.name },
-                            fontSize = 14.sp,
-                            color = Color.White.copy(alpha = 0.78f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
                 }
             }
+        }
+    }
+}
+
+/** One song in the Quick picks pager. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun QuickPickRow(
+    song: Song,
+    active: Boolean,
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    onMore: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .combinedClickable(onClick = onClick, onLongClick = onMore)
+            .padding(vertical = 4.dp),
+    ) {
+        val shape = RoundedCornerShape(7.dp)
+        androidx.compose.foundation.layout.Box(
+            Modifier
+                .size(50.dp)
+                .clip(shape)
+                .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f), shape)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            AsyncImage(
+                model = song.song.thumbnailUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize(),
+            )
+            if (active) {
+                androidx.compose.foundation.layout.Box(
+                    Modifier.matchParentSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.35f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
+                        null,
+                        tint = androidx.compose.ui.graphics.Color.White,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = song.song.title,
+                style = MaterialTheme.typography.titleMedium,
+                color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = song.artists.joinToString { it.name },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        androidx.compose.foundation.layout.Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onMore),
+        ) {
+            Icon(
+                painterResource(R.drawable.more_vert),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
         }
     }
 }
@@ -778,8 +782,41 @@ fun HomePageSectionContent(
     haptic: HapticFeedback,
     scope: CoroutineScope,
     metadataMap: Map<String, ItemMetadata> = emptyMap(),
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** The lead shelf: big cards with the title set over the artwork. Albums only. */
+    hero: Boolean = false,
 ) {
+    if (hero) {
+        // The lead shelf: whatever the feed opens with, as big cards with the caption set
+        // over the artwork — seven tenths of the row wide, never past 320dp, so the next peeks in.
+        androidx.compose.foundation.layout.BoxWithConstraints(modifier) {
+            val cardWidth = minOf(maxWidth * 0.70f, 320.dp)
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = homeRowContentPadding(),
+            ) {
+                items(
+                    items = section.items,
+                    key = { it.id },
+                    contentType = { "hero_card" },
+                ) { item ->
+                    YouTubeGridItemWrapper(
+                        item = item,
+                        mediaMetadata = mediaMetadata,
+                        isPlaying = isPlaying,
+                        navController = navController,
+                        playerConnection = playerConnection,
+                        menuState = menuState,
+                        haptic = haptic,
+                        scope = scope,
+                        metadata = metadataMap[item.id],
+                        heroWidth = cardWidth,
+                    )
+                }
+            }
+        }
+        return
+    }
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(HomeRowItemSpacing),
         contentPadding = homeRowContentPadding(),
@@ -790,16 +827,11 @@ fun HomePageSectionContent(
             key = { it.id },
             contentType = { "yt_grid_item" }
         ) { item ->
-            YouTubeGridItemWrapper(
+            HomeShelfCard(
                 item = item,
-                mediaMetadata = mediaMetadata,
+                active = item.id in listOf(mediaMetadata?.album?.id, mediaMetadata?.id),
                 isPlaying = isPlaying,
-                navController = navController,
-                playerConnection = playerConnection,
-                menuState = menuState,
-                haptic = haptic,
-                scope = scope,
-                metadata = metadataMap[item.id]
+                modifier = Modifier.ytItemClicks(item, navController, playerConnection, menuState, haptic, scope),
             )
         }
     }
@@ -842,8 +874,20 @@ private fun YouTubeGridItemWrapper(
     haptic: HapticFeedback,
     scope: CoroutineScope,
     metadata: ItemMetadata? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    heroWidth: androidx.compose.ui.unit.Dp? = null,
 ) {
+    val clickable = Modifier.ytItemClicks(item, navController, playerConnection, menuState, haptic, scope)
+    if (heroWidth != null) {
+        HomeHeroCard(
+            title = item.title,
+            subtitle = heroSubtitle(item),
+            thumbnail = item.thumbnail,
+            round = item is ArtistItem,
+            modifier = modifier.width(heroWidth).then(clickable),
+        )
+        return
+    }
     YouTubeGridItem(
         item = item,
         isActive = item.id in listOf(mediaMetadata?.album?.id, mediaMetadata?.id),
@@ -851,47 +895,7 @@ private fun YouTubeGridItemWrapper(
         coroutineScope = scope,
         thumbnailRatio = 1f,
         metadata = metadata,
-        modifier = modifier.combinedClickable(
-            onClick = {
-                when (item) {
-                    is SongItem -> playerConnection.playQueue(
-                        YouTubeQueue(
-                            item.endpoint ?: WatchEndpoint(videoId = item.id),
-                            item.toMediaMetadata()
-                        )
-                    )
-                    is AlbumItem -> navController.navigate("album/${item.id}")
-                    is ArtistItem -> navController.navigate("artist/${item.id}")
-                    is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
-                }
-            },
-            onLongClick = {
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                menuState.show {
-                    when (item) {
-                        is SongItem -> YouTubeSongMenu(
-                            song = item,
-                            navController = navController,
-                            onDismiss = menuState::dismiss
-                        )
-                        is AlbumItem -> YouTubeAlbumMenu(
-                            albumItem = item,
-                            navController = navController,
-                            onDismiss = menuState::dismiss
-                        )
-                        is ArtistItem -> YouTubeArtistMenu(
-                            artist = item,
-                            onDismiss = menuState::dismiss
-                        )
-                        is PlaylistItem -> YouTubePlaylistMenu(
-                            playlist = item,
-                            coroutineScope = scope,
-                            onDismiss = menuState::dismiss
-                        )
-                    }
-                }
-            }
-        )
+        modifier = modifier.then(clickable),
     )
 }
 
@@ -1078,32 +1082,51 @@ fun HomePageSectionTitle(
     navController: NavController,
     modifier: Modifier = Modifier
 ) {
-    NavigationTitle(
-        title = section.title,
-        label = section.label,
-        thumbnail = section.thumbnail?.let { thumbnailUrl ->
-            {
-                val shape = if (section.endpoint?.isArtistEndpoint == true) CircleShape 
-                    else RoundedCornerShape(ThumbnailCornerRadius)
-                AsyncImage(
-                    model = thumbnailUrl,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(ListThumbnailSize)
-                        .clip(shape)
+    // The shelf heading: the title large, what it is in a quieter line under it, and the
+    // whole heading a way into the full shelf when there is one.
+    val onOpen: (() -> Unit)? = section.endpoint?.browseId?.let { browseId ->
+        {
+            if (browseId == "FEmusic_moods_and_genres") navController.navigate(Screens.MoodAndGenres.route)
+            else navController.navigate("browse/$browseId")
+        }
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .fillMaxWidth()
+            .then(if (onOpen != null) Modifier.clickable(onClick = onOpen) else Modifier)
+            .padding(start = 16.dp, end = 12.dp, top = 22.dp, bottom = 10.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = section.title,
+                style = MaterialTheme.typography.headlineMedium.copy(letterSpacing = (-0.4).sp),
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            section.label?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    // The shelf's description is set in capitals, a step down in grey.
+                    text = it.uppercase(),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-        },
-        onClick = section.endpoint?.browseId?.let { browseId ->
-            {
-                if (browseId == "FEmusic_moods_and_genres")
-                    navController.navigate(Screens.MoodAndGenres.route)
-                else
-                    navController.navigate("browse/$browseId")
-            }
-        },
-        modifier = modifier
-    )
+        }
+        if (onOpen != null) {
+            Icon(
+                painter = painterResource(R.drawable.navigate_next),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1186,5 +1209,210 @@ fun LazyListScope.SimilarRecommendationsContainer(
                 )
             }
         }
+    }
+}
+
+/** What a tap and a hold do on any YouTube card on Home, whichever shape the card is. */
+@OptIn(ExperimentalFoundationApi::class)
+private fun Modifier.ytItemClicks(
+    item: YTItem,
+    navController: NavController,
+    playerConnection: PlayerConnection,
+    menuState: MenuState,
+    haptic: HapticFeedback,
+    scope: CoroutineScope,
+): Modifier = this.combinedClickable(
+            onClick = {
+                when (item) {
+                    is SongItem -> playerConnection.playQueue(
+                        YouTubeQueue(
+                            item.endpoint ?: WatchEndpoint(videoId = item.id),
+                            item.toMediaMetadata()
+                        )
+                    )
+                    is AlbumItem -> navController.navigate("album/${item.id}")
+                    is ArtistItem -> navController.navigate("artist/${item.id}")
+                    is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
+                }
+            },
+            onLongClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                menuState.show {
+                    when (item) {
+                        is SongItem -> YouTubeSongMenu(
+                            song = item,
+                            navController = navController,
+                            onDismiss = menuState::dismiss
+                        )
+                        is AlbumItem -> YouTubeAlbumMenu(
+                            albumItem = item,
+                            navController = navController,
+                            onDismiss = menuState::dismiss
+                        )
+                        is ArtistItem -> YouTubeArtistMenu(
+                            artist = item,
+                            onDismiss = menuState::dismiss
+                        )
+                        is PlaylistItem -> YouTubePlaylistMenu(
+                            playlist = item,
+                            coroutineScope = scope,
+                            onDismiss = menuState::dismiss
+                        )
+                    }
+                }
+            }
+        )
+
+private fun heroSubtitle(item: YTItem): String = when (item) {
+    is SongItem -> item.artists.joinToString { it.name }
+    is AlbumItem -> listOfNotNull(
+        item.releaseType.name.lowercase().replaceFirstChar { it.uppercase() }.let { if (it == "Ep") "EP" else it },
+        item.artists?.firstOrNull()?.name,
+    ).joinToString(" · ")
+    is ArtistItem -> "Artist"
+    is PlaylistItem -> listOfNotNull("Playlist", item.author?.name).joinToString(" · ")
+    else -> ""
+}
+
+/**
+ * The hero card: the artwork filling a slightly-tall card, a hairline round it, and the
+ * title and what it is laid over a scrim at its foot.
+ */
+@Composable
+private fun HomeHeroCard(
+    title: String,
+    subtitle: String,
+    thumbnail: String?,
+    round: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(24.dp)
+    androidx.compose.foundation.layout.Box(
+        modifier = modifier
+            .aspectRatio(0.92f)
+            .clip(shape)
+            .border(1.dp, androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f), shape)
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        AsyncImage(
+            model = thumbnail?.resize(900, 900),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.matchParentSize(),
+        )
+        PlayMark(Modifier.align(Alignment.TopStart).padding(12.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.BottomStart)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(androidx.compose.ui.graphics.Color.Transparent, androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.78f)),
+                    )
+                )
+                .padding(start = 16.dp, end = 16.dp, top = 34.dp, bottom = 14.dp),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = androidx.compose.ui.graphics.Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (subtitle.isNotBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.72f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The shelf card: the artwork square (round for an artist) with a hairline round it, and the
+ * title and what it is under it — nothing laid over the picture.
+ */
+@Composable
+private fun HomeShelfCard(
+    item: YTItem,
+    active: Boolean,
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val round = item is ArtistItem
+    val shape = if (round) CircleShape else RoundedCornerShape(18.dp)
+    Column(modifier.width(176.dp), horizontalAlignment = if (round) Alignment.CenterHorizontally else Alignment.Start) {
+        androidx.compose.foundation.layout.Box(
+            Modifier
+                .size(176.dp)
+                .clip(shape)
+                .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f), shape)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            AsyncImage(
+                model = item.thumbnail?.resize(540, 540),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize(),
+            )
+            if (!round && !active) PlayMark(Modifier.align(Alignment.TopStart).padding(9.dp))
+            if (active) {
+                androidx.compose.foundation.layout.Box(
+                    Modifier.matchParentSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.35f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
+                        null,
+                        tint = androidx.compose.ui.graphics.Color.White,
+                        modifier = Modifier.size(34.dp),
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = item.title,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        heroSubtitle(item).takeIf { it.isNotBlank() }?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** The small play mark in a card's corner: a ring and a triangle, over a soft shade. */
+@Composable
+private fun PlayMark(modifier: Modifier = Modifier) {
+    androidx.compose.foundation.layout.Box(
+        modifier
+            .size(26.dp)
+            .clip(CircleShape)
+            .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.32f))
+            .border(1.5.dp, androidx.compose.ui.graphics.Color.White.copy(alpha = 0.9f), CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painterResource(R.drawable.play),
+            contentDescription = null,
+            tint = androidx.compose.ui.graphics.Color.White,
+            modifier = Modifier.size(13.dp),
+        )
     }
 }

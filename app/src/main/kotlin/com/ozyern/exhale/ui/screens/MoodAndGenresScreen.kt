@@ -32,6 +32,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.produceState
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.border
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
+import com.ozyern.exhale.ui.utils.resize
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -104,10 +112,18 @@ fun MoodAndGenresScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }, contentType = "title") {
-            NavigationTitle(
-                title = stringResource(R.string.mood_and_genres),
-                modifier = Modifier.padding(start = 0.dp),
-            )
+            Column(Modifier.padding(top = 8.dp, bottom = 6.dp)) {
+                Text(
+                    text = stringResource(R.string.mood_and_genres),
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Black,
+                )
+                Text(
+                    text = "Every mood and every genre, each with its own playlists",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         val loaded = sections
@@ -145,6 +161,7 @@ fun MoodAndGenresScreen(
                             CategoryTile(
                                 title = item.title,
                                 stripeColor = item.stripeColor,
+                                covers = rememberCategoryCovers(item.endpoint.browseId, item.endpoint.params),
                                 height = FeaturedTileHeight,
                                 large = true,
                                 onClick = { open(item) },
@@ -158,6 +175,7 @@ fun MoodAndGenresScreen(
                     CategoryTile(
                         title = item.title,
                         stripeColor = item.stripeColor,
+                        covers = rememberCategoryCovers(item.endpoint.browseId, item.endpoint.params),
                         height = GenreTileHeight,
                         large = false,
                         onClick = { open(item) },
@@ -196,6 +214,7 @@ fun CategoryTile(
     stripeColor: Long,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    covers: List<String> = emptyList(),
     height: Dp = GenreTileHeight,
     large: Boolean = false,
 ) {
@@ -242,6 +261,51 @@ fun CategoryTile(
                     translationY = size.height * (if (large) 0.30f else -0.28f)
                 },
         )
+        // The category's own music, as Apple Music's Browse tiles carry it: one cover tilted into
+        // the corner of a small tile, three fanned across the foot of a featured one. Faded in
+        // once fetched; until then the tile is colour alone, as before.
+        val artAlpha by animateFloatAsState(if (covers.isEmpty()) 0f else 1f, label = "categoryArt")
+        if (covers.isNotEmpty()) {
+            if (large) {
+                covers.take(3).forEachIndexed { i, url ->
+                    val angle = listOf(-16f, 0f, 16f)[i]
+                    AsyncImage(
+                        model = url,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .offset(x = ((i - 1) * 40).dp, y = if (i == 1) 14.dp else 26.dp)
+                            .size(88.dp)
+                            .graphicsLayer {
+                                alpha = artAlpha
+                                rotationZ = angle
+                                shadowElevation = 10f
+                                this.shape = RoundedCornerShape(10.dp)
+                                clip = true
+                            }
+                            .border(0.5.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(10.dp)),
+                    )
+                }
+            } else {
+                AsyncImage(
+                    model = covers.first(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .offset(x = 14.dp, y = 10.dp)
+                        .size(70.dp)
+                        .graphicsLayer {
+                            alpha = artAlpha
+                            rotationZ = 22f
+                            shadowElevation = 8f
+                            this.shape = RoundedCornerShape(8.dp)
+                            clip = true
+                        },
+                )
+            }
+        }
         Text(
             text = title,
             style = if (large) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
@@ -250,8 +314,8 @@ fun CategoryTile(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
-                .align(if (large) Alignment.TopStart else Alignment.BottomStart)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .align(Alignment.TopStart)
+                .padding(start = 14.dp, end = if (large) 14.dp else 56.dp, top = 12.dp, bottom = 12.dp),
         )
     }
 }
@@ -269,3 +333,32 @@ val MoodAndGenresButtonHeight = 88.dp
 private val GenreTileHeight = 104.dp
 private val FeaturedTileHeight = 188.dp
 private val FeaturedTileWidth = 158.dp
+
+/** Covers for a category, fetched once and kept for the session. */
+private object CategoryCovers {
+    val cache = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
+
+    suspend fun load(browseId: String, params: String?): List<String> {
+        val key = "$browseId|$params"
+        cache[key]?.let { return it }
+        val found = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.ozyern.exhale.innertube.YouTube.browse(browseId, params).getOrNull()
+                ?.items.orEmpty()
+                .flatMap { it.items }
+                .mapNotNull { it.thumbnail }
+                .distinct()
+                .take(3)
+                .map { it.resize(360, 360) }
+        }
+        cache[key] = found
+        return found
+    }
+}
+
+@Composable
+private fun rememberCategoryCovers(browseId: String, params: String?): List<String> {
+    val covers by produceState(initialValue = CategoryCovers.cache["$browseId|$params"].orEmpty(), browseId, params) {
+        if (value.isEmpty()) value = runCatching { CategoryCovers.load(browseId, params) }.getOrNull().orEmpty()
+    }
+    return covers
+}

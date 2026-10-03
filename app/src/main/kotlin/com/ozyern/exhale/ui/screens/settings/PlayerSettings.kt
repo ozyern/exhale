@@ -47,6 +47,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -163,6 +164,25 @@ fun PlayerSettings(
         // that makes the feature look like it is not doing anything.
         defaultValue = SpatialAudioProfile.CINEMA,
     )
+    val soundEqEnabled by rememberPreference(com.ozyern.exhale.constants.SoundEqEnabledKey, false)
+    val soundEqMode by rememberEnumPreference(
+        com.ozyern.exhale.constants.SoundEqModeKey,
+        com.ozyern.exhale.playback.SoundEqMode.DYNAMIC,
+    )
+    val (preferMusicOnly, onPreferMusicOnlyChange) = rememberPreference(com.ozyern.exhale.constants.PreferMusicOnlyKey, false)
+    val (outputFloat, onOutputFloatChange) = rememberPreference(com.ozyern.exhale.constants.OutputFloatKey, true)
+    val (jioSaavn, onJioSaavnChange) = rememberPreference(com.ozyern.exhale.constants.JioSaavnUpgradeKey, true)
+    val (preferUsbDac, onPreferUsbDacChange) = rememberPreference(com.ozyern.exhale.constants.PreferUsbDacKey, false)
+    val outputStatus by (playerConnection?.service?.outputStatus
+        ?: remember { kotlinx.coroutines.flow.MutableStateFlow<com.ozyern.exhale.playback.OutputStatus?>(null) }).collectAsState()
+    val usbConnected = remember(outputStatus) {
+        val audioManager = context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+        audioManager.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS).any {
+            it.type == android.media.AudioDeviceInfo.TYPE_USB_DEVICE ||
+                it.type == android.media.AudioDeviceInfo.TYPE_USB_HEADSET ||
+                it.type == android.media.AudioDeviceInfo.TYPE_USB_ACCESSORY
+        }
+    }
     val (audioOffload, onAudioOffloadChange) = rememberPreference(
         AudioOffload,
         defaultValue = false
@@ -201,6 +221,14 @@ fun PlayerSettings(
     val (audioCrossfadeSeconds, onAudioCrossfadeSecondsChange) = rememberPreference(
         AudioCrossfadeDurationKey,
         defaultValue = 0
+    )
+    val (automix, onAutomixChange) = rememberPreference(
+        com.ozyern.exhale.constants.AutomixEnabledKey,
+        defaultValue = false,
+    )
+    val (automixPerformance, onAutomixPerformanceChange) = rememberEnumPreference(
+        com.ozyern.exhale.constants.AutomixPerformanceKey,
+        defaultValue = com.ozyern.exhale.playback.automix.AutomixPerformance.BALANCED,
     )
 
     val (artistSeparators, onArtistSeparatorsChange) = rememberPreference(
@@ -336,8 +364,10 @@ fun PlayerSettings(
 
     Column(
         Modifier
-            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
             .verticalScroll(rememberScrollState())
+            // Below the content, not around the viewport: the page scrolls on under the dock.
+            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Bottom))
     ) {
         Spacer(
             Modifier.windowInsetsPadding(
@@ -347,9 +377,10 @@ fun PlayerSettings(
             )
         )
 
-        PreferenceGroupTitle(
-            title = stringResource(R.string.player)
-        )
+        // What is happening to the sound right now, before any of the switches that shape it.
+        AudioPipelineCard(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
+
+        PreferenceGroupTitle(title = "Streaming")
         PreferenceGroup {
             EnumListPreference(
                 title = { Text(stringResource(R.string.audio_quality)) },
@@ -382,6 +413,29 @@ fun PlayerSettings(
             )
 
             PreferenceGroupDivider()
+            SwitchPreference(
+                title = { Text("Prefer music-only version") },
+                description = "For music videos, show the video's details while finding and playing the catalogue audio version",
+                icon = { Icon(painterResource(R.drawable.music_note), null) },
+                checked = preferMusicOnly,
+                onCheckedChange = onPreferMusicOnlyChange,
+            )
+
+            PreferenceGroupDivider()
+            SwitchPreference(
+                title = { Text("Prefer lossless files") },
+                description = "Plays a FLAC, WAV or AIFF of the same song from this phone instead of streaming it, when there is one.",
+                icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                checked = preferLocalLossless,
+                onCheckedChange = { on ->
+                    onPreferLocalLosslessChange(on)
+                    if (on && !com.ozyern.exhale.utils.LocalMediaScanner.hasPermission(losslessContext)) {
+                        askForAudio.launch(com.ozyern.exhale.utils.LocalMediaScanner.PermissionName)
+                    }
+                },
+            )
+
+            PreferenceGroupDivider()
             PreferenceEntry(
                 title = { Text(stringResource(R.string.player_stream_client)) },
                 description =
@@ -401,35 +455,108 @@ fun PlayerSettings(
                 checked = networkMetered,
                 onCheckedChange = onNetworkMeteredChange
             )
+        }
 
-            PreferenceGroupDivider()
-            SliderPreference(
-                title = { Text(stringResource(R.string.history_duration)) },
-                icon = { Icon(painterResource(R.drawable.history), null) },
-                value = historyDuration,
-                onValueChange = onHistoryDurationChange,
+        PreferenceGroupTitle(title = "Output")
+        PreferenceGroup {
+            SwitchPreference(
+                title = { Text("JioSaavn 320 kbps") },
+                description = "Plays the exact same recording from JioSaavn at up to 320 kbps AAC when it has it, and YouTube's stream when it doesn't",
+                icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                checked = jioSaavn,
+                onCheckedChange = onJioSaavnChange,
             )
-
             PreferenceGroupDivider()
-            CrossfadeSliderPreference(
-                value = audioCrossfadeSeconds,
-                onValueChange = onAudioCrossfadeSecondsChange,
-                isEnabled = !audioOffload,
+            OutputPrecisionRow(
+                status = outputStatus,
+                float = outputFloat,
+                onFloatChange = onOutputFloatChange,
+            )
+            PreferenceGroupDivider()
+            SwitchPreference(
+                title = { Text("Prefer USB DAC") },
+                description = if (usbConnected) "Connected — playing through it" else "Plays through a USB DAC whenever one is plugged in",
+                icon = { Icon(painterResource(R.drawable.headphones), null) },
+                checked = preferUsbDac,
+                onCheckedChange = onPreferUsbDacChange,
+            )
+        }
+
+        PreferenceGroupTitle(title = "Sound")
+        PreferenceGroup {
+            PreferenceEntry(
+                title = { Text("Equalizer") },
+                description = if (soundEqEnabled) {
+                    if (soundEqMode == com.ozyern.exhale.playback.SoundEqMode.DYNAMIC) "On · Dynamic tone" else "On · Manual bands"
+                } else {
+                    "Off · Tone pad, seven bands, presets and balance"
+                },
+                icon = { Icon(painterResource(R.drawable.equalizer), null) },
+                onClick = { navController.navigate("settings/player/equalizer") },
             )
 
             PreferenceGroupDivider()
             SwitchPreference(
-                title = { Text("Prefer lossless files") },
-                description = "Plays a FLAC, WAV or AIFF of the same song from this phone instead of streaming it, when there is one.",
-                icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
-                checked = preferLocalLossless,
-                onCheckedChange = { on ->
-                    onPreferLocalLosslessChange(on)
-                    if (on && !com.ozyern.exhale.utils.LocalMediaScanner.hasPermission(losslessContext)) {
-                        askForAudio.launch(com.ozyern.exhale.utils.LocalMediaScanner.PermissionName)
-                    }
-                },
+                title = { Text(stringResource(R.string.spatial_audio)) },
+                description = stringResource(R.string.spatial_audio_desc),
+                icon = { Icon(painterResource(R.drawable.ic_spatial_audio), null) },
+                checked = spatialAudio,
+                onCheckedChange = onSpatialAudioChange
             )
+
+            // How wide the stage is, drawn as what each one does. A phone has two speakers, so the
+            // "5.1 / 7.1" switches other players show have nothing to drive; this is what they
+            // are reaching for.
+            AnimatedVisibility(visible = spatialAudio) {
+                SpatialStagePicker(
+                    selected = spatialProfile,
+                    onSelect = onSpatialProfileChange,
+                )
+            }
+
+            PreferenceGroupDivider()
+            SwitchPreference(
+                title = { Text(stringResource(R.string.audio_normalization)) },
+                description = "Evens out loudness from song to song, from the stream's own measurement",
+                icon = { Icon(painterResource(R.drawable.volume_up), null) },
+                checked = audioNormalization,
+                onCheckedChange = onAudioNormalizationChange
+            )
+
+            // Automix: each transition timed and blended from the two songs, so the
+            // fixed-length slider only shows while it's off.
+            PreferenceGroupDivider()
+            SwitchPreference(
+                title = { Text("Automix") },
+                description = if (automix) {
+                    "Times and blends every transition from the songs themselves: tempo, beats, key and where each really starts and ends"
+                } else {
+                    "Transitions like a DJ: matched to the beat, with a filter sweep or a bass swap between songs"
+                },
+                icon = { Icon(painterResource(R.drawable.mix), null) },
+                checked = automix && !audioOffload,
+                onCheckedChange = onAutomixChange,
+                isEnabled = !audioOffload,
+            )
+            AnimatedVisibility(visible = automix && !audioOffload) {
+                Column {
+                    AutomixPerformancePicker(
+                        selected = automixPerformance,
+                        onSelect = onAutomixPerformanceChange,
+                    )
+                    AutomixStatusLine(service = playerConnection?.service)
+                }
+            }
+            AnimatedVisibility(visible = !automix || audioOffload) {
+                Column {
+                    PreferenceGroupDivider()
+                    CrossfadeSliderPreference(
+                        value = audioCrossfadeSeconds,
+                        onValueChange = onAudioCrossfadeSecondsChange,
+                        isEnabled = !audioOffload,
+                    )
+                }
+            }
 
             PreferenceGroupDivider()
             SwitchPreference(
@@ -438,62 +565,6 @@ fun PlayerSettings(
                 checked = skipSilence,
                 onCheckedChange = onSkipSilenceChange,
                 isEnabled = !audioOffload,
-            )
-
-            PreferenceGroupDivider()
-            SwitchPreference(
-                title = { Text(stringResource(R.string.audio_normalization)) },
-                icon = { Icon(painterResource(R.drawable.volume_up), null) },
-                checked = audioNormalization,
-                onCheckedChange = onAudioNormalizationChange
-            )
-
-            PreferenceGroupDivider()
-            SwitchPreference(
-                title = { Text(stringResource(R.string.spatial_audio)) },
-                description = stringResource(R.string.spatial_audio_desc),
-                icon = { Icon(painterResource(R.drawable.headphones), null) },
-                checked = spatialAudio,
-                onCheckedChange = onSpatialAudioChange
-            )
-
-            // How wide the stage is. A phone has two speakers, so the "5.1 / 7.1" switches other
-            // players show have nothing to drive; what they are reaching for is this.
-            AnimatedVisibility(visible = spatialAudio) {
-                Column {
-                PreferenceGroupDivider()
-                EnumListPreference(
-                    title = { Text(stringResource(R.string.spatial_audio_profile)) },
-                    icon = { Icon(painterResource(R.drawable.equalizer), null) },
-                    selectedValue = spatialProfile,
-                    onValueSelected = onSpatialProfileChange,
-                    valueText = {
-                        stringResource(
-                            when (it) {
-                                SpatialAudioProfile.NATURAL -> R.string.spatial_profile_natural
-                                SpatialAudioProfile.WIDE -> R.string.spatial_profile_wide
-                                SpatialAudioProfile.CINEMA -> R.string.spatial_profile_cinema
-                            }
-                        )
-                    },
-                )
-                }
-            }
-
-            PreferenceGroupDivider()
-            PreferenceEntry(
-                title = { Text(stringResource(R.string.system_audio_effects)) },
-                description = stringResource(
-                    if (com.ozyern.exhale.utils.DeviceAudio.isOplusDevice) R.string.system_audio_effects_oplus_desc
-                    else R.string.system_audio_effects_desc
-                ),
-                icon = { Icon(painterResource(R.drawable.equalizer), null) },
-                onClick = {
-                    val session = playerConnection?.player?.audioSessionId ?: 0
-                    if (!com.ozyern.exhale.utils.DeviceAudio.openSystemEffects(context, session)) {
-                        Toast.makeText(context, context.getString(R.string.system_audio_effects_missing), Toast.LENGTH_SHORT).show()
-                    }
-                },
             )
 
             // Unavailable rather than silently ineffective on OnePlus/OPPO: an offloaded stream is
@@ -518,6 +589,16 @@ fun PlayerSettings(
                     }
                 }
             )
+        }
+
+        PreferenceGroupTitle(title = "Playback")
+        PreferenceGroup {
+            SliderPreference(
+                title = { Text(stringResource(R.string.history_duration)) },
+                icon = { Icon(painterResource(R.drawable.history), null) },
+                value = historyDuration,
+                onValueChange = onHistoryDurationChange,
+            )
 
             PreferenceGroupDivider()
             SwitchPreference(
@@ -527,8 +608,10 @@ fun PlayerSettings(
                 checked = seekExtraSeconds,
                 onCheckedChange = onSeekExtraSeconds
             )
+        }
 
-            PreferenceGroupDivider()
+        PreferenceGroupTitle(title = "Devices")
+        PreferenceGroup {
             SwitchPreference(
                 title = { Text(stringResource(R.string.pause_on_device_mute)) },
                 description = stringResource(R.string.pause_on_device_mute_desc),

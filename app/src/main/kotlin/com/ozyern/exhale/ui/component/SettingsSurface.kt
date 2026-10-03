@@ -41,7 +41,7 @@ import androidx.compose.ui.unit.dp
  * to be a visible property of the shape before a stack of plates on a grey ground stops looking
  * like a table with borders. This is the single cheapest change that moves the whole of Settings.
  */
-val SettingsGroupCornerRadius = 22.dp
+val SettingsGroupCornerRadius = 26.dp
 
 /** Hairline between rows inside a group. Never drawn at a card's top or bottom edge. */
 val SettingsDividerThickness = 1.dp

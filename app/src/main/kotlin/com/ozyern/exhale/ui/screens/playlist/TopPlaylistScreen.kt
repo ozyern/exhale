@@ -8,6 +8,12 @@
 
 package com.ozyern.exhale.ui.screens.playlist
 
+import com.ozyern.exhale.ui.component.GradientArtwork
+import com.ozyern.exhale.ui.component.CollectionPlay
+import com.ozyern.exhale.ui.component.CollectionAction
+import com.ozyern.exhale.ui.component.CollectionHero
+import com.ozyern.exhale.ui.component.rememberScrollEdge
+import com.ozyern.exhale.ui.component.scrollEdgeScrim
 import com.ozyern.exhale.ui.component.PlayShuffleButton
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -19,6 +25,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.PaddingValues
+import com.ozyern.exhale.constants.AppBarHeight
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -254,60 +262,13 @@ fun TopPlaylistScreen(
 
     val lazyListState = rememberLazyListState()
 
-    // Gradient colors state for playlist cover
-    var gradientColors by remember { mutableStateOf<List<Color>>(emptyList()) }
 
     // Capture fallback color in composable context
-    val fallbackColor = MaterialTheme.colorScheme.surface.toArgb()
-    val surfaceColor = MaterialTheme.colorScheme.surface
+    // Tinted from the cover.
+    val releasePalette = com.ozyern.exhale.ui.component.rememberReleasePalette(listOf(Color(0xFF3A1C71), Color(0xFFD76D77)))
+    val surfaceColor = releasePalette.background
 
-    // Extract gradient colors from playlist cover (first song thumbnail)
-    LaunchedEffect(songs) {
-        val thumbnailUrl = songs?.firstOrNull()?.song?.thumbnailUrl
-        if (thumbnailUrl != null) {
-            val request = ImageRequest.Builder(context)
-                .data(thumbnailUrl)
-                .size(PlayerColorExtractor.Config.IMAGE_SIZE, PlayerColorExtractor.Config.IMAGE_SIZE)
-                .allowHardware(false)
-                .build()
 
-            val result = runCatching {
-                context.imageLoader.execute(request)
-            }.getOrNull()
-
-            if (result != null) {
-                val bitmap = result.image?.toBitmap()
-                if (bitmap != null) {
-                    val palette = withContext(Dispatchers.Default) {
-                        Palette.from(bitmap)
-                            .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
-                            .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
-                            .generate()
-                    }
-
-                    val extractedColors = PlayerColorExtractor.extractGradientColors(
-                        palette = palette,
-                        fallbackColor = fallbackColor
-                    )
-                    gradientColors = extractedColors
-                }
-            }
-        } else {
-            gradientColors = emptyList()
-        }
-    }
-
-    // Calculate gradient opacity based on scroll position
-    val gradientAlpha by remember {
-        derivedStateOf {
-            if (lazyListState.firstVisibleItemIndex == 0) {
-                val offset = lazyListState.firstVisibleItemScrollOffset
-                (1f - (offset / 600f)).coerceIn(0f, 1f)
-            } else {
-                0f
-            }
-        }
-    }
 
     val showTopBarTitle by remember {
         derivedStateOf {
@@ -336,122 +297,13 @@ fun TopPlaylistScreen(
             .fillMaxSize()
             .background(surfaceColor),
     ) {
-        // Mesh gradient background layer
-        if (!disableBlur && gradientColors.isNotEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .drawBehind {
-                        val width = size.width
-                        val height = size.height * 0.55f
-
-                        // Draw-phase read: `gradientAlpha` tracks the scroll offset, so testing it
-                        // up in composition invalidated this whole screen on every scrolled pixel.
-                        // Bailing here instead keeps the check but pays for it in the draw pass.
-                        if (gradientAlpha <= 0f) return@drawBehind
-
-                        if (gradientColors.size >= 3) {
-                            val c0 = gradientColors[0]
-                            val c1 = gradientColors[1]
-                            val c2 = gradientColors[2]
-                            val c3 = gradientColors.getOrElse(3) { c0 }
-                            val c4 = gradientColors.getOrElse(4) { c1 }
-                            // Primary color blob - top center
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        c0.copy(alpha = gradientAlpha * 0.75f),
-                                        c0.copy(alpha = gradientAlpha * 0.4f),
-                                        Color.Transparent
-                                    ),
-                                    center = Offset(width * 0.5f, height * 0.15f),
-                                    radius = width * 0.8f
-                                )
-                            )
-
-                            // Secondary color blob - left side
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        c1.copy(alpha = gradientAlpha * 0.55f),
-                                        c1.copy(alpha = gradientAlpha * 0.3f),
-                                        Color.Transparent
-                                    ),
-                                    center = Offset(width * 0.1f, height * 0.4f),
-                                    radius = width * 0.6f
-                                )
-                            )
-
-                            // Third color blob - right side
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        c2.copy(alpha = gradientAlpha * 0.5f),
-                                        c2.copy(alpha = gradientAlpha * 0.25f),
-                                        Color.Transparent
-                                    ),
-                                    center = Offset(width * 0.9f, height * 0.35f),
-                                    radius = width * 0.55f
-                                )
-                            )
-
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        c3.copy(alpha = gradientAlpha * 0.35f),
-                                        c3.copy(alpha = gradientAlpha * 0.18f),
-                                        Color.Transparent
-                                    ),
-                                    center = Offset(width * 0.25f, height * 0.65f),
-                                    radius = width * 0.75f
-                                )
-                            )
-
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        c4.copy(alpha = gradientAlpha * 0.3f),
-                                        c4.copy(alpha = gradientAlpha * 0.15f),
-                                        Color.Transparent
-                                    ),
-                                    center = Offset(width * 0.55f, height * 0.85f),
-                                    radius = width * 0.9f
-                                )
-                            )
-                        } else if (gradientColors.isNotEmpty()) {
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        gradientColors[0].copy(alpha = gradientAlpha * 0.7f),
-                                        gradientColors[0].copy(alpha = gradientAlpha * 0.35f),
-                                        Color.Transparent
-                                    ),
-                                    center = Offset(width * 0.5f, height * 0.25f),
-                                    radius = width * 0.85f
-                                )
-                            )
-                        }
-
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    Color.Transparent,
-                                    surfaceColor.copy(alpha = gradientAlpha * 0.22f),
-                                    surfaceColor.copy(alpha = gradientAlpha * 0.55f),
-                                    surfaceColor
-                                ),
-                                startY = size.height * 0.35f,
-                                endY = size.height
-                            )
-                        )
-                    }
-            )
-        }
 
         LazyColumn(
             state = lazyListState,
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+            contentPadding = PaddingValues(
+                top = if (isSearching) WindowInsets.systemBars.asPaddingValues().calculateTopPadding() + AppBarHeight else 0.dp,
+                bottom = LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding(),
+            ),
         ) {
             if (songs != null) {
                 if (songs!!.isEmpty()) {
@@ -465,93 +317,19 @@ fun TopPlaylistScreen(
                     if (!isSearching) {
                         // Hero Header Item
                         item(key = "header") {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = systemBarsTopPadding + 48.dp)
-                                    .padding(horizontal = 24.dp)
-                                    .padding(bottom = 16.dp)
-                            ) {
-                                // Large centered artwork with shadow
-                                Box(
-                                    modifier = Modifier
-                                        .size(240.dp)
-                                        .shadow(
-                                            elevation = 24.dp,
-                                            shape = RoundedCornerShape(16.dp),
-                                            ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                                            spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
-                                        )
-                                ) {
-                                    AsyncImage(
-                                        model = songs!!.firstOrNull()?.song?.thumbnailUrl,
+                            CollectionHero(
+                                palette = releasePalette,
+                                title = name,
+                                meta = listOf(
+                                    pluralStringResource(R.plurals.n_song, songs!!.size, songs!!.size),
+                                    makeTimeString(likeLength * 1000L),
+                                ).joinToString("  \u00b7  "),
+                                lazyListState = lazyListState,
+                                artwork = { GradientArtwork(listOf(Color(0xFF3A1C71), Color(0xFFD76D77)), R.drawable.trending_up) },
+                                actions = {
+                                    CollectionAction(
+                                        icon = R.drawable.download,
                                         contentDescription = null,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clip(RoundedCornerShape(16.dp))
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(24.dp))
-
-                                // Playlist title
-                                Text(
-                                    text = name,
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.Center,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                // Metadata chips row
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Song count chip
-                                    Surface(
-                                        shape = RoundedCornerShape(16.dp),
-                                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
-                                    ) {
-                                        Text(
-                                            text = pluralStringResource(
-                                                R.plurals.n_song,
-                                                songs!!.size,
-                                                songs!!.size
-                                            ),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                        )
-                                    }
-
-                                    // Duration chip
-                                    Surface(
-                                        shape = RoundedCornerShape(16.dp),
-                                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
-                                    ) {
-                                        Text(
-                                            text = makeTimeString(likeLength * 1000L),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(20.dp))
-
-                                // Action buttons row
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Download Button
-                                    Surface(
                                         onClick = {
                                             when (downloadState) {
                                                 Download.STATE_COMPLETED -> {
@@ -588,102 +366,32 @@ fun TopPlaylistScreen(
                                                 }
                                             }
                                         },
-                                        shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                                        modifier = Modifier.size(50.dp)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            when (downloadState) {
-                                                Download.STATE_COMPLETED -> {
-                                                    Icon(
-                                                        painter = painterResource(R.drawable.offline),
-                                                        contentDescription = null,
-                                                        tint = MaterialTheme.colorScheme.primary,
-                                                        modifier = Modifier.size(24.dp)
-                                                    )
-                                                }
-                                                Download.STATE_DOWNLOADING -> {
-                                                    LoadingRing(
-                                                        stroke = 2.dp,
-                                                        modifier = Modifier.size(24.dp)
-                                                    )
-                                                }
-                                                else -> {
-                                                    Icon(
-                                                        painter = painterResource(R.drawable.download),
-                                                        contentDescription = null,
-                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        modifier = Modifier.size(24.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    // Play Button
-                                    PlayShuffleButton(
-                                        iconRes = R.drawable.play,
-                                        label = stringResource(R.string.play),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(50.dp),
-                                        onClick = {
-                                            playerConnection.playQueue(
-                                                ListQueue(
-                                                    title = name,
-                                                    items = songs!!.map { it.toMediaItem() },
-                                                ),
-                                            )
-                                            },
-                                    )
-
-                                    // Shuffle Button
-                                    PlayShuffleButton(
-                                        iconRes = R.drawable.shuffle,
-                                        label = stringResource(R.string.shuffle),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(50.dp),
-                                        onClick = {
-                                            playerConnection.playQueue(
-                                                ListQueue(
-                                                    title = name,
-                                                    items = songs!!.shuffled().map { it.toMediaItem() },
-                                                ),
-                                            )
-                                            },
-                                    )
-
-                                    // Add to Queue Button
-                                    Surface(
-                                        onClick = {
-                                            playerConnection.addToQueue(
-                                                items = songs!!.map { it.toMediaItem() },
-                                            )
+                                        content = when (downloadState) {
+                                            Download.STATE_COMPLETED -> { { Icon(painterResource(R.drawable.offline), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(23.dp)) } }
+                                            Download.STATE_DOWNLOADING -> { { LoadingRing(stroke = 2.dp, modifier = Modifier.size(22.dp), color = MaterialTheme.colorScheme.primary) } }
+                                            else -> null
                                         },
-                                        shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                                        modifier = Modifier.size(50.dp)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.queue_music),
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(24.dp))
-                            }
+                                    )
+                                    CollectionPlay(
+                                        contentDescription = stringResource(R.string.play),
+                                        onClick = {
+                                            playerConnection.playQueue(ListQueue(title = name, items = songs!!.map { it.toMediaItem() }))
+                                        },
+                                    )
+                                    CollectionAction(
+                                        icon = R.drawable.shuffle,
+                                        contentDescription = stringResource(R.string.shuffle),
+                                        onClick = {
+                                            playerConnection.playQueue(ListQueue(title = name, items = songs!!.shuffled().map { it.toMediaItem() }))
+                                        },
+                                    )
+                                    CollectionAction(
+                                        icon = R.drawable.queue_music,
+                                        contentDescription = stringResource(R.string.add_to_queue),
+                                        onClick = { playerConnection.addToQueue(items = songs!!.map { it.toMediaItem() }) },
+                                    )
+                                },
+                            )
                         }
                     }
 
@@ -792,10 +500,12 @@ fun TopPlaylistScreen(
             headerItems = headerItems
         )
 
+        val scrollEdge = rememberScrollEdge(!transparentAppBar)
         TopAppBar(
+            modifier = Modifier.scrollEdgeScrim(surfaceColor) { scrollEdge.value },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = if (transparentAppBar) Color.Transparent else MaterialTheme.colorScheme.surface,
-                scrolledContainerColor = MaterialTheme.colorScheme.surface
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent
             ),
             title = {
                 when {

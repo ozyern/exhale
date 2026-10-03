@@ -24,6 +24,10 @@ class DiscordRPC(
     val context: Context,
     token: String,
 ) : KizzyRPC(token) {
+    // Discord's own external-assets endpoint resolves the album art from here on; see DiscordAssets.
+    init {
+        com.my.kizzy.repository.DiscordAssets.use(token, APPLICATION_ID)
+    }
 
     companion object {
         private const val APPLICATION_ID = "1165706613961789445"
@@ -95,9 +99,11 @@ class DiscordRPC(
         // dropdowns was stuck with whatever they had left there and no way back, which is exactly
         // what happened: a presence that read "Playing Exhale / <song> / Exhale", because name and
         // state had both been set to APP and the type to PLAYING.
-        val namePref = "APP"
-        val detailsPref = "SONG"
-        val statePref = "ARTIST"
+        // …unless Advanced is on, which is an explicit choice to be read back, and off by default.
+        val advanced = context.dataStore[com.ozyern.exhale.constants.DiscordAdvancedKey] ?: false
+        val namePref = if (advanced) context.dataStore[DiscordActivityNameKey] ?: "APP" else "APP"
+        val detailsPref = if (advanced) context.dataStore[DiscordActivityDetailsKey] ?: "SONG" else "SONG"
+        val statePref = if (advanced) context.dataStore[DiscordActivityStateKey] ?: "ARTIST" else "ARTIST"
         val statusPref = context.dataStore[DiscordPresenceStatusKey] ?: "online"
         val showWhenPaused = context.dataStore[DiscordShowWhenPausedKey] ?: false
 
@@ -210,7 +216,7 @@ class DiscordRPC(
         val finalButtons = buttons.take(2)
 
         // Music is listened to. Same reason as above: the stored value can only be wrong now.
-        val activityTypePref = "LISTENING"
+        val activityTypePref = if (advanced) context.dataStore[DiscordActivityTypeKey] ?: "LISTENING" else "LISTENING"
         val resolvedType = when (activityTypePref.uppercase()) {
             "PLAYING" -> Type.PLAYING
             "STREAMING" -> Type.STREAMING
@@ -222,10 +228,10 @@ class DiscordRPC(
 
         // The cover, and the artist's picture on it. No custom URLs: there is nowhere left to
         // type one, and a stale one would silently replace the artwork.
-        val largeImageTypePref = "thumbnail"
-        val largeImageCustomPref = ""
-        val smallImageTypePref = "artist"
-        val smallImageCustomPref = ""
+        val largeImageTypePref = if (advanced) context.dataStore[DiscordLargeImageTypeKey] ?: "thumbnail" else "thumbnail"
+        val largeImageCustomPref = if (advanced) context.dataStore[DiscordLargeImageCustomUrlKey] ?: "" else ""
+        val smallImageTypePref = if (advanced) context.dataStore[DiscordSmallImageTypeKey] ?: "artist" else "artist"
+        val smallImageCustomPref = if (advanced) context.dataStore[DiscordSmallImageCustomUrlKey] ?: "" else ""
 
         val resolvedImages = DiscordImageResolver.resolveImagesForSong(context, song)
         

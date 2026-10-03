@@ -443,6 +443,7 @@
     <string name="login">Login</string>
     <string name="not_logged_in">Not logged in</string>
     <string name="login_failed">Login failed</string>
+    <string name="login_signing_in">Signing you in…</string>
     <string name="playback_requires_youtube_music_confirmation">Confirm playback in YouTube Music, then return to Exhale.</string>
     <string name="content_language">Default content language</string>
     <string name="content_country">Default content country</string>
@@ -472,7 +473,7 @@
     <string name="skip_silence">Skip silence</string>
     <string name="audio_normalization">Audio normalization</string>
     <string name="spatial_audio">Spatial Audio</string>
-    <string name="spatial_audio_desc">Upscale stereo playback to a Dolby Atmos-style spatial mix (Cavern virtualizer)</string>
+    <string name="spatial_audio_desc">Opens stereo up into a wider, room-sized stage around you, with height on Cinema</string>
     <string name="audio_offload">Audio offload</string>
     <string name="audio_offload_desc">Let supported devices play audio using low-power hardware decoding. Some audio processing features are disabled.</string>
     <string name="pause_on_device_mute">Pause when device volume is 0</string>
@@ -1024,4 +1025,30 @@ Exhale will only extract your token, and everything else is stored locally.</str
     <string name="account_sign_in">Sign In</string>
     <string name="account_sign_out">Sign Out</string>
     <string name="lyrics_sync">Sync</string>
+    <string-array name="lyrics_intro_lines">
+        <item>The beat is landing</item>
+        <item>The song is starting</item>
+        <item>Warming up</item>
+        <item>Setting the mood</item>
+        <item>Bass first, words later</item>
+        <item>Wait for it</item>
+        <item>Feel that build</item>
+        <item>Just the groove for now</item>
+        <item>The hook is on the way</item>
+        <item>Let it breathe</item>
+        <item>Cue the vocals</item>
+        <item>First notes in</item>
+    </string-array>
+    <string-array name="lyrics_loading_lines">
+        <item>Getting the lyrics</item>
+        <item>Finding the words</item>
+        <item>Fetching the verses</item>
+        <item>Lyrics are loading</item>
+        <item>Checking the lyric sheet</item>
+        <item>Searching the songbook</item>
+        <item>Lining up the lyrics</item>
+        <item>Words are on the way</item>
+        <item>Finding the right words</item>
+        <item>Almost found the words</item>
+    </string-array>
 </resources>

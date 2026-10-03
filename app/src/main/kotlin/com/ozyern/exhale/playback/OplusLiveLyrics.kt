@@ -51,8 +51,13 @@ object OplusLiveLyrics {
      * and it cannot regress the surface that already works, because that surface keeps reading the
      * key it always read. Every other ROM ignores all of them.
      */
-    val METADATA_KEY_ALIASES = listOf(
-        METADATA_KEY,
+    // The contract names one key. The three guesses that used to ride alongside it were copies
+    // of the same document under names nothing documents, and a reader that meets the payload
+    // twice is exactly the "duplicate lyric publication" the Bridge's checklist fails on.
+    val METADATA_KEY_ALIASES = listOf(METADATA_KEY)
+
+    /** Keys earlier builds wrote, so an upgrade clears them off a live session. */
+    val RETIRED_KEYS = listOf(
         "oplus.lyricInfo",
         "com.oplus.media.metadata.LYRIC",
         "android.media.metadata.LYRIC",
@@ -135,7 +140,34 @@ object OplusLiveLyrics {
     fun toLrc(lyrics: String?): String? {
         if (lyrics.isNullOrBlank()) return null
         if (LyricsUtils.isTtml(lyrics)) return ttmlToLrc(lyrics) { entry -> entry.text }
-        return lyrics.takeIf { LineTimeRegex.containsMatchIn(it) }
+        if (!LineTimeRegex.containsMatchIn(lyrics)) return null
+        return lineLane(lyrics)
+    }
+
+    /**
+     * The `lyric` lane as the contract defines it: line-timed rows only.
+     *
+     * Providers hand over whatever their LRC carries — `[ar:]`/`[offset:]` headers, blank spacer
+     * rows, and in the word-synced flavour a `<mm:ss.xx>` tag before every word. The stock lyric
+     * list reads this lane literally, so word tags showed up as text (or failed the parse) and a
+     * header row with no time sat at the top. Words live in `rawLyric`; this keeps the lines.
+     */
+    private fun lineLane(lrc: String): String? {
+        val rows = lrc.lineSequence().mapNotNull { raw ->
+            val line = raw.trim()
+            val tag = LineTimeRegex.find(line)?.takeIf { it.range.first == 0 } ?: return@mapNotNull null
+            // Several leading tags on one row (a repeated chorus) each stand for their own line.
+            var rest = line
+            val tags = mutableListOf<String>()
+            while (true) {
+                val next = LineTimeRegex.find(rest)?.takeIf { it.range.first == 0 } ?: break
+                tags += next.value
+                rest = rest.substring(next.range.last + 1)
+            }
+            val text = rest.replace(WordTimeRegex, "").replace(Regex("\\s+"), " ").trim()
+            if (text.isEmpty() || tag.value.isEmpty()) null else tags.map { it + text }
+        }.flatten().toList()
+        return rows.takeIf { it.isNotEmpty() }?.joinToString("\n", postfix = "\n")
     }
 
     /**
@@ -218,7 +250,9 @@ object OplusLiveLyrics {
         // the previous song's words over the new one, which on Live Space is the failure people
         // report as "lyrics stuck on the last track". `provider` and `source` are diagnostics, so
         // a log from someone else's phone says which app and which build produced the document.
-        val identity = listOf(songId, songName, artist, lrc.hashCode().toString()).joinToString("|")
+        // Per track, not per document: the contract bumps the generation only on a real track
+        // change, and a second lyric source for the same song is the same generation.
+        val identity = listOf(songId, songName, artist).joinToString("|")
         val generation = generations.getOrPut(identity) { sessionGeneration.incrementAndGet() }
         // `lyricType` and `noLyric` are the two fields the *stock* ColorOS lyric page reads before
         // it will draw anything: the first says this is the standard timed payload, the second that

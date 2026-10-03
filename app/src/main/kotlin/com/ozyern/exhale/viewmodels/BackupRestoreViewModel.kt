@@ -405,6 +405,9 @@ class BackupRestoreViewModel @Inject constructor(
         serializer.startTag(null, "Settings")
 
         for ((key, value) in prefs) {
+            // Sign-ins stay on the phone. A backup is a file that gets shared, synced and (with
+            // cloud upload on) posted to a public host, and a session cookie in it is the account.
+            if (key.name in BackupSecretKeys) continue
             val tagName = when (value) {
                 is Boolean -> "boolean"
                 is Int -> "int"
@@ -809,7 +812,11 @@ class BackupRestoreViewModel @Inject constructor(
 
         try {
             // Crear un bin name único basado en timestamp
-            val binName = "exhale_backup_${System.currentTimeMillis()}"
+            // Unguessable: a bin on filebin.net is readable by anyone who knows its name, and a
+            // timestamp could be walked in a few minutes.
+            val binName = "exhale-" + java.security.SecureRandom().let { random ->
+                ByteArray(18).also(random::nextBytes).joinToString("") { "%02x".format(it) }
+            }
             val fileName = file.name
 
             // Crear el request body con progreso personalizado
@@ -888,3 +895,26 @@ class BackupRestoreViewModel @Inject constructor(
         private const val DEFAULT_BUFFER_SIZE = 8192
     }
 }
+
+/**
+ * Settings that are credentials rather than preferences, and so never written into a backup.
+ * Restoring still accepts them, so a backup made before this keeps its sign-ins.
+ */
+internal val BackupSecretKeys = setOf(
+    "innerTubeCookie",
+    "visitorData",
+    "visitorDataLocale",
+    "dataSyncId",
+    "poToken",
+    "poTokenGvs",
+    "poTokenPlayer",
+    "poTokenSourceUrl",
+    "discordToken",
+    "lastfmSession",
+    "listenbrainz_token",
+    "spotify_access_token",
+    "spotify_access_token_expires_at",
+    "spotify_sp_dc",
+    "spotify_sp_key",
+    "together_client_id",
+)

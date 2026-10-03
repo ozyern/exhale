@@ -70,7 +70,8 @@ constructor(
     private val audioQuality by enumPreference(context, AudioQualityKey, AudioQuality.HIGHEST)
     private val preferredAudioCodec by enumPreference(context, AudioCodecKey, AudioCodec.AAC)
     private val preferredStreamClient by enumPreference(context, PlayerStreamClientKey, PlayerStreamClient.ANDROID_VR)
-    private val songUrlCache = HashMap<String, Pair<String, Long>>()
+    /** mediaId → (stream URL, expiry, that stream's own length or null when YouTube didn't say). */
+    private val songUrlCache = java.util.concurrent.ConcurrentHashMap<String, Triple<String, Long, Long?>>()
     private val avoidStreamCodecs: Set<String> by lazy {
         if (deviceSupportsMimeType("audio/opus")) emptySet() else setOf("opus")
     }
@@ -137,26 +138,18 @@ constructor(
      */
     private val dataSourceFactory =
         ResolvingDataSource.Factory(
-            CacheDataSource
-                .Factory()
-                .setCache(playerCache)
-                .setCacheWriteDataSinkFactory(null)
-                .setUpstreamDataSourceFactory(
-                    OkHttpDataSource.Factory(
-                        mediaOkHttpClient,
-                    ),
-                ),
+            // Straight to the network. Reading through the player cache saved re-fetching a song
+            // you had streamed, but the cache holds whatever *playback* chose — another bitrate,
+            // another codec — under the same key, and a download that resolved a different stream
+            // stitched the two together, or failed when the lengths disagreed.
+            OkHttpDataSource.Factory(
+                mediaOkHttpClient,
+            ),
         ) { dataSpec ->
             val mediaId = dataSpec.key ?: error("No media id")
-            val length = if (dataSpec.length >= 0) dataSpec.length else 1
-            if (playerCache.isCached(mediaId, dataSpec.position, length)) {
-                // Bounded even here: `length` is 1 when the caller did not say how much it wants,
-                // so "cached" can mean one byte of it. Whatever is not on disk still has to be
-                // fetched, and it should be fetched as a range like everything else.
-                return@Factory bounded(dataSpec, mediaId)
-            }
             songUrlCache[mediaId]?.takeIf { it.second > System.currentTimeMillis() }?.let {
-                return@Factory bounded(dataSpec.withUri(it.first.toUri()), mediaId)
+                // The length of *this* stream, never the shared format row, which playback rewrites.
+                return@Factory bounded(dataSpec.withUri(it.first.toUri()), mediaId, it.third, useStoredLength = false)
             }
             val playbackData = runBlocking(Dispatchers.IO) {
                 val networkMeteredPref = context.dataStore.get(NetworkMeteredKey, false)
@@ -178,10 +171,10 @@ constructor(
                         id = mediaId,
                         itag = format.itag,
                         mimeType = format.mimeType.split(";")[0],
-                        codecs = format.mimeType.split("codecs=")[1].removeSurrounding("\""),
+                        codecs = format.mimeType.split("codecs=").getOrNull(1)?.removeSurrounding("\"").orEmpty(),
                         bitrate = format.bitrate,
                         sampleRate = format.audioSampleRate,
-                        contentLength = format.contentLength!!,
+                        contentLength = format.contentLength ?: 0L,
                         loudnessDb = playbackData.audioConfig?.loudnessDb,
                         perceptualLoudnessDb = playbackData.audioConfig?.perceptualLoudnessDb,
                         playbackUrl = playbackData.playbackTracking?.videostatsPlaybackUrl?.baseUrl
@@ -208,8 +201,12 @@ constructor(
 
             val streamUrl = playbackData.streamUrl
 
-            songUrlCache[mediaId] = streamUrl to (System.currentTimeMillis() + (playbackData.streamExpiresInSeconds * 1000L))
-            bounded(dataSpec.withUri(streamUrl.toUri()), mediaId, format.contentLength)
+            songUrlCache[mediaId] = Triple(
+                streamUrl,
+                System.currentTimeMillis() + (playbackData.streamExpiresInSeconds * 1000L),
+                format.contentLength?.takeIf { it > 0 },
+            )
+            bounded(dataSpec.withUri(streamUrl.toUri()), mediaId, format.contentLength?.takeIf { it > 0 }, useStoredLength = false)
         }
 
     /**
@@ -234,13 +231,15 @@ constructor(
         dataSpec: DataSpec,
         mediaId: String,
         knownLength: Long? = null,
+        useStoredLength: Boolean = true,
     ): DataSpec {
         if (dataSpec.length != C.LENGTH_UNSET.toLong()) return dataSpec
 
+        // Unknown length: an open-ended request is slower but whole; a guessed one truncates.
         val total = knownLength
-            ?: runCatching {
+            ?: (if (useStoredLength) runCatching {
                 runBlocking(Dispatchers.IO) { database.format(mediaId).first()?.contentLength }
-            }.getOrNull()
+            }.getOrNull()?.takeIf { it > 0 } else null)
             ?: return dataSpec
 
         val remaining = total - dataSpec.position

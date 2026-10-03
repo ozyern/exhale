@@ -1,9 +1,11 @@
+<!-- Explicit: a solid rounded tile with the E cut out of it, as Apple Music marks it. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="960.0"
-    android:viewportHeight="960.0">
+    android:viewportWidth="24"
+    android:viewportHeight="24">
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M360,680h240v-80L440,600v-80h160v-80L440,440v-80h160v-80L360,280v400ZM200,840q-33,0 -56.5,-23.5T120,760v-560q0,-33 23.5,-56.5T200,120h560q33,0 56.5,23.5T840,200v560q0,33 -23.5,56.5T760,840L200,840ZM200,760h560v-560L200,200v560ZM200,200v560,-560Z" />
+        android:fillType="evenOdd"
+        android:pathData="M6,3h12a3,3 0,0 1,3 3v12a3,3 0,0 1,-3 3H6a3,3 0,0 1,-3 -3V6a3,3 0,0 1,3 -3z M9,7v10h6.2v-2.1h-3.9v-1.9h3.6v-2h-3.6V9.1h3.9V7z" />
 </vector>

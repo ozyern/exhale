@@ -132,6 +132,67 @@ fun rememberChromeGlassModifier(
 }
 
 /**
+ * Clear liquid glass, on Apple-matched defaults.
+ *
+ * Where [rememberChromeGlassModifier] frosts — a heavy blur and a milky film, so the pane reads as
+ * a sheet of ice — this one barely blurs at all (8dp), saturates what is behind it by half again,
+ * and bends it hard at the rim, under a 40% film of near-black (or near-white). The page stays
+ * legible *through* the control and the rim does the work of saying "glass". This is the material
+ * the round chrome and the dock are made of.
+ *
+ * Same backdrop rule as [rememberChromeGlassModifier]: [backdrop] must be recorded by something
+ * drawn beneath this, never by something this is drawn inside.
+ */
+@Composable
+fun Modifier.clearGlass(
+    shape: Shape,
+    backdrop: Backdrop = LocalAppBackdrop.current,
+    dark: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
+    layerBlock: (GraphicsLayerScope.() -> Unit)? = null,
+): Modifier {
+    val film = if (dark) Color(0xFF121212).copy(alpha = ClearGlassFilm) else Color(0xFFFAFAFA).copy(alpha = ClearGlassFilm)
+    return this
+        .drawBackdrop(
+            backdrop = backdrop,
+            shape = { shape },
+            effects = {
+                vibrancy()
+                blur(8f.dp.toPx())
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    lens(24f.dp.toPx(), 24f.dp.toPx(), true)
+                }
+            },
+            highlight = { Highlight.Default },
+            shadow = { Shadow(radius = 24f.dp, color = Color.Black.copy(alpha = if (dark) 0.22f else 0.10f)) },
+            layerBlock = layerBlock,
+            onDrawSurface = { drawRect(film) },
+        )
+        // The hairline every glass surface keeps on top of the glass's own highlight: on a
+        // near-black page the film is the page's colour, and this is the edge that remains.
+        .border(0.5.dp, Color.White.copy(alpha = if (dark) 0.10f else 0.35f), shape)
+}
+
+private const val ClearGlassFilm = 0.40f
+
+/**
+ * [clearGlass] for controls inside a page. It refracts the page's own recorded ground where one
+ * is published ([com.ozyern.exhale.ui.component.liquid.LocalPageBackdrop]); where none is, it is
+ * The lightweight glass — the same film, rim and hairline over nothing — which is what
+ * their artwork-page circles are.
+ */
+@Composable
+fun Modifier.lightGlass(shape: Shape): Modifier {
+    val backdrop = com.ozyern.exhale.ui.component.liquid.LocalPageBackdrop.current
+        ?: com.ozyern.exhale.ui.component.liquid.rememberInContentBackdrop()
+    return clearGlass(shape, backdrop)
+}
+
+/** Icon colour on [clearGlass]: pure white or black, the only tint that holds over any artwork. */
+@Composable
+fun clearGlassContentColor(): Color =
+    if (androidx.compose.foundation.isSystemInDarkTheme()) Color.White else Color.Black
+
+/**
  * Decorative "frosted glass" surface treatment that works on *every* device: soft shadow,
  * translucent fill, and a hairline light-catching border. This does NOT do live backdrop
  * blur — use [GlassSurface] for that. Ideal for cards/grid items over the liquid background.

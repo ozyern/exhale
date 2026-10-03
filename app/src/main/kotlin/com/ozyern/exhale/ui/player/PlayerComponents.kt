@@ -34,6 +34,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -67,6 +70,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -135,6 +140,10 @@ import com.skydoves.cloudy.cloudy
  */
 private const val ArtistAnnotationTag = "artist"
 
+private val ClassicTitleFont = androidx.compose.ui.text.font.FontFamily(
+    androidx.compose.ui.text.font.Font(R.font.sfprodisplaybold, FontWeight.SemiBold),
+)
+
 @Composable
 fun PlayerTitleSection(
     mediaMetadata: MediaMetadata,
@@ -151,8 +160,14 @@ fun PlayerTitleSection(
     ) { title ->
         Text(
             text = title,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
+            // Set, not typed: SF Pro Display at a display size, tracked in a touch, the way the
+            // Now Playing screen sets its title — every layout speaks in the same voice now.
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontFamily = ClassicTitleFont,
+                fontSize = 24.sp,
+                letterSpacing = (-0.3).sp,
+            ),
+            fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             color = textBackgroundColor,
@@ -184,7 +199,7 @@ fun PlayerTitleSection(
         mediaMetadata.artists.forEachIndexed { index, artist ->
             val tag = "artist_${artist.id.orEmpty()}"
             pushStringAnnotation(tag = tag, annotation = artist.id.orEmpty())
-            withStyle(SpanStyle(color = textBackgroundColor, fontSize = 16.sp)) {
+            withStyle(SpanStyle(color = textBackgroundColor.copy(alpha = 0.72f), fontSize = 17.sp)) {
                 append(artist.name)
             }
             pop()
@@ -1008,8 +1023,8 @@ fun PlayerPlaybackControls(
                         enabled = canSkipPrevious,
                         interactionSource = backInteraction,
                         colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = textButtonColor,
-                            contentColor = iconButtonColor
+                            containerColor = textButtonColor.copy(alpha = 0.16f),
+                            contentColor = textButtonColor
                         ),
                         modifier = Modifier
                             .weight(sideWeight)
@@ -1017,7 +1032,7 @@ fun PlayerPlaybackControls(
                             .clip(RoundedCornerShape(32.dp))
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.skip_previous),
+                            painter = painterResource(R.drawable.ic_np_previous),
                             contentDescription = null,
                             modifier = Modifier.size(32.dp)
                         )
@@ -1071,8 +1086,8 @@ fun PlayerPlaybackControls(
                         enabled = canSkipNext,
                         interactionSource = nextInteraction,
                         colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = textButtonColor,
-                            contentColor = iconButtonColor
+                            containerColor = textButtonColor.copy(alpha = 0.16f),
+                            contentColor = textButtonColor
                         ),
                         modifier = Modifier
                             .weight(sideWeight)
@@ -1080,7 +1095,7 @@ fun PlayerPlaybackControls(
                             .clip(RoundedCornerShape(32.dp))
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.skip_next),
+                            painter = painterResource(R.drawable.ic_np_next),
                             contentDescription = null,
                             modifier = Modifier.size(32.dp)
                         )
@@ -1179,7 +1194,7 @@ fun PlayerPlaybackControls(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.skip_previous),
+                            painter = painterResource(R.drawable.ic_np_previous),
                             contentDescription = null,
                             tint = textBackgroundColor.copy(alpha = if (canSkipPrevious) 0.9f else 0.4f),
                             modifier = Modifier.size(26.dp)
@@ -1241,7 +1256,7 @@ fun PlayerPlaybackControls(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.skip_next),
+                            painter = painterResource(R.drawable.ic_np_next),
                             contentDescription = null,
                             tint = textBackgroundColor.copy(alpha = if (canSkipNext) 0.9f else 0.4f),
                             modifier = Modifier.size(26.dp)
@@ -1399,7 +1414,7 @@ fun PlayerPlaybackControls(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.skip_previous),
+                                    painter = painterResource(R.drawable.ic_np_previous),
                                     contentDescription = null,
                                     tint = textBackgroundColor.copy(
                                         alpha = if (canSkipPrevious) 1f else 0.4f
@@ -1472,7 +1487,7 @@ fun PlayerPlaybackControls(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.skip_next),
+                                    painter = painterResource(R.drawable.ic_np_next),
                                     contentDescription = null,
                                     tint = textBackgroundColor.copy(
                                         alpha = if (canSkipNext) 1f else 0.4f
@@ -1598,7 +1613,7 @@ fun PlayerPlaybackControls(
 
                 Box(modifier = Modifier.weight(1f)) {
                     ResizableIconButton(
-                        icon = R.drawable.skip_previous,
+                        icon = R.drawable.ic_np_previous,
                         enabled = canSkipPrevious,
                         color = textBackgroundColor,
                         modifier =
@@ -1667,7 +1682,7 @@ fun PlayerPlaybackControls(
 
                 Box(modifier = Modifier.weight(1f)) {
                     ResizableIconButton(
-                        icon = R.drawable.skip_next,
+                        icon = R.drawable.ic_np_next,
                         enabled = canSkipNext,
                         color = textBackgroundColor,
                         modifier =
@@ -1783,7 +1798,7 @@ fun PlayerPlaybackControls(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.skip_previous),
+                                    painter = painterResource(R.drawable.ic_np_previous),
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(
                                         alpha = if (canSkipPrevious) 1f else 0.4f
@@ -1861,7 +1876,7 @@ fun PlayerPlaybackControls(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    painter = painterResource(R.drawable.skip_next),
+                                    painter = painterResource(R.drawable.ic_np_next),
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(
                                         alpha = if (canSkipNext) 1f else 0.4f
@@ -1965,7 +1980,7 @@ fun PlayerPlaybackControls(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.skip_previous),
+                            painter = painterResource(R.drawable.ic_np_previous),
                             contentDescription = null,
                             tint = textBackgroundColor.copy(
                                 alpha = if (canSkipPrevious) 1f else 0.4f
@@ -2026,7 +2041,7 @@ fun PlayerPlaybackControls(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.skip_next),
+                            painter = painterResource(R.drawable.ic_np_next),
                             contentDescription = null,
                             tint = textBackgroundColor.copy(
                                 alpha = if (canSkipNext) 1f else 0.4f
@@ -2060,7 +2075,7 @@ fun PlayerPlaybackControls(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.skip_previous),
+                            painter = painterResource(R.drawable.ic_np_previous),
                             contentDescription = null,
                             tint = textBackgroundColor.copy(
                                 alpha = if (canSkipPrevious) 1f else 0.4f
@@ -2123,7 +2138,7 @@ fun PlayerPlaybackControls(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.skip_next),
+                            painter = painterResource(R.drawable.ic_np_next),
                             contentDescription = null,
                             tint = textBackgroundColor.copy(
                                 alpha = if (canSkipNext) 1f else 0.4f
@@ -2748,17 +2763,79 @@ fun V8PlayerBackdrop(
     label: String,
     modifier: Modifier = Modifier,
     meshColors: List<Color> = emptyList(),
+    mediaMetadata: MediaMetadata? = null,
+    isPlaying: Boolean = true,
 ) {
-    LiquidGlassArtworkBackdrop(
-        thumbnailUrl = thumbnailUrl,
-        meshColors = meshColors,
-        disableBlur = disableBlur,
-        label = label,
-        modifier = modifier,
-        // Softer than the blurred plate's 0.88: over sharp art the scrim only has to buy
-        // contrast for the controls, not hide detail — the cover must stay visible to the edge.
-        bottomScrimAlpha = 0.62f,
-        sharpArtwork = true,
+    Box(modifier) {
+        LiquidGlassArtworkBackdrop(
+            thumbnailUrl = thumbnailUrl,
+            meshColors = meshColors,
+            disableBlur = disableBlur,
+            label = label,
+            modifier = Modifier.matchParentSize(),
+            // Softer than the blurred plate's 0.88: over sharp art the scrim only has to buy
+            // contrast for the controls, not hide detail — the cover must stay visible to the edge.
+            bottomScrimAlpha = 0.62f,
+            sharpArtwork = true,
+        )
+        // The song's motion artwork, where it has one, edge to edge as Apple Music plays it:
+        // over the still cover, under a scrim of its own so the controls stay on the same contrast.
+        if (mediaMetadata != null) V8MotionArtwork(mediaMetadata, isPlaying)
+    }
+}
+
+@Composable
+private fun BoxScope.V8MotionArtwork(mediaMetadata: MediaMetadata, isPlaying: Boolean) {
+    val enabled by com.ozyern.exhale.utils.rememberPreference(com.ozyern.exhale.constants.ExhaleCanvasKey, defaultValue = true)
+    val source by com.ozyern.exhale.utils.rememberEnumPreference(
+        com.ozyern.exhale.constants.CanvasSourceKey,
+        com.ozyern.exhale.constants.CanvasSource.AUTO,
+    )
+    var clip by remember(mediaMetadata.id) { mutableStateOf<com.ozyern.exhale.canvas.CanvasArtwork?>(null) }
+    LaunchedEffect(mediaMetadata.id, enabled, source) {
+        clip = null
+        if (!enabled) return@LaunchedEffect
+        CanvasArtworkPlaybackCache.get(mediaMetadata.id)?.let {
+            clip = it.toResolverArtwork()
+            return@LaunchedEffect
+        }
+        val storefront = java.util.Locale.getDefault().country
+            .takeIf { it.length == 2 }?.lowercase(java.util.Locale.ROOT) ?: "us"
+        val fetched = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                fetchCanvasArtworkForPlayback(
+                    songTitleRaw = mediaMetadata.title,
+                    artistNameRaw = mediaMetadata.artists.firstOrNull()?.name.orEmpty(),
+                    albumName = mediaMetadata.album?.title,
+                    storefront = storefront,
+                    source = source,
+                )
+            }.getOrNull()
+        }
+        if (fetched != null && (fetched.animated != null || fetched.videoUrl != null)) {
+            CanvasArtworkPlaybackCache.put(mediaMetadata.id, fetched.toPlaybackArtwork())
+            clip = fetched
+        }
+    }
+    val motion = clip ?: return
+    CanvasArtworkPlayer(
+        primaryUrl = motion.animated,
+        fallbackUrl = motion.videoUrl,
+        isPlaying = isPlaying,
+        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+        modifier = Modifier.matchParentSize(),
+    )
+    Box(
+        Modifier
+            .matchParentSize()
+            .background(
+                Brush.verticalGradient(
+                    0f to Color.Black.copy(alpha = 0.18f),
+                    0.4f to Color.Transparent,
+                    0.62f to Color.Black.copy(alpha = 0.35f),
+                    1f to Color.Black.copy(alpha = 0.78f),
+                ),
+            ),
     )
 }
 
@@ -2770,7 +2847,7 @@ fun V8PlayerBackdrop(
  * is drawn into the layer with `DstIn`, which is why the content needs an offscreen compositing
  * strategy: without it there is nothing to punch the alpha out of.
  */
-private fun Modifier.marqueeFade(width: Dp = 22.dp): Modifier = this
+private fun Modifier.marqueeFade(enabled: Boolean = true, width: Dp = 22.dp): Modifier = if (!enabled) this else this
     .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
     .drawWithContent {
         drawContent()
@@ -2844,6 +2921,10 @@ fun V8PlayerControlsContent(
                     transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) },
                     label = "v8_title"
                 ) { title ->
+                    // The fade belongs to the scroll: a title that fits must not lose its edges.
+                    // basicMarquee lays its text out unbounded, so the full width is the layout's.
+                    var titleWidth by remember { mutableIntStateOf(0) }
+                    var titleSlot by remember { mutableIntStateOf(0) }
                     Text(
                         text = title,
                         style = MaterialTheme.typography.titleLarge,
@@ -2851,8 +2932,10 @@ fun V8PlayerControlsContent(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = textBackgroundColor,
+                        onTextLayout = { titleWidth = it.size.width },
                         modifier = Modifier
-                            .marqueeFade()
+                            .onSizeChanged { titleSlot = it.width }
+                            .marqueeFade(enabled = titleWidth > titleSlot)
                             .basicMarquee()
                     )
                 }
@@ -2888,6 +2971,7 @@ fun V8PlayerControlsContent(
                 ) { artists ->
                     var artistLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
                     var artistTap by remember { mutableStateOf<Offset?>(null) }
+                    var artistSlot by remember { mutableIntStateOf(0) }
                     Text(
                         text = artists,
                         style = MaterialTheme.typography.titleMedium,
@@ -2896,7 +2980,8 @@ fun V8PlayerControlsContent(
                         overflow = TextOverflow.Ellipsis,
                         onTextLayout = { artistLayout = it },
                         modifier = Modifier
-                            .marqueeFade()
+                            .onSizeChanged { artistSlot = it.width }
+                            .marqueeFade(enabled = (artistLayout?.size?.width ?: 0) > artistSlot)
                             .basicMarquee()
                             // Records where the finger went down so the click below can ask the
                             // layout which name was under it. Compose gives the click no
@@ -2946,14 +3031,17 @@ fun V8PlayerControlsContent(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Like
+                // Apple's discs: frosted, with a hairline rim, lit a little brighter when on.
+                val likeFill by animateColorAsState(
+                    textBackgroundColor.copy(alpha = if (currentSongLiked) 0.26f else 0.14f),
+                    label = "v8LikeFill",
+                )
                 Box(
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(38.dp)
                         .clip(CircleShape)
-                        .background(
-                            if (currentSongLiked) textBackgroundColor.copy(alpha = 0.2f)
-                            else Color.Transparent
-                        )
+                        .background(likeFill)
+                        .border(0.6.dp, textBackgroundColor.copy(alpha = 0.18f), CircleShape)
                         .clickable { playerConnection.toggleLike() },
                     contentAlignment = Alignment.Center
                 ) {
@@ -2963,8 +3051,8 @@ fun V8PlayerControlsContent(
                             else R.drawable.favorite_outline
                         ),
                         contentDescription = null,
-                        tint = textBackgroundColor.copy(alpha = if (currentSongLiked) 1f else 0.7f),
-                        modifier = Modifier.size(30.dp)
+                        tint = textBackgroundColor.copy(alpha = if (currentSongLiked) 1f else 0.85f),
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
@@ -2973,6 +3061,8 @@ fun V8PlayerControlsContent(
                     modifier = Modifier
                         .size(38.dp)
                         .clip(CircleShape)
+                        .background(textBackgroundColor.copy(alpha = 0.14f))
+                        .border(0.6.dp, textBackgroundColor.copy(alpha = 0.18f), CircleShape)
                         .clickable {
                             menuState.show {
                                 PlayerMenu(
@@ -2993,8 +3083,8 @@ fun V8PlayerControlsContent(
                     Icon(
                         painter = painterResource(R.drawable.more_horiz),
                         contentDescription = null,
-                        tint = textBackgroundColor.copy(alpha = 0.7f),
-                        modifier = Modifier.size(22.dp)
+                        tint = textBackgroundColor.copy(alpha = 0.9f),
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
@@ -3229,7 +3319,7 @@ fun V8PlaybackControls(
             size = 56.dp,
         ) { pressScale ->
             Icon(
-                painter = painterResource(R.drawable.skip_previous),
+                painter = painterResource(R.drawable.ic_np_previous),
                 contentDescription = null,
                 tint = textBackgroundColor.copy(alpha = if (canSkipPrevious) 1f else 0.4f),
                 modifier = Modifier
@@ -3286,7 +3376,7 @@ fun V8PlaybackControls(
             size = 56.dp,
         ) { pressScale ->
             Icon(
-                painter = painterResource(R.drawable.skip_next),
+                painter = painterResource(R.drawable.ic_np_next),
                 contentDescription = null,
                 tint = textBackgroundColor.copy(alpha = if (canSkipNext) 1f else 0.4f),
                 modifier = Modifier

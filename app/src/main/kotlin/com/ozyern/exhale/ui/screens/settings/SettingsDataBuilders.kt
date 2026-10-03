@@ -14,6 +14,7 @@ import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -93,8 +94,21 @@ fun buildSettingsGroups(
     hasUpdate: Boolean,
     context: Context,
     resetSearch: () -> Unit,
-): List<SettingsGroup> =
-    buildList {
+): List<SettingsGroup> {
+    // A switch on the front page rather than a row in Appearance: the one setting people go
+    // looking for with their thumb already buzzing.
+    val (haptics) = com.ozyern.exhale.utils.rememberPreference(
+        com.ozyern.exhale.constants.EnableHapticFeedbackKey,
+        true,
+    )
+    val (classicPlayer) = com.ozyern.exhale.utils.rememberPreference(com.ozyern.exhale.constants.ClassicPlayerKey, false)
+    val (liquidGlassPlayer) = com.ozyern.exhale.utils.rememberPreference(com.ozyern.exhale.constants.LiquidGlassPlayerKey, false)
+    val (playerDesign) = com.ozyern.exhale.utils.rememberEnumPreference(
+        com.ozyern.exhale.constants.PlayerDesignStyleKey,
+        com.ozyern.exhale.constants.PlayerDesignStyle.V8,
+    )
+    val playerStyle = currentPlayerStyle(classicPlayer, playerDesign, liquidGlassPlayer)
+    return buildList {
         add(
             SettingsGroup(
                 title = stringResource(R.string.settings_section_ui),
@@ -106,6 +120,23 @@ fun buildSettingsGroups(
                         accentColor = MaterialTheme.colorScheme.primary,
                         keywords = listOf("theme", "palette", "material you", "dynamic color", "font", "ui"),
                         onClick = { resetSearch(); navController.navigate("settings/appearance") },
+                    ),
+                    SettingsItem(
+                        icon = painterResource(R.drawable.style),
+                        title = "Player style",
+                        subtitle = "${playerStyle.label} · ${playerStyle.detail}",
+                        accentColor = MaterialTheme.colorScheme.secondary,
+                        keywords = listOf("player", "style", "design", "layout", "now playing", "apple music", "liquid glass", "classic"),
+                        onClick = { resetSearch(); navController.navigate("settings/appearance/player_style") },
+                    ),
+                    SettingsItem(
+                        icon = painterResource(R.drawable.haptic),
+                        title = "Haptics",
+                        subtitle = if (haptics) "On · intensity and how touches feel" else "Off · every vibration is silenced",
+                        badge = if (haptics) "On" else "Off",
+                        accentColor = MaterialTheme.colorScheme.tertiary,
+                        keywords = listOf("haptic", "haptics", "vibration", "vibrate", "feedback", "buzz", "touch", "intensity"),
+                        onClick = { resetSearch(); navController.navigate("settings/haptics") },
                     ),
                 ),
             ),
@@ -309,13 +340,14 @@ fun buildSettingsGroups(
             ),
         )
     }
+}
 
 @Composable
 fun buildInternalItems(
     navController: NavController,
     resetSearch: () -> Unit,
 ): List<SettingsItem> =
-    listOf(
+    buildIndexItems(navController, resetSearch) + listOf(
         SettingsItem(
             icon = painterResource(R.drawable.palette),
             title = stringResource(R.string.theme_creator_title),
@@ -381,3 +413,49 @@ fun buildInternalItems(
             onClick = { resetSearch(); navController.navigate("settings/music_together") },
         ),
     )
+
+
+/** Every setting in [SettingsIndex], as a search result that opens the page it lives on. */
+@Composable
+private fun buildIndexItems(
+    navController: NavController,
+    resetSearch: () -> Unit,
+): List<SettingsItem> {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    fun text(value: IndexText): String = when (value) {
+        is IndexText.Res -> context.getString(value.id)
+        is IndexText.Plain -> value.text
+    }
+    val icons = mapOf(
+        "settings/appearance" to R.drawable.palette,
+        "settings/player" to R.drawable.play,
+        "settings/player/equalizer" to R.drawable.equalizer,
+        "settings/content" to R.drawable.language,
+        "settings/content/lyrics_sources" to R.drawable.lyrics,
+        "settings/storage" to R.drawable.storage,
+        "settings/privacy" to R.drawable.security,
+        "settings/backup_restore" to R.drawable.restore,
+        "settings/discord" to R.drawable.discord,
+        "settings/integration" to R.drawable.integration,
+        "settings/haptics" to R.drawable.haptic,
+        "settings/appearance/player_style" to R.drawable.style,
+        "settings/appearance/always_on_display" to R.drawable.bedtime,
+        "settings/music_together" to R.drawable.fire,
+    )
+    val painters = icons.mapValues { painterResource(it.value) }
+    val fallback = painterResource(R.drawable.settings)
+    val accent = MaterialTheme.colorScheme.primary
+    return remember(context) {
+        SettingsIndex.map { entry ->
+            val section = entry.section?.let(::text)
+            SettingsItem(
+                icon = fallback,
+                title = text(entry.title),
+                subtitle = listOfNotNull(entry.page, section?.takeIf { it != entry.page }).joinToString(" › "),
+                accentColor = accent,
+                keywords = listOf(entry.page),
+                onClick = { resetSearch(); navController.navigate(entry.route) },
+            )
+        }
+    }.mapIndexed { index, item -> item.copy(icon = painters[SettingsIndex[index].route] ?: fallback) }
+}

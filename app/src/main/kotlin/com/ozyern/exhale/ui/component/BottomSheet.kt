@@ -78,7 +78,7 @@ import androidx.compose.ui.util.fastRoundToInt
 // and the artwork and title spent the first frames of every collapse as a horizontal streak. The
 // crossfade below now holds the content visible longer, which makes those frames matter more, not
 // less.
-private const val PILL_VERTICAL_SQUASH = 0.32f
+private const val PILL_VERTICAL_SQUASH = 0.5f
 
 // The window over which the full player and the mini pill trade places, as a fraction of the
 // progress range (0→1). Geometry still carries the gesture - this is a hand-off, not a
@@ -92,6 +92,17 @@ private const val PILL_VERTICAL_SQUASH = 0.32f
 // a band around p≈0.15 where both were near-opaque and stacked — two different layouts of the same
 // song superimposed. That double image was the single most visible flaw in the collapse.
 private const val MORPH_HANDOFF_FRACTION = 0.28f
+
+/** Below this progress the full player's content is gone; only the card is morphing. */
+private const val CONTENT_GONE_BELOW = 0.38f
+
+/** Over how much progress above [CONTENT_GONE_BELOW] the content fades in or out. */
+private const val CONTENT_FADE_SPAN = 0.32f
+
+/** Above this progress the mini pill's content is gone. Below [CONTENT_GONE_BELOW], so they never stack. */
+private const val PILL_GONE_ABOVE = 0.26f
+
+
 
 /**
  * Bottom Sheet
@@ -124,6 +135,12 @@ fun BottomSheet(
      * down onto the nav bar for State B.
      */
     pillTopOffset: Dp = 0.dp,
+    /**
+     * Whether a tap on the collapsed strip opens the sheet. Off while the mini player is folded
+     * into the dock (State B): the strip is then empty air over the page, and taking its taps
+     * swallowed whatever sat there — the Settings search capsule, for one.
+     */
+    collapsedTapToExpand: Boolean = true,
     collapsedContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -139,7 +156,13 @@ fun BottomSheet(
                         .coerceAtLeast(0)
                 IntOffset(x = 0, y = y)
             }
-            .bottomSheetDraggable(state, onDismiss)
+            // Folded into the dock, the sheet is empty air over the bottom of the page, and a
+            // gesture detector there wins the hit test over whatever the page has in that spot —
+            // which is how the Settings search capsule stopped answering. The dock pill opens it.
+            .then(
+                if (!collapsedTapToExpand && state.isCollapsed) Modifier
+                else Modifier.bottomSheetDraggable(state, onDismiss),
+            )
             // Corner rounding and scrim alpha both track state.progress, which ticks every
             // frame of a drag or spring. Reading it here in a graphicsLayer/drawBehind lambda
             // instead of in composition keeps those frames in the draw phase only — reading it
@@ -151,6 +174,10 @@ fun BottomSheet(
                 shape = RoundedCornerShape(topStart = corner, topEnd = corner)
             }
             .drawBehind {
+                // The morphing player paints its ground inside its own shrinking window (below).
+                // Painted here, across the whole sheet, it was a dim full-screen rectangle laid
+                // over the page for the length of every close — the "ghost" behind the pill.
+                if (dynamicIslandMorph) return@drawBehind
                 val p = state.progress.coerceIn(0f, 1f)
                 // Ramp the scrim in over the first 20% of travel, then hold — the sheet must be
                 // fully opaque well before it reaches the top or the content behind shows through.
@@ -184,13 +211,24 @@ fun BottomSheet(
                         .fillMaxSize()
                         .graphicsLayer {
                             clip = true
+                            val p = state.progress.coerceIn(0f, 1f)
                             shape = DynamicIslandMorphShape(
-                                progress = state.progress.coerceIn(0f, 1f),
+                                progress = p,
                                 pillHeightPx = pillHeight.toPx(),
                                 pillInsetPx = pillHorizontalInset.toPx(),
                                 pillRadiusPx = pillCornerRadius.toPx(),
                                 pillTopOffsetPx = pillTopOffset.toPx(),
                             )
+                            // No flight shadow: a shadow traced around an outline that changes shape
+                            // every frame was redrawn from scratch sixty times a second, on top of a
+                            // full-screen player, and it was a large part of why the close stuttered.
+                        }
+                        // The sheet's ground, inside the window: it shrinks with the player instead
+                        // of hanging behind it at full size.
+                        .drawBehind {
+                            val p = state.progress.coerceIn(0f, 1f)
+                            val alpha = backgroundColor.alpha * (p / 0.15f).coerceIn(0f, 1f)
+                            if (alpha > 0f) drawRect(backgroundColor.copy(alpha = alpha))
                         }
                 },
             ) {
@@ -269,7 +307,21 @@ fun BottomSheet(
                             // transformation at all, which is exactly why it read as a snap. Now
                             // the geometry above is visible for the whole gesture and the fade is
                             // just the hand-off, meeting the pill's own fade-out at the crossover.
-                            alpha = (p / MORPH_HANDOFF_FRACTION).coerceIn(0f, 1f)
+                            // The player's own content leaves over the upper half of the travel and the
+                            // glass card alone finishes the trip into the pill: a shrinking miniature
+                            // of the lyrics or the queue flying into the dock is what read as
+                            // unpolished. The pill's content only comes in once the card has landed.
+                            val handoff = ((p - CONTENT_GONE_BELOW) / CONTENT_FADE_SPAN).coerceIn(0f, 1f)
+                            alpha = handoff
+                            // A focus pull instead of a double exposure: through the hand-off the
+                            // player softens as the pill sharpens (and the reverse on the way up),
+                            // so the two read as one thing changing shape rather than two layouts
+                            // of the same song stacked. Only while it is moving — settled, no
+                            // effect runs at all.
+                            // No blur. A focus pull over the whole full-screen player — cover, video,
+                            // animated backdrop — was a render-effect pass over every pixel of the
+                            // screen on every frame of the gesture, which is what made it drop frames.
+                            renderEffect = null
                         },
                     content = content,
                 )
@@ -292,15 +344,24 @@ fun BottomSheet(
                             transformOrigin = TransformOrigin(0.5f, 0f)
                             // Exactly the complement of the content layer's ramp above, so the two
                             // always sum to 1 and never both paint at full strength.
-                            alpha = 1f - (p / MORPH_HANDOFF_FRACTION).coerceIn(0f, 1f)
+                            val handoff = (p / PILL_GONE_ABOVE).coerceIn(0f, 1f)
+                            alpha = 1f - handoff
+                            // The other half of the focus pull.
+                            renderEffect = null
                         } else {
                             alpha = 1f - (p * 4).coerceAtMost(1f)
                         }
                     }
-                    .clickable(
-                        interactionSource = collapsedInteractionSource,
-                        indication = null,
-                        onClick = state::expandSoft,
+                    .then(
+                        if (collapsedTapToExpand) {
+                            Modifier.clickable(
+                                interactionSource = collapsedInteractionSource,
+                                indication = null,
+                                onClick = state::expandSoft,
+                            )
+                        } else {
+                            Modifier
+                        },
                     )
                     .fillMaxWidth()
                     .height(state.collapsedBound),
@@ -367,11 +428,11 @@ class BottomSheetState(
     }
 
     fun collapseSoft() {
-        collapse(BottomSheetSoftAnimationSpec)
+        collapse(com.ozyern.exhale.constants.BottomSheetCloseAnimationSpec)
     }
 
     fun expandSoft() {
-        expand(BottomSheetSoftAnimationSpec)
+        expand(com.ozyern.exhale.constants.BottomSheetOpenAnimationSpec)
     }
 
     fun dismiss() {

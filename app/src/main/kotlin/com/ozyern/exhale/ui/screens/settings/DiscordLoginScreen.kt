@@ -88,15 +88,18 @@ fun DiscordLoginScreen(navController: NavController) {
                 addJavascriptInterface(object {
                     @JavascriptInterface
                     fun onRetrieveToken(token: String) {
-                        Log.d("DiscordWebView", "Token: $token")
-                        scope.launch(Dispatchers.Main) { completeLogin(token) }
+                        // Never logged: the token is the account.
+                        scope.launch(Dispatchers.Main) {
+                            // Only from Discord's own page, never from wherever the view wandered.
+                            if (isDiscordUrl(webView?.url)) completeLogin(token)
+                        }
                     }
                 }, "Android")
 
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, url: String) {
                         if (isCompleting) return
-                        if (!url.contains("discord.com")) return
+                        if (!isDiscordUrl(url)) return
                         if (url.contains("/login")) return
 
                         val js = """
@@ -215,4 +218,12 @@ fun DiscordLoginScreen(navController: NavController) {
     BackHandler(enabled = webView?.canGoBack() == true) {
         webView?.goBack()
     }
+}
+
+/** Discord's own https pages, by host — not any address that merely mentions discord.com. */
+private fun isDiscordUrl(url: String?): Boolean {
+    val uri = runCatching { android.net.Uri.parse(url ?: return false) }.getOrNull() ?: return false
+    if (!uri.scheme.equals("https", ignoreCase = true)) return false
+    val host = uri.host?.lowercase() ?: return false
+    return host == "discord.com" || host.endsWith(".discord.com")
 }

@@ -6,6 +6,7 @@
 
 package com.ozyern.exhale.ui.screens.settings
 
+import androidx.compose.foundation.layout.asPaddingValues
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Color
@@ -265,13 +266,12 @@ fun BackupAndRestore(
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .padding(innerPadding)
                 .windowInsetsPadding(
-                    LocalPlayerAwareWindowInsets.current.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
-                    )
+                    LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal)
                 ),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(
-                start = 16.dp, end = 16.dp, bottom = 16.dp, top = 8.dp
+                start = 16.dp, end = 16.dp, top = 8.dp,
+                bottom = 16.dp + LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding(),
             ),
         ) {
 

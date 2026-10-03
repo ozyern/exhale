@@ -8,6 +8,7 @@
 
 package com.ozyern.exhale.ui.component
 
+import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.LocalContentColor
@@ -329,13 +330,18 @@ fun MenuSurfaceSection(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Surface(
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Column(content = content)
-    }
+    // A pane of the sheet's own glass, not a slab laid on it: translucent enough that the sheet's
+    // wash reads through, with a hairline rim so the group still has an edge.
+    val dark = androidx.compose.foundation.isSystemInDarkTheme()
+    val shape = RoundedCornerShape(24.dp)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(if (dark) Color.White.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.55f))
+            .border(0.5.dp, if (dark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.06f), shape),
+        content = content,
+    )
 }
 
 /**

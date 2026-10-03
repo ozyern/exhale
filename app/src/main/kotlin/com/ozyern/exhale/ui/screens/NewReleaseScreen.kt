@@ -368,7 +368,7 @@ fun NewReleaseScreen(
         // TopAppBar flotante
         TopAppBar(
             modifier = Modifier.align(Alignment.TopCenter),
-            title = { Text(stringResource(R.string.new_release_albums)) },
+            title = { com.ozyern.exhale.ui.component.HeadingStyle { Text(stringResource(R.string.new_release_albums)) } },
             navigationIcon = {
                 LiquidBackButton(
                     onClick = navController::navigateUp,

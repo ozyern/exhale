@@ -113,11 +113,10 @@ fun AndroidAutoSettings(
         containerColor = Color.Transparent,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            // Opaque as the page, not as a plate over it. See SettingsBarGround: the bar has
-            // to hide the rows sliding under it, and spelling that as a flat fill is what stopped
-            // the album-art wash dead at the bar's bottom edge on every page but the root one.
+            // Transparent at rest; the page's own ground rises behind it only as it collapses
+            // and rows slide beneath. See SettingsTopAppBar.
             Box {
-                SettingsBarGround(modifier = Modifier.matchParentSize())
+                SettingsBarGround(modifier = Modifier.matchParentSize().scrollEdgeFade(rememberSettingsEdge(scrollBehavior)))
 
                 LargeFlexibleTopAppBar(
                     title = { Text(stringResource(R.string.android_auto)) },

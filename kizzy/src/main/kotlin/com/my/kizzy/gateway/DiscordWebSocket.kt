@@ -74,10 +74,18 @@ open class DiscordWebSocket(
         encodeDefaults = true
     }
 
+    // One scope for the connection's whole life, with a handler: the phone dropping an idle socket
+    // (a SocketException from deep in the reader) must end this connection, never the app. It used
+    // to be a fresh SupervisorJob on every read, which also meant close() cancelled nothing.
+    private var job = SupervisorJob()
+    private val failureHandler = kotlinx.coroutines.CoroutineExceptionHandler { _, error ->
+        Logger.getLogger("Kizzy").log(INFO, "Gateway: dropped (${error.message})")
+    }
     override val coroutineContext: CoroutineContext
-        get() = SupervisorJob() + Dispatchers.Default
+        get() = job + Dispatchers.Default + failureHandler
 
     fun connect() {
+        if (!job.isActive) job = SupervisorJob()
         launch {
             try {
                 Logger.getLogger("Kizzy").log(INFO, "Gateway: Connect called")
@@ -211,7 +219,17 @@ open class DiscordWebSocket(
         heartbeatJob?.cancel()
         heartbeatJob = launch {
             while (isActive) {
-                sendHeartBeat()
+                try {
+                    sendHeartBeat()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // The socket went away under us: stop beating; the reader's own failure
+                    // closes this connection and the presence manager reconnects when it next needs to.
+                    Logger.getLogger("Kizzy").log(INFO, "Gateway: heartbeat failed (${e.message})")
+                    connected = false
+                    break
+                }
                 delay(interval)
             }
         }
@@ -250,7 +268,8 @@ open class DiscordWebSocket(
                     d = json.encodeToJsonElement(d),
                 )
             )
-            websocket?.send(Frame.Text(payload))
+            runCatching { websocket?.send(Frame.Text(payload)) }
+                .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it; connected = false }
         }
     }
 
@@ -262,7 +281,7 @@ open class DiscordWebSocket(
         sessionId = null
         connected = false
         runBlocking {
-            websocket?.close()
+            runCatching { websocket?.close() }
             Logger.getLogger("Kizzy").log(Level.SEVERE, "Gateway: Connection to gateway closed")
         }
     }

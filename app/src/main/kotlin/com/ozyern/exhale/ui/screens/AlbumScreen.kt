@@ -8,10 +8,14 @@
 
 package com.ozyern.exhale.ui.screens
 
+import com.kyant.backdrop.backdrops.layerBackdrop
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.unit.sp
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -21,6 +25,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,6 +43,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -95,6 +102,8 @@ import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
 import androidx.palette.graphics.Palette
 import coil3.compose.AsyncImage
+import com.ozyern.exhale.ui.component.rememberScrollEdge
+import com.ozyern.exhale.ui.component.scrollEdgeScrim
 import com.ozyern.exhale.ui.component.PlayShuffleButton
 import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.ui.component.LiquidBackButton
@@ -120,6 +129,8 @@ import com.ozyern.exhale.LocalDownloadUtil
 import com.ozyern.exhale.LocalPlayerAwareWindowInsets
 import com.ozyern.exhale.LocalPlayerConnection
 import com.ozyern.exhale.R
+import com.ozyern.exhale.ui.component.liquidGlassSurface
+import com.ozyern.exhale.ui.component.lightGlass
 import com.ozyern.exhale.constants.AppBarHeight
 import com.ozyern.exhale.constants.DisableBlurKey
 import com.ozyern.exhale.constants.HideExplicitKey
@@ -396,6 +407,15 @@ fun AlbumScreen(
 
     val playlistId by viewModel.playlistId.collectAsState()
     val albumWithSongs by viewModel.albumWithSongs.collectAsState()
+    // The "About this album": YouTube's own editorial note, when the release has one.
+    val albumBrowseId = albumWithSongs?.album?.id
+    var albumAbout by remember(albumBrowseId) { mutableStateOf<String?>(null) }
+    LaunchedEffect(albumBrowseId) {
+        val id = albumBrowseId ?: return@LaunchedEffect
+        albumAbout = withContext(Dispatchers.IO) {
+            com.ozyern.exhale.innertube.YouTube.albumDescription(id).getOrNull()
+        }
+    }
     val uiState by viewModel.uiState.collectAsState()
     val otherVersions by viewModel.otherVersions.collectAsState()
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
@@ -404,50 +424,12 @@ fun AlbumScreen(
     // System bars padding
     val systemBarsTopPadding = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
 
-    // Gradient colors state for album cover
-    var gradientColors by remember { mutableStateOf<List<Color>>(emptyList()) }
-    val fallbackColor = MaterialTheme.colorScheme.surface.toArgb()
     val surfaceColor = MaterialTheme.colorScheme.surface
 
     // Cover-art download state
     var downloadingCover by remember { mutableStateOf(false) }
     var showQualityDialog by remember { mutableStateOf(false) }
 
-    // Extract gradient colors from album cover
-    LaunchedEffect(albumWithSongs?.album?.thumbnailUrl) {
-        val thumbnailUrl = albumWithSongs?.album?.thumbnailUrl
-        if (thumbnailUrl != null) {
-            val request = ImageRequest.Builder(context)
-                .data(thumbnailUrl)
-                .size(Size(PlayerColorExtractor.Config.IMAGE_SIZE, PlayerColorExtractor.Config.IMAGE_SIZE))
-                .allowHardware(false)
-                .build()
-
-            val result = runCatching {
-                context.imageLoader.execute(request)
-            }.getOrNull()
-
-            if (result != null) {
-                val bitmap = result.image?.toBitmap()
-                if (bitmap != null) {
-                    val palette = withContext(Dispatchers.Default) {
-                        Palette.from(bitmap)
-                            .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
-                            .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
-                            .generate()
-                    }
-
-                    val extractedColors = PlayerColorExtractor.extractGradientColors(
-                        palette = palette,
-                        fallbackColor = fallbackColor
-                    )
-                    gradientColors = extractedColors
-                }
-            }
-        } else {
-            gradientColors = emptyList()
-        }
-    }
 
     val wrappedSongs = remember(albumWithSongs, hideExplicit) {
         val filteredSongs = if (hideExplicit) {
@@ -492,17 +474,28 @@ fun AlbumScreen(
     // State for LazyColumn to track scroll
     val lazyListState = rememberLazyListState()
 
-    // Calculate gradient opacity based on scroll position
-    val gradientAlpha by remember {
-        derivedStateOf {
-            if (lazyListState.firstVisibleItemIndex == 0) {
-                val offset = lazyListState.firstVisibleItemScrollOffset
-                (1f - (offset / 600f)).coerceIn(0f, 1f)
-            } else {
-                0f
-            }
+    // The album's motion artwork: Apple's editorial loop for this album,
+    // playing where the cover is. Looked up once per album, and only with animated covers on.
+    val (animatedCovers) = rememberPreference(com.ozyern.exhale.constants.ExhaleCanvasKey, true)
+    var albumMotion by remember(albumWithSongs?.album?.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(albumWithSongs?.album?.id, animatedCovers) {
+        val album = albumWithSongs?.album ?: return@LaunchedEffect
+        if (!animatedCovers) {
+            albumMotion = null
+            return@LaunchedEffect
+        }
+        val artist = albumWithSongs?.artists?.firstOrNull()?.name ?: return@LaunchedEffect
+        albumMotion = withContext(Dispatchers.IO) {
+            runCatching {
+                com.ozyern.exhale.canvas.providers.AppleMusicCanvasProvider
+                    .getByAlbumArtist(album.title, artist)
+                    ?.preferredAnimationUrl
+            }.getOrNull()
         }
     }
+    // Only while the header is on screen: a loop playing under a scrolled list is battery for nothing.
+    val headerVisible by remember { derivedStateOf { lazyListState.firstVisibleItemIndex == 0 } }
+
 
     val showTopBarTitle by remember {
         derivedStateOf {
@@ -516,131 +509,64 @@ fun AlbumScreen(
         }
     }
 
-    Box(
+    // The release page: the sleeve's colours for the whole page, the artwork behind the
+    // list, a band of blur across the join, and the track list numbered underneath.
+    val palette = com.ozyern.exhale.ui.component.rememberReleasePalette(albumWithSongs?.album?.thumbnailUrl)
+    val albumBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
+    var searching by rememberSaveable(albumBrowseId) { mutableStateOf(false) }
+    var query by rememberSaveable(albumBrowseId) { mutableStateOf("") }
+    val closeSearch = {
+        searching = false
+        query = ""
+    }
+    BackHandler(enabled = searching && !selection) { closeSearch() }
+    val visibleSongs = remember(wrappedSongs.toList(), query) {
+        wrappedSongs.withIndex().filter { (_, w) ->
+            query.isBlank() ||
+                w.item.song.title.contains(query, ignoreCase = true) ||
+                w.item.artists.any { it.name.contains(query, ignoreCase = true) }
+        }
+    }
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(surfaceColor),
+            .background(palette.background),
     ) {
-        // Mesh gradient background layer
-        if (!disableBlur && gradientColors.isNotEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxSize(0.55f)
-                    .align(Alignment.TopCenter)
-                    .zIndex(-1f)
-                    .drawBehind {
-                        val width = size.width
-                        val height = size.height
-
-                        // Draw-phase read: `gradientAlpha` tracks the scroll offset, so testing it
-                        // up in composition invalidated this whole screen on every scrolled pixel.
-                        // Bailing here instead keeps the check but pays for it in the draw pass.
-                        if (gradientAlpha <= 0f) return@drawBehind
-
-                        if (gradientColors.size >= 3) {
-                            val c0 = gradientColors[0]
-                            val c1 = gradientColors[1]
-                            val c2 = gradientColors[2]
-                            val c3 = gradientColors.getOrElse(3) { c0 }
-                            val c4 = gradientColors.getOrElse(4) { c1 }
-                            // Primary color blob - top center (stronger)
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        c0.copy(alpha = gradientAlpha * 0.75f),
-                                        c0.copy(alpha = gradientAlpha * 0.4f),
-                                        Color.Transparent
-                                    ),
-                                    center = Offset(width * 0.5f, height * 0.15f),
-                                    radius = width * 0.8f
-                                )
-                            )
-
-                            // Secondary color blob - left side
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        c1.copy(alpha = gradientAlpha * 0.55f),
-                                        c1.copy(alpha = gradientAlpha * 0.3f),
-                                        Color.Transparent
-                                    ),
-                                    center = Offset(width * 0.1f, height * 0.4f),
-                                    radius = width * 0.6f
-                                )
-                            )
-
-                            // Third color blob - right side
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        c2.copy(alpha = gradientAlpha * 0.5f),
-                                        c2.copy(alpha = gradientAlpha * 0.25f),
-                                        Color.Transparent
-                                    ),
-                                    center = Offset(width * 0.9f, height * 0.35f),
-                                    radius = width * 0.55f
-                                )
-                            )
-
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        c3.copy(alpha = gradientAlpha * 0.35f),
-                                        c3.copy(alpha = gradientAlpha * 0.18f),
-                                        Color.Transparent
-                                    ),
-                                    center = Offset(width * 0.25f, height * 0.65f),
-                                    radius = width * 0.75f
-                                )
-                            )
-
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        c4.copy(alpha = gradientAlpha * 0.3f),
-                                        c4.copy(alpha = gradientAlpha * 0.15f),
-                                        Color.Transparent
-                                    ),
-                                    center = Offset(width * 0.55f, height * 0.85f),
-                                    radius = width * 0.9f
-                                )
-                            )
-                        } else if (gradientColors.isNotEmpty()) {
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        gradientColors[0].copy(alpha = gradientAlpha * 0.7f),
-                                        gradientColors[0].copy(alpha = gradientAlpha * 0.35f),
-                                        Color.Transparent
-                                    ),
-                                    center = Offset(width * 0.5f, height * 0.25f),
-                                    radius = width * 0.85f
-                                )
-                            )
-                        }
-
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    Color.Transparent,
-                                    surfaceColor.copy(alpha = gradientAlpha * 0.22f),
-                                    surfaceColor.copy(alpha = gradientAlpha * 0.55f),
-                                    surfaceColor
-                                ),
-                                startY = height * 0.4f,
-                                endY = height
-                            )
-                        )
-                    }
+        val artHeight = (maxWidth / com.ozyern.exhale.ui.component.ReleaseSleeveRatio)
+            .coerceAtMost(maxHeight * 0.6f)
+        val artworkUrl = albumWithSongs?.album?.thumbnailUrl
+        if (albumWithSongs?.songs?.isNotEmpty() == true) {
+            com.ozyern.exhale.ui.component.ReleaseBackground(
+                artworkUrl = artworkUrl,
+                palette = palette,
+                artHeight = artHeight,
+                listState = lazyListState,
+                // Recorded for this page's own glass: the back button bends the sleeve it sits on.
+                modifier = Modifier.matchParentSize().layerBackdrop(albumBackdrop),
+            ) {
+                albumMotion?.let { motion ->
+                    com.ozyern.exhale.ui.player.CanvasArtworkPlayer(
+                        primaryUrl = motion,
+                        fallbackUrl = null,
+                        isPlaying = headerVisible,
+                        modifier = Modifier.fillMaxSize(),
+                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+                    )
+                }
+            }
+            com.ozyern.exhale.ui.component.ReleaseMergeBand(
+                artworkUrl = artworkUrl,
+                palette = palette,
+                artHeight = artHeight,
+                listState = lazyListState,
+                enabled = !disableBlur,
             )
         }
 
         LazyColumn(
             state = lazyListState,
-            // No top inset: the cover runs under the status bar, with the back button floating on
-            // it - the chrome belongs *on* the artwork, not above it in a band of page colour.
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 bottom = LocalPlayerAwareWindowInsets.current.asPaddingValues()
                     .calculateBottomPadding(),
@@ -649,436 +575,200 @@ fun AlbumScreen(
             val albumWithSongs = albumWithSongs
             val hasSongs = albumWithSongs?.songs?.isNotEmpty() == true
             if (hasSongs) {
-                // Hero Header
                 item(key = "header") {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        // The cover is the header.
-                        //
-                        // Apple Music runs it edge to edge from the top of the screen, with the
-                        // back button and the menu floating on it and the bottom of the picture
-                        // dissolving into the page. A 240dp square floating in the middle of a
-                        // margin is a *thumbnail of* the album; this is the album. The page's own
-                        // top padding goes with it - the art starts under the status bar, which is
-                        // the whole point.
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1f)
-                                // Same treatment as the artist portrait, and the same reason: a
-                                // cover that scrolls at exactly the list's speed reads as a tall
-                                // list row rather than as the subject of the page.
-                                .heroParallax(lazyListState, travel = 260.dp)
-                        ) {
-                            AsyncImage(
-                                model = albumWithSongs.album.thumbnailUrl,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            // Darkened at both ends: the chrome sits on the top, the title sits
-                            // under the bottom, and neither can rely on the artwork being dark
-                            // where it happens to land.
-                            Box(
-                                modifier = Modifier
-                                    .matchParentSize()
-                                    .background(
-                                        Brush.verticalGradient(
-                                            0f to Color.Black.copy(alpha = 0.38f),
-                                            0.22f to Color.Transparent,
-                                            0.72f to Color.Transparent,
-                                            1f to MaterialTheme.colorScheme.surface,
-                                        )
-                                    )
-                            )
-
-                            // Download Cover Button - Inside image, bottom-right
-                            Surface(
-                                onClick = { showQualityDialog = true },
-                                shape = CircleShape,
-                                color = Color.Transparent,
-                                modifier = Modifier
-                                    .size(48.dp) // Tamaño ligeramente reducido
-                                    .align(Alignment.BottomEnd)
-                                    .offset(x = (-12).dp, y = (-12).dp)
-                                    .shadow(
-                                        elevation = 4.dp, // Sombra más sutil
-                                        shape = CircleShape,
-                                        ambientColor = Color.Black.copy(alpha = 0.15f),
-                                        spotColor = Color.Black.copy(alpha = 0.15f)
-                                    )
-                                    .clip(CircleShape)
-                                    .background(
-                                        color = Color.Black.copy(alpha = 0.2f), // Más transparente
-                                        shape = CircleShape
-                                    )
-                                    .border(
-                                        width = 0.5.dp, // Borde más fino
-                                        color = Color.White.copy(alpha = 0.15f),
-                                        shape = CircleShape
-                                    )
-                            ) {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (downloadingCover) {
-                                        LoadingRing(
-                                            stroke = 2.dp,
-                                            modifier = Modifier.size(24.dp), // Ícono más pequeño
-                                            color = Color.White.copy(alpha = 0.9f)
-                                        )
-                                    } else {
-                                        Icon(
-                                            painter = painterResource(R.drawable.download),
-                                            contentDescription = "Download cover",
-                                            tint = Color.White.copy(alpha = 0.8f), // Ícono semi-transparente
-                                            modifier = Modifier.size(24.dp) // Ícono más pequeño
-                                        )
-                                    }
-                                }
+                    val totalDuration = albumWithSongs.songs.sumOf { it.song.duration }
+                    val meta = buildList {
+                        add("Album")
+                        albumWithSongs.album.year?.let { add(it.toString()) }
+                        add(pluralStringResource(R.plurals.n_song, wrappedSongs.size, wrappedSongs.size))
+                        if (totalDuration > 0) add(makeTimeString(totalDuration * 1000L))
+                    }.joinToString(" \u2022 ").uppercase()
+                    com.ozyern.exhale.ui.component.ReleaseHeader(
+                        title = albumWithSongs.album.title,
+                        credit = albumWithSongs.artists.joinToString(", ") { it.name },
+                        meta = meta,
+                        palette = palette,
+                        artHeight = artHeight,
+                        onCreditClick = albumWithSongs.artists.firstOrNull()?.let { artist ->
+                            { navController.navigate("artist/${artist.id}") }
+                        },
+                        badges = {
+                            if (mediaMetadata?.album?.id == albumWithSongs.album.id) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                com.ozyern.exhale.ui.component.AudioFormatBadges(format = currentFormat)
                             }
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        // Album Title
-                        Text(
-                            text = albumWithSongs.album.title,
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = 32.dp)
+                        },
+                    ) {
+                        val circle = 46.dp
+                        // Save · Shuffle · Play · Search · More.
+                        // Downloading lives in More, out of the way.
+                        val saved = albumWithSongs.album.bookmarkedAt != null
+                        com.ozyern.exhale.ui.component.ReleaseCircle(
+                            icon = if (saved) R.drawable.check else R.drawable.add,
+                            contentDescription = null,
+                            palette = palette,
+                            size = circle,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                database.query { update(albumWithSongs.album.toggleLike()) }
+                            },
                         )
-
-                        // Premium format badges when the currently-playing track is from this album.
-                        if (mediaMetadata?.album?.id == albumWithSongs.album.id) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            com.ozyern.exhale.ui.component.AudioFormatBadges(
-                                format = currentFormat,
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // Artist Names (Clickable)
-                        Text(
-                            text = buildAnnotatedString {
-                                withStyle(
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Normal,
-                                        color = MaterialTheme.colorScheme.primary
-                                    ).toSpanStyle()
-                                ) {
-                                    albumWithSongs.artists.fastForEachIndexed { index, artist ->
-                                        val link = LinkAnnotation.Clickable(artist.id) {
-                                            navController.navigate("artist/${artist.id}")
-                                        }
-                                        withLink(link) {
-                                            append(artist.name)
-                                        }
-                                        if (index != albumWithSongs.artists.lastIndex) {
-                                            append(", ")
-                                        }
-                                    }
+                        com.ozyern.exhale.ui.component.ReleaseCircle(
+                            icon = R.drawable.shuffle,
+                            contentDescription = stringResource(R.string.shuffle),
+                            palette = palette,
+                            size = circle,
+                            onClick = {
+                                playerConnection.service.getAutomix(playlistId)
+                                playerConnection.playQueue(
+                                    LocalAlbumRadio(albumWithSongs.copy(songs = albumWithSongs.songs.shuffled())),
+                                )
+                            },
+                        )
+                        com.ozyern.exhale.ui.component.ReleasePlay(
+                            contentDescription = stringResource(R.string.play),
+                            size = circle,
+                            onClick = {
+                                playerConnection.service.getAutomix(playlistId)
+                                playerConnection.playQueue(LocalAlbumRadio(albumWithSongs))
+                            },
+                        )
+                        com.ozyern.exhale.ui.component.ReleaseCircle(
+                            icon = if (searching) R.drawable.close else R.drawable.search,
+                            contentDescription = null,
+                            palette = palette,
+                            size = circle,
+                            onClick = { if (searching) closeSearch() else searching = true },
+                        )
+                        com.ozyern.exhale.ui.component.ReleaseCircle(
+                            icon = R.drawable.more_horiz,
+                            contentDescription = null,
+                            palette = palette,
+                            size = circle,
+                            onClick = {
+                                menuState.show {
+                                    AlbumMenu(
+                                        originalAlbum = Album(albumWithSongs.album, albumWithSongs.artists),
+                                        navController = navController,
+                                        onDismiss = menuState::dismiss,
+                                    )
                                 }
                             },
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 32.dp)
                         )
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // The release, in one line.
-                        //
-                        // Three icon chips spread across the width was a toolbar of facts you
-                        // cannot press. Apple Music sets the same three as a single quiet line
-                        // under the artist - "2023 · 12 songs · 48 minutes" - and keeps the width
-                        // for the two buttons underneath, which you can.
-                        val totalDuration = albumWithSongs.songs.sumOf { it.song.duration }
-                        Text(
-                            text = buildList {
-                                albumWithSongs.album.year?.let { add(it.toString()) }
-                                add(
-                                    pluralStringResource(
-                                        R.plurals.n_song,
-                                        wrappedSongs.size,
-                                        wrappedSongs.size
-                                    )
-                                )
-                                if (totalDuration > 0) add(makeTimeString(totalDuration * 1000L))
-                            }.joinToString("  \u00b7  "),
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 32.dp),
-                        )
-
-                        Spacer(modifier = Modifier.height(22.dp))
-
-                        // Action Buttons Row
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Like/Bookmark Button
-                            Surface(
-                                onClick = {
-                                    database.query {
-                                        update(albumWithSongs.album.toggleLike())
-                                    }
-                                },
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                                modifier = Modifier.size(50.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        painter = painterResource(
-                                            if (albumWithSongs.album.bookmarkedAt != null)
-                                                R.drawable.favorite
-                                            else
-                                                R.drawable.favorite_border
-                                        ),
-                                        contentDescription = null,
-                                        tint = if (albumWithSongs.album.bookmarkedAt != null)
-                                            MaterialTheme.colorScheme.error
-                                        else
-                                            MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                            }
-
-                            // Play / Shuffle, as Apple Music has them: two tinted capsules
-                            // carrying a glyph AND its word, not two filled primary slabs with a
-                            // bare icon each. See PlayShuffleButton.
-                            PlayShuffleButton(
-                                iconRes = R.drawable.play,
-                                label = stringResource(R.string.play),
-                                solid = true,
-                                modifier = Modifier.weight(1f),
-                                onClick = {
-                                    playerConnection.service.getAutomix(playlistId)
-                                    playerConnection.playQueue(
-                                        LocalAlbumRadio(albumWithSongs),
-                                    )
-                                    },
-                            )
-
-                            PlayShuffleButton(
-                                iconRes = R.drawable.shuffle,
-                                label = stringResource(R.string.shuffle),
-                                solid = true,
-                                modifier = Modifier.weight(1f),
-                                onClick = {
-                                    playerConnection.service.getAutomix(playlistId)
-                                    playerConnection.playQueue(
-                                        LocalAlbumRadio(albumWithSongs.copy(songs = albumWithSongs.songs.shuffled())),
-                                    )
-                                    },
-                            )
-
-                            // Download Button
-                            Surface(
-                                onClick = {
-                                    when (downloadState) {
-                                        Download.STATE_COMPLETED -> {
-                                            albumWithSongs.songs.forEach { song ->
-                                                DownloadService.sendRemoveDownload(
-                                                    context,
-                                                    ExoDownloadService::class.java,
-                                                    song.id,
-                                                    false,
-                                                )
-                                            }
-                                        }
-                                        Download.STATE_DOWNLOADING -> {
-                                            albumWithSongs.songs.forEach { song ->
-                                                DownloadService.sendRemoveDownload(
-                                                    context,
-                                                    ExoDownloadService::class.java,
-                                                    song.id,
-                                                    false,
-                                                )
-                                            }
-                                        }
-                                        else -> {
-                                            albumWithSongs.songs.forEach { song ->
-                                                val downloadRequest =
-                                                    DownloadRequest
-                                                        .Builder(song.id, song.id.toUri())
-                                                        .setCustomCacheKey(song.id)
-                                                        .setData(song.song.title.toByteArray())
-                                                        .build()
-                                                DownloadService.sendAddDownload(
-                                                    context,
-                                                    ExoDownloadService::class.java,
-                                                    downloadRequest,
-                                                    false,
-                                                )
-                                            }
-                                        }
-                                    }
-                                },
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                                modifier = Modifier.size(50.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    when (downloadState) {
-                                        Download.STATE_COMPLETED -> {
-                                            Icon(
-                                                painter = painterResource(R.drawable.offline),
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
-                                        Download.STATE_DOWNLOADING -> {
-                                            LoadingRing(
-                                                stroke = 2.dp,
-                                                modifier = Modifier.size(24.dp),
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                        }
-                                        else -> {
-                                            Icon(
-                                                painter = painterResource(R.drawable.download),
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            // More Options Button
-                            Surface(
-                                onClick = {
-                                    menuState.show {
-                                        AlbumMenu(
-                                            originalAlbum = Album(
-                                                albumWithSongs.album,
-                                                albumWithSongs.artists
-                                            ),
-                                            navController = navController,
-                                            onDismiss = menuState::dismiss,
-                                        )
-                                    }
-                                },
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                                modifier = Modifier.size(50.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.more_vert),
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(24.dp))
                     }
                 }
 
-                // Songs Section Header
-                item(key = "songs_header") {
-                    NavigationTitle(
-                        title = stringResource(R.string.songs),
-                    )
+                if (searching) {
+                    item(key = "search") {
+                        com.ozyern.exhale.ui.component.ReleaseSearchField(
+                            query = query,
+                            onQueryChange = { query = it },
+                            onClose = closeSearch,
+                            palette = palette,
+                            placeholder = "Search this album",
+                        )
+                    }
                 }
 
-                // Songs List
+                albumAbout?.takeIf { it.isNotBlank() && !searching }?.let { about ->
+                    item(key = "about_album") {
+                        com.ozyern.exhale.ui.component.ReleaseAbout(
+                            title = "About the album",
+                            text = about,
+                            palette = palette,
+                        )
+                    }
+                }
+
+                if (visibleSongs.isEmpty()) {
+                    item(key = "no_matches") {
+                        Text(
+                            text = "Nothing matches \u201c$query\u201d",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = palette.onBackgroundVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(32.dp),
+                        )
+                    }
+                }
+
                 itemsIndexed(
-                    items = wrappedSongs,
-                    key = { _, song -> song.item.id },
-                ) { index, songWrapper ->
-                    SongListItem(
-                        song = songWrapper.item,
-                        albumIndex = index + 1,
-                        isActive = songWrapper.item.id == mediaMetadata?.id,
-                        isPlaying = isPlaying,
-                        showInLibraryIcon = true,
-                        trailingContent = {
-                            IconButton(
-                                onClick = {
-                                    menuState.show {
-                                        SongMenu(
-                                            originalSong = songWrapper.item,
-                                            navController = navController,
-                                            onDismiss = menuState::dismiss,
-                                        )
-                                    }
-                                },
-                                onLongClick = {}
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.more_vert),
-                                    contentDescription = null,
+                    items = visibleSongs,
+                    key = { _, entry -> entry.value.item.id },
+                ) { position, entry ->
+                    val index = entry.index
+                    val songWrapper = entry.value
+                    val song = songWrapper.item
+                    val isCurrent = song.id == mediaMetadata?.id
+                    com.ozyern.exhale.ui.component.ReleaseTrackRow(
+                        number = index + 1,
+                        title = song.song.title,
+                        subtitle = song.artists.joinToString(", ") { it.name },
+                        duration = song.song.duration.takeIf { it > 0 }?.let { makeTimeString(it * 1000L) },
+                        explicit = song.song.explicit,
+                        palette = palette,
+                        isCurrent = isCurrent,
+                        isPlaying = isCurrent && isPlaying,
+                        selected = songWrapper.isSelected && selection,
+                        onClick = {
+                            if (!selection) {
+                                if (isCurrent) {
+                                    playerConnection.player.togglePlayPause()
+                                } else {
+                                    playerConnection.service.getAutomix(playlistId)
+                                    playerConnection.playQueue(LocalAlbumRadio(albumWithSongs, startIndex = index))
+                                }
+                            } else {
+                                songWrapper.isSelected = !songWrapper.isSelected
+                            }
+                        },
+                        onLongClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            if (!selection) selection = true
+                            wrappedSongs.forEach { it.isSelected = false }
+                            songWrapper.isSelected = true
+                        },
+                        onMore = {
+                            menuState.show {
+                                SongMenu(
+                                    originalSong = song,
+                                    navController = navController,
+                                    onDismiss = menuState::dismiss,
                                 )
                             }
                         },
-                        isSelected = songWrapper.isSelected && selection,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .combinedClickable(
-                                onClick = {
-                                    if (!selection) {
-                                        if (songWrapper.item.id == mediaMetadata?.id) {
-                                            playerConnection.player.togglePlayPause()
-                                        } else {
-                                            playerConnection.service.getAutomix(playlistId)
-                                            playerConnection.playQueue(
-                                                LocalAlbumRadio(albumWithSongs, startIndex = index),
-                                            )
-                                        }
-                                    } else {
-                                        songWrapper.isSelected = !songWrapper.isSelected
-                                    }
-                                },
-                                onLongClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    if (!selection) {
-                                        selection = true
-                                    }
-                                    wrappedSongs.forEach { it.isSelected = false }
-                                    songWrapper.isSelected = true
-                                },
-                            ),
+                    )
+                    if (position < visibleSongs.lastIndex) {
+                        com.ozyern.exhale.ui.component.ReleaseRowDivider(palette)
+                    }
+                }
+
+                // The release signs off with its running time.
+                item(key = "footer") {
+                    val total = albumWithSongs.songs.sumOf { it.song.duration }
+                    Text(
+                        text = buildList {
+                            add(pluralStringResource(R.plurals.n_song, wrappedSongs.size, wrappedSongs.size))
+                            if (total > 0) add("${(total + 30) / 60} minutes")
+                        }.joinToString(", "),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = palette.onBackgroundVariant,
+                        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 18.dp),
                     )
                 }
 
                 // Other Versions Section
                 if (otherVersions.isNotEmpty()) {
                     item(key = "other_versions_header") {
-                        NavigationTitle(
+                        com.ozyern.exhale.ui.component.ReleaseSectionHeading(
                             title = stringResource(R.string.other_versions),
+                            palette = palette,
                         )
                     }
                     item(key = "other_versions_list") {
-                        LazyRow {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 10.dp),
+                        ) {
                             items(
                                 items = otherVersions.distinctBy { it.id },
                                 key = { it.id },
@@ -1272,16 +962,19 @@ fun AlbumScreen(
             )
         } else {
             TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-                scrolledContainerColor = MaterialTheme.colorScheme.surface
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent
             )
         }
 
+        val scrollEdge = rememberScrollEdge(!transparentAppBar)
         TopAppBar(
-            modifier = Modifier.align(Alignment.TopCenter),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .scrollEdgeScrim(palette.background) { scrollEdge.value },
             colors = topAppBarColors,
             scrollBehavior = scrollBehavior,
-            title = {
+            title = { com.ozyern.exhale.ui.component.HeadingStyle {
                 if (selection) {
                     val count = wrappedSongs.count { it.isSelected }
                     Text(
@@ -1296,8 +989,11 @@ fun AlbumScreen(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-            },
+            } },
             navigationIcon = {
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.ozyern.exhale.ui.component.liquid.LocalPageBackdrop provides albumBackdrop,
+                ) {
                 LiquidBackButton(
                     onClick = {
                         if (selection) {
@@ -1313,6 +1009,7 @@ fun AlbumScreen(
                     },
                     icon = if (selection) R.drawable.close else R.drawable.chevron_back,
                 )
+                }
             },
             actions = {
                 if (selection) {
@@ -1412,3 +1109,4 @@ private fun MetadataChip(
         }
     }
 }
+

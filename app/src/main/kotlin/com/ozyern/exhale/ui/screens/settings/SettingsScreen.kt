@@ -216,24 +216,12 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxSize(),
             )
 
-            // Above the now-playing pill, not under it.
-            //
-            // The capsule was aligned to the bottom of the page while the mini player lives in the
-            // Scaffold's bottom bar, a different host entirely - so with a song playing the two
-            // were drawn at the same place and the pill cut across the bottom of the search field.
-            // The player-aware insets already carry the pill's height; this lifts the field by
-            // exactly that much, so they stack instead of overlapping.
+            // iOS's place for it: a capsule at the foot of the page, resting on the dock.
             SettingsBottomSearch(
                 query = query,
                 onQueryChange = { query = it; isSearching = true },
                 onClear = { resetSearch() },
                 focusRequester = focusRequester,
-                // Lifted once, not twice.
-                //
-                // The field already applies the player-aware bottom inset itself (it has to, so it
-                // can also clear the keyboard). Adding the same inset again here stacked two lifts
-                // on top of each other, so with a song playing the capsule floated a mini player's
-                // height above the mini player instead of resting on it.
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }

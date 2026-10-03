@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
@@ -243,8 +244,10 @@ fun StatsScreen(
 
             // ── The deck ──────────────────────────────────────────────────────
             item(key = "timeCard") {
-                SoundChemTimeCard(
+                SoundChemHero(
+                    covers = mostPlayedSongsStats.map { it.thumbnailUrl }.filter { it.isNotBlank() }.distinct().take(4),
                     minutes = totalMinutes,
+                    periodText = periodText,
                     modifier = Modifier
                         .padding(horizontal = CapsuleGutter)
                         .capsuleEntrance(),
@@ -362,6 +365,21 @@ fun StatsScreen(
                 Spacer(Modifier.height(CapsuleGap))
             }
 
+            item(key = "insights") {
+                // Days so far for this month, the whole month for one that is over.
+                val days = if (monthIndex == 0) LocalDateTime.now().dayOfMonth else selectedMonth.toLocalDate().lengthOfMonth()
+                SoundChemInsights(
+                    dailyAverageMinutes = totalMinutes / days.coerceAtLeast(1),
+                    onRepeatTitle = topSong?.title,
+                    onRepeatPlays = topSong?.songCountListened ?: 0,
+                    artistCount = mostPlayedArtists.size,
+                    modifier = Modifier
+                        .padding(horizontal = CapsuleGutter)
+                        .capsuleEntrance(delayMillis = 200),
+                )
+                Spacer(Modifier.height(CapsuleGap))
+            }
+
             if (mostPlayedArtists.size >= 2) {
                 item(key = "breakdown") {
                     SoundChemBreakdownCard(
@@ -387,7 +405,7 @@ fun StatsScreen(
                 key = { _, song -> song.id },
             ) { index, song ->
                 ListItem(
-                    title = "${index + 1}. ${song.title}",
+                    title = song.title,
                     subtitle = joinByBullet(
                         pluralStringResource(
                             R.plurals.n_time,
@@ -397,13 +415,17 @@ fun StatsScreen(
                         makeTimeString(song.timeListened),
                     ),
                     thumbnailContent = {
-                        ItemThumbnail(
-                            thumbnailUrl = song.thumbnailUrl,
-                            isActive = song.id == mediaMetadata?.id,
-                            isPlaying = isPlaying,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.size(56.dp)
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            SoundChemRank(index + 1)
+                            Spacer(Modifier.width(8.dp))
+                            ItemThumbnail(
+                                thumbnailUrl = song.thumbnailUrl,
+                                isActive = song.id == mediaMetadata?.id,
+                                isPlaying = isPlaying,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.size(56.dp)
+                            )
+                        }
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -558,12 +580,12 @@ fun StatsScreen(
         }
 
         TopAppBar(
-            title = {
+            title = { com.ozyern.exhale.ui.component.HeadingStyle {
                 Text(
                     text = stringResource(R.string.sound_chem),
                     fontWeight = FontWeight.Bold,
                 )
-            },
+            } },
             navigationIcon = {
                 LiquidBackButton(
                     onClick = navController::navigateUp,

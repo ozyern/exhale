@@ -84,7 +84,7 @@ fun ChartsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.charts)) },
+                title = { com.ozyern.exhale.ui.component.HeadingStyle { Text(stringResource(R.string.charts)) } },
                 navigationIcon = {
                     LiquidBackButton(
                         onClick = { navController.navigateUp() },

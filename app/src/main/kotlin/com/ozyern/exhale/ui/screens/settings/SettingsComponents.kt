@@ -71,8 +71,23 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.FloatState
+import androidx.compose.runtime.CompositionLocalProvider
+import com.ozyern.exhale.ui.component.scrollEdgeVisibility
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material3.ProvideTextStyle
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -122,6 +137,23 @@ fun SettingsPage(content: @Composable BoxScope.() -> Unit) {
         thumbnailUrl = mediaMetadata?.thumbnailUrl,
     )
 
+    // This page's scroll, summed from what its scrollables actually move. Saved with the page so
+    // coming back to a scrolled page finds its bar grounded, as it was left.
+    val scrolled = rememberSaveable { mutableFloatStateOf(0f) }
+    val pageScroll = remember(scrolled) {
+        object : NestedScrollConnection {
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                scrolled.floatValue = if (consumed.y == 0f && available.y > 0f) {
+                    // Pulled down at the top: exactly none, whatever rounding has built up.
+                    0f
+                } else {
+                    (scrolled.floatValue - consumed.y).coerceAtLeast(0f)
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
     MaterialTheme(
         colorScheme = MaterialTheme.colorScheme.copy(surface = pageBackground),
     ) {
@@ -136,7 +168,9 @@ fun SettingsPage(content: @Composable BoxScope.() -> Unit) {
         // visible anywhere on this screen and refracting it would be inventing a reflection of
         // something that is not there.
         PageBackdropHost(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .nestedScroll(pageScroll),
             background = {
                 Box(
                     modifier = Modifier
@@ -162,7 +196,37 @@ fun SettingsPage(content: @Composable BoxScope.() -> Unit) {
             // Pulled back to two thirds: settings pages are dense small text, and the intensity
             // that reads as atmosphere behind Home's artwork cards reads as a stain behind a
             // paragraph of labels.
-            content()
+            CompositionLocalProvider(LocalSettingsScrolled provides scrolled) {
+                content()
+            }
+        }
+    }
+}
+
+/**
+ * How far the settings page under a bar has scrolled, in px. Each page keeps its own, so a bar
+ * knows whether rows are beneath it without every page wiring its scroll state through.
+ */
+internal val LocalSettingsScrolled = staticCompositionLocalOf<FloatState?> { null }
+
+/** How far a page scrolls before its bar's ground is fully up. */
+private val SettingsEdgeDistance = 24.dp
+
+/**
+ * What a settings bar's ground follows: this page's own scroll, and a large bar collapsing onto
+ * the rows. The shared app-bar state's content offset is not used — it is not reset between
+ * pages, so it would put a ground behind the bar of a page that has not moved.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun rememberSettingsEdge(scrollBehavior: TopAppBarScrollBehavior?): () -> Float {
+    val page = LocalSettingsScrolled.current
+    val edgePx = with(LocalDensity.current) { SettingsEdgeDistance.toPx() }
+    return remember(page, scrollBehavior, edgePx) {
+        {
+            val scrolled = page?.let { (it.floatValue / edgePx).coerceIn(0f, 1f) }
+                ?: scrollBehavior.scrollEdgeVisibility()
+            maxOf(scrolled, scrollBehavior?.state?.collapsedFraction ?: 0f)
         }
     }
 }
@@ -827,15 +891,29 @@ fun SettingsBarGround(modifier: Modifier = Modifier) {
 }
 
 /**
+ * Shows a bar's ground only as far as [visibility] says, and lets its lower quarter fade out, so
+ * the edge of the bar is never a line.
+ */
+internal fun Modifier.scrollEdgeFade(visibility: () -> Float): Modifier = this
+    .graphicsLayer {
+        alpha = visibility()
+        compositingStrategy = CompositingStrategy.Offscreen
+    }
+    .drawWithContent {
+        drawContent()
+        drawRect(
+            brush = Brush.verticalGradient(0.72f to Color.Black, 1f to Color.Transparent),
+            blendMode = BlendMode.DstIn,
+        )
+    }
+
+/**
  * The app bar every settings sub-page opens with.
  *
- * A thin wrapper over Material's [TopAppBar] whose only job is to put [SettingsBarGround] behind
- * it instead of a flat fill. The bars were each reaching for the default container colour, which
- * inside [SettingsPage] is the page's ground colour and nothing else -- so every sub-page had the
- * same dead strip across its top as the root screen did.
- *
- * The bar stays opaque. Settings content scrolls underneath it, and a translucent bar here would
- * show rows sliding behind the back button.
+ * Transparent: at rest the page runs straight up behind the title, with no strip of its own. Once
+ * rows scroll beneath it, [SettingsBarGround] — the page's own ground and wash — rises behind the
+ * bar and fades out at its lower edge, so the rows vanish under the title instead of colliding
+ * with it, and there is still no seam where the bar ends.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -847,10 +925,14 @@ fun SettingsTopAppBar(
     scrollBehavior: TopAppBarScrollBehavior? = null,
 ) {
     Box(modifier) {
-        SettingsBarGround(modifier = Modifier.matchParentSize())
+        // Always up. The ground is the page's own colour and wash, so at rest it is invisible; it
+        // only shows as rows slide beneath the title and fade out under it. Waiting for a scroll
+        // signal to raise it is what let rows and large titles draw over each other on pages
+        // whose scroll never reached the bar.
+        SettingsBarGround(modifier = Modifier.matchParentSize().scrollEdgeFade { 1f })
 
         TopAppBar(
-            title = title,
+            title = { ScrollingHeading(large = false, scrollBehavior = scrollBehavior, title = title) },
             navigationIcon = navigationIcon,
             actions = actions,
             scrollBehavior = scrollBehavior,
@@ -865,8 +947,8 @@ fun SettingsTopAppBar(
 /**
  * The large-title bar a settings page opens with.
  *
- * The same statement as [SettingsTopAppBar], one size up: opaque, so the rows sliding under it are
- * hidden, but opaque *as the page* rather than as a flat plate laid over it.
+ * The same statement as [SettingsTopAppBar], one size up: transparent at rest, and grounded in the
+ * page itself only as it collapses and rows slide under it.
  *
  * This existing is the difference between the root Settings screen and every other page that has
  * a large title. The root screen was fixed by hand and the rest kept
@@ -885,10 +967,14 @@ fun SettingsLargeTopAppBar(
     scrollBehavior: TopAppBarScrollBehavior? = null,
 ) {
     Box(modifier) {
-        SettingsBarGround(modifier = Modifier.matchParentSize())
+        // Always up. The ground is the page's own colour and wash, so at rest it is invisible; it
+        // only shows as rows slide beneath the title and fade out under it. Waiting for a scroll
+        // signal to raise it is what let rows and large titles draw over each other on pages
+        // whose scroll never reached the bar.
+        SettingsBarGround(modifier = Modifier.matchParentSize().scrollEdgeFade { 1f })
 
         LargeTopAppBar(
-            title = title,
+            title = { ScrollingHeading(large = true, scrollBehavior = scrollBehavior, title = title) },
             navigationIcon = navigationIcon,
             actions = actions,
             scrollBehavior = scrollBehavior,
@@ -1086,3 +1172,42 @@ internal val IosSystemColors = listOf(
  * which reads as icons that failed to load rather than as a colour scheme.
  */
 internal val IosAutoColors = IosSystemColors.dropLast(1)
+
+
+/**
+ * A page's heading: set in Home's wide face, and part of the page rather than the bar — it goes
+ * up and away with the rows while the back button stays pinned. A large bar's title already
+ * travels with the collapse; the small copy the bar would bring in at the top is kept out.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ScrollingHeading(
+    large: Boolean,
+    scrollBehavior: TopAppBarScrollBehavior?,
+    title: @Composable () -> Unit,
+) {
+    val scrolled = LocalSettingsScrolled.current
+    val fadePx = with(LocalDensity.current) { 56.dp.toPx() }
+    Box(
+        Modifier.graphicsLayer {
+            if (large) {
+                val collapsed = scrollBehavior?.state?.collapsedFraction ?: 0f
+                alpha = (1f - 2f * collapsed).coerceIn(0f, 1f)
+            } else {
+                val moved = scrolled?.floatValue ?: 0f
+                translationY = -moved.coerceAtMost(fadePx * 2)
+                alpha = (1f - moved / fadePx).coerceIn(0f, 1f)
+            }
+        },
+    ) {
+        ProvideTextStyle(
+            LocalTextStyle.current.copy(
+                fontFamily = com.ozyern.exhale.ui.component.ExhaleHeadingFont,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.sp,
+            ),
+        ) {
+            title()
+        }
+    }
+}

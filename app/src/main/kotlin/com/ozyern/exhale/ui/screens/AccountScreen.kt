@@ -193,7 +193,7 @@ fun AccountScreen(
     }
 
     TopAppBar(
-        title = { Text(stringResource(R.string.account)) },
+        title = { com.ozyern.exhale.ui.component.HeadingStyle { Text(stringResource(R.string.account)) } },
         navigationIcon = {
             LiquidBackButton(
                 onClick = navController::navigateUp,

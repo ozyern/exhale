@@ -8,10 +8,15 @@
 package com.ozyern.exhale.ui.screens.search
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import com.ozyern.exhale.extensions.toMediaItem
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -74,6 +79,7 @@ import com.ozyern.exhale.innertube.models.YTItem
 import com.ozyern.exhale.LocalPlayerAwareWindowInsets
 import com.ozyern.exhale.LocalPlayerConnection
 import com.ozyern.exhale.R
+import com.ozyern.exhale.ui.component.liquidGlassSurface
 import com.ozyern.exhale.constants.SearchFilterHeight
 import com.ozyern.exhale.extensions.togglePlayPause
 import com.ozyern.exhale.models.toMediaMetadata
@@ -126,9 +132,9 @@ fun OnlineSearchResult(
 
             listOf(
                 FILTER_SONG to stringResource(R.string.filter_songs),
-                FILTER_VIDEO to stringResource(R.string.filter_videos),
-                FILTER_ALBUM to stringResource(R.string.filter_albums),
                 FILTER_ARTIST to stringResource(R.string.filter_artists),
+                FILTER_ALBUM to stringResource(R.string.filter_albums),
+                FILTER_VIDEO to stringResource(R.string.filter_videos),
                 FILTER_COMMUNITY_PLAYLIST to stringResource(R.string.filter_community_playlists),
                 FILTER_FEATURED_PLAYLIST to stringResource(R.string.filter_featured_playlists),
             ).forEach { (sectionFilter, sectionTitle) ->
@@ -161,6 +167,33 @@ fun OnlineSearchResult(
         }
     }
 
+    val openItem: (YTItem) -> Unit = { item ->
+        when (item) {
+            is SongItem -> {
+                if (item.id == mediaMetadata?.id) {
+                    playerConnection.player.togglePlayPause()
+                } else {
+                    playerConnection.playQueue(YouTubeQueue(WatchEndpoint(videoId = item.id), item.toMediaMetadata()))
+                }
+            }
+            is AlbumItem -> navController.navigate("album/${item.id}")
+            is ArtistItem -> navController.navigate("artist/${item.id}")
+            is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
+        }
+    }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val ytLongClick: (YTItem) -> Unit = { item ->
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        menuState.show {
+            when (item) {
+                is SongItem -> YouTubeSongMenu(song = item, navController = navController, onDismiss = menuState::dismiss)
+                is AlbumItem -> YouTubeAlbumMenu(albumItem = item, navController = navController, onDismiss = menuState::dismiss)
+                is ArtistItem -> YouTubeArtistMenu(artist = item, onDismiss = menuState::dismiss)
+                is PlaylistItem -> YouTubePlaylistMenu(playlist = item, coroutineScope = coroutineScope, onDismiss = menuState::dismiss)
+            }
+        }
+    }
     val ytItemContent: @Composable LazyItemScope.(YTItem) -> Unit = { item: YTItem ->
         val longClick = {
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -195,51 +228,17 @@ fun OnlineSearchResult(
                 }
             }
         }
-        YouTubeListItem(
+        SearchResultRow(
             item = item,
-            isActive =
-                when (item) {
-                    is SongItem -> mediaMetadata?.id == item.id
-                    is AlbumItem -> mediaMetadata?.album?.id == item.id
-                    else -> false
-                },
-            isPlaying = isPlaying,
-            trailingContent = {
-                IconButton(
-                    onClick = longClick,
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.more_vert),
-                        contentDescription = null,
-                    )
-                }
+            isCurrent = when (item) {
+                is SongItem -> mediaMetadata?.id == item.id
+                is AlbumItem -> mediaMetadata?.album?.id == item.id
+                else -> false
             },
-            modifier =
-                Modifier
-                    .combinedClickable(
-                        onClick = {
-                            when (item) {
-                                is SongItem -> {
-                                    if (item.id == mediaMetadata?.id) {
-                                        playerConnection.player.togglePlayPause()
-                                    } else {
-                                        playerConnection.playQueue(
-                                            YouTubeQueue(
-                                                WatchEndpoint(videoId = item.id),
-                                                item.toMediaMetadata()
-                                            )
-                                        )
-                                    }
-                                }
-
-                                is AlbumItem -> navController.navigate("album/${item.id}")
-                                is ArtistItem -> navController.navigate("artist/${item.id}")
-                                is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
-                            }
-                        },
-                        onLongClick = longClick,
-                    )
-                    .animateItem(),
+            isPlaying = isPlaying,
+            onClick = { openItem(item) },
+            onLongClick = longClick,
+            modifier = Modifier.animateItem(),
         )
     }
 
@@ -255,13 +254,36 @@ fun OnlineSearchResult(
                 // the row's own height. `AppBarHeight` used to be reserved on top of that for
                 // a search field that is now docked at the bottom of the screen instead.
                 top = topInset + SearchFilterHeight + 12.dp,
+                // Past the mini player *and* the docked search field under it.
                 bottom = LocalPlayerAwareWindowInsets.current.asPaddingValues()
-                    .calculateBottomPadding(),
+                    .calculateBottomPadding() + 84.dp,
             ),
         ) {
             if (searchFilter == null) {
                 allModeSections.forEachIndexed { index, (title, sectionItems, sectionFilter) ->
-                    item(key = "section_header_${title}_$index") {
+                    val hero = if (index == 0 && sectionFilter == null) sectionItems.firstOrNull() else null
+                    if (hero != null) {
+                        item(key = "hero_${hero.id}") {
+                            TopResultCard(
+                                item = hero,
+                                isCurrent = hero.id == mediaMetadata?.id,
+                                isPlaying = isPlaying,
+                                onOpen = { openItem(hero) },
+                                onAddToQueue = {
+                                    (hero as? SongItem)?.let {
+                                        playerConnection.addToQueue(it.toMediaItem())
+                                        android.widget.Toast.makeText(
+                                            context, "Added to queue", android.widget.Toast.LENGTH_SHORT,
+                                        ).show()
+                                    }
+                                },
+                                onMore = { ytLongClick(hero) },
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                    }
+                    val rows = if (hero != null) sectionItems.drop(1) else sectionItems
+                    if (rows.isNotEmpty()) item(key = "section_header_${title}_$index") {
                         SearchSectionHeader(
                             title = title,
                             // "See all" swaps the chip row onto this section's filter, which is
@@ -278,14 +300,11 @@ fun OnlineSearchResult(
                     }
 
                     itemsIndexed(
-                        items = sectionItems,
+                        items = rows,
                         key = { itemIndex, item -> "$title/${item.id}/$itemIndex" },
-                    ) { _, item ->
+                    ) { itemIndex, item ->
                         ytItemContent(item)
-                    }
-
-                    item(key = "section_spacer_${title}_$index") {
-                        Spacer(Modifier.height(12.dp))
+                        if (itemIndex < rows.lastIndex) SearchRowDivider()
                     }
                 }
 
@@ -298,11 +317,14 @@ fun OnlineSearchResult(
                     }
                 }
             } else {
-                items(
-                    items = itemsPage?.items.orEmpty().distinctBy { it.id },
-                    key = { "filtered_${it.id}" },
-                    itemContent = ytItemContent,
-                )
+                val filtered = itemsPage?.items.orEmpty().distinctBy { it.id }
+                itemsIndexed(
+                    items = filtered,
+                    key = { _, it -> "filtered_${it.id}" },
+                ) { i, item ->
+                    ytItemContent(item)
+                    if (i < filtered.lastIndex) SearchRowDivider()
+                }
 
                 if (itemsPage?.continuation != null) {
                     item(key = "loading") {
@@ -354,35 +376,24 @@ fun OnlineSearchResult(
                 )
                 .padding(top = topInset, bottom = 10.dp),
         ) {
-            ChipsRow(
-                chips =
-                    listOf(
-                        null to stringResource(R.string.filter_all),
-                        FILTER_SONG to stringResource(R.string.filter_songs),
-                        FILTER_VIDEO to stringResource(R.string.filter_videos),
-                        FILTER_ALBUM to stringResource(R.string.filter_albums),
-                        FILTER_ARTIST to stringResource(R.string.filter_artists),
-                        FILTER_COMMUNITY_PLAYLIST to stringResource(R.string.filter_community_playlists),
-                        FILTER_FEATURED_PLAYLIST to stringResource(R.string.filter_featured_playlists),
-                    ),
-                currentValue = searchFilter,
-                onValueUpdate = {
+            SearchFilterPills(
+                chips = listOf(
+                    null to stringResource(R.string.filter_all),
+                    FILTER_SONG to stringResource(R.string.filter_songs),
+                    FILTER_ARTIST to stringResource(R.string.filter_artists),
+                    FILTER_ALBUM to stringResource(R.string.filter_albums),
+                    FILTER_VIDEO to stringResource(R.string.filter_videos),
+                    FILTER_COMMUNITY_PLAYLIST to stringResource(R.string.filter_community_playlists),
+                    FILTER_FEATURED_PLAYLIST to stringResource(R.string.filter_featured_playlists),
+                ),
+                current = searchFilter,
+                onSelect = {
                     if (viewModel.filter.value != it) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         viewModel.filter.value = it
                     }
-                    coroutineScope.launch {
-                        lazyListState.animateScrollToItem(0)
-                    }
+                    coroutineScope.launch { lazyListState.animateScrollToItem(0) }
                 },
-                icons = mapOf(
-                    null to R.drawable.search,
-                    FILTER_SONG to R.drawable.music_note,
-                    FILTER_VIDEO to R.drawable.slow_motion_video,
-                    FILTER_ALBUM to R.drawable.album,
-                    FILTER_ARTIST to R.drawable.person,
-                    FILTER_COMMUNITY_PLAYLIST to R.drawable.queue_music,
-                    FILTER_FEATURED_PLAYLIST to R.drawable.playlist_play,
-                ),
             )
         }
     }
@@ -406,11 +417,11 @@ private fun SearchSectionHeader(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
-            .padding(start = 20.dp, end = 12.dp, top = 18.dp, bottom = 6.dp),
+            .padding(start = 16.dp, end = 10.dp, top = 18.dp, bottom = 6.dp),
     ) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
@@ -419,16 +430,377 @@ private fun SearchSectionHeader(
         )
         if (onSeeAll != null) {
             Text(
-                text = stringResource(R.string.view_all),
+                text = "See all",
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(percent = 50))
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                    .clip(RoundedCornerShape(8.dp))
                     .clickable(onClick = onSeeAll)
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
             )
         }
+    }
+}
+
+/** Rounded at the top of a group's first row and the bottom of its last, square between. */
+private fun groupedShape(index: Int, count: Int): androidx.compose.ui.graphics.Shape {
+    val r = 22.dp
+    val z = 0.dp
+    return when {
+        count <= 1 -> androidx.compose.foundation.shape.RoundedCornerShape(r)
+        index == 0 -> androidx.compose.foundation.shape.RoundedCornerShape(r, r, z, z)
+        index == count - 1 -> androidx.compose.foundation.shape.RoundedCornerShape(z, z, r, r)
+        else -> androidx.compose.ui.graphics.RectangleShape
+    }
+}
+
+/**
+ * The best match, big: its artwork, what it is and who by, and a play disc — the one result a
+ * search is usually for, set apart from the list under it.
+ */
+@Composable
+private fun SearchHeroCard(
+    item: YTItem,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val cardShape = androidx.compose.foundation.shape.RoundedCornerShape(26.dp)
+    val (kind, by) = when (item) {
+        is SongItem -> "Song" to item.artists.joinToString(", ") { it.name }
+        is AlbumItem -> "Album" to item.artists.orEmpty().joinToString(", ") { it.name }
+        is ArtistItem -> "Artist" to ""
+        is PlaylistItem -> "Playlist" to item.author?.name.orEmpty()
+        else -> "" to ""
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .liquidGlassSurface(cardShape)
+            .clickable(onClick = onClick)
+            .padding(14.dp),
+    ) {
+        val artShape = if (item is ArtistItem) androidx.compose.foundation.shape.CircleShape
+        else androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
+        coil3.compose.AsyncImage(
+            model = item.thumbnail,
+            contentDescription = null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier
+                .size(92.dp)
+                .clip(artShape),
+        )
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = listOf(kind, by).filter { it.isNotBlank() }.joinToString(" · "),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        }
+        if (item is SongItem) {
+            Spacer(Modifier.width(12.dp))
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(MaterialTheme.colorScheme.onSurface)
+                    .clickable(onClick = onClick),
+            ) {
+                Icon(
+                    painter = painterResource(if (isCurrent && isPlaying) R.drawable.pause else R.drawable.play),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The search filters: rounded rectangles rather than capsules, the selected one inverted,
+ * scrolling sideways so no label is ever squeezed.
+ */
+@Composable
+private fun SearchFilterPills(
+    chips: List<Pair<com.ozyern.exhale.innertube.YouTube.SearchFilter?, String>>,
+    current: com.ozyern.exhale.innertube.YouTube.SearchFilter?,
+    onSelect: (com.ozyern.exhale.innertube.YouTube.SearchFilter?) -> Unit,
+) {
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(androidx.compose.foundation.rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        chips.forEach { (value, label) ->
+            val selected = value == current
+            val bg by androidx.compose.animation.animateColorAsState(
+                if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.surfaceVariant,
+                label = "filterPill",
+            )
+            val fg by androidx.compose.animation.animateColorAsState(
+                if (selected) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onBackground,
+                label = "filterPillText",
+            )
+            Box(
+                modifier = Modifier
+                    .clip(shape)
+                    .background(bg)
+                    .clickable { onSelect(value) }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            ) {
+                Text(text = label, style = MaterialTheme.typography.labelLarge, color = fg, maxLines = 1)
+            }
+        }
+    }
+}
+
+/** The hairline between results, inset to start under the titles. */
+@Composable
+private fun SearchRowDivider() {
+    Box(
+        Modifier
+            .padding(start = 78.dp)
+            .fillMaxWidth()
+            .height(0.5.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+    )
+}
+
+/**
+ * One result: 52dp artwork (round for an artist), the title, what it is and
+ * who by, the running time for a song, and a "more" at the end.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SearchResultRow(
+    item: YTItem,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val artShape = if (item is ArtistItem) androidx.compose.foundation.shape.CircleShape else RoundedCornerShape(8.dp)
+    val subtitle = when (item) {
+        is SongItem -> item.artists.joinToString(", ") { it.name }
+        is AlbumItem -> listOfNotNull("Album", item.artists?.joinToString(", ") { it.name }, item.year?.toString())
+            .filter { it.isNotBlank() }.joinToString(" \u00b7 ")
+        is ArtistItem -> "Artist"
+        is PlaylistItem -> listOfNotNull("Playlist", item.author?.name).joinToString(" \u00b7 ")
+        else -> ""
+    }
+    val accent = MaterialTheme.colorScheme.primary
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(if (isCurrent) accent.copy(alpha = 0.12f) else Color.Transparent)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            coil3.compose.AsyncImage(
+                model = item.thumbnail,
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(artShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+            if (isCurrent) {
+                Box(
+                    Modifier.size(52.dp).clip(artShape).background(Color.Black.copy(alpha = 0.45f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painterResource(if (isPlaying) R.drawable.graphic_eq else R.drawable.play),
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (item.explicit) {
+                    Icon(
+                        painterResource(R.drawable.explicit),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(15.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                }
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (isCurrent) accent else MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (subtitle.isNotBlank()) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        (item as? SongItem)?.duration?.takeIf { it > 0 }?.let { seconds ->
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "%d:%02d".format(seconds / 60, seconds % 60),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(androidx.compose.foundation.shape.CircleShape)
+                .clickable(onClick = onLongClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painterResource(R.drawable.more_vert),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+/**
+ * The search's best match, promoted: "Top result", a 72dp cover beside the title and who it's by,
+ * and for a song two plain buttons under it — Play, and Add to queue.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun TopResultCard(
+    item: YTItem,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
+    onOpen: () -> Unit,
+    onAddToQueue: () -> Unit,
+    onMore: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val (kind, by) = when (item) {
+        is SongItem -> "Song" to item.artists.joinToString(", ") { it.name }
+        is AlbumItem -> "Album" to item.artists.orEmpty().joinToString(", ") { it.name }
+        is ArtistItem -> "Artist" to ""
+        is PlaylistItem -> "Playlist" to item.author?.name.orEmpty()
+        else -> "" to ""
+    }
+    val artShape = if (item is ArtistItem) androidx.compose.foundation.shape.CircleShape else RoundedCornerShape(10.dp)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 8.dp)
+            .combinedClickable(onClick = onOpen, onLongClick = onMore),
+    ) {
+        Text(
+            text = "Top result",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            coil3.compose.AsyncImage(
+                model = item.thumbnail,
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(artShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = listOf(kind, by).filter { it.isNotBlank() }.joinToString(" \u00b7 "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .clickable(onClick = onMore),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(painterResource(R.drawable.more_vert), contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+        if (item is SongItem) {
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
+                TopResultButton(
+                    icon = if (isCurrent && isPlaying) R.drawable.pause else R.drawable.play,
+                    label = if (isCurrent && isPlaying) "Pause" else stringResource(R.string.play),
+                    onClick = onOpen,
+                )
+                TopResultButton(icon = R.drawable.queue_music, label = "Add to queue", onClick = onAddToQueue)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TopResultButton(icon: Int, label: String, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(50)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .height(40.dp)
+            .clip(shape)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp),
+    ) {
+        Icon(painterResource(icon), contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
     }
 }

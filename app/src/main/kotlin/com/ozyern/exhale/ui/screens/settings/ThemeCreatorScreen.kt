@@ -301,8 +301,10 @@ fun ThemeCreatorScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(paddingValues)
-                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
-                .verticalScroll(rememberScrollState()),
+                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
+                .verticalScroll(rememberScrollState())
+                // Below the content, not around the viewport: the page scrolls on under the dock.
+                .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Bottom)),
         ) {
             ThemeHeroPreview(
                 palette = currentPalette,

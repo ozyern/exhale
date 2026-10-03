@@ -34,6 +34,16 @@ import com.ozyern.exhale.innertube.models.YouTubeClient.Companion.TVHTML5
 import com.ozyern.exhale.innertube.models.YouTubeClient.Companion.VISIONOS
 import com.ozyern.exhale.innertube.models.YouTubeClient.Companion.WEB
 import com.ozyern.exhale.innertube.models.YouTubeClient.Companion.WEB_CREATOR
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.selects.onTimeout
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import timber.log.Timber
@@ -180,6 +190,66 @@ object YTPlayerUtils {
         val clientName: String,
     )
 
+    /**
+     * What one client offered: its player response, the first usable candidate and its URL,
+     * and whether that URL passed [validateStatus]. Pure data, so it can be worked out for every
+     * client at once and then read by the selection loop in the same order as always.
+     */
+    private class ClientAttempt(
+        val response: PlayerResponse?,
+        val format: PlayerResponse.StreamingData.Format? = null,
+        val url: String? = null,
+        val valid: Boolean = false,
+    )
+
+    /**
+     * How many clients MAX mode asks at the same time. All of them would be asked anyway, one after
+     * another; this only caps how many are in flight together.
+     */
+    private const val PARALLEL_CLIENTS = 8
+
+    /**
+     * The best stream score MAX mode has chosen this session, signed in and not. What a client can
+     * offer is set by the account and by YouTube's encodes, not by the song, so after the first
+     * full probe this is the ceiling every later song is measured against.
+     */
+    private val bestEverScores = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    private fun ceilingKey(isLoggedIn: Boolean, codec: AudioCodec) = "ytBestScore_${if (isLoggedIn) "in" else "out"}_${codec.name}"
+
+    private val ceilingPrefs by lazy {
+        runCatching { com.ozyern.exhale.App.instance.getSharedPreferences("stream_ceiling", android.content.Context.MODE_PRIVATE) }.getOrNull()
+    }
+
+    /** Kept across launches, so the first song after opening the app starts as fast as the rest. */
+    private fun bestEverScore(key: String): Long =
+        bestEverScores.getOrPut(key) { ceilingPrefs?.getLong(key, 0L) ?: 0L }
+
+    private val resolveCount = java.util.concurrent.atomic.AtomicInteger()
+
+    private fun recordBestScore(key: String, score: Long) {
+        if (score > bestEverScore(key)) {
+            bestEverScores[key] = score
+            ceilingPrefs?.edit()?.putLong(key, score)?.apply()
+        }
+    }
+
+    /**
+     * How long MAX mode keeps waiting for the rest once one stream is known to work.
+     *
+     * Every client is asked at the same moment, so a client still silent this long after another
+     * has already answered *and* been validated is, in practice, one that is stuck: timing out,
+     * retrying, or rate-shaped. Waiting for it bought nothing but seconds of silence before the
+     * song started. Answers that arrive inside the window are compared exactly as before.
+     */
+    private const val STRAGGLER_GRACE_MS = 1_200L
+
+    /** How long a validated stream waits for the separate metadata answer before going without it. */
+    private const val METADATA_GRACE_MS = 600L
+
+    /** NewPipe's player-code cache is shared static state; deciphering goes through it one at a time. */
+    private val decipherLock = Any()
+
     data class PlaybackData(
         val audioConfig: PlayerResponse.PlayerConfig.AudioConfig?,
         val videoDetails: PlayerResponse.VideoDetails?,
@@ -252,289 +322,515 @@ object YTPlayerUtils {
         val sessionId = if (isLoggedIn) YouTube.dataSyncId else YouTube.visitorData
         Timber.tag(logTag).v("Session authentication status: ${if (isLoggedIn) "Logged in" else "Not logged in"} (sessionId=${sessionId.orEmpty()})")
 
-        var format: PlayerResponse.StreamingData.Format? = null
-        var streamUrl: String? = null
-        var streamExpiresInSeconds: Int? = null
-        var streamPlayerResponse: PlayerResponse? = null
+        return coroutineScope {
+            var format: PlayerResponse.StreamingData.Format? = null
+            var streamUrl: String? = null
+            var streamExpiresInSeconds: Int? = null
+            var streamPlayerResponse: PlayerResponse? = null
 
-        val orderedFallbackClients =
-            (
-                if (isLoggedIn) {
-                    STREAM_FALLBACK_CLIENTS.filter { it.loginSupported } + STREAM_FALLBACK_CLIENTS.filterNot { it.loginSupported }
-                } else {
-                    STREAM_FALLBACK_CLIENTS.toList()
-                }
-                ).distinct()
-
-        val preferredYouTubeClient =
-            when (preferredStreamClient) {
-                PlayerStreamClient.ANDROID_VR -> ANDROID_VR_NO_AUTH
-                PlayerStreamClient.WEB_REMIX -> WEB_REMIX
-                PlayerStreamClient.IOS -> IOS
-                PlayerStreamClient.TVHTML5 -> TVHTML5
-                PlayerStreamClient.ANDROID_MUSIC -> ANDROID_MUSIC
-            }
-
-        val metadataClient =
-            preferredYouTubeClient.takeIf { preferredStreamClient == PlayerStreamClient.ANDROID_VR } ?: MAIN_CLIENT
-
-        Timber.tag(logTag).i("Fetching metadata response using client: ${metadataClient.clientName}")
-        val metadataPlayerResponse =
-            YouTube.player(videoId, playlistId, metadataClient, signatureTimestamp).getOrThrow()
-        val audioConfig = metadataPlayerResponse.playerConfig?.audioConfig
-        val videoDetails = metadataPlayerResponse.videoDetails
-        val playbackTracking = metadataPlayerResponse.playbackTracking
-        val expectedDurationMs = videoDetails?.lengthSeconds?.toLongOrNull()?.takeIf { it > 0 }?.times(1000L)
-
-        val streamClients =
-            buildList {
-                add(preferredYouTubeClient)
-                addAll(orderedFallbackClients)
-                if (preferredYouTubeClient != MAIN_CLIENT) add(MAIN_CLIENT)
-            }.distinct().filterNot { client ->
-                val blocked = isStreamClientTemporarilyBlocked(videoId, client.clientName)
-                if (blocked) {
-                    Timber.tag(logTag).w("Temporarily blocked stream client for $videoId: ${client.clientName}")
-                }
-                blocked
-            }
-
-        val botDetectedClients = mutableSetOf<String>()
-        var gateFailure: PlaybackGateFailure? = null
-
-        // In MAX mode we do not accept the first client that merely works — see
-        // [MAX_MODE_TARGET_BITRATE_BPS]. This holds the best validated result seen so far
-        // across every client probed, so the loop can keep looking for a better one.
-        val probeForBest = audioQuality == AudioQuality.HIGHEST || audioQuality == AudioQuality.AUTO
-        var best: ValidatedStream? = null
-
-        for ((index, client) in streamClients.withIndex()) {
-            format = null
-            streamUrl = null
-            streamExpiresInSeconds = null
-            streamPlayerResponse = null
-
-            Timber.tag(logTag).v(
-                "Trying ${if (client == MAIN_CLIENT) "MAIN_CLIENT" else "fallback client"} ${index + 1}/${streamClients.size}: ${client.clientName}"
-            )
-
-            if (client != MAIN_CLIENT && client.loginRequired && !isLoggedIn) {
-                Timber.tag(logTag).w("Skipping client ${client.clientName} - requires login but user is not logged in")
-                continue
-            }
-
-            streamPlayerResponse =
-                if (client == metadataClient) {
-                    metadataPlayerResponse
-                } else {
-                    Timber.tag(logTag).i("Fetching player response for fallback client: ${client.clientName}")
-                    YouTube.player(videoId, playlistId, client, signatureTimestamp).getOrNull()
-                }
-
-            if (streamPlayerResponse == null) continue
-
-            if (streamPlayerResponse.playabilityStatus.status != "OK") {
-                val reason = streamPlayerResponse.playabilityStatus.reason.orEmpty()
-                val isLoginRecovery = isLoginRecoveryError(reason)
-                val isBotDetection = isBotDetectionError(reason)
-                Timber.tag(logTag).w(
-                    "Player response status not OK: ${streamPlayerResponse.playabilityStatus.status}, reason: $reason, loginRecovery: $isLoginRecovery, botDetection: $isBotDetection"
-                )
-                if (isLoginRecovery) {
-                    gateFailure = PlaybackGateFailure(
-                        clientName = client.clientName,
-                        status = streamPlayerResponse.playabilityStatus.status,
-                        reason = streamPlayerResponse.playabilityStatus.reason,
-                    )
-                } else if (isBotDetection) {
-                    botDetectedClients.add(client.clientName)
-                }
-                continue
-            }
-
-            val isMetered = networkMetered ?: connectivityManager.isActiveNetworkMetered
-            val candidates =
-                selectAudioFormatCandidates(
-                    streamPlayerResponse,
-                    audioQuality,
-                    isMetered,
-                    avoidCodecs = avoidCodecs,
-                    preferredCodec = preferredCodec,
-                )
-
-            if (candidates.isEmpty()) continue
-
-            var selectedFormat: PlayerResponse.StreamingData.Format? = null
-            var selectedUrl: String? = null
-
-            for (candidate in candidates.asSequence().take(6)) {
-                if (isLoggedIn && expectedDurationMs != null && isLikelyPreview(candidate, expectedDurationMs)) continue
-                if (shouldSkipCipheredWebCandidate(client, candidate)) continue
-                val cacheKey = buildCacheKey(videoId, candidate.itag)
-                val cached = streamUrlCache[cacheKey]
-                val candidateUrl =
-                    if (cached != null && cached.expiresAtMs > System.currentTimeMillis()) {
-                        cached.url
+            val orderedFallbackClients =
+                (
+                    if (isLoggedIn) {
+                        STREAM_FALLBACK_CLIENTS.filter { it.loginSupported } + STREAM_FALLBACK_CLIENTS.filterNot { it.loginSupported }
                     } else {
-                        findUrlOrNull(candidate, videoId, client)
-                    } ?: continue
-                selectedFormat = candidate
-                selectedUrl = candidateUrl
-                break
+                        STREAM_FALLBACK_CLIENTS.toList()
+                    }
+                    ).distinct()
+
+            val preferredYouTubeClient =
+                when (preferredStreamClient) {
+                    PlayerStreamClient.ANDROID_VR -> ANDROID_VR_NO_AUTH
+                    PlayerStreamClient.WEB_REMIX -> WEB_REMIX
+                    PlayerStreamClient.IOS -> IOS
+                    PlayerStreamClient.TVHTML5 -> TVHTML5
+                    PlayerStreamClient.ANDROID_MUSIC -> ANDROID_MUSIC
+                }
+
+            val metadataClient =
+                preferredYouTubeClient.takeIf { preferredStreamClient == PlayerStreamClient.ANDROID_VR } ?: MAIN_CLIENT
+
+            Timber.tag(logTag).i("Fetching metadata response using client: ${metadataClient.clientName}")
+            // Started, not awaited: it answers a different question from the stream clients (loudness,
+            // duration, tracking) and none of them needs it except to reuse it, so it is in flight
+            // alongside them rather than in front of them.
+            val metadataRequest =
+                async(Dispatchers.IO) {
+                    // Null on failure, not a throw: an async that throws cancels this whole scope,
+                    // which turned one client's bad answer into a song that would not play.
+                    YouTube.player(videoId, playlistId, metadataClient, signatureTimestamp).getOrNull()
+                }
+
+            val streamClientsInOrder =
+                buildList {
+                    add(preferredYouTubeClient)
+                    addAll(orderedFallbackClients)
+                    if (preferredYouTubeClient != MAIN_CLIENT) add(MAIN_CLIENT)
+                }.distinct()
+
+            // In MAX mode we do not accept the first client that merely works — see
+            // [MAX_MODE_TARGET_BITRATE_BPS]. This holds the best validated result seen so far
+            // across every client probed, so the loop can keep looking for a better one.
+            val probeForBest = audioQuality == AudioQuality.HIGHEST || audioQuality == AudioQuality.AUTO
+
+            // MAX mode asks every client anyway, and it used to ask them one after another: a player
+            // request, a decipher and a validation round trip each, the song waiting through the sum
+            // of all of them. Nothing one client does depends on another, so in MAX mode they are all
+            // asked at once, and the loop below reads their answers in the same order and picks with
+            // the same rule — the same stream as before, in the time of the slowest single answer
+            // instead of the total. Other modes stop at the first working client, so they still ask
+            // lazily, one at a time.
+            val parallel = Semaphore(PARALLEL_CLIENTS)
+            // Completes when the first client's stream validates; the grace timer runs from there.
+            val firstValid = CompletableDeferred<Unit>()
+            val stragglersDue: Deferred<Unit>? = null
+            val attempts: Map<YouTubeClient, Deferred<ClientAttempt>> =
+                if (!probeForBest) {
+                    emptyMap()
+                } else {
+                    streamClientsInOrder
+                        .filterNot { isStreamClientTemporarilyBlocked(videoId, it.clientName) }
+                        .filterNot { it != MAIN_CLIENT && it.loginRequired && !isLoggedIn }
+                        .associateWith { client ->
+                            async(Dispatchers.IO) {
+                                parallel.withPermit {
+                                    attemptClient(
+                                        client = client,
+                                        metadataClient = metadataClient,
+                                        metadataRequest = metadataRequest,
+                                        videoId = videoId,
+                                        playlistId = playlistId,
+                                        signatureTimestamp = signatureTimestamp,
+                                        audioQuality = audioQuality,
+                                        isMetered = networkMetered ?: connectivityManager.isActiveNetworkMetered,
+                                        isLoggedIn = isLoggedIn,
+                                        avoidCodecs = avoidCodecs,
+                                        preferredCodec = preferredCodec,
+                                    ).also { if (it.valid) firstValid.complete(Unit) }
+                                }
+                            }
+                        }
+                }
+
+            // MAX mode: take the clients' answers in the order they arrive, not the order they are
+            // ranked in, and stop waiting the moment one of them is as good as anything this
+            // account has ever been given — or a short grace after the first working stream.
+            // Reading them in rank order meant the fastest answer sat unread behind the slowest.
+            val ceilingName = ceilingKey(isLoggedIn, preferredCodec)
+            if (probeForBest && attempts.isNotEmpty()) {
+                // Every tenth song still hears every client out, so a better stream the account
+                // has since become entitled to (a new subscription, say) raises the ceiling.
+                val ceiling = if (resolveCount.incrementAndGet() % 10 == 0) 0L else bestEverScore(ceilingName)
+                val pending = attempts.values.toMutableSet()
+                var firstValidAt = 0L
+                while (pending.isNotEmpty()) {
+                    val done = attempts.values.filter { it.isCompleted && !it.isCancelled }
+                        .mapNotNull { runCatching { it.getCompleted() }.getOrNull() }
+                        .filter { it.valid && it.format != null }
+                    if (done.isNotEmpty() && firstValidAt == 0L) firstValidAt = System.currentTimeMillis()
+                    if (ceiling > 0L && done.any { formatScore(it.format!!, preferredCodec) >= ceiling }) break
+                    val graceLeft = if (firstValidAt == 0L) Long.MAX_VALUE
+                    else STRAGGLER_GRACE_MS - (System.currentTimeMillis() - firstValidAt)
+                    if (graceLeft <= 0L) break
+                    select<Unit> {
+                        pending.forEach { deferred -> deferred.onAwait { pending.remove(deferred) } }
+                        if (graceLeft != Long.MAX_VALUE) onTimeout(graceLeft) {}
+                    }
+                }
             }
 
-            if (selectedFormat == null || selectedUrl == null) continue
+            // Loudness, length and tracking: worth having, never worth holding a ready stream for.
+            // A metadata answer that fails or lags past a short grace no longer fails or stalls the
+            // song; whatever the stream client itself said stands in for it below.
+            val haveStream = attempts.values.any { it.isCompleted && !it.isCancelled &&
+                runCatching { it.getCompleted().valid }.getOrDefault(false) }
+            val metadataPlayerResponse: PlayerResponse? =
+                if (haveStream) {
+                    kotlinx.coroutines.withTimeoutOrNull(METADATA_GRACE_MS) {
+                        runCatching { metadataRequest.await() }.getOrNull()
+                    }
+                } else {
+                    runCatching { metadataRequest.await() }.getOrNull()
+                }
+            val fallbackMetadata = attempts.values.firstNotNullOfOrNull { deferred ->
+                if (deferred.isCompleted && !deferred.isCancelled) {
+                    runCatching { deferred.getCompleted().response }.getOrNull()
+                        ?.takeIf { it.playabilityStatus.status == "OK" }
+                } else null
+            }
+            val audioConfig = (metadataPlayerResponse ?: fallbackMetadata)?.playerConfig?.audioConfig
+            val videoDetails = (metadataPlayerResponse ?: fallbackMetadata)?.videoDetails
+            val playbackTracking = (metadataPlayerResponse ?: fallbackMetadata)?.playbackTracking
 
-            format = selectedFormat
-            streamUrl = selectedUrl
-            streamExpiresInSeconds = streamPlayerResponse.streamingData?.expiresInSeconds
-
-            if (streamExpiresInSeconds == null) continue
-
-            Timber.tag(logTag).i("Format found: ${format.mimeType}, bitrate: ${format.bitrate}")
-            Timber.tag(logTag).v("Stream expires in: $streamExpiresInSeconds seconds")
-
-            val valid = validateStatus(streamUrl, client.userAgent)
-            if (valid) {
-                val validated = ValidatedStream(
-                    format = selectedFormat,
-                    url = selectedUrl,
-                    expiresInSeconds = streamExpiresInSeconds,
-                    response = streamPlayerResponse,
-                    clientName = client.clientName,
-                )
-                Timber.tag(logTag).i(
-                    "Stream validated successfully with client: ${client.clientName} @ ${validated.format.bitrate}bps"
-                )
-
-                if (!probeForBest) break
-
-                // MAX mode: keep the better of what we had and what this client offered.
-                val incumbent = best
-                if (incumbent == null ||
-                    formatScore(validated.format, preferredCodec) >
-                    formatScore(incumbent.format, preferredCodec)
-                ) {
-                    best = validated
+            val streamClients =
+                streamClientsInOrder.filterNot { client ->
+                    val blocked = isStreamClientTemporarilyBlocked(videoId, client.clientName)
+                    if (blocked) {
+                        Timber.tag(logTag).w("Temporarily blocked stream client for $videoId: ${client.clientName}")
+                    }
+                    blocked
                 }
 
-                val bestSoFar = best!!
-                if (bestSoFar.format.bitrate >= MAX_MODE_TARGET_BITRATE_BPS) {
-                    Timber.tag(logTag).i(
-                        "Reached the MAX-mode bitrate target with ${bestSoFar.clientName} " +
-                            "(${bestSoFar.format.bitrate}bps); stopping the probe"
-                    )
-                    break
-                }
+            val botDetectedClients = mutableSetOf<String>()
+            var gateFailure: PlaybackGateFailure? = null
 
-                Timber.tag(logTag).i(
-                    "${client.clientName} tops out at ${validated.format.bitrate}bps, below the " +
-                        "${MAX_MODE_TARGET_BITRATE_BPS}bps target — probing the next client for a better stream"
-                )
+            var best: ValidatedStream? = null
+
+            for ((index, client) in streamClients.withIndex()) {
                 format = null
                 streamUrl = null
                 streamExpiresInSeconds = null
                 streamPlayerResponse = null
-                continue
+
+                Timber.tag(logTag).v(
+                    "Trying ${if (client == MAIN_CLIENT) "MAIN_CLIENT" else "fallback client"} ${index + 1}/${streamClients.size}: ${client.clientName}"
+                )
+
+                if (client != MAIN_CLIENT && client.loginRequired && !isLoggedIn) {
+                    Timber.tag(logTag).w("Skipping client ${client.clientName} - requires login but user is not logged in")
+                    continue
+                }
+
+                val pending = attempts[client]
+                val attempt: ClientAttempt? =
+                    if (pending != null) {
+                        // MAX mode has already waited as long as it is going to; what is in is in.
+                        if (pending.isCompleted && !pending.isCancelled) runCatching { pending.getCompleted() }.getOrNull() else null
+                    } else {
+                        attemptClient(
+                            client = client,
+                            metadataClient = metadataClient,
+                            metadataRequest = metadataRequest,
+                            videoId = videoId,
+                            playlistId = playlistId,
+                            signatureTimestamp = signatureTimestamp,
+                            audioQuality = audioQuality,
+                            isMetered = networkMetered ?: connectivityManager.isActiveNetworkMetered,
+                            isLoggedIn = isLoggedIn,
+                            avoidCodecs = avoidCodecs,
+                            preferredCodec = preferredCodec,
+                        )
+                    }
+                if (attempt == null) {
+                    Timber.tag(logTag).i(
+                        "${client.clientName} still answering ${STRAGGLER_GRACE_MS}ms after a stream validated; not waiting for it"
+                    )
+                    continue
+                }
+                streamPlayerResponse = attempt.response
+
+                if (streamPlayerResponse == null) continue
+
+                if (streamPlayerResponse.playabilityStatus.status != "OK") {
+                    val reason = streamPlayerResponse.playabilityStatus.reason.orEmpty()
+                    val isLoginRecovery = isLoginRecoveryError(reason)
+                    val isBotDetection = isBotDetectionError(reason)
+                    Timber.tag(logTag).w(
+                        "Player response status not OK: ${streamPlayerResponse.playabilityStatus.status}, reason: $reason, loginRecovery: $isLoginRecovery, botDetection: $isBotDetection"
+                    )
+                    if (isLoginRecovery) {
+                        gateFailure = PlaybackGateFailure(
+                            clientName = client.clientName,
+                            status = streamPlayerResponse.playabilityStatus.status,
+                            reason = streamPlayerResponse.playabilityStatus.reason,
+                        )
+                    } else if (isBotDetection) {
+                        botDetectedClients.add(client.clientName)
+                    }
+                    continue
+                }
+
+                val selectedFormat = attempt.format
+                val selectedUrl = attempt.url
+                if (selectedFormat == null || selectedUrl == null) continue
+
+                format = selectedFormat
+                streamUrl = selectedUrl
+                streamExpiresInSeconds = streamPlayerResponse.streamingData?.expiresInSeconds
+
+                if (streamExpiresInSeconds == null) continue
+
+                Timber.tag(logTag).i("Format found: ${format.mimeType}, bitrate: ${format.bitrate}")
+                Timber.tag(logTag).v("Stream expires in: $streamExpiresInSeconds seconds")
+
+                val valid = attempt.valid
+                if (valid) {
+                    val validated = ValidatedStream(
+                        format = selectedFormat,
+                        url = selectedUrl,
+                        expiresInSeconds = streamExpiresInSeconds,
+                        response = streamPlayerResponse,
+                        clientName = client.clientName,
+                    )
+                    Timber.tag(logTag).i(
+                        "Stream validated successfully with client: ${client.clientName} @ ${validated.format.bitrate}bps"
+                    )
+
+                    if (!probeForBest) break
+
+                    // MAX mode: keep the better of what we had and what this client offered.
+                    val incumbent = best
+                    if (incumbent == null ||
+                        formatScore(validated.format, preferredCodec) >
+                        formatScore(incumbent.format, preferredCodec)
+                    ) {
+                        best = validated
+                    }
+
+                    val bestSoFar = best!!
+                    // The best stream this account has been given all session: once a song's
+                    // stream is as good as that, no client still answering can beat it, so there
+                    // is nothing left to wait for. The same stream MAX mode would have picked,
+                    // without the grace period on every single play.
+                    val ceiling = bestEverScore(ceilingName)
+                    if (ceiling > 0L && formatScore(bestSoFar.format, preferredCodec) >= ceiling) {
+                        Timber.tag(logTag).i(
+                            "${bestSoFar.clientName} matches the best stream this account gets " +
+                                "(${bestSoFar.format.bitrate}bps); stopping the probe"
+                        )
+                        break
+                    }
+                    if (bestSoFar.format.bitrate >= MAX_MODE_TARGET_BITRATE_BPS) {
+                        Timber.tag(logTag).i(
+                            "Reached the MAX-mode bitrate target with ${bestSoFar.clientName} " +
+                                "(${bestSoFar.format.bitrate}bps); stopping the probe"
+                        )
+                        break
+                    }
+
+                    Timber.tag(logTag).i(
+                        "${client.clientName} tops out at ${validated.format.bitrate}bps, below the " +
+                            "${MAX_MODE_TARGET_BITRATE_BPS}bps target — probing the next client for a better stream"
+                    )
+                    format = null
+                    streamUrl = null
+                    streamExpiresInSeconds = null
+                    streamPlayerResponse = null
+                    continue
+                }
+
+                Timber.tag(logTag).w("Stream validation failed with client: ${client.clientName}, trying next fallback")
+                format = null
+                streamUrl = null
+                streamExpiresInSeconds = null
+                streamPlayerResponse = null
             }
 
-            Timber.tag(logTag).w("Stream validation failed with client: ${client.clientName}, trying next fallback")
-            format = null
-            streamUrl = null
-            streamExpiresInSeconds = null
-            streamPlayerResponse = null
-        }
+            // The loop only stops early when a stream clears the MAX target; whatever else was still
+            // being asked is no longer wanted.
+            attempts.values.forEach { it.cancel() }
+            // Never left running: with no stream validated it would wait forever, and
+            // coroutineScope does not return while a child is still going.
+            stragglersDue?.cancel()
 
-        // Fall back to the best stream the probe found. Non-null only in MAX mode, and only
-        // when no single client cleared the target on its own.
-        best?.let { winner ->
-            val current = format
-            if (current == null ||
-                formatScore(winner.format, preferredCodec) > formatScore(current, preferredCodec)
-            ) {
-                Timber.tag(logTag).i(
-                    "Best available across all clients: ${winner.clientName} @ ${winner.format.bitrate}bps"
-                )
-                format = winner.format
-                streamUrl = winner.url
-                streamExpiresInSeconds = winner.expiresInSeconds
-                streamPlayerResponse = winner.response
+            // Fall back to the best stream the probe found. Non-null only in MAX mode, and only
+            // when no single client cleared the target on its own.
+            best?.let { winner ->
+                val current = format
+                if (current == null ||
+                    formatScore(winner.format, preferredCodec) > formatScore(current, preferredCodec)
+                ) {
+                    Timber.tag(logTag).i(
+                        "Best available across all clients: ${winner.clientName} @ ${winner.format.bitrate}bps"
+                    )
+                    format = winner.format
+                    streamUrl = winner.url
+                    streamExpiresInSeconds = winner.expiresInSeconds
+                    streamPlayerResponse = winner.response
+                }
             }
-        }
 
-        if (streamPlayerResponse == null) {
-            gateFailure?.let { failure ->
-                Timber.tag(logTag).w(
-                    "Playback requires login recovery for $videoId via ${failure.clientName} (${failure.status}): ${failure.reason.orEmpty()}"
-                )
-                throw LoginRequiredForPlaybackException(
-                    videoId = videoId,
-                    targetUrl = "https://music.youtube.com/watch?v=$videoId",
-                    reason = failure.reason,
-                )
+            if (streamPlayerResponse == null) {
+                gateFailure?.let { failure ->
+                    Timber.tag(logTag).w(
+                        "Playback requires login recovery for $videoId via ${failure.clientName} (${failure.status}): ${failure.reason.orEmpty()}"
+                    )
+                    throw LoginRequiredForPlaybackException(
+                        videoId = videoId,
+                        targetUrl = "https://music.youtube.com/watch?v=$videoId",
+                        reason = failure.reason,
+                    )
+                }
+                if (botDetectedClients.isNotEmpty()) {
+                    Timber.tag(logTag).e("Bot detection triggered on clients: $botDetectedClients - all clients failed")
+                    throw PlaybackException(
+                        "Sign in to confirm you're not a bot",
+                        null,
+                        PlaybackException.ERROR_CODE_REMOTE_ERROR
+                    )
+                }
+                Timber.tag(logTag).e("Bad stream player response - all clients failed")
+                throw Exception("Bad stream player response")
             }
-            if (botDetectedClients.isNotEmpty()) {
-                Timber.tag(logTag).e("Bot detection triggered on clients: $botDetectedClients - all clients failed")
+
+            if (streamPlayerResponse.playabilityStatus.status != "OK") {
+                val errorReason = streamPlayerResponse.playabilityStatus.reason
+                if (isLoginRecoveryError(errorReason.orEmpty())) {
+                    Timber.tag(logTag).w("Playback requires login recovery for $videoId: $errorReason")
+                    throw LoginRequiredForPlaybackException(
+                        videoId = videoId,
+                        targetUrl = "https://music.youtube.com/watch?v=$videoId",
+                        reason = errorReason,
+                    )
+                }
+                Timber.tag(logTag).e("Playability status not OK: $errorReason")
                 throw PlaybackException(
-                    "Sign in to confirm you're not a bot",
+                    errorReason,
                     null,
                     PlaybackException.ERROR_CODE_REMOTE_ERROR
                 )
             }
-            Timber.tag(logTag).e("Bad stream player response - all clients failed")
-            throw Exception("Bad stream player response")
-        }
 
-        if (streamPlayerResponse.playabilityStatus.status != "OK") {
-            val errorReason = streamPlayerResponse.playabilityStatus.reason
-            if (isLoginRecoveryError(errorReason.orEmpty())) {
-                Timber.tag(logTag).w("Playback requires login recovery for $videoId: $errorReason")
-                throw LoginRequiredForPlaybackException(
-                    videoId = videoId,
-                    targetUrl = "https://music.youtube.com/watch?v=$videoId",
-                    reason = errorReason,
-                )
+            if (streamExpiresInSeconds == null) {
+                Timber.tag(logTag).e("Missing stream expire time")
+                throw Exception("Missing stream expire time")
             }
-            Timber.tag(logTag).e("Playability status not OK: $errorReason")
-            throw PlaybackException(
-                errorReason,
-                null,
-                PlaybackException.ERROR_CODE_REMOTE_ERROR
+
+            if (format == null) {
+                Timber.tag(logTag).e("Could not find suitable format for quality: $audioQuality. Available formats from last client: ${streamPlayerResponse.streamingData?.adaptiveFormats?.filter { it.isAudio }?.map { "${it.mimeType} @ ${it.bitrate}bps (itag: ${it.itag})" }}")
+                throw Exception("Could not find format for quality: $audioQuality")
+            }
+
+            if (streamUrl == null) {
+                Timber.tag(logTag).e("Could not find stream url for format: ${format.mimeType}, itag: ${format.itag}")
+                throw Exception("Could not find stream url")
+            }
+
+            Timber.tag(logTag).i("Successfully obtained playback data with format: ${format.mimeType}, bitrate: ${format.bitrate}")
+            if (probeForBest) recordBestScore(ceilingName, formatScore(format, preferredCodec))
+
+            streamUrlCache[buildCacheKey(videoId, format.itag)] =
+                CachedStreamUrl(
+                    url = streamUrl,
+                    expiresAtMs = System.currentTimeMillis() + (streamExpiresInSeconds * 1000L),
+                )
+
+            PlaybackData(
+                audioConfig,
+                videoDetails,
+                playbackTracking,
+                format,
+                streamUrl,
+                streamExpiresInSeconds,
             )
         }
-
-        if (streamExpiresInSeconds == null) {
-            Timber.tag(logTag).e("Missing stream expire time")
-            throw Exception("Missing stream expire time")
-        }
-
-        if (format == null) {
-            Timber.tag(logTag).e("Could not find suitable format for quality: $audioQuality. Available formats from last client: ${streamPlayerResponse.streamingData?.adaptiveFormats?.filter { it.isAudio }?.map { "${it.mimeType} @ ${it.bitrate}bps (itag: ${it.itag})" }}")
-            throw Exception("Could not find format for quality: $audioQuality")
-        }
-
-        if (streamUrl == null) {
-            Timber.tag(logTag).e("Could not find stream url for format: ${format.mimeType}, itag: ${format.itag}")
-            throw Exception("Could not find stream url")
-        }
-
-        Timber.tag(logTag).i("Successfully obtained playback data with format: ${format.mimeType}, bitrate: ${format.bitrate}")
-
-        streamUrlCache[buildCacheKey(videoId, format.itag)] =
-            CachedStreamUrl(
-                url = streamUrl,
-                expiresAtMs = System.currentTimeMillis() + (streamExpiresInSeconds * 1000L),
-            )
-
-        return PlaybackData(
-            audioConfig,
-            videoDetails,
-            playbackTracking,
-            format,
-            streamUrl,
-            streamExpiresInSeconds,
-        )
     }
+    /**
+     * One client's part of [playerResponseForPlaybackOnce]: its player response, the first usable
+     * candidate and URL, and whether that URL validates. Exactly what the loop used to do inline for
+     * each client, minus the decision — which stays in the loop, so the choice between clients is
+     * unchanged whether this runs lazily or for all of them at once.
+     */
+    private suspend fun attemptClient(
+        client: YouTubeClient,
+        metadataClient: YouTubeClient,
+        metadataRequest: Deferred<PlayerResponse?>,
+        videoId: String,
+        playlistId: String?,
+        signatureTimestamp: Int?,
+        audioQuality: AudioQuality,
+        isMetered: Boolean,
+        isLoggedIn: Boolean,
+        avoidCodecs: Set<String>,
+        preferredCodec: AudioCodec,
+    ): ClientAttempt {
+        val response =
+            if (client == metadataClient) {
+                metadataRequest.await()
+            } else {
+                Timber.tag(logTag).i("Fetching player response for fallback client: ${client.clientName}")
+                YouTube.player(videoId, playlistId, client, signatureTimestamp).getOrNull()
+            } ?: return ClientAttempt(response = null)
+
+        if (response.playabilityStatus.status != "OK") return ClientAttempt(response)
+
+        val candidates =
+            selectAudioFormatCandidates(
+                response,
+                audioQuality,
+                isMetered,
+                avoidCodecs = avoidCodecs,
+                preferredCodec = preferredCodec,
+            )
+        if (candidates.isEmpty()) return ClientAttempt(response)
+
+        // Only a logged-in session gets served previews, so only then is the real length needed.
+        val expectedDurationMs =
+            if (isLoggedIn) {
+                // The client's own answer carries the length too; waiting on the separate metadata
+                // request here held every client's validation behind the slowest of them.
+                (response.videoDetails?.lengthSeconds?.toLongOrNull()?.takeIf { it > 0 }
+                    ?: runCatching { metadataRequest.await() }.getOrNull()
+                        ?.videoDetails?.lengthSeconds?.toLongOrNull()?.takeIf { it > 0 })
+                    ?.times(1000L)
+            } else {
+                null
+            }
+
+        var selectedFormat: PlayerResponse.StreamingData.Format? = null
+        var selectedUrl: String? = null
+
+        for (candidate in candidates.asSequence().take(6)) {
+            if (isLoggedIn && expectedDurationMs != null && isLikelyPreview(candidate, expectedDurationMs)) continue
+            if (shouldSkipCipheredWebCandidate(client, candidate)) continue
+            val cacheKey = buildCacheKey(videoId, candidate.itag)
+            val cached = streamUrlCache[cacheKey]
+            val candidateUrl =
+                if (cached != null && cached.expiresAtMs > System.currentTimeMillis()) {
+                    cached.url
+                } else {
+                    synchronized(decipherLock) { findUrlOrNull(candidate, videoId, client) }
+                } ?: continue
+            selectedFormat = candidate
+            selectedUrl = candidateUrl
+            break
+        }
+
+        if (selectedFormat == null || selectedUrl == null) return ClientAttempt(response)
+
+        // Validated only when the loop would have validated it: a response with no expiry is
+        // skipped there before it gets that far.
+        val valid =
+            response.streamingData?.expiresInSeconds != null &&
+                validateStatus(selectedUrl, client.userAgent)
+
+        return ClientAttempt(response, selectedFormat, selectedUrl, valid)
+    }
+
+    /** A picture-only stream for the player's video mode, and the user agent it must be fetched with. */
+    data class VideoStream(val url: String, val userAgent: String, val width: Int, val height: Int, val contentLength: Long?)
+
+    /**
+     * The best video-only stream of [videoId] up to [maxHeight], for showing the music video in
+     * the player while the audio keeps playing from its own stream.
+     *
+     * H.264 in MP4 first: every phone decodes it in hardware, where VP9 and AV1 are a lottery on
+     * mid-range chips and a software decode of 720p video next to the audio pipeline is exactly
+     * the stutter this must not cause. Walks the same clients as audio playback, in the same order.
+     */
+    suspend fun videoStreamForDisplay(videoId: String, maxHeight: Int = 720): Result<VideoStream> = runCatching {
+        val signatureTimestamp = getSignatureTimestampOrNull(videoId)
+        val clients = listOf(MAIN_CLIENT) + STREAM_FALLBACK_CLIENTS.toList()
+        for (client in clients) {
+            val response = YouTube.player(videoId, null, client, signatureTimestamp).getOrNull() ?: continue
+            if (response.playabilityStatus.status != "OK") continue
+            // Adaptive video first; the single-file 360p stream as a last resort, which plays where
+            // a picture-only stream is refused.
+            val candidates = (response.streamingData?.adaptiveFormats.orEmpty() + response.streamingData?.formats.orEmpty())
+                .filter { !it.isAudio && (it.height ?: 0) in 1..maxHeight }
+                .filter { it.url != null || it.signatureCipher != null || it.cipher != null }
+                .sortedWith(
+                    compareByDescending<PlayerResponse.StreamingData.Format> { it.mimeType.startsWith("video/mp4") && "avc1" in it.mimeType }
+                        .thenByDescending { it.height ?: 0 }
+                        .thenByDescending { it.fps ?: 0 },
+                )
+            for (candidate in candidates.take(4)) {
+                val url = synchronized(decipherLock) { findUrlOrNull(candidate, videoId, client) } ?: continue
+                return@runCatching VideoStream(url, client.userAgent, candidate.width ?: 0, candidate.height ?: 0, candidate.contentLength)
+            }
+        }
+        error("No video stream for $videoId")
+    }
+
     /**
      * Simple player response intended to use for metadata only.
      * Stream URLs of this response might not work so don't use them.

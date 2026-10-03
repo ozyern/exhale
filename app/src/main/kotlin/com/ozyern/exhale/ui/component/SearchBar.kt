@@ -389,7 +389,7 @@ fun TopSearch(
                             // press as the back arrow and the app-bar search icon.
                             LiquidGlassIconButton(
                                 onClick = { onActiveChange(false) },
-                                icon = R.drawable.close,
+                                icon = R.drawable.expand_more, // Closes search; the X inside the field only clears it.
                                 contentDescription = stringResource(R.string.action_cancel),
                                 tint = MaterialTheme.colorScheme.primary,
                                 diameter = 34.dp,

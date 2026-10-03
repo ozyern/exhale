@@ -203,14 +203,31 @@ fun StorageSettings(
 
     Column(
         Modifier
-            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
             .verticalScroll(rememberScrollState())
+            // Below the content, not around the viewport: the page scrolls on under the dock.
+            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Bottom))
             .padding(12.dp)
     ) {
         Spacer(
             Modifier.windowInsetsPadding(
                 LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Top)
             )
+        )
+
+        // Save to device as MP3: converted once at 320 kbps, for people whose other players,
+        // cars or speakers want MP3. Off keeps the stream's own M4A, byte for byte.
+        val (saveAsMp3, onSaveAsMp3Change) = rememberPreference(com.ozyern.exhale.constants.SaveAsMp3Key, false)
+        SwitchPreference(
+            title = { Text("Save to device as MP3") },
+            description = if (saveAsMp3) {
+                "Converted to MP3 at 320 kbps with title, artist, album and cover. MP3 is a re-encode, so it is a hair below the original"
+            } else {
+                "Off: songs are saved as the original M4A, no conversion and nothing lost"
+            },
+            icon = { Icon(painterResource(R.drawable.download), null) },
+            checked = saveAsMp3,
+            onCheckedChange = onSaveAsMp3Change,
         )
 
         SwitchPreference(

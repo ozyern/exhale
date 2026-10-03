@@ -270,7 +270,7 @@ fun YouTubeBrowseScreen(
     }
 
     TopAppBar(
-        title = { Text(browseResult?.title.orEmpty()) },
+        title = { com.ozyern.exhale.ui.component.HeadingStyle { Text(browseResult?.title.orEmpty()) } },
         navigationIcon = {
             LiquidBackButton(
                 onClick = navController::navigateUp,

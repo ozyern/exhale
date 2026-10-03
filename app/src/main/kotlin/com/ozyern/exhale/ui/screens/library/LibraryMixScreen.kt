@@ -6,6 +6,9 @@
 
 package com.ozyern.exhale.ui.screens.library
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -284,44 +287,114 @@ fun LibraryMixScreen(
                 LibraryLargeTitle()
             }
 
-            // ── Destinations ────────────────────────────────────────────────────────────────
+            // ── Destinations: a 2×2 of tiles rather than a settings-style list ──
             item(key = "categories", contentType = "categories") {
-                Column(modifier = Modifier.pageGutter()) {
-                    val destinations = buildList {
-                        add(LibraryFilter.PLAYLISTS to (R.string.filter_playlists to R.drawable.queue_music))
-                        add(LibraryFilter.ARTISTS to (R.string.filter_artists to R.drawable.person))
-                        add(LibraryFilter.ALBUMS to (R.string.filter_albums to R.drawable.album))
-                        add(LibraryFilter.SONGS to (R.string.filter_songs to R.drawable.music_note))
-                        if (showSpotifyPlaylists && spotifyPlaylists.isNotEmpty()) {
-                            add(LibraryFilter.SPOTIFY to (R.string.spotify to R.drawable.spotify_icon))
-                        }
+                val destinations = buildList {
+                    add(Triple(stringResource(R.string.filter_playlists), R.drawable.queue_music) { onTabSelected(LibraryFilter.PLAYLISTS) })
+                    add(Triple(stringResource(R.string.filter_artists), R.drawable.person) { onTabSelected(LibraryFilter.ARTISTS) })
+                    add(Triple(stringResource(R.string.filter_albums), R.drawable.album) { onTabSelected(LibraryFilter.ALBUMS) })
+                    add(Triple(stringResource(R.string.filter_songs), R.drawable.music_note) { onTabSelected(LibraryFilter.SONGS) })
+                    if (showSpotifyPlaylists && spotifyPlaylists.isNotEmpty()) {
+                        add(Triple(stringResource(R.string.spotify), R.drawable.spotify_icon) { onTabSelected(LibraryFilter.SPOTIFY) })
                     }
+                }
+                LibraryDestinationGrid(destinations = destinations, gutter = LibraryGutter)
+            }
 
-                    destinations.forEachIndexed { index, (filter, labelAndIcon) ->
-                        val (label, icon) = labelAndIcon
-                        LibraryCategoryRow(
-                            title = stringResource(label),
-                            icon = icon,
-                            accent = MaterialTheme.colorScheme.primary,
-                            showDivider = index != destinations.lastIndex,
-                            onClick = { onTabSelected(filter) },
+            // ── Your collections: a colour each and a glyph ──
+            if (pinned.isNotEmpty()) {
+                item(key = "pinned", contentType = "pinned") {
+                    Column {
+                        LibraryShelfHeader(title = "Collections", gutter = LibraryGutter, onShowAll = null)
+                        LibraryCollectionsRow(
+                            cards = pinned.map { entry ->
+                                CollectionCard(
+                                    title = entry.title,
+                                    subtitle = when (entry.route) {
+                                        "auto_playlist/liked" -> "Songs you love"
+                                        "auto_playlist/downloaded" -> "On this phone"
+                                        "cache_playlist/cached" -> "Played recently, kept"
+                                        else -> "Your most played"
+                                    },
+                                    icon = entry.iconRes,
+                                    colors = when (entry.route) {
+                                        "auto_playlist/liked" -> listOf(Color(0xFFFF2D55), Color(0xFFB0124A))
+                                        "auto_playlist/downloaded" -> listOf(Color(0xFF1E3C72), Color(0xFF2A5298))
+                                        "cache_playlist/cached" -> listOf(Color(0xFF134E5E), Color(0xFF71B280))
+                                        else -> listOf(Color(0xFF3A1C71), Color(0xFFD76D77))
+                                    },
+                                    onClick = { navController.navigate(entry.route) },
+                                )
+                            },
+                            gutter = LibraryGutter,
                         )
                     }
                 }
             }
 
-            if (pinned.isNotEmpty()) {
-                item(key = "pinned", contentType = "pinned") {
-                    Column(modifier = Modifier.pageGutter().padding(top = 28.dp)) {
-                        pinned.forEachIndexed { index, entry ->
-                            LibraryCategoryRow(
-                                title = entry.title,
-                                icon = entry.iconRes,
-                                accent = entry.accentColor,
-                                showDivider = index != pinned.lastIndex,
-                                onClick = { navController.navigate(entry.route) },
-                            )
-                        }
+            // ── Playlists: led by the card that makes one, stopped at five ──
+            item(key = "playlists_shelf", contentType = "card_shelf") {
+                var showCreate by rememberSaveable { mutableStateOf(false) }
+                if (showCreate) {
+                    com.ozyern.exhale.ui.component.CreatePlaylistDialog(onDismiss = { showCreate = false })
+                }
+                Column {
+                    LibraryShelfHeader(
+                        title = stringResource(R.string.filter_playlists),
+                        gutter = LibraryGutter,
+                        onShowAll = { onTabSelected(LibraryFilter.PLAYLISTS) }.takeIf { visiblePlaylists.size + 1 > LibraryRowMax },
+                    )
+                    LibraryCardRow(
+                        items = visiblePlaylists.take(LibraryRowMax - 1),
+                        key = { "pl_${it.id}" },
+                        gutter = LibraryGutter,
+                        title = { it.playlist.name },
+                        subtitle = { "${it.songCount} $songsLabel" },
+                        thumbnails = { it.thumbnails },
+                        isPlaylist = true,
+                        onClick = { playlist ->
+                            if (!playlist.playlist.isEditable && playlist.songCount == 0 && playlist.playlist.remoteSongCount != 0) {
+                                navController.navigate("online_playlist/${playlist.playlist.browseId}")
+                            } else {
+                                navController.navigate("local_playlist/${playlist.id}")
+                            }
+                        },
+                        onLongClick = { playlist ->
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            menuState.show {
+                                PlaylistMenu(playlist = playlist, coroutineScope = coroutineScope, onDismiss = menuState::dismiss)
+                            }
+                        },
+                        leading = { NewPlaylistCard(onClick = { showCreate = true }) },
+                    )
+                }
+            }
+
+            // ── Albums ──
+            if (albums.isNotEmpty()) {
+                item(key = "albums_shelf", contentType = "card_shelf") {
+                    Column {
+                        LibraryShelfHeader(
+                            title = stringResource(R.string.filter_albums),
+                            gutter = LibraryGutter,
+                            onShowAll = { onTabSelected(LibraryFilter.ALBUMS) }.takeIf { albums.size > LibraryRowMax },
+                        )
+                        LibraryCardRow(
+                            items = albums.take(LibraryRowMax),
+                            key = { "al_${it.id}" },
+                            gutter = LibraryGutter,
+                            title = { it.album.title },
+                            subtitle = { it.artists.joinToString { a -> a.name } },
+                            thumbnails = { listOfNotNull(it.album.thumbnailUrl) },
+                            isPlaylist = false,
+                            onClick = { album -> navController.navigate("album/${album.id}") },
+                            onLongClick = { album ->
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                menuState.show {
+                                    AlbumMenu(originalAlbum = album, navController = navController, onDismiss = menuState::dismiss)
+                                }
+                            },
+                        )
                     }
                 }
             }

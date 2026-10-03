@@ -65,24 +65,16 @@ fun BottomSheetMenu(
 ) {
     val focusManager = LocalFocusManager.current
 
+    // Every "More options" menu is a sheet of liquid glass: the window behind blurs and dims
+    // with it, and it rides in on the same spring as every other glass sheet in the app.
     if (state.isVisible) {
-        ModalBottomSheet(
-            onDismissRequest = {
+        LiquidGlassSheet(
+            onDismiss = {
                 focusManager.clearFocus()
                 state.isVisible = false
             },
-            containerColor = background,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            dragHandle = {
-                Box(
-                    modifier = Modifier
-                        .padding(vertical = 12.dp)
-                        .size(width = 40.dp, height = 4.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
-                )
-            },
-            modifier = modifier.fillMaxHeight()
+            maxHeightFraction = 0.9f,
+            modifier = modifier,
         ) {
             Column(
                 modifier = Modifier

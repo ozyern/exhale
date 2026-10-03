@@ -113,10 +113,15 @@ fun ContentSettings(
             key = EnableSimpMusicLyricsKey,
             defaultValue = true
         )
+    val (enableLyricsPlus, onEnableLyricsPlusChange) = rememberPreference(EnableLyricsPlusKey, defaultValue = true)
+    val (enableBinimum, onEnableBinimumChange) = rememberPreference(EnableBinimumLyricsKey, defaultValue = true)
+    val (enableUnison, onEnableUnisonChange) = rememberPreference(EnableUnisonLyricsKey, defaultValue = true)
+    val (enableMegalobiz, onEnableMegalobizChange) = rememberPreference(EnableMegalobizLyricsKey, defaultValue = true)
+    val (enableGenius, onEnableGeniusChange) = rememberPreference(EnableGeniusLyricsKey, defaultValue = true)
     val (preferredProvider, onPreferredProviderChange) =
         rememberEnumPreference(
             key = PreferredLyricsProviderKey,
-            defaultValue = PreferredLyricsProvider.LRCLIB,
+            defaultValue = PreferredLyricsProvider.BINIMUM,
         )
     val (lyricsRomanizeJapanese, onLyricsRomanizeJapaneseChange) = rememberPreference(
         LyricsRomanizeJapaneseKey,
@@ -316,74 +321,29 @@ fun ContentSettings(
 
         PreferenceGroupTitle(title = stringResource(R.string.lyrics))
         PreferenceGroup {
-            SwitchPreference(
-                title = { Text(stringResource(R.string.enable_lrclib)) },
-                icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                checked = enableLrclib,
-                onCheckedChange = onEnableLrclibChange,
-            )
-            PreferenceGroupDivider()
-            SwitchPreference(
-                title = { Text(stringResource(R.string.enable_kugou)) },
-                icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                checked = enableKugou,
-                onCheckedChange = onEnableKugouChange,
-            )
-            PreferenceGroupDivider()
-            SwitchPreference(
-                title = { Text(stringResource(R.string.enable_betterlyrics)) },
-                icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                checked = enableBetterLyrics,
-                onCheckedChange = onEnableBetterLyricsChange,
-            )
-            PreferenceGroupDivider()
-            SwitchPreference(
-                title = { Text(stringResource(R.string.enable_simpmusic_lyrics)) },
-                icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                checked = enableSimpMusicLyrics,
-                onCheckedChange = onEnableSimpMusicLyricsChange,
-            )
-
-            val savedOrder = remember(providerOrder) {
-                val parsed = providerOrder.split(",")
-                    .mapNotNull { name -> PreferredLyricsProvider.entries.find { it.name == name } }
-
-                val missing = DefaultProviderOrder.filterNot { it in parsed }
-                (parsed + missing).ifEmpty { DefaultProviderOrder }
+            // Which sources, and in what order, in one reorderable list of its own.
+            val sourceOrder = remember(providerOrder) { lyricsSourceOrder(providerOrder) }
+            val enabledCount = sourceOrder.count { source ->
+                when (source) {
+                    com.ozyern.exhale.constants.PreferredLyricsProvider.LRCLIB -> enableLrclib
+                    com.ozyern.exhale.constants.PreferredLyricsProvider.KUGOU -> enableKugou
+                    com.ozyern.exhale.constants.PreferredLyricsProvider.BETTER_LYRICS -> enableBetterLyrics
+                    com.ozyern.exhale.constants.PreferredLyricsProvider.SIMPMUSIC -> enableSimpMusicLyrics
+                    com.ozyern.exhale.constants.PreferredLyricsProvider.LYRICS_PLUS -> enableLyricsPlus
+                    com.ozyern.exhale.constants.PreferredLyricsProvider.BINIMUM -> enableBinimum
+                    com.ozyern.exhale.constants.PreferredLyricsProvider.UNISON -> enableUnison
+                    com.ozyern.exhale.constants.PreferredLyricsProvider.MEGALOBIZ -> enableMegalobiz
+                    com.ozyern.exhale.constants.PreferredLyricsProvider.GENIUS -> enableGenius
+                    else -> true
+                }
             }
-
             PreferenceEntry(
-                title = {
-                    Text(stringResource(R.string.lyrics_provider_order))
-                },
-                subtitle = {
-                    Text(
-                        stringResource(
-                            R.string.lyrics_provider_priority,
-                            savedOrder.joinToString(" → ") { it.displayName() }
-                        )
-                    )
-                },
+                title = { Text("Lyrics sources") },
+                description = "$enabledCount of ${sourceOrder.size} on · " +
+                    sourceOrder.take(3).joinToString(" → ") { it.displayName() } + " …",
                 icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                onClick = { showProviderOrderDialog = true },
+                onClick = { navController.navigate("settings/content/lyrics_sources") },
             )
-
-            if (showProviderOrderDialog) {
-                DragDropLyricsProviderDialog(
-                    providers = savedOrder,
-                    selectedProvider = preferredProvider,
-                    onDismiss = { showProviderOrderDialog = false },
-                    onOrderConfirmed = { newOrder ->
-                        onProviderOrderChange(newOrder.joinToString(",") { it.name })
-
-                        val newPreferred = newOrder.firstOrNull() ?: PreferredLyricsProvider.LRCLIB
-                        if (newPreferred != preferredProvider) {
-                            onPreferredProviderChange(newPreferred)
-                        }
-                    },
-                    valueText = { it.displayName() },
-                )
-            }
 
             SwitchPreference(
                 title = { Text(stringResource(R.string.lyrics_romanize_japanese)) },
@@ -411,11 +371,67 @@ fun ContentSettings(
             PreferenceGroupDivider()
             SwitchPreference(
                 title = { Text(stringResource(R.string.lock_screen_lyrics)) },
-                description = stringResource(R.string.lock_screen_lyrics_desc),
+                description = stringResource(R.string.lock_screen_lyrics_desc) + "\n" + lockScreenLyricsStatus(),
                 icon = { Icon(painterResource(R.drawable.lyrics), null) },
                 checked = lockScreenLyrics,
                 onCheckedChange = onLockScreenLyricsChange,
             )
+
+            // The path that works on stock ColorOS: Exhale's own screen over the keyguard.
+            val (lockOverlay, onLockOverlayChange) = rememberPreference(
+                com.ozyern.exhale.constants.LockScreenLyricsOverlayKey,
+                defaultValue = false,
+            )
+            val overlayContext = androidx.compose.ui.platform.LocalContext.current
+            SwitchPreference(
+                title = { Text("Lyrics screen on the lock screen") },
+                description = "When the screen turns off while music plays, Exhale puts its lyrics over the lock screen. Works on ColorOS without root. Needs permission for full-screen notifications (asked when you switch it on); on ColorOS also allow \"Pop-up windows\" / \"Show on lock screen\" in Exhale's app permissions.",
+                icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                checked = lockOverlay,
+                onCheckedChange = { on ->
+                    onLockOverlayChange(on)
+                    // Android 14+ asks separately for the full-screen notification this rides on.
+                    if (on && !com.ozyern.exhale.playback.LockScreenLyrics.canUseFullScreen(overlayContext) &&
+                        android.os.Build.VERSION.SDK_INT >= 34
+                    ) {
+                        runCatching {
+                            overlayContext.startActivity(
+                                android.content.Intent(
+                                    android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                                    android.net.Uri.parse("package:${overlayContext.packageName}"),
+                                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        }
+                    } else if (on && !com.ozyern.exhale.playback.LockScreenLyrics.canShow(overlayContext)) {
+                        runCatching {
+                            overlayContext.startActivity(
+                                android.content.Intent(
+                                    android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    android.net.Uri.parse("package:${overlayContext.packageName}"),
+                                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        }
+                    }
+                },
+            )
+
+            if (lockOverlay) {
+                PreferenceEntry(
+                    title = { Text("Open Exhale's app permissions") },
+                    description = "For ColorOS's own \"Pop-up windows\" and \"Show on lock screen\" switches",
+                    icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                    onClick = {
+                        runCatching {
+                            overlayContext.startActivity(
+                                android.content.Intent(
+                                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    android.net.Uri.parse("package:${overlayContext.packageName}"),
+                                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        }
+                    },
+                )
+            }
 
             // Independent of the Live Space switch above, and on by default. See
             // `LyricsOnMediaCardKey`: the two do interfere, but only on the phones where Live Space
@@ -504,4 +520,24 @@ fun ContentSettings(
             )
         }
     )
+}
+/**
+ * Which lock-screen path this phone is on, in one line, so "it doesn't show" can be answered by
+ * reading the setting rather than by guessing. Stock ColorOS draws `lyricInfo` only for OPlus's
+ * partner players; the ColorOS Live Lyrics Bridge (an LSPosed module) is what admits Exhale.
+ */
+@Composable
+private fun lockScreenLyricsStatus(): String {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val bridge = androidx.compose.runtime.remember {
+        runCatching {
+            context.packageManager.getPackageInfo(com.ozyern.exhale.playback.OplusLiveLyrics.BRIDGE_PACKAGE, 0)
+        }.isSuccess
+    }
+    return when {
+        !com.ozyern.exhale.utils.DeviceAudio.isOplusDevice -> "Not a ColorOS / OxygenOS phone: the media card line is used"
+        bridge -> "Live Lyrics Bridge found: full synced lyrics on the lock screen"
+        else -> "Live Lyrics Bridge not found: stock ColorOS only shows lyrics from its partner apps, so the " +
+            "current line is shown on the media card instead. Install the Bridge (LSPosed) for full lock-screen lyrics"
+    }
 }

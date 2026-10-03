@@ -14,6 +14,10 @@
         <exclude
             domain="database"
             path="exoplayer_internal.db" />
+        <!-- Holds sign-in cookies and tokens; Exhale's own backup is the way to move settings. -->
+        <exclude
+            domain="file"
+            path="datastore/settings.preferences_pb" />
     </cloud-backup>
     <device-transfer>
         <exclude

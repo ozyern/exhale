@@ -807,22 +807,7 @@ fun Queue(
                                         // What a swipe is about to do, under the card as it slides: it used
                                         // to be nothing at all, so a row could be sent away without any sign
                                         // that sending it away was what was happening.
-                                        backgroundContent = {
-                                            val toEnd = dismissBoxState.dismissDirection == SwipeToDismissBoxValue.StartToEnd
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .background(Color(0xFFFF3B30)),
-                                                contentAlignment = if (toEnd) Alignment.CenterStart else Alignment.CenterEnd,
-                                            ) {
-                                                Icon(
-                                                    painter = painterResource(R.drawable.delete),
-                                                    contentDescription = null,
-                                                    tint = Color.White,
-                                                    modifier = Modifier.padding(horizontal = 22.dp),
-                                                )
-                                            }
-                                        },
+                                        backgroundContent = { QueueSwipeBackground(dismissBoxState, 22.dp) },
                                     ) {
                                         content()
                                     }

@@ -7,9 +7,15 @@
 
 
 package com.ozyern.exhale.ui.screens.playlist
+import com.ozyern.exhale.ui.component.GradientArtwork
+import com.ozyern.exhale.ui.component.CollectionPlay
+import com.ozyern.exhale.ui.component.CollectionAction
+import com.ozyern.exhale.ui.component.CollectionHero
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.unit.sp
+import com.ozyern.exhale.ui.component.rememberScrollEdge
+import com.ozyern.exhale.ui.component.scrollEdgeScrim
 import com.ozyern.exhale.ui.component.PlayerActionCircle
 import com.ozyern.exhale.ui.component.PlayShuffleButton
 import com.ozyern.exhale.ui.screens.Screens
@@ -293,60 +299,16 @@ fun AutoPlaylistScreen(
 
     val lazyListState = rememberLazyListState()
 
-    // Gradient colors state for playlist cover
-    var gradientColors by remember { mutableStateOf<List<Color>>(emptyList()) }
 
     // Capture fallback color in composable context
-    val fallbackColor = MaterialTheme.colorScheme.surface.toArgb()
-    val surfaceColor = MaterialTheme.colorScheme.surface
+    // Tinted from the cover.
+    val releasePalette = com.ozyern.exhale.ui.component.rememberReleasePalette(
+        if (playlistType == PlaylistType.LIKE) listOf(Color(0xFFFF2D55), Color(0xFFB0124A))
+        else listOf(Color(0xFF1E3C72), Color(0xFF2A5298)),
+    )
+    val surfaceColor = releasePalette.background
 
-    // Extract gradient colors from playlist cover (first song thumbnail)
-    LaunchedEffect(songs) {
-        val thumbnailUrl = songs?.firstOrNull()?.song?.thumbnailUrl
-        if (thumbnailUrl != null) {
-            val request = ImageRequest.Builder(context)
-                .data(thumbnailUrl)
-                .size(PlayerColorExtractor.Config.IMAGE_SIZE, PlayerColorExtractor.Config.IMAGE_SIZE)
-                .allowHardware(false)
-                .build()
 
-            val result = runCatching {
-                context.imageLoader.execute(request)
-            }.getOrNull()
-
-            if (result != null) {
-                val bitmap = result.image?.toBitmap()
-                if (bitmap != null) {
-                    val palette = withContext(Dispatchers.Default) {
-                        Palette.from(bitmap)
-                            .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
-                            .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
-                            .generate()
-                    }
-
-                    val extractedColors = PlayerColorExtractor.extractGradientColors(
-                        palette = palette,
-                        fallbackColor = fallbackColor
-                    )
-                    gradientColors = extractedColors
-                }
-            }
-        } else {
-            gradientColors = emptyList()
-        }
-    }
-
-    // Calculate gradient opacity based on scroll position
-    val gradientAlpha by remember {
-        derivedStateOf {
-            if (lazyListState.firstVisibleItemIndex == 0) {
-                val offset = lazyListState.firstVisibleItemScrollOffset
-                (1f - (offset / 600f)).coerceIn(0f, 1f)
-            } else {
-                0f
-            }
-        }
-    }
 
     val showTopBarTitle by remember {
         derivedStateOf {
@@ -375,118 +337,6 @@ fun AutoPlaylistScreen(
             .fillMaxSize()
             .background(surfaceColor),
     ) {
-        // Mesh gradient background layer
-        if (!disableBlur && gradientColors.isNotEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .drawBehind {
-                        val width = size.width
-                        val height = size.height * 0.55f
-
-                        // Draw-phase read: `gradientAlpha` tracks the scroll offset, so testing it
-                        // up in composition invalidated this whole screen on every scrolled pixel.
-                        // Bailing here instead keeps the check but pays for it in the draw pass.
-                        if (gradientAlpha <= 0f) return@drawBehind
-
-                        if (gradientColors.size >= 3) {
-                            val c0 = gradientColors[0]
-                            val c1 = gradientColors[1]
-                            val c2 = gradientColors[2]
-                            val c3 = gradientColors.getOrElse(3) { c0 }
-                            val c4 = gradientColors.getOrElse(4) { c1 }
-                            // Primary color blob - top center
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        c0.copy(alpha = gradientAlpha * 0.75f),
-                                        c0.copy(alpha = gradientAlpha * 0.4f),
-                                        Color.Transparent
-                                    ),
-                                    center = Offset(width * 0.5f, height * 0.15f),
-                                    radius = width * 0.8f
-                                )
-                            )
-
-                            // Secondary color blob - left side
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        c1.copy(alpha = gradientAlpha * 0.55f),
-                                        c1.copy(alpha = gradientAlpha * 0.3f),
-                                        Color.Transparent
-                                    ),
-                                    center = Offset(width * 0.1f, height * 0.4f),
-                                    radius = width * 0.6f
-                                )
-                            )
-
-                            // Third color blob - right side
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        c2.copy(alpha = gradientAlpha * 0.5f),
-                                        c2.copy(alpha = gradientAlpha * 0.25f),
-                                        Color.Transparent
-                                    ),
-                                    center = Offset(width * 0.9f, height * 0.35f),
-                                    radius = width * 0.55f
-                                )
-                            )
-
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        c3.copy(alpha = gradientAlpha * 0.35f),
-                                        c3.copy(alpha = gradientAlpha * 0.18f),
-                                        Color.Transparent
-                                    ),
-                                    center = Offset(width * 0.25f, height * 0.65f),
-                                    radius = width * 0.75f
-                                )
-                            )
-
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        c4.copy(alpha = gradientAlpha * 0.3f),
-                                        c4.copy(alpha = gradientAlpha * 0.15f),
-                                        Color.Transparent
-                                    ),
-                                    center = Offset(width * 0.55f, height * 0.85f),
-                                    radius = width * 0.9f
-                                )
-                            )
-                        } else if (gradientColors.isNotEmpty()) {
-                            drawRect(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        gradientColors[0].copy(alpha = gradientAlpha * 0.7f),
-                                        gradientColors[0].copy(alpha = gradientAlpha * 0.35f),
-                                        Color.Transparent
-                                    ),
-                                    center = Offset(width * 0.5f, height * 0.25f),
-                                    radius = width * 0.85f
-                                )
-                            )
-                        }
-
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    Color.Transparent,
-                                    surfaceColor.copy(alpha = gradientAlpha * 0.22f),
-                                    surfaceColor.copy(alpha = gradientAlpha * 0.55f),
-                                    surfaceColor
-                                ),
-                                startY = size.height * 0.35f,
-                                endY = size.height
-                            )
-                        )
-                    }
-            )
-        }
 
         LazyColumn(
             state = lazyListState,
@@ -509,145 +359,52 @@ fun AutoPlaylistScreen(
                     if (!isSearching) {
                         // Hero Header Item
                         item(key = "header") {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 16.dp)
-                            ) {
-                                // The cover is the header - see AlbumScreen. A downloaded
-                                // collection is read the same way an album is, so it is drawn the
-                                // same way: the art edge to edge, dissolving into the page, with
-                                // the name and the two buttons underneath it.
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(1f)
-                                ) {
-                                    AsyncImage(
-                                        model = songs!!.firstOrNull()?.song?.thumbnailUrl,
-                                        contentDescription = null,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                    Box(
-                                        modifier = Modifier
-                                            .matchParentSize()
-                                            .background(
-                                                Brush.verticalGradient(
-                                                    0f to Color.Black.copy(alpha = 0.38f),
-                                                    0.22f to Color.Transparent,
-                                                    0.72f to Color.Transparent,
-                                                    1f to MaterialTheme.colorScheme.surface,
-                                                )
-                                            )
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                // Playlist title
-                                Text(
-                                    modifier = Modifier.padding(horizontal = 24.dp),
-                                    text = playlist,
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    textAlign = TextAlign.Center,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-
-                                Spacer(modifier = Modifier.height(5.dp))
-
-                                // One grey line, not two coloured chips.
-                                //
-                                // Apple Music states what a collection *is* in a single line of
-                                // secondary type under the title - "12 songs · 48 minutes". Two
-                                // filled pills give the same two facts the visual weight of
-                                // buttons, so the eye tries to press them.
-                                Text(
-                                    text = listOf(
-                                        pluralStringResource(
-                                            R.plurals.n_song,
-                                            songs!!.size,
-                                            songs!!.size
-                                        ),
-                                        makeTimeString(likeLength * 1000L),
-                                    ).joinToString("  \u00b7  "),
-                                    fontSize = 14.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center,
-                                )
-
-                                Spacer(modifier = Modifier.height(22.dp))
-
-                                // Two words and two glyphs, in the shape the album page uses.
-                                //
-                                // This was four weighted slabs of three different shapes - a
-                                // leading connected button, two capsules, a trailing connected
-                                // button - so the two things you actually came to press were a
-                                // quarter of the row each and the same size as the two you didn't.
-                                // Play and Shuffle take the width now; the other two are discs.
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 24.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    PlayerActionCircle(
-                                        iconRes = R.drawable.downloading,
+                            CollectionHero(
+                                palette = releasePalette,
+                                title = playlist,
+                                meta = listOf(
+                                    pluralStringResource(R.plurals.n_song, songs!!.size, songs!!.size),
+                                    makeTimeString(likeLength * 1000L),
+                                ).joinToString("  \u00b7  "),
+                                lazyListState = lazyListState,
+                                // The app's own collections wear their own colours, as on the Library page.
+                                artwork = {
+                                    if (playlistType == PlaylistType.LIKE) {
+                                        GradientArtwork(listOf(Color(0xFFFF2D55), Color(0xFFB0124A)), R.drawable.favorite)
+                                    } else {
+                                        GradientArtwork(listOf(Color(0xFF1E3C72), Color(0xFF2A5298)), R.drawable.offline)
+                                    }
+                                },
+                                actions = {
+                                    CollectionAction(
+                                        icon = R.drawable.downloading,
                                         contentDescription = null,
                                         onClick = { navController.navigate(Screens.DownloadQueue.route) },
                                     )
-
-                                    PlayShuffleButton(
-                                        iconRes = R.drawable.play,
-                                        label = stringResource(R.string.play),
-                                        solid = true,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(50.dp),
+                                    CollectionPlay(
+                                        contentDescription = stringResource(R.string.play),
                                         onClick = {
                                             playerConnection.playQueue(
-                                                ListQueue(
-                                                    title = playlist,
-                                                    items = songs!!.map { it.toMediaItem() },
-                                                ),
-                                            )
-                                            },
-                                    )
-
-                                    PlayShuffleButton(
-                                        iconRes = R.drawable.shuffle,
-                                        label = stringResource(R.string.shuffle),
-                                        solid = true,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(50.dp),
-                                        onClick = {
-                                            playerConnection.playQueue(
-                                                ListQueue(
-                                                    title = playlist,
-                                                    items = songs!!.shuffled().map { it.toMediaItem() },
-                                                ),
-                                            )
-                                            },
-                                    )
-
-                                    PlayerActionCircle(
-                                        iconRes = R.drawable.queue_music,
-                                        contentDescription = null,
-                                        onClick = {
-                                            playerConnection.addToQueue(
-                                                items = songs!!.map { it.toMediaItem() },
+                                                ListQueue(title = playlist, items = songs!!.map { it.toMediaItem() }),
                                             )
                                         },
                                     )
-                                }
-
-                                Spacer(modifier = Modifier.height(24.dp))
-                            }
+                                    CollectionAction(
+                                        icon = R.drawable.shuffle,
+                                        contentDescription = stringResource(R.string.shuffle),
+                                        onClick = {
+                                            playerConnection.playQueue(
+                                                ListQueue(title = playlist, items = songs!!.shuffled().map { it.toMediaItem() }),
+                                            )
+                                        },
+                                    )
+                                    CollectionAction(
+                                        icon = R.drawable.queue_music,
+                                        contentDescription = stringResource(R.string.add_to_queue),
+                                        onClick = { playerConnection.addToQueue(items = songs!!.map { it.toMediaItem() }) },
+                                    )
+                                },
+                            )
                         }
                     }
 
@@ -751,10 +508,12 @@ fun AutoPlaylistScreen(
             headerItems = headerItems
         )
 
+        val scrollEdge = rememberScrollEdge(!transparentAppBar)
         TopAppBar(
+            modifier = Modifier.scrollEdgeScrim(surfaceColor) { scrollEdge.value },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = if (transparentAppBar) Color.Transparent else MaterialTheme.colorScheme.surface,
-                scrolledContainerColor = MaterialTheme.colorScheme.surface
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent
             ),
             title = {
                 when {

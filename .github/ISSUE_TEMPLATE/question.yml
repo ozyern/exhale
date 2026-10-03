@@ -29,7 +29,7 @@ body:
     id: version
     attributes:
       label: Exhale version
-      placeholder: "1.0.304"
+      placeholder: "1.0.405"
     validations:
       required: false
 

@@ -21,6 +21,16 @@ import com.ozyern.exhale.models.toMediaMetadata
 
 const val ExtraIsMusicVideo = "com.ozyern.exhale.extra.IS_MUSIC_VIDEO"
 
+/**
+ * Ids YouTube has told us are music videos, for code that only sees a MediaMetadata: the lyrics
+ * need to know, because a video's intro puts every line of the record's lyrics early.
+ */
+object KnownMusicVideos {
+    private val ids = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    fun add(id: String) { ids.add(id) }
+    operator fun contains(id: String): Boolean = id in ids
+}
+
 val MediaItem.metadata: MediaMetadata?
     get() = localConfiguration?.tag as? MediaMetadata
 
@@ -60,7 +70,7 @@ fun SongItem.toMediaItem() =
                 .setArtworkUri(thumbnail.toUri())
                 .setAlbumTitle(album?.name)
                 .setMediaType(MEDIA_TYPE_MUSIC)
-                .setExtras(Bundle().apply { putBoolean(ExtraIsMusicVideo, isMusicVideo()) })
+                .setExtras(Bundle().apply { putBoolean(ExtraIsMusicVideo, isMusicVideo().also { if (it) KnownMusicVideos.add(id) }) })
                 .build(),
         ).build()
 
