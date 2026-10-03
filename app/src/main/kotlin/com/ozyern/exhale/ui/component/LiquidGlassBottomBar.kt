@@ -13,9 +13,6 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.runtime.withFrameNanos
-import kotlin.math.exp
-import kotlinx.coroutines.Job
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -651,14 +648,6 @@ private fun NavGlyph(
 }
 
 /* ----------------------------------------------------------------------- */
-/**
- * How much of the release velocity is added to the landing position, in tab units.
- *
- * Deliberately small and always clamped to half a tab by the caller: this only has to decide
- * whether a quick flick counts as "one more tab", never how many.
- */
-private const val FlingProjection = 0.25f
-
 /* State A tab row with sliding accent indicator                            */
 /* ----------------------------------------------------------------------- */
 
@@ -697,23 +686,15 @@ private const val FlingProjection = 0.25f
  * for this to work: if the recording contained the resting icons, the capsule would show them
  * *and* the accent ones stacked as a double image.
  *
- * ### The drag drives a float, not a spring
+ * ### How it moves
  *
- * While a finger is down the capsule's position is a plain `mutableFloatStateOf` written straight
- * from the pointer callback. It used to call `updateValue` per frame, and `updateValue` cancels a
- * job and launches a coroutine that takes `Animatable`'s mutex — 240 of those a second at 120Hz,
- * to compute a spring toward a target that the finger had already moved past. The spring only
- * earns its keep once the finger is gone, so that is the only time it runs: [settleFrom] snaps to
- * where the gesture ended and springs to the tab it landed on, in one coroutine, once per
- * gesture. Same for velocity — the stretch reads an exponentially smoothed float rather than a
- * `VelocityTracker`, which fits a polynomial over its sample history every time it is asked.
- *
- * Press swells it (78dp of travel space for a 56dp pill); drag and it follows the finger
- * continuously rather than hopping tab to tab, stretching along its direction of travel and
- * squashing vertically in proportion to its own velocity, exactly as a droplet under acceleration
- * would. Release and it rounds to the nearest tab. Pushing past either end rubber-bands the whole
- * panel a few pixels and lets it spring back. The commit only happens on release, so a drag that
- * changes its mind costs nothing.
+ * Press anywhere on the bar and the capsule swells (78dp of travel space for a 56dp pill) and
+ * glides to your finger on a stiff, critically damped spring, then rides it. Its stretch comes from
+ * its real speed — longer and flatter while it travels, back to round the moment it stops — so it
+ * never rings. The whole bar is tugged a few dp in the direction of the drag and springs back on
+ * release. Letting go lands it on the nearest tab without overshoot, and only then does the route
+ * change, so a drag that changes its mind costs nothing. A route change from anywhere else gives
+ * the same press, slide and settle, so a tap reads like a short drag.
  *
  * Falls back to a flat accent wash on devices with no `RuntimeShader`, where there is no lens to
  * see the hidden layer through and the selected tab therefore has to colour itself.
@@ -822,27 +803,16 @@ private fun LiquidTabBar(
     val insetPx = with(density) { inset.toPx() }
     val capsuleHeight = height - inset * 2
 
-    // ---- Live gesture state. All plain float state: written from the pointer callback, read
-    // ---- only from draw lambdas, so a drag frame costs a layer invalidation and nothing else.
-    val dragging = remember { mutableStateOf(false) }
-    val dragValue = remember { mutableFloatStateOf(capsuleIndex.toFloat()) }
-    val dragVelocity = remember { mutableFloatStateOf(0f) }
-    val overscrollPx = remember { mutableFloatStateOf(0f) }
-    // Where the finger says the capsule should be. The capsule itself (`dragValue`) chases this
-    // with a ~30ms lag from one frame loop per gesture: that is what lets a press anywhere on the
-    // bar *glide* the glass over to the finger instead of teleporting it, and gives the drag the
-    // faint liquid lag of iOS's lens.
-    val fingerValue = remember { mutableFloatStateOf(capsuleIndex.toFloat()) }
-    val chaseJob = remember { arrayOfNulls<Job>(1) }
-
-    val rubberBandPx = with(density) { 6.dp.toPx() }
+    // The bar is tugged by the drag: the raw travel, eased and capped at a few dp.
+    val tug = remember(tabs.size) { Animatable(0f) }
+    val tugPx = with(density) { 4.dp.toPx() }
     val panelOffset: () -> Float = {
-        val raw = overscrollPx.floatValue
+        val raw = tug.value
         if (totalWidthPx == 0f || raw == 0f) {
             0f
         } else {
             val fraction = (raw / totalWidthPx).fastCoerceIn(-1f, 1f)
-            rubberBandPx * fraction.sign * EaseOut.transform(abs(fraction))
+            tugPx * fraction.sign * EaseOut.transform(abs(fraction))
         }
     }
 
@@ -865,98 +835,29 @@ private fun LiquidTabBar(
             valueRange = 0f..lastIndex.toFloat(),
             visibilityThreshold = 0.001f,
             initialScale = 1f,
-            // 78dp of swell on a 56dp capsule. Big enough that the pill visibly bulges past the
-            // top and bottom edges of the dock while held, which is what sells it as a blob of
-            // liquid sitting on the bar rather than a rectangle cut into it.
+            // 78dp of swell on a 56dp capsule: enough that the pill bulges past the dock's edges
+            // while held, which is what sells it as a drop of liquid on the bar.
             pressedScale = 78f / 56f,
             onDragStarted = { position ->
                 moved.floatValue = 0f
-                dragVelocity.floatValue = 0f
-                dragValue.floatValue = value
-                // Pressed on the capsule: it follows from where it is. Pressed anywhere else: the
-                // finger's tab becomes the target and the capsule flows across to it.
+                // Pressed on the capsule: it follows from where it is. Pressed anywhere else: it
+                // flows across to the finger's tab.
                 val fromStart = if (isLtr) position.x else totalWidthPx - position.x
                 val under = if (tabWidthPx > 0f) (fromStart - insetPx) / tabWidthPx - 0.5f else value
-                fingerValue.floatValue =
-                    if (abs(under - value) < 0.5f) value else under.fastCoerceIn(0f, lastIndex.toFloat())
-                dragging.value = true
-                chaseJob[0]?.cancel()
-                chaseJob[0] = scope.launch {
-                    var last = 0L
-                    while (dragging.value) {
-                        withFrameNanos { now ->
-                            val dt = if (last == 0L) 1f / 120f else ((now - last) / 1e9f).coerceIn(0f, 0.05f)
-                            last = now
-                            val before = dragValue.floatValue
-                            val after = before + (fingerValue.floatValue - before) * (1f - exp(-dt * 32f))
-                            // Haptic on crossing, while still travelling, not on the commit.
-                            if (after.fastRoundToInt() != before.fastRoundToInt()) {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            }
-                            dragValue.floatValue = after
-                            // Smoothed per-frame travel, the scale the squish was tuned on.
-                            dragVelocity.floatValue = dragVelocity.floatValue * 0.72f + (after - before) * 2.4f
-                        }
-                    }
-                }
+                if (abs(under - value) >= 0.5f) updateValue(under.fastCoerceIn(0f, lastIndex.toFloat()))
             },
             onDragStopped = {
-                val ended = dragValue.floatValue
-                // What the gesture meant is where the finger was, not where the lagging glass had
-                // got to: a quick tap on another tab lands there though the glass barely set off.
-                val aimed = fingerValue.floatValue
-
-                // Land where the gesture was HEADING, not merely where the finger stopped.
-                //
-                // Rounding the release position alone ignores momentum: flick hard from Home
-                // towards Library, let go at 1.35, and the capsule snaps back to 1 even though
-                // nothing about that gesture was aimed at 1. Every pager gets this right and a
-                // dock that does not feels sticky in a way people notice without being able to
-                // name.
-                //
-                // The projection is clamped to half a tab, so it can only ever shift the outcome
-                // by one — a violent swipe still moves one tab, never three. That bound is also
-                // what makes the constant safe: `dragVelocity` is an exponentially smoothed
-                // figure in tab-units, not a calibrated velocity, so the clamp is doing the real
-                // work and the multiplier only decides how little of a flick counts.
-                val projected = aimed +
-                    (dragVelocity.floatValue * FlingProjection).fastCoerceIn(-0.5f, 0.5f)
-                val landed = projected.fastRoundToInt().fastCoerceIn(0, lastIndex)
-
-                // One coroutine for the whole settle: snap to where the finger left it, hand
-                // drawing back to the animation, then spring onto the tab.
-                chaseJob[0]?.cancel()
-                settleFrom(ended, landed.toFloat()) { dragging.value = false }
-
-                // Two more, once per gesture, to unwind the two decorative floats. Both are
-                // cheap `Animatable`s created here and thrown away; the point is that neither of
-                // them existed during the drag itself.
-                val velocityFrom = dragVelocity.floatValue
-                if (velocityFrom != 0f) {
-                    scope.launch {
-                        Animatable(velocityFrom).animateTo(0f, spring(0.5f, 300f)) {
-                            dragVelocity.floatValue = value
-                        }
-                    }
-                }
-                val overscrollFrom = overscrollPx.floatValue
-                if (overscrollFrom != 0f) {
-                    scope.launch {
-                        Animatable(overscrollFrom).animateTo(0f, spring(1f, 300f, 0.5f)) {
-                            overscrollPx.floatValue = value
-                        }
-                    }
-                }
+                val landed = targetValue.fastRoundToInt().fastCoerceIn(0, lastIndex)
+                updateValue(landed.toFloat())
+                scope.launch { tug.animateTo(0f, spring(1f, 300f, 0.5f)) }
 
                 val screen = tabsState.getOrNull(landed)
                 if (screen != null) {
                     if (landed != selectedIndexState) {
                         onItemClickState(screen, false)
                     } else if (moved.floatValue < tapSlopPx) {
-                        // Never travelled: this was a tap that happened to land on the capsule,
-                        // which by definition sits on the active tab. Forwarded as a re-tap so
-                        // the host can do what it does for those (scroll the page back to the
-                        // top), because the capsule covers that tab's own click target.
+                        // Never travelled: a tap on the capsule, which sits on the active tab. Sent
+                        // as a re-tap so the host can scroll the page back to the top.
                         onItemClickState(screen, true)
                     }
                 }
@@ -964,31 +865,28 @@ private fun LiquidTabBar(
             onDrag = { _, dragAmount ->
                 if (tabWidthPx > 0f) {
                     moved.floatValue += abs(dragAmount.x)
-                    val delta = dragAmount.x / tabWidthPx * if (isLtr) 1f else -1f
-                    val next = fingerValue.floatValue + delta
-                    // The capsule, its haptic ticks and its squish all follow from the chase loop
-                    // started on press; the pointer only moves the target.
-                    fingerValue.floatValue = next.fastCoerceIn(0f, lastIndex.toFloat())
-
-                    // Only what the capsule could not absorb becomes overscroll; anything within
-                    // range pulls the panel back towards centre instead of accumulating.
-                    overscrollPx.floatValue =
-                        if (next < 0f || next > lastIndex) overscrollPx.floatValue + dragAmount.x
-                        else overscrollPx.floatValue * 0.5f
+                    val before = targetValue
+                    val after = (before + dragAmount.x / tabWidthPx * if (isLtr) 1f else -1f)
+                        .fastCoerceIn(0f, lastIndex.toFloat())
+                    if (after.fastRoundToInt() != before.fastRoundToInt()) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    }
+                    updateValue(after)
+                    scope.launch { tug.snapTo(tug.value + dragAmount.x) }
                 }
             },
+            velocityDampingRatio = 1f,
         )
     }
 
-    /** Where the capsule is, in tab units. The finger wins while it is down. */
-    val capsuleAt: () -> Float = {
-        if (dragging.value) dragValue.floatValue else dampedDragAnimation.value
-    }
-
-    // Route changes that did not come from this bar — a deep link, the back stack, the search
-    // circle — still have to move the capsule, and must do it without the pressed swell.
+    // Route changes that did not come from a drag on this bar (a deep link, the back stack, the
+    // search circle) move the capsule with the same press, slide and settle a tap gets. On first
+    // composition it is already in place, so there is nothing to animate.
     LaunchedEffect(dampedDragAnimation, capsuleIndex) {
-        if (!dragging.value) dampedDragAnimation.settleToValue(capsuleIndex.toFloat())
+        val target = capsuleIndex.toFloat()
+        if (abs(dampedDragAnimation.targetValue - target) > 0.001f) {
+            dampedDragAnimation.animateToValue(target)
+        }
     }
 
     val glassBackdrop = rememberLayerBackdrop()
@@ -1016,11 +914,6 @@ private fun LiquidTabBar(
                 }
                 .graphicsLayer {
                     translationX = panelOffset()
-                    // The whole bar breathes a little under the finger, so the capsule is not the
-                    // only thing acknowledging the touch.
-                    val swell = lerp(1f, 1.012f, dampedDragAnimation.pressProgress)
-                    scaleX = swell
-                    scaleY = swell
                 },
         ) {
             // Contentless on purpose — see the KDoc. `layerBackdrop` records everything drawn
@@ -1079,7 +972,7 @@ private fun LiquidTabBar(
                         labelFontSize = labelFontSize,
                         // Magnified with the press, so squeezing the capsule appears to draw the
                         // icon towards the surface of the glass.
-                        scaleProvider = { lerp(1f, 1.16f, dampedDragAnimation.pressProgress) },
+                        scaleProvider = { lerp(1f, 1.12f, dampedDragAnimation.pressProgress) },
                         onClick = null,
                     )
                 }
@@ -1092,7 +985,7 @@ private fun LiquidTabBar(
             val capsuleModifier = Modifier
                 .padding(horizontal = inset)
                 .graphicsLayer {
-                    val travel = capsuleAt() * tabWidthPx
+                    val travel = dampedDragAnimation.value * tabWidthPx
                     translationX = (if (isLtr) travel else -travel) + panelOffset()
                 }
 
@@ -1140,20 +1033,10 @@ private fun LiquidTabBar(
                                 scaleX = dampedDragAnimation.scaleX
                                 scaleY = dampedDragAnimation.scaleY
                                 // Conservation of volume, roughly: the faster it travels the
-                                // longer and flatter it gets, and it recovers as it settles.
-                                val velocity = dragVelocity.floatValue
+                                // longer and flatter it gets, and it recovers as it slows.
+                                val velocity = dampedDragAnimation.velocity / 10f
                                 scaleX /= 1f - (velocity * 0.75f).fastCoerceIn(-0.2f, 0.2f)
                                 scaleY *= 1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f)
-                                // Travelling after a tap or a route change, with no finger down:
-                                // the glass stretches with its own speed and lifts a little, then
-                                // recovers as the spring lands. iOS's jelly, not a sliding tile.
-                                if (!dragging.value) {
-                                    val travel = abs(dampedDragAnimation.travelVelocity)
-                                    val stretch = (travel * 0.028f).fastCoerceIn(0f, 0.26f)
-                                    val lift = 1f + (travel * 0.012f).fastCoerceIn(0f, 0.08f)
-                                    scaleX *= (1f + stretch) * lift
-                                    scaleY *= (1f - stretch * 0.35f) * lift
-                                }
                             },
                             onDrawSurface = {
                                 // A wash at rest so the capsule is still legible as a selected

@@ -30,13 +30,15 @@ internal class DampedDragAnimation(
     val onDragStarted: DampedDragAnimation.(position: Offset) -> Unit,
     val onDragStopped: DampedDragAnimation.() -> Unit,
     val onDrag: DampedDragAnimation.(size: IntSize, dragAmount: Offset) -> Unit,
+    /**
+     * Damping of the tracked velocity that callers turn into stretch. Under-damped (the default)
+     * rings after every change of speed; 1f tracks the drag and stops when it stops.
+     */
+    val velocityDampingRatio: Float = 0.5f,
 ) {
     private val valueAnimationSpec = spring(1f, 1000f, visibilityThreshold)
 
-    // Settling onto a tab is iOS's lens spring: a touch under-damped, so the glass arrives with a
-    // small overshoot and recoil instead of stopping dead like a cursor.
-    private val settleAnimationSpec = spring(0.72f, 420f, visibilityThreshold)
-    private val velocityAnimationSpec = spring(0.5f, 300f, visibilityThreshold * 10f)
+    private val velocityAnimationSpec = spring(velocityDampingRatio, 300f, visibilityThreshold * 10f)
     private val pressProgressAnimationSpec = spring(1f, 1000f, 0.001f)
     private val scaleXAnimationSpec = spring(0.6f, 250f, 0.001f)
     private val scaleYAnimationSpec = spring(0.7f, 250f, 0.001f)
@@ -68,9 +70,6 @@ internal class DampedDragAnimation(
     val scaleX: Float get() = scaleXAnimation.value
     val scaleY: Float get() = scaleYAnimation.value
     val velocity: Float get() = velocityAnimation.value
-
-    /** Live speed of the settle spring, in value units per second — what a tap's travel stretches by. */
-    val travelVelocity: Float get() = valueAnimation.velocity
 
     val modifier: Modifier = Modifier.pointerInput(Unit) {
         inspectDragGestures(
@@ -145,24 +144,6 @@ internal class DampedDragAnimation(
         }
     }
 
-    /**
-     * Place the value exactly where a gesture left it, then spring from there to where it belongs.
-     *
-     * For controls that drive their own position during a drag — writing a plain float per frame
-     * rather than re-targeting a spring per frame, which is a coroutine and a mutex acquisition
-     * per frame — and only hand the number back on release. Doing it as `snapToValue` followed by
-     * `settleToValue` is two coroutines racing over the same job handle, and the snap loses about
-     * half the time, so the capsule springs from wherever it was *before* the drag.
-     */
-    fun settleFrom(from: Float, to: Float, onSnapped: () -> Unit = {}) {
-        valueJob?.cancel()
-        valueJob = animationScope.launch {
-            valueAnimation.snapTo(from.coerceIn(valueRange))
-            onSnapped()
-            valueAnimation.animateTo(to.coerceIn(valueRange), settleAnimationSpec)
-        }
-    }
-
     fun animateToValue(value: Float) {
         animationScope.launch {
             mutatorMutex.mutate {
@@ -174,25 +155,6 @@ internal class DampedDragAnimation(
                 }
                 release()
             }
-        }
-    }
-
-    /**
-     * Re-target the value without touching press state, for a control whose indicator is
-     * permanently on screen.
-     *
-     * [animateToValue] wraps its move in `press()` / `release()`, which is right for a knob that
-     * only exists while it is being touched — the pressed swell *is* the acknowledgement of the
-     * tap. The nav dock's capsule is always there, so borrowing that call to follow a route change
-     * made the pill inflate to its pressed size and deflate again every time the user navigated
-     * with something other than the dock, which reads as the bar being poked by a ghost.
-     */
-    fun settleToValue(value: Float) {
-        val targetValue = value.coerceIn(valueRange)
-        if (valueAnimation.targetValue == targetValue && value == valueAnimation.value) return
-        valueJob?.cancel()
-        valueJob = animationScope.launch {
-            valueAnimation.animateTo(targetValue, settleAnimationSpec)
         }
     }
 
