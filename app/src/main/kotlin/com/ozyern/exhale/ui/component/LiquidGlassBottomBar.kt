@@ -64,6 +64,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateMapOf
@@ -157,7 +158,7 @@ import androidx.compose.ui.graphics.TransformOrigin
  *
  * Two scroll-driven states, morphing into each other with spring physics:
  *  - **State A** (`collapsed == false`, at top): a wide frosted pill holding all main tabs
- *    with a sliding accent indicator, plus a separate frosted Search circle to its right.
+ *    with a sliding glass capsule, plus a separate frosted Search circle to its right.
  *  - **State B** (`collapsed == true`, scrolled down): a frosted Home circle on the far left,
  *    a center frosted pill (the mini-player `[art | title | play/pause]` when a song is
  *    playing, otherwise the active-tab compact pill), and a frosted Search circle on the right.
@@ -646,43 +647,24 @@ private fun NavGlyph(
 }
 
 /* ----------------------------------------------------------------------- */
-/* State A tab row with sliding accent indicator                            */
+/* State A tab row with sliding glass capsule                               */
 /* ----------------------------------------------------------------------- */
 
 /**
- * The dock's tab strip: a permanent glass lens riding on the selected tab, dragged like a
- * physical object.
+ * The dock's tab strip: a glass capsule riding on the selected tab, dragged like a physical object.
  *
- * ### Why the selected tab is not simply painted in the accent colour
+ * ### How it is drawn
  *
- * It is — on a *hidden* copy of the row. The strip is composed in four pieces:
+ *  1. the pane: the dock's glass, with the tabs on it — the selected one in full ink, the rest
+ *     dimmed;
+ *  2. an invisible twin of the row, drawn on a live sample of the page (saturated, lightly blurred,
+ *     bending harder the more the capsule is pressed) and recorded into `tabsBackdrop`;
+ *  3. the capsule, which reads `page + twin` through its own lens;
+ *  4. the selected tab drawn once more on top of the capsule, crisp, fading out as it is pressed.
  *
- *  1. a bare glass plate, no content on it, recorded into `glassBackdrop`;
- *  2. the visible row of tabs in the resting colour, drawn over that plate;
- *  3. an invisible twin (`alpha = 0`) of the same row in the **accent** colour with filled icons,
- *     recorded into `tabsBackdrop` — no glass of its own, just glyphs on nothing;
- *  4. the capsule, which draws `plate + twin` through a lens.
- *
- * So the blue icon and label of the selected tab are not a tint applied to a widget: they are the
- * hidden layer *seen through the glass*. Everything the lens does to the pixels underneath — the
- * magnification, the edge refraction, the chromatic fringe as it accelerates — happens to the
- * icon and the label too, because as far as the shader is concerned they are just more backdrop.
- * A capsule drawn over an already-blue tab can only ever look like a sticker on top of it; this
- * looks like the tab is *inside* the glass, which is the entire effect being copied.
- *
- * ### Why it is split that way, and not the obvious way
- *
- * The obvious build is two full copies of the dock — glass and all — with the capsule sampling
- * the app content plus the accent copy. That is what this was, and it cost three backdrop passes
- * per frame: the visible dock blurring and refracting the whole NavHost recording, the twin doing
- * the identical work again a pixel underneath, and the capsule compositing the app layer a third
- * time. At 120Hz over a 64dp strip that is what the dragging felt like.
- *
- * Splitting the plate away from the content means the expensive pass — vibrancy, a 13dp blur and
- * a lens over live app pixels — happens exactly **once**, and the other two layers are recordings
- * of already-drawn content, which cost a `RenderNode` draw each. The plate has to be contentless
- * for this to work: if the recording contained the resting icons, the capsule would show them
- * *and* the accent ones stacked as a double image.
+ * At rest the capsule is a dark pill (pale in light theme) with the tab sharp on it. Held, its wash
+ * clears and it becomes glass: what you see inside is the twin magnified and bent, so the page and
+ * the tab's icon are both refracted by it rather than covered.
  *
  * ### How it moves
  *
@@ -694,8 +676,7 @@ private fun NavGlyph(
  * change, so a drag that changes its mind costs nothing. A route change from anywhere else gives
  * the same press, slide and settle, so a tap reads like a short drag.
  *
- * Falls back to a flat accent wash on devices with no `RuntimeShader`, where there is no lens to
- * see the hidden layer through and the selected tab therefore has to colour itself.
+ * Falls back to a flat pill on devices with no `RuntimeShader`, where there is no lens.
  */
 @Composable
 private fun LiquidTabBar(
@@ -713,8 +694,6 @@ private fun LiquidTabBar(
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val shape = remember { RoundedCornerShape(percent = 50) }
-    val accent = MaterialTheme.colorScheme.primary
-    val restColor = itemContentColor(pureBlack)
     val glassy = remember { isRuntimeShaderSupported() }
     val isDark = isSystemInDarkTheme()
 
@@ -887,10 +866,13 @@ private fun LiquidTabBar(
         }
     }
 
-    val glassBackdrop = rememberLayerBackdrop()
+    val appBackdrop = LocalAppBackdrop.current
     val tabsBackdrop = rememberLayerBackdrop()
-    val combinedBackdrop = rememberCombinedBackdrop(glassBackdrop, tabsBackdrop)
-    val containerGlass = Modifier.dockGlass(shape)
+    val capsuleBackdrop = rememberCombinedBackdrop(appBackdrop, tabsBackdrop)
+    // The capsule at rest is a dark (or, in light theme, pale) pill that clears to glass when held.
+    val restWash = if (isDark) Color(0xFF1C1B1C) else Color(0xFFF2F2F2)
+    val selectedInk = clearGlassContentColor()
+    val restInk = selectedInk.copy(alpha = 0.6f)
 
     Box(
         // The gesture belongs to the whole bar, as on iOS: press any tab and the glass comes to
@@ -899,7 +881,7 @@ private fun LiquidTabBar(
         modifier = modifier.height(height).then(dampedDragAnimation.modifier),
         contentAlignment = Alignment.CenterStart,
     ) {
-        // ---- 1 + 2. the plate, and the row you can see on it ------------------------
+        // ---- the pane, and the row you can see on it ---------------------------------
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -910,19 +892,9 @@ private fun LiquidTabBar(
                         tabWidthPx = ((width - insetPx * 2f) / tabs.size).coerceAtLeast(0f)
                     }
                 }
-                .graphicsLayer {
-                    translationX = panelOffset()
-                },
+                .graphicsLayer { translationX = panelOffset() },
         ) {
-            // Contentless on purpose — see the KDoc. `layerBackdrop` records everything drawn
-            // *after* it in the chain, so it has to sit before the glass modifier to capture the
-            // pane at all.
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .then(if (glassy) Modifier.layerBackdrop(glassBackdrop) else Modifier)
-                    .then(containerGlass)
-            )
+            Box(Modifier.fillMaxSize().dockGlass(shape))
 
             Row(
                 modifier = Modifier.fillMaxSize().padding(inset),
@@ -931,13 +903,13 @@ private fun LiquidTabBar(
                 tabs.forEachIndexed { index, screen ->
                     LiquidTabItem(
                         screen = screen,
-                        // Without a lens there is no hidden layer to reveal, so the selection has
-                        // to be painted here instead.
-                        tint = if (!glassy && index == selectedIndex) accent else restColor,
-                        filled = !glassy && index == selectedIndex,
+                        tint = if (index == selectedIndex) selectedInk else restInk,
+                        filled = index == selectedIndex,
                         showLabel = showLabels,
                         labelFontSize = labelFontSize,
-                        scaleProvider = { 1f },
+                        scaleProvider = {
+                            if (index == capsuleIndex) lerp(1f, 1.12f, dampedDragAnimation.pressProgress) else 1f
+                        },
                         onClick = { onItemClick(screen, index == selectedIndex) },
                         gestureOwnedByBar = true,
                     )
@@ -945,39 +917,51 @@ private fun LiquidTabBar(
             }
         }
 
-        // ---- 3. the twin the lens reads --------------------------------------------
+        // ---- the twin the capsule reads -------------------------------------------------
+        // A real sample of the page — saturated, lightly blurred, bending more as the capsule is
+        // pressed — with the tabs drawn on it. Never seen directly; held, the capsule magnifies
+        // this, which is why it clears to bright glass rather than darkening.
         if (glassy) {
             Row(
                 modifier = Modifier
                     .clearAndSetSemantics {}
                     .alpha(0f)
                     .layerBackdrop(tabsBackdrop)
+                    .graphicsLayer { translationX = panelOffset() }
                     .fillMaxWidth()
                     .height(capsuleHeight)
-                    .graphicsLayer { translationX = panelOffset() }
-                    .padding(horizontal = inset),
+                    .padding(horizontal = inset)
+                    .drawBackdrop(
+                        backdrop = appBackdrop,
+                        shape = { shape },
+                        effects = {
+                            val progress = dampedDragAnimation.pressProgress
+                            vibrancy()
+                            blur(2f.dp.toPx())
+                            lens(15f.dp.toPx() * progress, 18f.dp.toPx() * progress)
+                        },
+                        highlight = { Highlight.Default.copy(alpha = dampedDragAnimation.pressProgress) },
+                    ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                tabs.forEach { screen ->
+                tabs.forEachIndexed { index, screen ->
                     LiquidTabItem(
                         screen = screen,
-                        tint = accent,
+                        tint = selectedInk,
                         filled = true,
-                        // Must match the visible row exactly: this is the layer the lens reads, so
-                        // a twin carrying labels the row has dropped would magnify text that is
-                        // not there.
+                        // Must match the visible row exactly: this is the layer the capsule reads.
                         showLabel = showLabels,
                         labelFontSize = labelFontSize,
-                        // Magnified with the press, so squeezing the capsule appears to draw the
-                        // icon towards the surface of the glass.
-                        scaleProvider = { lerp(1f, 1.12f, dampedDragAnimation.pressProgress) },
+                        scaleProvider = {
+                            if (index == capsuleIndex) lerp(1f, 1.12f, dampedDragAnimation.pressProgress) else 1f
+                        },
                         onClick = null,
                     )
                 }
             }
         }
 
-        // ---- 4. the capsule ---------------------------------------------------------
+        // ---- the capsule ------------------------------------------------------------------
         if (tabWidthPx > 0f) {
             val tabWidth = with(density) { tabWidthPx.toDp() }
             val capsuleModifier = Modifier
@@ -991,66 +975,72 @@ private fun LiquidTabBar(
                 Box(
                     capsuleModifier
                         .drawBackdrop(
-                            backdrop = combinedBackdrop,
+                            backdrop = capsuleBackdrop,
                             shape = { shape },
                             effects = {
-                                // Never fully off. A capsule with no refraction at rest is a
-                                // coloured rectangle, and the resting state is the one the user
-                                // spends all their time looking at — in the reference the pill is
-                                // visibly bending the label underneath it before anyone touches
-                                // it. The press deepens the bend rather than switching it on.
                                 val progress = dampedDragAnimation.pressProgress
-                                // At rest it should already look like a lens sitting on the bar,
-                                // as the reference's does, so the resting bend is half the pressed one.
-                                val depth = 0.55f + 0.45f * progress
+                                // Softly frosted at rest; clear, bending glass while held.
+                                blur(3f.dp.toPx() * (1f - progress))
                                 lens(
-                                    10f.dp.toPx() * depth,
-                                    18f.dp.toPx() * depth,
-                                    true,
-                                    // The extra sample cost of the colour fringe only buys
-                                    // anything while the thing is moving.
-                                    progress > 0.02f,
+                                    lerp(0f, 10f.dp.toPx(), progress),
+                                    lerp(0f, 12f.dp.toPx(), progress),
+                                    chromaticAberration = progress > 0.01f,
                                 )
                             },
                             highlight = {
-                                // A rim you can see at rest: it is what makes the pill read as a
-                                // raised piece of glass rather than a darker patch of the bar.
-                                Highlight.Ambient.copy(
-                                    alpha = 0.62f + 0.38f * dampedDragAnimation.pressProgress,
-                                )
+                                Highlight.Default.copy(alpha = lerp(0.5f, 1f, dampedDragAnimation.pressProgress))
                             },
+                            shadow = { Shadow(alpha = lerp(0.35f, 1f, dampedDragAnimation.pressProgress)) },
                             innerShadow = {
                                 val progress = dampedDragAnimation.pressProgress
-                                InnerShadow(
-                                    radius = 3f.dp + 5f.dp * progress,
-                                    color = Color.Black.copy(alpha = 0.15f),
-                                    alpha = 0.35f + 0.65f * progress,
-                                )
+                                InnerShadow(radius = 8f.dp * progress, alpha = progress)
                             },
                             layerBlock = {
                                 scaleX = dampedDragAnimation.scaleX
                                 scaleY = dampedDragAnimation.scaleY
-                                // Conservation of volume, roughly: the faster it travels the
-                                // longer and flatter it gets, and it recovers as it slows.
+                                // Longer and flatter the faster it travels, round again as it slows.
                                 val velocity = dampedDragAnimation.velocity / 10f
                                 scaleX /= 1f - (velocity * 0.75f).fastCoerceIn(-0.2f, 0.2f)
                                 scaleY *= 1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f)
                             },
                             onDrawSurface = {
-                                // A wash at rest so the capsule is still legible as a selected
-                                // slot on a busy backdrop, fading out as the lens takes over.
-                                val progress = dampedDragAnimation.pressProgress
-                                drawRect(
-                                    color = if (isDark) Color.White.copy(alpha = 0.16f)
-                                    else Color.Black.copy(alpha = 0.07f),
-                                    alpha = 1f - progress * 0.7f,
-                                )
-                                drawRect(Color.Black.copy(alpha = 0.03f * progress))
+                                drawRect(restWash.copy(alpha = 0.8f * (1f - 0.75f * dampedDragAnimation.pressProgress)))
                             },
                         )
                         .height(capsuleHeight)
                         .width(tabWidth),
                 )
+
+                // The tab under the capsule, drawn again on top of it. What shows through the glass
+                // sits under the wash and so can never be at full strength; at rest this is the
+                // crisp copy, and it fades out within the first third of a press.
+                val capsuleTab by remember(tabs.size) {
+                    derivedStateOf { dampedDragAnimation.value.fastRoundToInt().coerceIn(0, lastIndex) }
+                }
+                Row(
+                    capsuleModifier
+                        .graphicsLayer {
+                            scaleX = dampedDragAnimation.scaleX
+                            scaleY = dampedDragAnimation.scaleY
+                            alpha = (1f - dampedDragAnimation.pressProgress * 3f).fastCoerceIn(0f, 1f)
+                        }
+                        .clearAndSetSemantics {}
+                        .height(capsuleHeight)
+                        .width(tabWidth),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    tabs.getOrNull(capsuleTab)?.let { screen ->
+                        LiquidTabItem(
+                            screen = screen,
+                            tint = selectedInk,
+                            filled = true,
+                            showLabel = showLabels,
+                            labelFontSize = labelFontSize,
+                            scaleProvider = { 1f },
+                            onClick = null,
+                        )
+                    }
+                }
             } else {
                 Box(
                     capsuleModifier
