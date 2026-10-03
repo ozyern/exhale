@@ -425,6 +425,7 @@ fun LiquidGlassBottomBar(
             val searchActive = isSelected(searchScreen)
             FrostedCircle(
                 size = chromeCircleSize,
+                openDockGlass = !collapsed,
                 onClick = { onItemClickHaptic(searchScreen, searchActive) },
             ) {
                 NavGlyph(
@@ -559,7 +560,7 @@ private fun FrostedPill(
         modifier = modifier
             .height(height)
             .nowPlayingAccessory(sharedAccessoryScope)
-            .dockGlass(shape),
+            .clearGlass(shape),
         contentAlignment = Alignment.Center,
     ) { content() }
 }
@@ -573,6 +574,8 @@ private fun FrostedCircle(
     size: Dp = 64.dp,
     extraTint: Float = DockGlassExtraTint,
     blurRadius: Dp = DockGlassBlurRadius,
+    // The folded dock keeps the softer clear glass; the open dock's circle matches its tab strip.
+    openDockGlass: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     var pressed by remember { mutableStateOf(false) }
@@ -590,7 +593,7 @@ private fun FrostedCircle(
         modifier = modifier
             .size(size)
             .scale(pressScale)
-            .dockGlass(CircleShape)
+            .then(if (openDockGlass) Modifier.dockGlass(CircleShape) else Modifier.clearGlass(CircleShape))
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
