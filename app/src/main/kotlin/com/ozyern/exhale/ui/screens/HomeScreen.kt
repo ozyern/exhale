@@ -414,6 +414,7 @@ fun HomeScreen(
                     item(key = "chips_row", contentType = "chips_row") {
                         ChipsRow(
                             chips = homePage?.chips.orEmpty().map { it to it.title },
+                            segmented = false,
                             currentValue = selectedChip,
                             onValueUpdate = {
                                 viewModel.toggleChip(it)

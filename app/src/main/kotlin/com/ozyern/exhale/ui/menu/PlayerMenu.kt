@@ -1417,39 +1417,16 @@ private fun TunerSegmentedControl(
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
 ) {
-    val ink = MaterialTheme.colorScheme.onSurface
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(36.dp)
-            .clip(CircleShape)
-            .background(ink.copy(alpha = 0.08f))
-            .padding(3.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        options.forEachIndexed { index, label ->
-            val selected = index == selectedIndex
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clip(CircleShape)
-                    .background(
-                        if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
-                    )
-                    .clickable { onSelect(index) },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = label,
-                    fontSize = 14.sp,
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                    color = if (selected) MaterialTheme.colorScheme.onPrimary else ink,
-                    maxLines = 1,
-                )
-            }
-        }
-    }
+    // The menu is a sheet over the page, so the glass refracts nothing of its own rather than
+    // reading a page recording it may be drawn inside.
+    com.ozyern.exhale.ui.component.liquid.LiquidSegmentedTabs(
+        labels = options,
+        selectedIndex = selectedIndex,
+        onSelect = onSelect,
+        height = 40.dp,
+        backdrop = com.ozyern.exhale.ui.component.liquid.rememberInContentBackdrop(),
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 /** The hairline between the two halves of the panel, inset the way a grouped table insets one. */

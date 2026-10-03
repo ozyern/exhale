@@ -75,7 +75,22 @@ fun <E> ChipsRow(
     modifier: Modifier = Modifier,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
     icons: Map<E, Int> = emptyMap(),
+    segmented: Boolean = chips.size in 2..4 && chips.all { it.second.length <= 10 },
 ) {
+    // A handful of short, fixed choices reads as one control rather than a row of buttons, so it
+    // gets the sliding glass thumb you can drag between them. Long or open-ended lists stay chips.
+    if (segmented) {
+        com.ozyern.exhale.ui.component.liquid.LiquidSegmentedTabs(
+            labels = chips.map { it.second },
+            selectedIndex = chips.indexOfFirst { it.first == currentValue }.coerceAtLeast(0),
+            onSelect = { index -> chips.getOrNull(index)?.let { onValueUpdate(it.first) } },
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+        return
+    }
+
     Row(
         modifier =
         modifier
