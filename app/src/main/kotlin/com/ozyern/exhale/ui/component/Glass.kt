@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
@@ -173,6 +174,34 @@ fun Modifier.clearGlass(
 }
 
 private const val ClearGlassFilm = 0.40f
+
+/**
+ * The dock's glass, in both of its states: almost no frost, so the page reads straight through,
+ * with the colour behind it lifted, a deep bend at the rim and a darker film than [clearGlass].
+ * The bar sits over everything, so it has to look like a lens over the page, not a panel on it.
+ */
+@Composable
+fun Modifier.dockGlass(
+    shape: Shape,
+    backdrop: Backdrop = LocalAppBackdrop.current,
+    dark: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
+): Modifier {
+    val film = if (dark) Color(0xFF1A1A1A).copy(alpha = 0.5f) else Color(0xFFFAFAFA).copy(alpha = 0.5f)
+    return this.drawBackdrop(
+        backdrop = backdrop,
+        shape = { shape },
+        effects = {
+            colorControls(saturation = 1.6f)
+            blur(2f.dp.toPx())
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                lens(19f.dp.toPx(), 29f.dp.toPx())
+            }
+        },
+        highlight = { Highlight.Default.copy(width = 0.8f.dp, alpha = 0.3f) },
+        shadow = { Shadow() },
+        onDrawSurface = { drawRect(film) },
+    )
+}
 
 /**
  * [clearGlass] for controls inside a page. It refracts the page's own recorded ground where one

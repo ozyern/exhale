@@ -568,9 +568,7 @@ private fun FrostedPill(
         modifier = modifier
             .height(height)
             .nowPlayingAccessory(sharedAccessoryScope)
-            // The clear glass rather than the frosted plate: the pill is a lens over the
-            // page, which is what the reference's accessory is.
-            .clearGlass(shape),
+            .dockGlass(shape),
         contentAlignment = Alignment.Center,
     ) { content() }
 }
@@ -601,7 +599,7 @@ private fun FrostedCircle(
         modifier = modifier
             .size(size)
             .scale(pressScale)
-            .clearGlass(CircleShape)
+            .dockGlass(CircleShape)
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
@@ -892,7 +890,7 @@ private fun LiquidTabBar(
     val glassBackdrop = rememberLayerBackdrop()
     val tabsBackdrop = rememberLayerBackdrop()
     val combinedBackdrop = rememberCombinedBackdrop(glassBackdrop, tabsBackdrop)
-    val containerGlass = Modifier.clearGlass(shape)
+    val containerGlass = Modifier.dockGlass(shape)
 
     Box(
         // The gesture belongs to the whole bar, as on iOS: press any tab and the glass comes to
