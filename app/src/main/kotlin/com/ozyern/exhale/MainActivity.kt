@@ -299,7 +299,6 @@ import com.ozyern.exhale.ui.screens.settings.NavigationTab
 import com.ozyern.exhale.ui.screens.settings.ThemePalettes
 import com.ozyern.exhale.ui.theme.ExhaleTheme
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeSource
 import com.ozyern.exhale.ui.theme.ColorSaver
 import com.ozyern.exhale.ui.theme.DefaultThemeColor
 import com.ozyern.exhale.ui.theme.SabrinaSeedPalette
@@ -2659,11 +2658,9 @@ class MainActivity : ComponentActivity() {
                                     },
                                     modifier = Modifier
                                         // The app content is the blur/refraction source for every
-                                        // piece of floating chrome. Two systems read it:
-                                        //  - hazeSource: Haze's frosted surfaces.
-                                        //  - layerBackdrop: Kyant's liquid glass, which records
-                                        //    these pixels off-screen so `drawBackdrop` can blur
-                                        //    AND lens-refract them.
+                                        // piece of floating chrome: `layerBackdrop` records these
+                                        // pixels off-screen so `drawBackdrop` can blur AND
+                                        // lens-refract them.
                                         // The opaque fill matters: screens are mostly transparent
                                         // over the root Surface, and refracting transparent pixels
                                         // is what made the glass read as a dark film instead of
@@ -2680,8 +2677,14 @@ class MainActivity : ComponentActivity() {
                                                 else MaterialTheme.colorScheme.surface
                                             )
                                         )
+                                        // Cached layers on both sides of the recording: the
+                                        // outer one keeps a redraw elsewhere in the window (the
+                                        // dock animating, a progress tick) from re-recording the
+                                        // page; the inner one makes the page a single render node
+                                        // the recording replays instead of re-issuing every op.
+                                        .graphicsLayer()
                                         .layerBackdrop(appBackdrop)
-                                        .hazeSource(hazeState)
+                                        .graphicsLayer()
                                         .nestedScroll(
                                             if (
                                                 navigationItems.fastAny {

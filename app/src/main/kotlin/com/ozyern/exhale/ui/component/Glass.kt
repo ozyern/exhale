@@ -186,7 +186,9 @@ fun Modifier.dockGlass(
     backdrop: Backdrop = LocalAppBackdrop.current,
     dark: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
 ): Modifier {
-    val film = if (dark) Color(0xFF1A1A1A).copy(alpha = 0.5f) else Color(0xFFFAFAFA).copy(alpha = 0.5f)
+    // A mid grey in dark theme rather than near-black: over colour it lets the page's own hue come
+    // through the pane instead of being dimmed under it.
+    val film = if (dark) Color(0xFF4A4A4E).copy(alpha = 0.5f) else Color(0xFFFAFAFA).copy(alpha = 0.5f)
     return this.drawBackdrop(
         backdrop = backdrop,
         shape = { shape },

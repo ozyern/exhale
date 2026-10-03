@@ -198,12 +198,25 @@ fun LiquidGlassBottomBar(
         onMiniPlayerClick()
     }
 
+    // Folded with nothing playing: the dock is just the two circles, side by side in the
+    // middle — no empty pill between them saying the name of the page you are already on. The
+    // change between that and the full dock is a soft cross-dissolve with a little scale, not a cut.
+    val idleFold = collapsed && !hasNowPlaying
+    // One bar narrowing into the two circles rather than two layouts trading places: the row's
+    // width springs from the full dock down to exactly two circles and their gap, the empty middle
+    // closing between them as they slide together.
+    val idle by animateFloatAsState(
+        targetValue = if (idleFold) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = 360f),
+        label = "dockIdleFold",
+    )
     // How big the round chrome is in each state, as one continuous value rather than two
     // composables of different sizes taking turns. Collapsed, the row belongs to the song: the
     // circles step down and their glyphs step down with them, which is what gives the pill the
     // width.
     val chromeCircleSize by animateDpAsState(
-        targetValue = if (collapsed) CollapsedCircleSize else DockCircleSize,
+        // Folded with nothing playing, the two circles are the whole dock and keep their full size.
+        targetValue = if (collapsed && hasNowPlaying) CollapsedCircleSize else DockCircleSize,
         animationSpec = spring(dampingRatio = 0.9f, stiffness = 420f),
         label = "chromeCircleSize",
     )
@@ -219,29 +232,22 @@ fun LiquidGlassBottomBar(
     // and the pill takes the rest. The gap follows it, so the expanded row has no hole where the
     // circle will be.
     val homeCircleSize by animateDpAsState(
-        targetValue = if (collapsed) CollapsedCircleSize else 0.dp,
+        targetValue = when {
+            !collapsed -> 0.dp
+            hasNowPlaying -> CollapsedCircleSize
+            else -> DockCircleSize
+        },
         animationSpec = spring(dampingRatio = 0.9f, stiffness = 420f),
         label = "homeCircleSize",
     )
     val homeGap = 10.dp * (homeCircleSize / CollapsedCircleSize).coerceIn(0f, 1f)
+    val chromeInk = clearGlassContentColor()
 
-    // Folded with nothing playing: the dock is just the two circles, side by side in the
-    // middle — no empty pill between them saying the name of the page you are already on. The
-    // change between that and the full dock is a soft cross-dissolve with a little scale, not a cut.
-    val idleFold = collapsed && !hasNowPlaying
-    // One bar narrowing into the two circles rather than two layouts trading places: the row's
-    // width springs from the full dock down to exactly two circles and their gap, the empty middle
-    // closing between them as they slide together.
-    val idle by animateFloatAsState(
-        targetValue = if (idleFold) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 360f),
-        label = "dockIdleFold",
-    )
     androidx.compose.foundation.layout.BoxWithConstraints(
         modifier = modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center,
     ) {
-    val compactWidth = CollapsedCircleSize * 2 + 20.dp
+    val compactWidth = homeCircleSize + chromeCircleSize + 20.dp
     val rowWidth = androidx.compose.ui.unit.lerp(maxWidth, compactWidth.coerceAtMost(maxWidth), idle)
     run {
     Row(
@@ -251,26 +257,15 @@ fun LiquidGlassBottomBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // The folded dock's first circle is the page you are on — the tab strip
-        // folds into its own selected tab — falling back to Home off the tabs. A faint ring says
-        // "you are here"; tapping it there scrolls the page to its top, which unfolds the dock.
+        // folds into its own selected tab — falling back to Home off the tabs. Tapping it there
+        // scrolls the page to its top, which unfolds the dock.
         // Holding it fans the other tabs out above it, so you can change page without unfolding.
         val leftTab = activeTab ?: homeTab
         if (leftTab != null && homeCircleSize > 1.dp) {
             val here = isSelected(leftTab)
             var fanOpen by remember { mutableStateOf(false) }
-            val accent = MaterialTheme.colorScheme.primary
             FrostedCircle(
                 size = homeCircleSize,
-                modifier = Modifier.drawWithContent {
-                    drawContent()
-                    if (here) {
-                        drawCircle(
-                            accent.copy(alpha = 0.55f),
-                            radius = size.minDimension / 2f - 1.dp.toPx(),
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()),
-                        )
-                    }
-                },
                 onClick = { onItemClickHaptic(leftTab, here) },
                 onLongClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -285,7 +280,7 @@ fun LiquidGlassBottomBar(
                     NavGlyph(
                         iconRes = if (isSelected(tab)) tab.iconIdActive else tab.iconIdInactive,
                         contentDescription = stringResource(tab.titleId),
-                        tint = if (isSelected(tab)) accent else itemContentColor(pureBlack),
+                        tint = if (isSelected(tab)) chromeInk else chromeInk.copy(alpha = 0.8f),
                         scale = (homeCircleSize / DockCircleSize).coerceAtMost(1f),
                     )
                 }
@@ -439,8 +434,7 @@ fun LiquidGlassBottomBar(
                 NavGlyph(
                     iconRes = if (searchActive) searchScreen.iconIdActive else searchScreen.iconIdInactive,
                     contentDescription = stringResource(searchScreen.titleId),
-                    tint = if (searchActive) MaterialTheme.colorScheme.primary
-                    else itemContentColor(pureBlack),
+                    tint = if (searchActive) chromeInk else chromeInk.copy(alpha = 0.8f),
                     scale = chromeGlyphScale,
                 )
             }
