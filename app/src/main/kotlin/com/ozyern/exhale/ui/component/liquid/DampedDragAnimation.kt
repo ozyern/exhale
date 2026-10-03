@@ -3,7 +3,9 @@ package com.ozyern.exhale.ui.component.liquid
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.MutatorMutex
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
@@ -14,8 +16,11 @@ import kotlinx.coroutines.android.awaitFrame
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.exp
+import kotlin.math.sqrt
 
 /**
  * Manages damped drag animations for sliders and toggles with velocity tracking.
@@ -63,13 +68,23 @@ internal class DampedDragAnimation(
     private var valueJob: Job? = null
     private var velocityJob: Job? = null
 
+    // Finger-following state. While a drag is in flight the value is driven by one loop per frame
+    // (see [followTo]) rather than by a fresh spring per pointer event: touch is sampled at up to
+    // 240Hz, and restarting an `Animatable` for every sample is a coroutine launch, a cancellation
+    // and a mutex acquisition each time, which is what made dragging stutter.
+    private var followTarget = Float.NaN
+    private var followJob: Job? = null
+    private val followVelocity = mutableFloatStateOf(0f)
+    private val following get() = followJob?.isActive == true
+
     val value: Float get() = valueAnimation.value
     val progress: Float get() = (value - valueRange.start) / (valueRange.endInclusive - valueRange.start)
-    val targetValue: Float get() = valueAnimation.targetValue
+    /** Where the value is heading: the finger's position while dragging, else the spring's target. */
+    val targetValue: Float get() = if (!followTarget.isNaN()) followTarget else valueAnimation.targetValue
     val pressProgress: Float get() = pressProgressAnimation.value
     val scaleX: Float get() = scaleXAnimation.value
     val scaleY: Float get() = scaleYAnimation.value
-    val velocity: Float get() = velocityAnimation.value
+    val velocity: Float get() = if (following) followVelocity.floatValue else velocityAnimation.value
 
     val modifier: Modifier = Modifier.pointerInput(Unit) {
         inspectDragGestures(
@@ -114,7 +129,67 @@ internal class DampedDragAnimation(
         }
     }
 
+    /**
+     * Follow a moving target — the finger — on the same stiff, critically damped spring
+     * [updateValue] uses, integrated once per frame in a single coroutine for the whole gesture.
+     * Velocity comes out of the same integration, smoothed, so the stretch tracks the motion and
+     * stops when it stops. Any other move ([updateValue], [animateToValue]) ends the follow.
+     */
+    fun followTo(value: Float) {
+        followTarget = value.coerceIn(valueRange)
+        if (following) return
+        valueJob?.cancel()
+        velocityJob?.cancel()
+        followVelocity.floatValue = 0f
+        followJob = animationScope.launch {
+            val stiffness = 1000f
+            val damping = 2f * sqrt(stiffness)
+            val range = (valueRange.endInclusive - valueRange.start).takeIf { it > 0f } ?: 1f
+            var x = valueAnimation.value
+            var v = 0f
+            var last = 0L
+            while (isActive) {
+                val dt = withFrameNanos { now ->
+                    val step = if (last == 0L) 1f / 120f else ((now - last) / 1e9f).coerceIn(0f, 1f / 30f)
+                    last = now
+                    step
+                }
+                val target = followTarget
+                if (target.isNaN()) break
+                // Semi-implicit Euler in a few sub-steps: stable at this stiffness on a 30Hz frame.
+                val steps = 4
+                val h = dt / steps
+                repeat(steps) {
+                    val a = stiffness * (target - x) - damping * v
+                    v += a * h
+                    x += v * h
+                }
+                valueAnimation.snapTo(x.coerceIn(valueRange))
+                // Same scale as the tracker-based velocity: value units per second over the range,
+                // eased towards the raw figure at the rate a 300-stiffness spring would.
+                val raw = v / range
+                followVelocity.floatValue += (raw - followVelocity.floatValue) * (1f - exp(-dt * 17f))
+            }
+        }
+    }
+
+    private fun stopFollowing() {
+        if (followTarget.isNaN() && !following) return
+        followTarget = Float.NaN
+        followJob?.cancel()
+        followJob = null
+        // Hand the stretch over to the ordinary velocity spring so it eases out rather than snapping.
+        val from = followVelocity.floatValue
+        followVelocity.floatValue = 0f
+        velocityJob?.cancel()
+        velocityJob = animationScope.launch {
+            velocityAnimation.snapTo(from)
+            velocityAnimation.animateTo(0f, velocityAnimationSpec)
+        }
+    }
+
     fun updateValue(value: Float) {
+        stopFollowing()
         val targetValue = value.coerceIn(valueRange)
         // Already heading there. Re-launching would restart the spring from its current velocity
         // for no visible difference.
@@ -133,6 +208,7 @@ internal class DampedDragAnimation(
      * agree instead of springing apart by whatever the host rounded the value to.
      */
     fun snapToValue(value: Float, onSnapped: () -> Unit = {}) {
+        stopFollowing()
         val targetValue = value.coerceIn(valueRange)
         valueJob?.cancel()
         valueJob = animationScope.launch {
@@ -145,6 +221,7 @@ internal class DampedDragAnimation(
     }
 
     fun animateToValue(value: Float) {
+        stopFollowing()
         animationScope.launch {
             mutatorMutex.mutate {
                 press()

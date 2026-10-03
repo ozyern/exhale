@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -62,6 +63,7 @@ import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.sign
@@ -108,10 +110,11 @@ fun LiquidSegmentedTabs(
         val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
         val scope = rememberCoroutineScope()
 
-        val tug = remember { Animatable(0f) }
+        val tug = remember { mutableFloatStateOf(0f) }
+        val tugRelease = remember { arrayOfNulls<Job>(1) }
         val panelOffset by remember(density, widthPx) {
             derivedStateOf {
-                val fraction = (tug.value / widthPx).fastCoerceIn(-1f, 1f)
+                val fraction = (tug.floatValue / widthPx).fastCoerceIn(-1f, 1f)
                 with(density) { 4f.dp.toPx() * fraction.sign * EaseOut.transform(abs(fraction)) }
             }
         }
@@ -124,19 +127,24 @@ fun LiquidSegmentedTabs(
                 visibilityThreshold = 0.001f,
                 initialScale = 1f,
                 pressedScale = 78f / 56f,
-                onDragStarted = {},
+                onDragStarted = { tugRelease[0]?.cancel() },
                 onDragStopped = {
                     val landed = targetValue.fastRoundToInt().fastCoerceIn(0, count - 1)
                     animateToValue(landed.toFloat())
-                    scope.launch { tug.animateTo(0f, spring(1f, 300f, 0.5f)) }
+                    val tugFrom = tug.floatValue
+                    if (tugFrom != 0f) {
+                        tugRelease[0] = scope.launch {
+                            Animatable(tugFrom).animateTo(0f, spring(1f, 300f, 0.5f)) { tug.floatValue = value }
+                        }
+                    }
                     onSelectState(landed)
                 },
                 onDrag = { _, dragAmount ->
-                    updateValue(
+                    followTo(
                         (targetValue + dragAmount.x / tabWidth * if (isLtr) 1f else -1f)
                             .fastCoerceIn(0f, (count - 1).toFloat()),
                     )
-                    scope.launch { tug.snapTo(tug.value + dragAmount.x) }
+                    tug.floatValue += dragAmount.x
                 },
                 velocityDampingRatio = 1f,
             )

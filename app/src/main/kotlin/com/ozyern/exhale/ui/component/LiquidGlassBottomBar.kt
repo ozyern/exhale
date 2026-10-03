@@ -121,6 +121,7 @@ import com.ozyern.exhale.ui.screens.Screens
 import kotlin.math.abs
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.FiniteAnimationSpec
@@ -215,8 +216,7 @@ fun LiquidGlassBottomBar(
     // circles step down and their glyphs step down with them, which is what gives the pill the
     // width.
     val chromeCircleSize by animateDpAsState(
-        // Folded with nothing playing, the two circles are the whole dock and keep their full size.
-        targetValue = if (collapsed && hasNowPlaying) CollapsedCircleSize else DockCircleSize,
+        targetValue = if (collapsed) CollapsedCircleSize else DockCircleSize,
         animationSpec = spring(dampingRatio = 0.9f, stiffness = 420f),
         label = "chromeCircleSize",
     )
@@ -232,11 +232,7 @@ fun LiquidGlassBottomBar(
     // and the pill takes the rest. The gap follows it, so the expanded row has no hole where the
     // circle will be.
     val homeCircleSize by animateDpAsState(
-        targetValue = when {
-            !collapsed -> 0.dp
-            hasNowPlaying -> CollapsedCircleSize
-            else -> DockCircleSize
-        },
+        targetValue = if (collapsed) CollapsedCircleSize else 0.dp,
         animationSpec = spring(dampingRatio = 0.9f, stiffness = 420f),
         label = "homeCircleSize",
     )
@@ -461,7 +457,7 @@ private val DockCircleSize = 64.dp
  * row between them and the pill was the narrowest thing in a bar that exists, in that state, to
  * show what is playing.
  */
-private val CollapsedCircleSize = 50.dp
+private val CollapsedCircleSize = 46.dp
 
 /**
  * Opacity: the outgoing state leaves before the incoming one arrives.
@@ -774,11 +770,13 @@ private fun LiquidTabBar(
     val insetPx = with(density) { inset.toPx() }
     val capsuleHeight = height - inset * 2
 
-    // The bar is tugged by the drag: the raw travel, eased and capped at a few dp.
-    val tug = remember(tabs.size) { Animatable(0f) }
+    // The bar is tugged by the drag: the raw travel, eased and capped at a few dp. A plain float
+    // written from the pointer callback, with one spring launched on release to let it go.
+    val tug = remember { mutableFloatStateOf(0f) }
+    val tugRelease = remember { arrayOfNulls<Job>(1) }
     val tugPx = with(density) { 4.dp.toPx() }
     val panelOffset: () -> Float = {
-        val raw = tug.value
+        val raw = tug.floatValue
         if (totalWidthPx == 0f || raw == 0f) {
             0f
         } else {
@@ -811,16 +809,22 @@ private fun LiquidTabBar(
             pressedScale = 78f / 56f,
             onDragStarted = { position ->
                 moved.floatValue = 0f
+                tugRelease[0]?.cancel()
                 // Pressed on the capsule: it follows from where it is. Pressed anywhere else: it
                 // flows across to the finger's tab.
                 val fromStart = if (isLtr) position.x else totalWidthPx - position.x
                 val under = if (tabWidthPx > 0f) (fromStart - insetPx) / tabWidthPx - 0.5f else value
-                if (abs(under - value) >= 0.5f) updateValue(under.fastCoerceIn(0f, lastIndex.toFloat()))
+                if (abs(under - value) >= 0.5f) followTo(under.fastCoerceIn(0f, lastIndex.toFloat()))
             },
             onDragStopped = {
                 val landed = targetValue.fastRoundToInt().fastCoerceIn(0, lastIndex)
                 updateValue(landed.toFloat())
-                scope.launch { tug.animateTo(0f, spring(1f, 300f, 0.5f)) }
+                val tugFrom = tug.floatValue
+                if (tugFrom != 0f) {
+                    tugRelease[0] = scope.launch {
+                        Animatable(tugFrom).animateTo(0f, spring(1f, 300f, 0.5f)) { tug.floatValue = value }
+                    }
+                }
 
                 val screen = tabsState.getOrNull(landed)
                 if (screen != null) {
@@ -842,8 +846,8 @@ private fun LiquidTabBar(
                     if (after.fastRoundToInt() != before.fastRoundToInt()) {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     }
-                    updateValue(after)
-                    scope.launch { tug.snapTo(tug.value + dragAmount.x) }
+                    followTo(after)
+                    tug.floatValue += dragAmount.x
                 }
             },
             velocityDampingRatio = 1f,
