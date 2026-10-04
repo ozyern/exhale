@@ -188,7 +188,7 @@ fun Modifier.dockGlass(
 ): Modifier {
     // A mid grey in dark theme rather than near-black: over colour it lets the page's own hue come
     // through the pane instead of being dimmed under it.
-    val film = if (dark) Color(0xFF4A4A4E).copy(alpha = 0.5f) else Color(0xFFFAFAFA).copy(alpha = 0.5f)
+    val film = if (dark) Color(0xFF4A4A4E).copy(alpha = 0.32f) else Color(0xFFFAFAFA).copy(alpha = 0.42f)
     return this.drawBackdrop(
         backdrop = backdrop,
         shape = { shape },
@@ -199,7 +199,7 @@ fun Modifier.dockGlass(
                 lens(19f.dp.toPx(), 29f.dp.toPx())
             }
         },
-        highlight = { Highlight.Default.copy(width = 0.8f.dp, alpha = 0.3f) },
+        highlight = { Highlight.Default.copy(width = 0.8f.dp, alpha = 0.5f) },
         shadow = { Shadow() },
         onDrawSurface = { drawRect(film) },
     )

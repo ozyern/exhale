@@ -81,7 +81,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.addOutline
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -895,7 +899,33 @@ private fun LiquidTabBar(
                 }
                 .graphicsLayer { translationX = panelOffset() },
         ) {
-            Box(Modifier.fillMaxSize().dockGlass(shape))
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .dockGlass(shape)
+                    // While held, the pane lights up a little and a soft glow sits under the
+                    // capsule, following it as it is dragged.
+                    .drawWithContent {
+                        drawContent()
+                        val press = dampedDragAnimation.pressProgress
+                        if (press > 0.01f && tabWidthPx > 0f) {
+                            val x = insetPx + (dampedDragAnimation.value + 0.5f) * tabWidthPx
+                            val cx = if (isLtr) x else size.width - x
+                            val outline = shape.createOutline(size, layoutDirection, this)
+                            clipPath(androidx.compose.ui.graphics.Path().apply { addOutline(outline) }) {
+                                drawRect(Color.White.copy(alpha = 0.06f * press), blendMode = androidx.compose.ui.graphics.BlendMode.Plus)
+                                drawRect(
+                                    Brush.radialGradient(
+                                        listOf(Color.White.copy(alpha = 0.16f * press), Color.Transparent),
+                                        center = Offset(cx, size.height / 2f),
+                                        radius = size.height * 1.5f,
+                                    ),
+                                    blendMode = androidx.compose.ui.graphics.BlendMode.Plus,
+                                )
+                            }
+                        }
+                    },
+            )
 
             Row(
                 modifier = Modifier.fillMaxSize().padding(inset),
@@ -1005,7 +1035,7 @@ private fun LiquidTabBar(
                                 scaleY *= 1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f)
                             },
                             onDrawSurface = {
-                                drawRect(restWash.copy(alpha = 0.8f * (1f - 0.75f * dampedDragAnimation.pressProgress)))
+                                drawRect(restWash.copy(alpha = 0.62f * (1f - 0.75f * dampedDragAnimation.pressProgress)))
                             },
                         )
                         .height(capsuleHeight)
