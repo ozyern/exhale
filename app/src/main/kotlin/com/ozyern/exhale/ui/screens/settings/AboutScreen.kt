@@ -125,6 +125,8 @@ private data class SocialLink(
 )
 
 private val SocialLinks = listOf(
+    // The project's own channel first — releases and test builds land there — then the maintainer.
+    SocialLink(R.drawable.telegram, "Exhale on Telegram", "@exhalemusic", "https://t.me/exhalemusic"),
     SocialLink(R.drawable.github, "GitHub", "@ozyern", "https://github.com/ozyern"),
     SocialLink(R.drawable.telegram, "Telegram", "@ozyern", "https://t.me/ozyern"),
     SocialLink(
