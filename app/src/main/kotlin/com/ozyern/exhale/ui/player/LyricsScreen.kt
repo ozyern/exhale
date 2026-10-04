@@ -400,7 +400,7 @@ fun LyricsScreen(
 
                                 // Previous button
                                 IconButton(
-                                    onClick = { player.seekToPrevious() },
+                                    onClick = { playerConnection.seekToPrevious() },
                                     modifier = Modifier.size(40.dp)
                                 ) {
                                     Icon(
@@ -436,7 +436,7 @@ fun LyricsScreen(
 
                                 // Next button
                                 IconButton(
-                                    onClick = { player.seekToNext() },
+                                    onClick = { playerConnection.seekToNext() },
                                     modifier = Modifier.size(40.dp)
                                 ) {
                                     Icon(
@@ -692,7 +692,7 @@ fun LyricsScreen(
 
                             // Previous button
                             IconButton(
-                                onClick = { player.seekToPrevious() },
+                                onClick = { playerConnection.seekToPrevious() },
                                 modifier = Modifier.size(40.dp) // Slightly smaller
                             ) {
                                 Icon(
@@ -728,7 +728,7 @@ fun LyricsScreen(
 
                             // Next button
                             IconButton(
-                                onClick = { player.seekToNext() },
+                                onClick = { playerConnection.seekToNext() },
                                 modifier = Modifier.size(40.dp) // Slightly smaller
                             ) {
                                 Icon(

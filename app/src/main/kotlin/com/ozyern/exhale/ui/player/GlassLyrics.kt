@@ -123,6 +123,7 @@ internal fun GlassLyricsView(
     onToggleLike: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val playerConnection = com.ozyern.exhale.LocalPlayerConnection.current
     val haptic = LocalHapticFeedback.current
     val (showTranslation, setShowTranslation) = rememberPreference(LyricsShowTranslationKey, false)
     val (textSize, setTextSize) = rememberPreference(LyricsTextSizeKey, 26f)
@@ -301,7 +302,7 @@ internal fun GlassLyricsView(
             )
             Spacer(Modifier.weight(1f))
             TransportButton(R.drawable.skip_previous, "Previous", 34.dp, enabled = canSkipPrevious) {
-                player.seekToPrevious()
+                playerConnection?.seekToPrevious() ?: player.seekToPrevious()
             }
             Spacer(Modifier.width(14.dp))
             Box(
@@ -324,7 +325,7 @@ internal fun GlassLyricsView(
             }
             Spacer(Modifier.width(14.dp))
             TransportButton(R.drawable.skip_next, "Next", 34.dp, enabled = canSkipNext) {
-                player.seekToNext()
+                playerConnection?.seekToNext() ?: player.seekToNext()
             }
             Spacer(Modifier.weight(1f))
             GlassButton(

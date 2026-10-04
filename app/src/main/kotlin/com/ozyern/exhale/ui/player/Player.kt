@@ -762,7 +762,7 @@ fun BottomSheetPlayer(
                 if (isTransitioning) {
                     // During crossfade, we want to seek in the NEXT song (the one UI is showing)
                     // The easiest way is to skip to it and then seek
-                    playerConnection.player.seekToNext()
+                    playerConnection.seekToNext()
                     playerConnection.player.seekTo(it)
                 } else {
                     playerConnection.player.seekTo(it)

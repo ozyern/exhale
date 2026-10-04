@@ -212,12 +212,12 @@ fun SwipeableMiniPlayerBox(
                                     val canSkipNext = playerConnection.player.nextMediaItemIndex != -1
 
                                     if (isRightSwipe && canSkipPrevious) {
-                                        playerConnection.player.seekToPreviousMediaItem()
+                                        playerConnection.seekToPrevious()
                                         if (com.ozyern.exhale.ui.screens.settings.DiscordPresenceManager.isRunning()) {
                                             try { com.ozyern.exhale.ui.screens.settings.DiscordPresenceManager.restart() } catch (_: Exception) {}
                                         }
                                     } else if (!isRightSwipe && canSkipNext) {
-                                        playerConnection.player.seekToNext()
+                                        playerConnection.seekToNext()
                                         if (com.ozyern.exhale.ui.screens.settings.DiscordPresenceManager.isRunning()) {
                                             try { com.ozyern.exhale.ui.screens.settings.DiscordPresenceManager.restart() } catch (_: Exception) {}
                                         }

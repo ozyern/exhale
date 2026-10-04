@@ -793,7 +793,7 @@ class MusicService :
         }
         mediaSession =
             MediaLibrarySession
-                .Builder(this, player, mediaLibrarySessionCallback)
+                .Builder(this, sessionPlayer(), mediaLibrarySessionCallback)
                 .setSessionActivity(
                     PendingIntent.getActivity(
                         this,
@@ -3859,7 +3859,7 @@ class MusicService :
 
                 com.ozyern.exhale.together.ControlAction.SkipNext -> {
                     if (player.hasNextMediaItem()) {
-                        player.seekToNext()
+                        if (!skipFromAudible(next = true)) player.seekToNext()
                         player.prepare()
                         player.playWhenReady = true
                     }
@@ -3867,7 +3867,7 @@ class MusicService :
 
                 com.ozyern.exhale.together.ControlAction.SkipPrevious -> {
                     if (player.hasPreviousMediaItem()) {
-                        player.seekToPrevious()
+                        if (!skipFromAudible(next = false)) player.seekToPrevious()
                         player.prepare()
                         player.playWhenReady = true
                     }
@@ -6492,6 +6492,37 @@ class MusicService :
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = mediaSession
 
+    /**
+     * Next / previous from the app's own controls. During a transition these skip relative to the
+     * song being heard (see [CrossfadeAudio.skipFromAudible]); otherwise as the player always has.
+     * Returns true when the transition took the skip.
+     */
+    fun skipFromAudible(next: Boolean): Boolean = crossfadeAudio?.skipFromAudible(next) == true
+
+    /**
+     * The player the notification, lock screen, headset and car see: the real one, with next and
+     * previous routed through [skipFromAudible] so they behave the same as the in-app buttons in
+     * the middle of a transition.
+     */
+    private fun sessionPlayer(): Player =
+        object : androidx.media3.common.ForwardingPlayer(player) {
+            override fun seekToNext() {
+                if (!skipFromAudible(next = true)) super.seekToNext()
+            }
+
+            override fun seekToNextMediaItem() {
+                if (!skipFromAudible(next = true)) super.seekToNextMediaItem()
+            }
+
+            override fun seekToPrevious() {
+                if (!skipFromAudible(next = false)) super.seekToPrevious()
+            }
+
+            override fun seekToPreviousMediaItem() {
+                if (!skipFromAudible(next = false)) super.seekToPreviousMediaItem()
+            }
+        }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         handlePlayerWidgetAction(intent?.action)
         super.onStartCommand(intent, flags, startId)
@@ -6515,7 +6546,7 @@ class MusicService :
                     cancelIdleStop()
                     promoteToStartedService()
                     ensureStartedAsForeground()
-                    player.seekToNext()
+                    if (!skipFromAudible(next = true)) player.seekToNext()
                     player.prepare()
                     player.playWhenReady = true
                 }
@@ -6527,7 +6558,7 @@ class MusicService :
                     cancelIdleStop()
                     promoteToStartedService()
                     ensureStartedAsForeground()
-                    player.seekToPrevious()
+                    if (!skipFromAudible(next = false)) player.seekToPrevious()
                     player.prepare()
                     player.playWhenReady = true
                 }

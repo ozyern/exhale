@@ -2891,7 +2891,7 @@ internal fun NowPlayingQueue(
                                 if (guest) return@NpQueueRow
                                 // Play it now: in as the next song, then straight to it.
                                 playerConnection.service.playNextAutomix(entry.item, entry.index)
-                                playerConnection.player.seekToNextMediaItem()
+                                playerConnection.seekToNext()
                                 playerConnection.player.playWhenReady = true
                             },
                             onLongClick = {

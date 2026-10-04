@@ -461,7 +461,7 @@ fun Thumbnail(
         if (!thumbnailLazyGridState.isScrollInProgress || !swipeThumbnail || itemScrollOffset != 0 || currentMediaIndex < 0) return@LaunchedEffect
 
         if (currentItem > currentMediaIndex && canSkipNext) {
-            playerConnection.player.seekToNext()
+            playerConnection.seekToNext()
             if (com.ozyern.exhale.ui.screens.settings.DiscordPresenceManager.isRunning()) {
                 try {
                     com.ozyern.exhale.ui.screens.settings.DiscordPresenceManager.restart()
@@ -469,7 +469,7 @@ fun Thumbnail(
                 }
             }
         } else if (currentItem < currentMediaIndex && canSkipPrevious) {
-            playerConnection.player.seekToPreviousMediaItem()
+            playerConnection.seekToPrevious()
             if (com.ozyern.exhale.ui.screens.settings.DiscordPresenceManager.isRunning()) {
                 try {
                     com.ozyern.exhale.ui.screens.settings.DiscordPresenceManager.restart()

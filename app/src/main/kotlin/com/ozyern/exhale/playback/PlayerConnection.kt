@@ -141,7 +141,7 @@ class PlayerConnection(
             service.requestTogetherControl(com.ozyern.exhale.together.ControlAction.SkipNext)
             return
         }
-        player.seekToNext()
+        if (!service.skipFromAudible(next = true)) player.seekToNext()
         player.prepare()
         player.playWhenReady = true
         // Immediately restart the Discord presence updater so it picks up the new track without waiting
@@ -158,7 +158,7 @@ class PlayerConnection(
             service.requestTogetherControl(com.ozyern.exhale.together.ControlAction.SkipPrevious)
             return
         }
-        player.seekToPrevious()
+        if (!service.skipFromAudible(next = false)) player.seekToPrevious()
         player.prepare()
         player.playWhenReady = true
         // Immediately restart the Discord presence updater so it picks up the new track without waiting

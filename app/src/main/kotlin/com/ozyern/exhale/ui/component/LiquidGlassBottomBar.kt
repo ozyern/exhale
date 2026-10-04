@@ -1246,11 +1246,11 @@ private fun MiniPlayerPill(
                         when {
                             horizontal && dragX <= -skipDistance -> {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                playerConnection.player.seekToNext()
+                                playerConnection.seekToNext()
                             }
                             horizontal && dragX >= skipDistance -> {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                playerConnection.player.seekToPrevious()
+                                playerConnection.seekToPrevious()
                             }
                             !horizontal && dragY <= -openDistance -> onExpand()
                         }

@@ -115,6 +115,41 @@ internal class CrossfadeAudio(
         crossfadeActive && !handoffActive && !crossfadeTargetMediaId.isNullOrBlank() &&
             mediaItem?.mediaId == crossfadeTargetMediaId
 
+    /**
+     * Next / previous, measured from the song being heard.
+     *
+     * Once a transition is under way the arriving song is what is playing and what the player
+     * shows, but the main player is still on the leaving one until the transition ends — so a
+     * plain skip from there either lands on the song already playing (and looks like nothing
+     * happened) or restarts a song nobody can hear. While the arriving song is the one on screen,
+     * this ends the transition and skips relative to it instead. Returns false when no transition
+     * is showing, so the caller skips as usual.
+     */
+    fun skipFromAudible(next: Boolean): Boolean {
+        if (!crossfadeActive || mix?.announced == false) return false
+        val targetId = crossfadeTargetMediaId ?: return false
+        val targetIndex = (0 until player.mediaItemCount).firstOrNull {
+            player.getMediaItemAt(it).mediaId == targetId
+        } ?: return false
+        val heardMs = overlapPlayer?.currentPosition?.coerceAtLeast(0L) ?: 0L
+        val leavingIndex = player.currentMediaItemIndex
+        stopOverlapCrossfade(resetMainFade = true)
+        val timeline = player.currentTimeline
+        if (next) {
+            val after = timeline.getNextWindowIndex(targetIndex, player.repeatMode, player.shuffleModeEnabled)
+            // Nothing after it: skipping past the last song just plays that song on.
+            if (after == C.INDEX_UNSET) player.seekTo(targetIndex, heardMs) else player.seekTo(after, 0L)
+        } else {
+            // As any player: well into the song, back to its start; near its start, the one before.
+            when {
+                heardMs > PREVIOUS_RESTART_MS -> player.seekTo(targetIndex, 0L)
+                leavingIndex != C.INDEX_UNSET && leavingIndex != targetIndex -> player.seekTo(leavingIndex, 0L)
+                else -> player.seekTo(targetIndex, 0L)
+            }
+        }
+        return true
+    }
+
     fun start(scope: CoroutineScope) {
         if (loopJob?.isActive == true) return
         loopJob = scope.launch { runLoop() }
@@ -724,6 +759,8 @@ internal class CrossfadeAudio(
     private fun fallGain(progress: Float): Float = cos(progress.coerceIn(0f, 1f) * PI.toFloat() / 2f)
 
     private companion object {
+        const val PREVIOUS_RESTART_MS = 3_000L
+
         /** How far ahead the player must have buffered before Automix may read the song. */
         private const val ANALYSIS_BUFFER_AHEAD_MS = 30_000L
         const val AUTOMIX_TAG = "ExhaleAutomix"
