@@ -427,14 +427,14 @@ fun LyricsV2(
 
     // ── Translation, beneath each line, in the language chosen in the lyric settings ──
     val (translateTo) = rememberPreference(com.ozyern.exhale.constants.LyricsTranslateLanguageKey, "")
-    // Only a change the listener just made earns a message; a song that loads with translation
-    // already on stays quiet, or every English song would say so.
-    val translationRequest = remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+    // Only the listener switching translation on earns a message. Keyed on the switch alone: the
+    // target language is a stored preference that arrives a moment after the page opens, and
+    // treating that late load as a change announced itself on every open.
+    val wasTranslating = remember { mutableStateOf<Boolean?>(null) }
     val announceResult = remember { mutableStateOf(false) }
-    LaunchedEffect(showTranslation, translateTo) {
-        val previous = translationRequest.value
-        translationRequest.value = showTranslation to translateTo
-        announceResult.value = previous != null && showTranslation && previous != (showTranslation to translateTo)
+    LaunchedEffect(showTranslation) {
+        announceResult.value = wasTranslating.value == false && showTranslation
+        wasTranslating.value = showTranslation
     }
     LaunchedEffect(entriesWithWords, showTranslation, translateTo) {
         if (!showTranslation) return@LaunchedEffect
@@ -453,16 +453,15 @@ fun LyricsV2(
             }
             if (!any && announceResult.value) {
                 announceResult.value = false
-                val sameLanguage = result.sourceLanguage?.substringBefore('-')
-                    ?.equals(target.substringBefore('-'), ignoreCase = true) == true
-                val message = when {
-                    sameLanguage -> "These lyrics are already in " +
-                        java.util.Locale.forLanguageTag(target).getDisplayLanguage(java.util.Locale.getDefault()) +
-                        ". Pick another language in lyric settings."
-                    result.sourceLanguage == null -> "Couldn't reach the translator. Check your connection."
-                    else -> "Nothing to translate here."
+                // Lyrics already in the target language simply get no second line; only a failure
+                // to reach the translator is worth interrupting for.
+                if (result.sourceLanguage == null) {
+                    android.widget.Toast.makeText(
+                        context,
+                        "Couldn't reach the translator. Check your connection.",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
                 }
-                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
             }
         } finally {
             translating = false
