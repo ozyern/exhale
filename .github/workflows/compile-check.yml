@@ -1,0 +1,83 @@
+# Compile check for work-in-progress branches.
+#
+# Runs only on branches under claude/. Compiles the app and publishes the build
+# log (named after the commit) to the `ci-logs` branch, so the result can be read
+# with a plain `git fetch` from an environment that cannot run Android builds.
+# Not part of any release; delete it with the branch.
+
+name: Compile check
+
+on:
+  push:
+    branches: ["claude/**"]
+
+concurrency:
+  group: compile-check-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: gradle
+
+      # Signed with the real key, the same way release.yml does it, so the test APK installs
+      # over the store build. Without the secrets the build falls back to the debug key.
+      - name: Restore the signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            mkdir -p app/keystore
+            echo "$KEYSTORE_BASE64" | base64 -d > app/keystore/release.keystore
+          fi
+
+      - name: Compile
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          chmod +x ./gradlew
+          set +e
+          ./gradlew assembleUniversalRelease --no-daemon --continue > build.log 2>&1
+          echo "GRADLE_EXIT=$?" >> build.log
+          rm -f app/keystore/release.keystore
+
+      - name: Publish log to ci-logs
+        if: always()
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/logs" && cd "$RUNNER_TEMP/logs"
+          git init -q
+          git config user.name "compile-check"
+          git config user.email "compile-check@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git fetch -q --depth 1 origin ci-logs; then git checkout -q -b ci-logs FETCH_HEAD; else git checkout -q --orphan ci-logs; fi
+          cp "$GITHUB_WORKSPACE/build.log" "${GITHUB_SHA}.log"
+          # errors first, so the log can be read without scrolling past the download noise
+          grep -E "^e: |error:|FAILURE|What went wrong|BUILD (SUCCESSFUL|FAILED)|GRADLE_EXIT" "$GITHUB_WORKSPACE/build.log" > "${GITHUB_SHA}.summary" || true
+          git add -A && git commit -qm "compile log ${GITHUB_SHA}" && git push -q origin ci-logs
+
+      - name: Upload release APK
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: exhale-release-${{ github.sha }}
+          path: app/build/outputs/apk/universal/release/*.apk
+          # a test build, not a release: gone after a day, or at once via cleanup-builds.yml
+          retention-days: 1
+          if-no-files-found: ignore
