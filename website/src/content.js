@@ -57,6 +57,8 @@ export const TAGLINE = 'Music, exhaled.'
 
 export const MAINTAINER = { name: 'Aditya Jha', role: 'Lead developer', handle: '@ozyern' }
 export const TELEGRAM = 'https://t.me/ozyern'
+/** The project's announcement channel: releases, test builds and news. */
+export const TELEGRAM_CHANNEL = 'https://t.me/exhalemusic'
 
 /**
  * Real captures of the shipping build, in the order the hero cycles them.

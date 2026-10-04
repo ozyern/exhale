@@ -10,7 +10,7 @@
  * six questions, and an answer read here is a thread neither side has to have.
  */
 
-import { REPO, TELEGRAM, VERSION } from './content.js'
+import { REPO, TELEGRAM, TELEGRAM_CHANNEL, VERSION } from './content.js'
 
 const NEW_ISSUE = `${REPO}/issues/new`
 
@@ -165,6 +165,11 @@ export const PATHS = [
 
 /** Where the last card sends people. Each one is a different door on purpose. */
 export const ELSEWHERE = [
+  {
+    label: 'Telegram channel',
+    body: 'New releases and test builds as they land, and news about what is coming next.',
+    href: TELEGRAM_CHANNEL,
+  },
   {
     label: 'Telegram',
     body: 'Anything that is not a bug report, and anything you would rather not post publicly.',

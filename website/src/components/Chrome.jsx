@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
 import { Link } from '../router.jsx'
-import { MAINTAINER, RELEASES, REPO, TELEGRAM } from '../content.js'
+import { MAINTAINER, RELEASES, REPO, TELEGRAM, TELEGRAM_CHANNEL } from '../content.js'
 import { LATEST_RELEASE as RELEASE } from '../releases.js'
-import { DownloadIcon, GithubIcon, Mark } from '../icons.jsx'
+import { DownloadIcon, GithubIcon, Mark, TelegramIcon } from '../icons.jsx'
 
 export const RELEASE_PATH = `/release/${RELEASE.version}`
 
@@ -73,6 +73,15 @@ export function TopBar() {
         </a>
         <a className="topicon" href={REPO} target="_blank" rel="noreferrer" aria-label="Source on GitHub">
           <GithubIcon />
+        </a>
+        <a
+          className="topicon"
+          href={TELEGRAM_CHANNEL}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Exhale on Telegram"
+        >
+          <TelegramIcon />
         </a>
         <a
           className="topicon"
@@ -165,6 +174,11 @@ export function SiteFooter({ onNotes }) {
               </li>
               <li>
                 <Link to="/support">Support</Link>
+              </li>
+              <li>
+                <a href={TELEGRAM_CHANNEL} target="_blank" rel="noreferrer">
+                  Telegram channel
+                </a>
               </li>
               <li>
                 <a href={`${REPO}/issues`} target="_blank" rel="noreferrer">

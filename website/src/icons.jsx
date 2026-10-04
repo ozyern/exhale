@@ -91,6 +91,15 @@ export const GithubIcon = () => (
   </Svg>
 )
 
+export const TelegramIcon = () => (
+  <Svg width="17" height="17">
+    <path
+      fill="currentColor"
+      d="M20.7 4.1 2.9 11c-1.2.5-1.2 1.2-.2 1.5l4.6 1.4 1.7 5.4c.2.6.1.8.7.8.5 0 .7-.2 1-.5l2.2-2.2 4.6 3.4c.9.5 1.5.2 1.7-.8l3-14.3c.3-1.3-.5-1.8-1.5-1.6Zm-2.9 3.6-8.5 7.7-.3 3.5-1.6-5 9.8-6.2c.5-.3.9-.1.6 0Z"
+    />
+  </Svg>
+)
+
 export const ChevronIcon = () => (
   <Svg width="16" height="16" className="chev">
     <path {...s} d="m10 6 6 6-6 6" />
