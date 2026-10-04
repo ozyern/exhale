@@ -1344,18 +1344,13 @@ private fun MiniPlayerPill(
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     playerConnection.player.togglePlayPause()
                 }
-                // How far through the song: a thin ring that fills clockwise from the top.
-                .drawBehind {
-                    val stroke = 2.2.dp.toPx()
-                    val inset = stroke / 2 + 2.dp.toPx()
-                    val arcSize = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2)
-                    val topLeft = androidx.compose.ui.geometry.Offset(inset, inset)
-                    drawArc(ink.copy(alpha = 0.16f), 0f, 360f, false, topLeft, arcSize, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
-                    drawArc(
-                        ink.copy(alpha = 0.9f), -90f, 360f * ringProgress, false, topLeft, arcSize,
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round),
-                    )
-                },
+                // How far through the song: a ring of liquid metal filling clockwise from the top,
+                // its reflections flowing while the song plays.
+                .liquidMetalRing(
+                    progress = { ringProgress },
+                    flowing = isPlaying,
+                    trackColor = ink.copy(alpha = 0.16f),
+                ),
             contentAlignment = Alignment.Center,
         ) {
             AnimatedContent(
