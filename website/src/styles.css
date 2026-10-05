@@ -4042,6 +4042,9 @@ html:has(.release) {
   display: block;
   width: 100%;
   height: auto;
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+  object-position: top;
   border-radius: 26px;
   box-shadow: 0 30px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
