@@ -173,7 +173,7 @@ const HIGHLIGHTS = [
   { shot: { src: '/shots/home-listen-now.jpg', alt: 'Listen Now: Top Picks for You over Recents, under the glass dock.' }, lead: 'Home leads with what you play.', rest: 'Top Picks for You is learned from your own listening, and says why each one is there.' },
   { shot: { src: '/shots/player-color.jpg', alt: 'The player tinted from the cover: Bad for Business, the controls in its warm brown.' }, lead: 'The song brings its own color.', rest: 'The cover fills the player, and the controls take their tint from it.' },
   { shot: SHOTS_304[SHOT304.lyrics], lead: 'Lyrics land on the word.', rest: 'The line being sung lights up as it is sung, and the rest fall out of focus.' },
-  { shot: SHOTS_304[SHOT304.downloads], lead: 'It plays with the radio off.', rest: 'Downloads play with no network at all, cover edge to edge.' },
+  { shot: { src: '/shots/downloaded.jpg', alt: 'Downloaded: three songs saved to the phone, ready with no network.' }, lead: 'It plays with the radio off.', rest: 'Downloads play with no network at all, cover edge to edge.' },
   { shot: SHOTS[SHOT.artist], lead: 'Artists, the way they should look.', rest: 'Portrait, story and the songs that matter, on one page.' },
   { shot: SHOTS_304[SHOT304.settings], lead: 'One material, everywhere.', rest: 'Grouped glass tables all the way down to Settings.' },
   { shot: SHOTS_304[SHOT304.about], lead: 'It updates itself.', rest: 'Check, download and install without leaving the app.' },
