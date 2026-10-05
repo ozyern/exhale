@@ -12,7 +12,7 @@ import { prefersReducedMotion } from '../hooks.js'
  * filter on the element rather than `ctx.filter`, which would re-run a CPU
  * convolution per path per frame. Stops when off screen, hidden or paused.
  */
-export default function Ribbon({ playing, onToggle }) {
+export default function Ribbon({ playing, onToggle, word }) {
   const canvasRef = useRef(null)
   const wrapRef = useRef(null)
   const playingRef = useRef(playing)
@@ -250,9 +250,17 @@ export default function Ribbon({ playing, onToggle }) {
   }, [])
 
   return (
-    <div className="ribbon-wrap">
+    <div className="ribbon-wrap" data-word={word ? 'true' : undefined}>
       <div className="ribbon" ref={wrapRef}>
         <canvas className="ribbon-canvas" ref={canvasRef} aria-hidden="true" />
+        {/* The wordmark: white letters on black, multiplied over the light, so
+            the light shows only through the letters — the name lit from inside
+            rather than set on top of a glow. */}
+        {word ? (
+          <div className="ribbon-word" aria-hidden="true">
+            <span>{word}</span>
+          </div>
+        ) : null}
       </div>
 
       <button
