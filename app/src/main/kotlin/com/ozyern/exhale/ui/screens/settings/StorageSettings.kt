@@ -170,12 +170,14 @@ fun StorageSettings(
 
     LaunchedEffect(imageDiskCache) {
         while (isActive) {
+            com.ozyern.exhale.utils.awaitAppVisible()
             delay(500)
             imageCacheSize = imageDiskCache.size
         }
     }
     LaunchedEffect(playerCache, playerCacheDir) {
         while (isActive) {
+            com.ozyern.exhale.utils.awaitAppVisible()
             delay(500)
             playerCacheSize =
                 withContext(Dispatchers.IO) {
@@ -186,6 +188,7 @@ fun StorageSettings(
     }
     LaunchedEffect(downloadCache, downloadCacheDir) {
         while (isActive) {
+            com.ozyern.exhale.utils.awaitAppVisible()
             delay(500)
             downloadCacheSize =
                 withContext(Dispatchers.IO) {
@@ -196,6 +199,7 @@ fun StorageSettings(
     }
     LaunchedEffect(Unit) {
         while (isActive) {
+            com.ozyern.exhale.utils.awaitAppVisible()
             delay(500)
             canvasCacheSize = CanvasArtworkPlaybackCache.size()
         }

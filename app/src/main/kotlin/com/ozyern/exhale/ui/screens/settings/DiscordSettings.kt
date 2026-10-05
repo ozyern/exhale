@@ -724,6 +724,7 @@ fun SongProgressBar(
     LaunchedEffect(isPlaying) {
         if (isPlaying) {
             while (isActive) {
+                com.ozyern.exhale.utils.awaitAppVisible()
                 delay(500)
                 displayedTime += 500
                 if (displayedTime >= durationMillis) {

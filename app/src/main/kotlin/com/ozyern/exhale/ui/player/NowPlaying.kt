@@ -2390,6 +2390,7 @@ private fun CurrentLyricStrip(
                 var shown by remember(trackKey) { mutableIntStateOf(loadingLines.indices.random()) }
                 LaunchedEffect(trackKey) {
                     while (isActive) {
+                        com.ozyern.exhale.utils.awaitAppVisible()
                         delay(2_600L)
                         shown = (shown + 1) % loadingLines.size
                     }
@@ -2432,6 +2433,7 @@ private fun SyncedStripLine(lines: List<LyricsEntry>, trackKey: String, isPlayin
     var index by remember(trackKey, lines) { mutableIntStateOf(-1) }
     LaunchedEffect(trackKey, lines, isPlaying) {
         while (isActive) {
+            com.ozyern.exhale.utils.awaitAppVisible()
             val position = playerConnection.player.currentPosition
             index = if (lines.isEmpty() || position < lines.first().time) -1
             else findCurrentLineIndex(lines, position, 0L)
@@ -2502,6 +2504,7 @@ private fun SweptStripText(entry: LyricsEntry, lineEndMs: Long?, isPlaying: Bool
     val clock = remember { androidx.compose.runtime.mutableLongStateOf(playerConnection.player.currentPosition) }
     LaunchedEffect(entry, isPlaying) {
         while (isActive) {
+            com.ozyern.exhale.utils.awaitAppVisible()
             androidx.compose.runtime.withFrameMillis { clock.longValue = playerConnection.player.currentPosition }
             if (!isPlaying) delay(250L)
         }
@@ -3363,6 +3366,7 @@ private fun RowScope.MarqueeBody(
                 val scrollMs = (travelPx / pxPerMs).roundToInt().coerceAtLeast(400)
                 delay(MARQUEE_REST_MS / 2 + startDelayMillis)
                 while (true) {
+                    com.ozyern.exhale.utils.awaitAppVisible()
                     offsetX.animateTo(-travelPx.toFloat(), tween(scrollMs, easing = LinearEasing))
                     offsetX.snapTo(0f)
                     delay(MARQUEE_REST_MS)

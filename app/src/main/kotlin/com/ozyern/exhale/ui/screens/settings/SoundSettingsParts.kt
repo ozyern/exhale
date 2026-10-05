@@ -509,6 +509,7 @@ fun AutomixStatusLine(
 ) {
     val status by androidx.compose.runtime.produceState("", service) {
         while (true) {
+            com.ozyern.exhale.utils.awaitAppVisible()
             value = service?.automixStatus().orEmpty()
             kotlinx.coroutines.delay(1_000)
         }

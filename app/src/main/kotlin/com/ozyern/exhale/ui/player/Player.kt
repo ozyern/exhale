@@ -291,6 +291,7 @@ fun BottomSheetPlayer(
         if (aodAutoTimeoutSeconds > 0 && state.isExpanded && !isAodActive) {
             delay(100L)
             while (isActive) {
+                com.ozyern.exhale.utils.awaitAppVisible()
                 delay(100L)  // ← Cambiado de 500ms a 100ms (más suave)
                 val elapsedSeconds = (System.currentTimeMillis() - lastInteractionTime) / 1000f  // ← Usar Float
                 if (elapsedSeconds >= aodAutoTimeoutSeconds) {
@@ -534,6 +535,7 @@ fun BottomSheetPlayer(
         val startTime = SystemClock.elapsedRealtime()
         if (playbackState == STATE_READY) {
             while (isActive) {
+                com.ozyern.exhale.utils.awaitAppVisible()
                 val fine = isUserSeeking ||
                     (playerConnection.player.isPlaying && state.progress > 0.02f)
                 delay(if (fine) 100L else 1000L)

@@ -172,6 +172,7 @@ fun LyricsScreen(
     LaunchedEffect(playbackState) {
         if (playbackState == STATE_READY) {
             while (isActive) {
+                com.ozyern.exhale.utils.awaitAppVisible()
                 delay(100)
                 position = player.currentPosition
                 duration = player.duration

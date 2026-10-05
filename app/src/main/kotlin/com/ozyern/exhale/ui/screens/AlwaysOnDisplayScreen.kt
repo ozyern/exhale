@@ -268,6 +268,7 @@ fun AlwaysOnDisplayScreen(navController: NavController) {
     LaunchedEffect(mediaMetadata?.id, playbackState) {
         if (playbackState == STATE_READY) {
             while (isActive) {
+                com.ozyern.exhale.utils.awaitAppVisible()
                 delay(200L)
                 position = playerConnection.player.currentPosition
                 duration = playerConnection.player.duration
@@ -330,6 +331,7 @@ fun AlwaysOnDisplayScreen(navController: NavController) {
     LaunchedEffect(showClock) {
         if (showClock) {
             while (isActive) {
+                com.ozyern.exhale.utils.awaitAppVisible()
                 clockText = SimpleDateFormat(clockPattern, Locale.getDefault()).format(Date())
                 delay(10_000L)
             }

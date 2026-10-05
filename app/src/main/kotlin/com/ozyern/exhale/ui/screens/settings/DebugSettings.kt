@@ -841,6 +841,7 @@ private fun NerdStatsSection(playerConnection: com.ozyern.exhale.playback.Player
 
     LaunchedEffect(Unit) {
         while (isActive) {
+            com.ozyern.exhale.utils.awaitAppVisible()
             bufferPercentage = player.bufferedPercentage
             bufferedPosition = player.bufferedPosition
             currentPosition = player.currentPosition

@@ -42,6 +42,16 @@ object AudioLevels {
     @Volatile
     private var head = -1
 
+    /**
+     * When something on screen last asked for levels. The meter on the playback thread only
+     * measures while this is recent: with the player closed or the app in the background nothing
+     * reads the ring, and working through every audio buffer for nobody is battery for nothing.
+     */
+    @Volatile
+    internal var lastReadNanos = 0L
+
+    internal val wanted: Boolean get() = System.nanoTime() - lastReadNanos < IDLE_AFTER_NANOS
+
     internal fun push(wallTimeNanos: Long, mediaPositionUs: Long, loud: Float, low: Float) {
         val next = (head + 1).mod(SIZE)
         wallNanos[next] = wallTimeNanos
@@ -64,6 +74,7 @@ object AudioLevels {
          * — paused, stopped, or a format the meter doesn't read — which the caller treats as silence.
          */
         fun sample(nowNanos: Long, playerPositionMs: Long, out: FloatArray): Boolean {
+            lastReadNanos = System.nanoTime()
             val latest = head
             if (latest < 0) return false
             val latestWall = wallNanos[latest]
@@ -96,6 +107,7 @@ object AudioLevels {
     private const val DEFAULT_LEAD_NANOS = 300_000_000L
     private const val MAX_LEAD_NANOS = 2_000_000_000L
     private const val STALE_NANOS = 400_000_000L
+    private const val IDLE_AFTER_NANOS = 1_000_000_000L
 }
 
 /**
@@ -140,6 +152,7 @@ class LevelMeterAudioProcessor : BaseAudioProcessor() {
     }
 
     private fun measure(input: ByteBuffer) {
+        if (!AudioLevels.wanted) return
         val format = inputAudioFormat
         val channels = format.channelCount
         val rate = format.sampleRate

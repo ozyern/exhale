@@ -202,6 +202,7 @@ fun Queue(
     LaunchedEffect(sleepTimerEnabled) {
         if (sleepTimerEnabled) {
             while (isActive) {
+                com.ozyern.exhale.utils.awaitAppVisible()
                 sleepTimerTimeLeft = sleepTimerMillisLeft(playerConnection)
                 delay(1000L)
             }

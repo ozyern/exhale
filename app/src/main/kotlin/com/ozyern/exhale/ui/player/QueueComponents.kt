@@ -468,6 +468,7 @@ fun SleepTimerDialog(
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
+            com.ozyern.exhale.utils.awaitAppVisible()
             delay(1000L)
             now = System.currentTimeMillis()
         }

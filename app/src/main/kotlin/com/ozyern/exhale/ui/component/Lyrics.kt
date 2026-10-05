@@ -676,6 +676,7 @@ fun Lyrics(
             return@LaunchedEffect
         }
         while (isActive) {
+            com.ozyern.exhale.utils.awaitAppVisible()
             if (isAppMinimized) {
                 delay(250L)
                 continue

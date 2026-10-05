@@ -1893,6 +1893,7 @@ private fun rememberAnimatedLong(target: Long, durationMs: Int = 1400): Long {
     LaunchedEffect(target) {
         val startMs = System.currentTimeMillis()
         while (true) {
+            com.ozyern.exhale.utils.awaitAppVisible()
             val elapsed  = (System.currentTimeMillis() - startMs).coerceAtMost(durationMs.toLong())
             val progress = elapsed.toFloat() / durationMs
             val eased    = FastOutSlowInEasing.transform(progress)

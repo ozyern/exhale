@@ -1213,6 +1213,7 @@ private fun MiniPlayerPill(
     var progress by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(isPlaying, mediaMetadata?.id) {
         while (true) {
+            com.ozyern.exhale.utils.awaitAppVisible()
             val p = playerConnection.player
             val d = p.duration
             progress = if (d > 0) (p.currentPosition.toFloat() / d).coerceIn(0f, 1f) else 0f

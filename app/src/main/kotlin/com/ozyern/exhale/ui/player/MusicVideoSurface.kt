@@ -93,6 +93,13 @@ internal fun MusicVideoSurface(
     LaunchedEffect(player) {
         player.seekTo(position())
         while (isActive) {
+            // In the background nobody sees the video: stop decoding it, and line it back up
+            // with the song on return.
+            if (!com.ozyern.exhale.utils.isAppVisible) {
+                player.playWhenReady = false
+                com.ozyern.exhale.utils.awaitAppVisible()
+                player.seekTo(position())
+            }
             player.playWhenReady = playing
             val target = position()
             if (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING) {

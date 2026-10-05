@@ -58,6 +58,7 @@ fun PlayingIndicator(
         animatables.forEach { animatable ->
             launch {
                 while (true) {
+                    com.ozyern.exhale.utils.awaitAppVisible()
                     animatable.animateTo(Random.nextFloat() * 0.9f + 0.1f)
                     delay(50)
                 }

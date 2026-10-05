@@ -492,6 +492,7 @@ fun LyricsV2(
     LaunchedEffect(entriesWithWords, isSynced) {
         if (!isSynced || entriesWithWords.isEmpty()) return@LaunchedEffect
         while (isActive) {
+            com.ozyern.exhale.utils.awaitAppVisible()
             val sliderPos = sliderPositionProvider()
             val pos = sliderPos ?: player.currentPosition
             val speed = player.playbackParameters.speed.takeIf { it > 0.05f } ?: 1f
