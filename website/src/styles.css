@@ -4127,3 +4127,81 @@ html:has(.release) {
   }
 
 }
+
+/* ================================================================ os hero
+   The opening of Apple's OS pages, on black: the product name set small, three
+   short lines set very large, one grey sentence, then the devices. */
+
+.os-hero {
+  padding-top: clamp(64px, 9vw, 120px);
+}
+
+.os-hero-copy {
+  text-align: center;
+}
+
+.os-hero-name {
+  margin: 0;
+  font-size: clamp(24px, 2.6vw, 34px);
+  line-height: 1.1;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.os-hero-title {
+  margin: clamp(16px, 2vw, 26px) auto 0;
+  max-width: 14ch;
+  font-size: clamp(44px, 7vw, 96px);
+  line-height: 1.04;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  color: var(--ink);
+}
+
+.os-hero-sub {
+  margin: clamp(22px, 2.6vw, 34px) auto 0;
+  max-width: 34ch;
+  font-size: clamp(21px, 2vw, 28px);
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  color: #86868b;
+  text-wrap: balance;
+}
+
+.os-hero-links {
+  justify-content: center;
+  margin-top: 24px;
+}
+
+.os-hero-devices {
+  padding-bottom: clamp(40px, 6vw, 90px);
+}
+
+@media (max-width: 700px) {
+  .statement.center.os-hero-copy,
+  .os-hero-copy {
+    text-align: center;
+  }
+
+  .os-hero-copy .linkrow {
+    justify-content: center;
+  }
+}
+
+.os-hero-title {
+  max-width: none;
+  font-size: clamp(34px, 9.4vw, 84px);
+}
+
+.os-hero-title span {
+  display: block;
+  white-space: nowrap;
+}
+
+@media (min-width: 701px) {
+  .os-hero-title {
+    font-size: clamp(48px, 6.4vw, 84px);
+  }
+}
