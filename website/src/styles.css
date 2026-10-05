@@ -4205,3 +4205,214 @@ html:has(.release) {
     font-size: clamp(48px, 6.4vw, 84px);
   }
 }
+
+/* ==================================================== os hero, closer to Apple */
+
+.os-hero {
+  padding-top: clamp(56px, 7vw, 96px);
+}
+
+.os-hero-name {
+  font-size: clamp(28px, 3vw, 40px);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.os-hero-title {
+  margin-top: clamp(14px, 1.6vw, 22px);
+  font-size: clamp(32px, 8.6vw, 80px);
+  line-height: 1.08;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+@media (min-width: 701px) {
+  .os-hero-title {
+    font-size: clamp(48px, 5.8vw, 80px);
+  }
+}
+
+.os-hero-sub {
+  margin-top: clamp(24px, 2.4vw, 32px);
+  max-width: none;
+  font-size: clamp(19px, 2.2vw, 28px);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* The lineup: one stage the width of the page, sized in its own width so the
+   arrangement keeps its proportions from a phone to a desktop. */
+.lineup {
+  position: relative;
+  container-type: inline-size;
+  width: 100%;
+  max-width: 1680px;
+  margin: clamp(40px, 6vw, 80px) auto 0;
+  aspect-ratio: 2.1 / 1;
+  overflow: hidden;
+}
+
+.lu,
+.lu-tile {
+  position: absolute;
+  background: #0b0b0c;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 40px 80px -30px rgba(0, 0, 0, 0.9);
+}
+
+.lu {
+  border-radius: calc(var(--w) * 0.14);
+  padding: calc(var(--w) * 0.028);
+  /* the bezel: dark, with a faint metal edge */
+  background: linear-gradient(160deg, #2a2a2e, #0d0d0f 40%, #1b1b1e);
+}
+
+.lu img,
+.lu-tile img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: calc(var(--w) * 0.115);
+}
+
+.lu-left {
+  --w: 26cqw;
+  width: var(--w);
+  left: -7cqw;
+  top: 2cqw;
+}
+
+.lu-right {
+  --w: 24cqw;
+  width: var(--w);
+  right: -6cqw;
+  top: 0;
+}
+
+.lu-center {
+  --w: 15cqw;
+  width: var(--w);
+  left: 50%;
+  translate: -50% 0;
+  top: 9cqw;
+  z-index: 2;
+}
+
+.lu-tile {
+  --w: 8.4cqw;
+  width: var(--w);
+  aspect-ratio: 1 / 1.15;
+  left: 61.5cqw;
+  top: 33cqw;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  padding: calc(var(--w) * 0.2);
+  border-radius: calc(var(--w) * 0.3);
+  background:
+    radial-gradient(circle at 50% 40%, #3b2a09, #0d0b06 75%),
+    #0d0b06;
+}
+
+.lu-tile img {
+  border-radius: 0;
+}
+
+@media (max-width: 734px) {
+  .lineup {
+    aspect-ratio: 1 / 1.05;
+  }
+
+  .lu-left {
+    --w: 46cqw;
+    left: -22cqw;
+    top: 6cqw;
+  }
+
+  .lu-right {
+    --w: 44cqw;
+    right: -20cqw;
+    top: 0;
+  }
+
+  .lu-center {
+    --w: 30cqw;
+    top: 18cqw;
+  }
+
+  .lu-tile {
+    --w: 17cqw;
+    left: 64cqw;
+    top: 72cqw;
+  }
+}
+
+/* The section pills, as Apple sets them: separate outlined capsules, the
+   current one filled white, no shared track behind them. */
+.segments {
+  gap: 10px;
+  padding: 4px;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.segment {
+  height: 40px;
+  padding: 0 20px;
+  font-size: 15px;
+  color: rgba(245, 245, 247, 0.92);
+  background: rgba(22, 22, 23, 0.72);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.24);
+  transition: background 0.3s var(--ease), color 0.3s var(--ease);
+}
+
+.segment[data-on='true'] {
+  color: #1d1d1f;
+  background: #f5f5f7;
+  box-shadow: none;
+}
+
+.segment-capsule {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .segment {
+    height: 40px;
+    padding: 0 18px;
+  }
+}
+
+@media (min-width: 735px) {
+  .lineup {
+    aspect-ratio: 2.7 / 1;
+  }
+
+  .lu-left {
+    --w: 19cqw;
+    left: -3.5cqw;
+    top: 3cqw;
+  }
+
+  .lu-right {
+    --w: 18cqw;
+    right: -3cqw;
+    top: 0;
+  }
+
+  .lu-center {
+    --w: 11.5cqw;
+    top: 6cqw;
+  }
+
+  .lu-tile {
+    --w: 6.6cqw;
+    left: 60cqw;
+    top: 24cqw;
+  }
+}

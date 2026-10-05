@@ -125,6 +125,32 @@ function HeroDevice({ running }) {
   )
 }
 
+/* -------------------------------------------------------------- lineup */
+
+/**
+ * The devices under the opening, the way Apple lays its lineup out: upright,
+ * different sizes, on black, the big ones running off the edges of the page and
+ * a small one in the middle that the eye lands on. Each rises in on its own beat.
+ */
+function HeroLineup() {
+  return (
+    <div className="lineup" aria-hidden="true">
+      <div className="lu lu-left reveal" style={{ '--d': '200ms' }}>
+        <img src={SHOTS_304[SHOT304.player].src} alt="" decoding="async" />
+      </div>
+      <div className="lu lu-right reveal" style={{ '--d': '320ms' }}>
+        <img src={SHOTS_304[SHOT304.lyrics].src} alt="" decoding="async" />
+      </div>
+      <div className="lu lu-center reveal" style={{ '--d': '120ms' }}>
+        <img src={SHOTS_304[SHOT304.home].src} alt="" decoding="async" />
+      </div>
+      <div className="lu-tile reveal" style={{ '--d': '440ms' }}>
+        <img src="/logo.png" alt="" decoding="async" />
+      </div>
+    </div>
+  )
+}
+
 /* ------------------------------------------------------------ highlights */
 
 /**
@@ -426,19 +452,9 @@ export default function App() {
             <p className="os-hero-sub reveal" style={{ '--d': '160ms' }}>
               {VERSION} is rolling out now, free for Android 13 and newer.
             </p>
-            <div className="linkrow os-hero-links reveal" style={{ '--d': '240ms' }}>
-              <a className="textlink" href={RELEASES} target="_blank" rel="noreferrer">
-                Get the APK <i>›</i>
-              </a>
-              <Link className="textlink" to={RELEASE_PATH}>
-                What&rsquo;s new <i>›</i>
-              </Link>
-            </div>
           </div>
 
-          <div className="shell statement center os-hero-devices">
-            <HeroDevice running={ambient} />
-          </div>
+          <HeroLineup />
         </section>
 
         <Highlights />
