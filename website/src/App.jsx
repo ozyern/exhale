@@ -6,6 +6,7 @@ import Features from './components/Features.jsx'
 import Words from './components/Words.jsx'
 import Phone from './components/Phone.jsx'
 import Ribbon from './components/Ribbon.jsx'
+import Segments from './components/Segments.jsx'
 import {
   ABOUT_FACTS,
   FEATURES,
@@ -42,49 +43,10 @@ function Bars({ active, onSelect }) {
       <AnnounceBar />
       <TopBar />
 
-      <LocalNav active={active} onSelect={onSelect} />
-    </>
-  )
-}
-
-/**
- * The page's own bar, the way Apple's product pages carry one: the product's
- * name on the left, the page's sections on the right and one filled button to
- * get it. Sticks under the top of the window and frosts what passes beneath.
- */
-function LocalNav({ active, onSelect }) {
-  const go = (index) => (event) => {
-    const node = document.getElementById(SECTIONS[index].id)
-    if (!node) return
-    event.preventDefault()
-    onSelect(index)
-    node.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' })
-  }
-
-  return (
-    <nav className="localnav" aria-label="On this page">
-      <div className="localnav-inner">
-        <a className="localnav-title" href="#overview" onClick={go(0)}>
-          Exhale
-        </a>
-        <div className="localnav-menu">
-          {SECTIONS.slice(1, -1).map((section, i) => (
-            <a
-              key={section.id}
-              href={`#${section.id}`}
-              className="localnav-link"
-              data-on={active === i + 1}
-              onClick={go(i + 1)}
-            >
-              {section.label}
-            </a>
-          ))}
-          <a className="localnav-cta" href={RELEASES} target="_blank" rel="noreferrer">
-            Download
-          </a>
-        </div>
+      <div className="segbar">
+        <Segments items={SECTIONS} active={active} onSelect={onSelect} />
       </div>
-    </nav>
+    </>
   )
 }
 
