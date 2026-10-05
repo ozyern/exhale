@@ -64,6 +64,7 @@ constructor(
     var toggleLike: () -> Unit = {}
     var toggleStartRadio: () -> Unit = {}
     var toggleLibrary: () -> Unit = {}
+    var openOutputSwitcher: () -> Unit = {}
 
     private fun browsableExtras(
         browsableHint: Int = CONTENT_STYLE_GRID_ITEM,
@@ -94,6 +95,7 @@ constructor(
                 .add(MediaSessionConstants.CommandToggleLibrary)
                 .add(MediaSessionConstants.CommandToggleShuffle)
                 .add(MediaSessionConstants.CommandToggleRepeatMode)
+                .add(MediaSessionConstants.CommandOutputSwitcher)
                 .build(),
             connectionResult.availablePlayerCommands,
         )
@@ -113,6 +115,7 @@ constructor(
                 !session.player.shuffleModeEnabled
 
             MediaSessionConstants.ACTION_TOGGLE_REPEAT_MODE -> session.player.toggleRepeatMode()
+            MediaSessionConstants.ACTION_OUTPUT_SWITCHER -> openOutputSwitcher()
         }
         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
     }

@@ -126,6 +126,7 @@ import com.ozyern.exhale.constants.LyricsOnMediaCardKey
 import com.ozyern.exhale.constants.HideExplicitKey
 import com.ozyern.exhale.constants.HideVideoKey
 import com.ozyern.exhale.constants.HistoryDuration
+import com.ozyern.exhale.constants.MediaSessionConstants.CommandOutputSwitcher
 import com.ozyern.exhale.constants.MediaSessionConstants.CommandToggleLike
 import com.ozyern.exhale.constants.MediaSessionConstants.CommandToggleStartRadio
 import com.ozyern.exhale.constants.MediaSessionConstants.CommandToggleRepeatMode
@@ -790,6 +791,7 @@ class MusicService :
             toggleLike = ::toggleLike
             toggleStartRadio = ::toggleStartRadio
             toggleLibrary = ::toggleLibrary
+            openOutputSwitcher = ::openOutputSwitcher
         }
         mediaSession =
             MediaLibrarySession
@@ -2272,6 +2274,14 @@ class MusicService :
     private fun updateNotification() {
         try {
             val customLayout = listOf(
+                // First, so the system media card puts it in the left-hand slot beside previous —
+                // where every other player keeps the choice of where the sound goes.
+                CommandButton
+                    .Builder()
+                    .setDisplayName(getString(R.string.output_device))
+                    .setIconResId(R.drawable.output_devices)
+                    .setSessionCommand(CommandOutputSwitcher)
+                    .build(),
                 CommandButton
                     .Builder()
                     .setDisplayName(
@@ -2323,6 +2333,31 @@ class MusicService :
             mediaSession.setCustomLayout(customLayout)
         } catch (e: Exception) {
             reportException(e)
+        }
+    }
+
+    /**
+     * The system's own "play on" picker — phone speaker, Bluetooth, wired, cast — opened from the
+     * media card's device button. Android 14 has an API for it; before that, the same dialog is
+     * reached by the broadcast SystemUI listens for, and failing both, Bluetooth settings.
+     */
+    private fun openOutputSwitcher() {
+        if (Build.VERSION.SDK_INT >= 34) {
+            val shown = runCatching {
+                android.media.MediaRouter2.getInstance(this).showSystemOutputSwitcher()
+            }.getOrDefault(false)
+            if (shown) return
+        }
+        val dialog = Intent("com.android.systemui.action.LAUNCH_MEDIA_OUTPUT_DIALOG")
+            .setPackage("com.android.systemui")
+            .putExtra("package_name", packageName)
+            .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+        val sent = runCatching { sendBroadcast(dialog) }.isSuccess
+        if (sent && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) return
+        runCatching {
+            startActivity(
+                Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
         }
     }
 
