@@ -233,7 +233,6 @@ fun LiquidGlassBottomBar(
         animationSpec = spring(dampingRatio = 0.9f, stiffness = 420f),
         label = "chromeCircleSize",
     )
-    val chromeGlyphScale = chromeCircleSize / DockCircleSize
 
     // The home circle is not a thing that appears; it is a thing that grows.
     //
@@ -257,6 +256,14 @@ fun LiquidGlassBottomBar(
     val dockLabels by rememberPreference(DockLabelsKey, true)
     val dockCompact by rememberPreference(DockCompactKey, false)
     val dockGlow by rememberPreference(DockGlowKey, true)
+    // The jelly dock carries Search as one of its tabs, so while it is open the search circle
+    // shrinks away into it, and grows back out when the dock folds.
+    val jellyOpen = dockStyle == DockStyle.JELLY && !collapsed
+    val searchCircleSize by animateDpAsState(
+        targetValue = if (jellyOpen) 0.dp else chromeCircleSize,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 420f),
+        label = "searchCircleSize",
+    )
 
     androidx.compose.foundation.layout.BoxWithConstraints(
         modifier = modifier.fillMaxWidth(),
@@ -385,9 +392,10 @@ fun LiquidGlassBottomBar(
                             scaleX = folded + (1f - folded) * stripFold
                         }
                     if (dockStyle == DockStyle.JELLY) {
-                        val labels = tabs.map { stringResource(it.dockTitleId) }
+                        val jellyTabs = items
+                        val labels = jellyTabs.map { stringResource(it.dockTitleId) }
                         JellyDock(
-                            items = tabs.mapIndexed { i, tab ->
+                            items = jellyTabs.mapIndexed { i, tab ->
                                 val here = isSelected(tab)
                                 JellyDockItem(
                                     label = labels[i],
@@ -458,13 +466,13 @@ fun LiquidGlassBottomBar(
             }
         }
 
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(10.dp * (searchCircleSize / DockCircleSize).coerceIn(0f, 1f)))
 
         // Outside the morph on purpose: see the note where the strip's copy used to be.
-        if (searchScreen != null) {
+        if (searchScreen != null && searchCircleSize > 1.dp) {
             val searchActive = isSelected(searchScreen)
             FrostedCircle(
-                size = chromeCircleSize,
+                size = searchCircleSize,
                 openDockGlass = !collapsed,
                 onClick = { onItemClickHaptic(searchScreen, searchActive) },
             ) {
@@ -472,7 +480,7 @@ fun LiquidGlassBottomBar(
                     iconRes = if (searchActive) searchScreen.iconIdActive else searchScreen.iconIdInactive,
                     contentDescription = stringResource(searchScreen.titleId),
                     tint = if (searchActive) chromeInk else chromeInk.copy(alpha = 0.8f),
-                    scale = chromeGlyphScale,
+                    scale = searchCircleSize / DockCircleSize,
                 )
             }
         }

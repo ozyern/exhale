@@ -44,7 +44,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -93,8 +92,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ozyern.exhale.ui.component.clearGlassContentColor
-import com.ozyern.exhale.ui.component.dockGlass
+import android.graphics.RuntimeShader
+import android.os.Build
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.Stroke
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.ozyern.exhale.ui.component.liquid.LocalAppBackdrop
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
@@ -135,7 +143,10 @@ fun JellyDock(
     glow: Boolean = true,
 ) {
     if (items.isEmpty()) return
-    val accent = MaterialTheme.colorScheme.primary
+    // The pill and the lit tab are the ink colour, not the theme's accent: a white pill at 15% on
+    // smoked glass in dark theme, a black one in light.
+    val dark = isSystemInDarkTheme()
+    val accent = if (dark) Color.White else Color.Black
     val glowStrength by animateFloatAsState(
         targetValue = if (glow) 1f else 0f,
         animationSpec = tween(420),
@@ -155,7 +166,7 @@ fun JellyDock(
     val density = LocalDensity.current
     val trackHeight = 48.dp + (if (compact) 8.dp else 16.dp) * labelFraction
     val shape = remember { RoundedCornerShape(percent = 50) }
-    val selectedSurface = accent.copy(alpha = 0.2f)
+    val selectedSurface = accent.copy(alpha = 0.15f)
     val glowColor = accent.copy(alpha = accent.alpha * glowStrength)
 
     LaunchedEffect(visualSelectedIndex, items.size) {
@@ -212,7 +223,7 @@ fun JellyDock(
                         .matchParentSize()
                         .graphicsLayer { translationX = motion.frame.panelOffset * density.density },
                 ) {
-                    Box(Modifier.matchParentSize().dockGlass(shape))
+                    Box(Modifier.matchParentSize().jellyTrack(shape, dark, glowStrength))
                     Box(
                         Modifier
                             .matchParentSize()
@@ -236,7 +247,7 @@ fun JellyDock(
                                 }
                             },
                     ) {
-                        JellyTabRow(items, labelFraction, motion, active = false, compact, Modifier.matchParentSize())
+                        JellyTabRow(items, labelFraction, motion, active = false, compact, accent, Modifier.matchParentSize())
                     }
                     // The pill, and the tabs again in full colour, seen only through it: a tab under
                     // the pill turns accent exactly as far as the pill covers it.
@@ -251,7 +262,7 @@ fun JellyDock(
                                     }
                                 },
                         ) {
-                            JellyTabRow(items, labelFraction, motion, active = true, compact, Modifier.matchParentSize())
+                            JellyTabRow(items, labelFraction, motion, active = true, compact, accent, Modifier.matchParentSize())
                         }
                     }
                     JellyTabTargets(items, motion, Modifier.matchParentSize())
@@ -260,6 +271,104 @@ fun JellyDock(
         }
     }
 }
+
+/* ----------------------------------------------------------------------- */
+/* Track                                                                    */
+/* ----------------------------------------------------------------------- */
+
+private val TrackFilmDark = Color(0xFF1C1C1E)
+private val TrackFilmLight = Color(0xFFF2F2F7)
+
+/**
+ * The track: smoked glass. The page behind is blurred hard and laid under a dark film, then lit at
+ * the rim — a warm light that falls off a few dp in and is strongest along the top, and a thin
+ * bright line on the very edge — so it reads as a slab of tinted glass catching light rather than
+ * a flat bar. [strength] fades the rim with the touch-glow setting, as the original does.
+ */
+@Composable
+private fun Modifier.jellyTrack(shape: Shape, dark: Boolean, strength: Float): Modifier {
+    val film = if (dark) TrackFilmDark.copy(alpha = 0.55f) else TrackFilmLight.copy(alpha = 0.62f)
+    val rim = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            runCatching { RuntimeShader(JellyRimShader) }.getOrNull()
+        } else {
+            null
+        }
+    }
+    return this
+        .drawBackdrop(
+            backdrop = LocalAppBackdrop.current,
+            shape = { shape },
+            effects = { blur(24f.dp.toPx()) },
+            highlight = { null },
+            shadow = { null },
+            onDrawSurface = { drawRect(film) },
+        )
+        .drawWithCache {
+            val edge = Brush.verticalGradient(
+                listOf(Color.White.copy(alpha = 0.27f), Color.White.copy(alpha = 0.02f)),
+            )
+            val stroke = 0.75.dp.toPx()
+            val brush = if (rim != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                rim.setFloatUniform("resolution", size.width, size.height)
+                rim.setFloatUniform("density", density)
+                rim.setFloatUniform("warm", if (dark) 1f else 0.35f)
+                ShaderBrush(rim)
+            } else {
+                null
+            }
+            onDrawBehind {
+                if (strength <= 0f) return@onDrawBehind
+                if (brush != null) {
+                    drawRect(brush, alpha = strength, blendMode = BlendMode.Plus)
+                } else {
+                    drawRoundRect(
+                        brush = edge,
+                        topLeft = Offset(stroke / 2, stroke / 2),
+                        size = Size(size.width - stroke, size.height - stroke),
+                        cornerRadius = CornerRadius((size.height - stroke) / 2),
+                        style = Stroke(stroke),
+                        alpha = strength,
+                    )
+                }
+            }
+        }
+}
+
+/**
+ * The rim light, as light to add over the track. Depth is measured in dp in from the capsule's
+ * edge; the warm sheen decays over ~16dp and is weighted to the top, the highlight is a hairline
+ * on the edge itself, brightest at the top and faint along the bottom.
+ */
+private const val JellyRimShader = """
+uniform float2 resolution;
+uniform float density;
+uniform float warm;
+
+half4 main(float2 position) {
+    float2 halfSize = resolution * 0.5;
+    float radius = halfSize.y;
+    float2 local = position - halfSize;
+    float2 capsule = float2(max(abs(local.x) - halfSize.x + radius, 0.0), local.y);
+    float distanceToCenter = length(capsule);
+    float distanceToEdge = distanceToCenter - radius;
+    float coverage = 1.0 - smoothstep(-0.5, 0.5, distanceToEdge);
+    if (coverage <= 0.0) return half4(0.0);
+
+    float2 normal = float2(capsule.x * sign(local.x), capsule.y) / max(distanceToCenter, 0.001);
+    float depth = max(-distanceToEdge, 0.0) / density;
+
+    float rim = exp(-0.0565 * depth - 0.0322 * depth * depth);
+    float upperLight = 0.18 + 0.82 * pow(max(-normal.y, 0.0), 0.65);
+    half3 sheen = half3(0.1735, 0.0529, 0.0184) * rim * upperLight * warm;
+
+    float highlight = exp(-pow((depth - 0.35) / 0.42, 2.0));
+    float highlightLight = 0.12 + 0.88 * sqrt(max((1.0 - normal.y) * 0.5, 0.0));
+    half3 color = sheen + half3(0.25) * highlight * highlightLight;
+    color *= coverage;
+    return half4(color, max(color.r, max(color.g, color.b)));
+}
+"""
 
 /* ----------------------------------------------------------------------- */
 /* Tabs                                                                     */
@@ -272,10 +381,11 @@ private fun JellyTabRow(
     motion: JellyMotion,
     active: Boolean,
     compact: Boolean,
+    ink: Color,
     modifier: Modifier,
 ) {
-    val color = if (active) MaterialTheme.colorScheme.primary else clearGlassContentColor().copy(alpha = 0.72f)
-    val iconSize = if (compact) 22.dp else 26.dp
+    val color = if (active) ink else ink.copy(alpha = 0.55f)
+    val iconSize = if (compact) 24.dp else 28.dp
     val labelHeight = if (compact) 14.dp else 16.dp
     Row(
         modifier = modifier.padding(4.dp).clearAndSetSemantics {},
@@ -313,9 +423,9 @@ private fun JellyTabRow(
                             text = item.label,
                             color = color,
                             style = TextStyle(
-                                fontSize = if (compact) 10.sp else 11.sp,
+                                fontSize = if (compact) 12.sp else 13.sp,
                                 lineHeight = if (compact) 14.sp else 16.sp,
-                                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                                fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
                                 textAlign = TextAlign.Center,
                             ),
                             maxLines = 1,

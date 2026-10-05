@@ -763,7 +763,7 @@ fun AppearanceSettings(
 
                     PreferenceGroupDivider()
                     SwitchPreference(
-                        title = { Text("Compact") },
+                        title = { Text("Compact dock") },
                         description = "A shorter dock with smaller icons",
                         icon = { Icon(painterResource(R.drawable.nav_bar), null) },
                         checked = dockCompact,

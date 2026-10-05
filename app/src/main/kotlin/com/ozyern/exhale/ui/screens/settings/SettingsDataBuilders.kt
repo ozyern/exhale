@@ -453,7 +453,7 @@ private fun buildIndexItems(
                 title = text(entry.title),
                 subtitle = listOfNotNull(entry.page, section?.takeIf { it != entry.page }).joinToString(" › "),
                 accentColor = accent,
-                keywords = listOf(entry.page),
+                keywords = listOf(entry.page) + entry.keywords,
                 onClick = { resetSearch(); navController.navigate(entry.route) },
             )
         }

@@ -20,6 +20,8 @@ data class SettingsIndexEntry(
     val page: String,
     val section: IndexText?,
     val title: IndexText,
+    /** Other words people use for this setting, searched along with its title. */
+    val keywords: List<String> = emptyList(),
 )
 
 /**
@@ -46,6 +48,10 @@ val SettingsIndex: List<SettingsIndexEntry> = listOf(
     SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Res(R.string.player), IndexText.Res(R.string.player_buttons_style)),
     SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Res(R.string.player), IndexText.Res(R.string.enable_swipe_thumbnail)),
     SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Res(R.string.player), IndexText.Res(R.string.swipe_sensitivity)),
+    SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Plain("Dock"), IndexText.Plain("Dock style"), listOf("dock", "navigation", "nav bar", "navbar", "bottom bar", "tab bar", "tabs", "menu bar", "jelly", "liquid glass", "pill", "style", "look")),
+    SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Plain("Dock"), IndexText.Plain("Tab labels"), listOf("dock", "navigation", "nav bar", "navbar", "bottom bar", "tab bar", "tabs", "menu bar", "jelly", "names", "text", "titles", "icons only")),
+    SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Plain("Dock"), IndexText.Plain("Compact dock"), listOf("dock", "navigation", "nav bar", "navbar", "bottom bar", "tab bar", "tabs", "menu bar", "jelly", "small", "smaller", "slim", "short", "size")),
+    SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Plain("Dock"), IndexText.Plain("Touch glow"), listOf("dock", "navigation", "nav bar", "navbar", "bottom bar", "tab bar", "tabs", "menu bar", "jelly", "glow", "light", "highlight", "drag")),
     SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Res(R.string.misc), IndexText.Res(R.string.default_open_tab)),
     SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Res(R.string.misc), IndexText.Res(R.string.default_lib_chips)),
     SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Res(R.string.misc), IndexText.Plain("Always On Display")),
@@ -231,4 +237,16 @@ val SettingsSynonyms: Map<String, List<String>> = mapOf(
     "player" to listOf("player style", "now playing"),
     "style" to listOf("player style", "design"),
     "look" to listOf("appearance", "theme", "player style"),
+    "dock" to listOf("navigation", "tab bar", "nav bar"),
+    "navbar" to listOf("dock", "navigation"),
+    "nav" to listOf("dock", "navigation"),
+    "navigation" to listOf("dock", "nav bar"),
+    "tabbar" to listOf("dock", "tab bar"),
+    "tab" to listOf("dock", "tabs"),
+    "tabs" to listOf("dock", "tab bar"),
+    "bottom" to listOf("dock", "bottom bar"),
+    "bar" to listOf("dock", "nav bar"),
+    "menu" to listOf("dock", "navigation"),
+    "jelly" to listOf("dock", "jelly"),
+    "pill" to listOf("dock", "capsule"),
 )
