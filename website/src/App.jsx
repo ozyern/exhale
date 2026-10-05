@@ -135,17 +135,31 @@ function HeroDevice({ running }) {
 function HeroLineup() {
   return (
     <div className="lineup" aria-hidden="true">
-      <div className="lu lu-left reveal" style={{ '--d': '200ms' }}>
-        <img src={SHOTS_304[SHOT304.player].src} alt="" decoding="async" />
-      </div>
-      <div className="lu lu-right reveal" style={{ '--d': '320ms' }}>
-        <img src={SHOTS_304[SHOT304.lyrics].src} alt="" decoding="async" />
-      </div>
-      <div className="lu lu-center reveal" style={{ '--d': '120ms' }}>
-        <img src={SHOTS_304[SHOT304.home].src} alt="" decoding="async" />
-      </div>
-      <div className="lu-tile reveal" style={{ '--d': '440ms' }}>
-        <img src="/logo.png" alt="" decoding="async" />
+      <div className="lu-stage">
+        <div className="dev-slot dev-slot-left reveal" style={{ '--d': '200ms' }}>
+        <div className="dev dev-left">
+          <div className="dev-screen">
+            <img src={SHOTS_304[SHOT304.downloads].src} alt="" decoding="async" />
+          </div>
+        </div>
+        </div>
+        <div className="dev-slot dev-slot-right reveal" style={{ '--d': '320ms' }}>
+        <div className="dev dev-right">
+          <div className="dev-screen">
+            <img src={SHOTS_304[SHOT304.lyrics].src} alt="" decoding="async" />
+          </div>
+        </div>
+        </div>
+        <div className="dev dev-center reveal" style={{ '--d': '120ms' }}>
+          <div className="dev-screen">
+            <img src={SHOTS_304[SHOT304.home].src} alt="" decoding="async" />
+          </div>
+        </div>
+        <div className="watch reveal" style={{ '--d': '440ms' }}>
+          <div className="watch-face">
+            <img src="/logo.png" alt="" decoding="async" />
+          </div>
+        </div>
       </div>
     </div>
   )

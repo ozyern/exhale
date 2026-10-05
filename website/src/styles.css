@@ -4416,3 +4416,242 @@ html:has(.release) {
     top: 24cqw;
   }
 }
+
+/* ======================================================== lineup, as hardware
+   Phones built the way a product photo shows them: a polished metal band, a
+   black bezel, a camera in the glass, side buttons, a sheen across the screen.
+   The two big ones lie at an angle like objects on a table; the small one
+   stands in the middle; a watch sits beside it. */
+
+.lineup {
+  aspect-ratio: 1 / 1.02;
+  overflow: hidden;
+  perspective: 1600px;
+}
+
+.lu,
+.lu-tile {
+  display: none;
+}
+
+.lu-stage {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+.dev {
+  --w: 30cqw;
+  position: absolute;
+  width: var(--w);
+  aspect-ratio: 720 / 1500;
+  border-radius: calc(var(--w) * 0.16);
+  padding: calc(var(--w) * 0.03);
+  /* titanium: graphite with light running along the edge */
+  background:
+    linear-gradient(135deg, #8d8f94 0%, #3b3c40 14%, #1c1d20 40%, #57585d 58%, #232427 78%, #7a7c81 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    inset 0 0 calc(var(--w) * 0.01) rgba(0, 0, 0, 0.8),
+    0 calc(var(--w) * 0.18) calc(var(--w) * 0.3) calc(var(--w) * -0.08) rgba(0, 0, 0, 0.95);
+}
+
+/* side buttons */
+.dev::before,
+.dev::after {
+  content: '';
+  position: absolute;
+  width: calc(var(--w) * 0.018);
+  border-radius: 2px;
+  background: linear-gradient(90deg, #5b5c61, #2a2b2e);
+}
+
+.dev::before {
+  right: calc(var(--w) * -0.014);
+  top: 27%;
+  height: 13%;
+}
+
+.dev::after {
+  left: calc(var(--w) * -0.014);
+  top: 21%;
+  height: 7%;
+  box-shadow: 0 calc(var(--w) * 0.22) 0 0 #3a3b3f;
+}
+
+.dev-screen {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  border-radius: calc(var(--w) * 0.135);
+  background: #000;
+  border: calc(var(--w) * 0.022) solid #000;
+}
+
+.dev-screen img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  border-radius: calc(var(--w) * 0.11);
+}
+
+/* the camera, and the glass catching the light */
+.dev-screen::before {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  top: calc(var(--w) * 0.035);
+  left: 50%;
+  width: calc(var(--w) * 0.06);
+  aspect-ratio: 1;
+  translate: -50% 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #2b3a55, #05070b 60%);
+}
+
+.dev-screen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(115deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 28%, transparent 46%);
+}
+
+/* the warm one in the middle, like Apple's coloured model */
+.dev-center {
+  --w: 22cqw;
+  left: 50%;
+  top: 14cqw;
+  translate: -50% 0;
+  z-index: 3;
+  background:
+    linear-gradient(135deg, #c98a96 0%, #6b2d3a 16%, #3a1219 42%, #8a4250 60%, #3d151c 80%, #b77885 100%);
+}
+
+.dev-left {
+  --w: 44cqw;
+  left: -21cqw;
+  top: 4cqw;
+  transform: rotateX(16deg) rotateY(22deg) rotateZ(-7deg);
+  transform-origin: 60% 40%;
+}
+
+.dev-right {
+  --w: 42cqw;
+  right: -19cqw;
+  top: 0;
+  transform: rotateX(14deg) rotateY(-20deg) rotateZ(6deg);
+  transform-origin: 40% 40%;
+}
+
+/* the watch */
+.watch {
+  --w: 15cqw;
+  position: absolute;
+  z-index: 4;
+  left: 63cqw;
+  top: 72cqw;
+  width: var(--w);
+  aspect-ratio: 1 / 1.2;
+}
+
+/* strap, above and below the case */
+.watch::before {
+  content: '';
+  position: absolute;
+  left: 14%;
+  right: 14%;
+  top: -42%;
+  bottom: -42%;
+  z-index: 0;
+  border-radius: calc(var(--w) * 0.12);
+  background: linear-gradient(180deg, #2a0f15 0%, #5b1f2b 22%, #4a1822 50%, #5b1f2b 78%, #2a0f15 100%);
+}
+
+/* crown */
+.watch::after {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  right: calc(var(--w) * -0.06);
+  top: 28%;
+  width: calc(var(--w) * 0.08);
+  height: 18%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #9a5a66, #4a1d26);
+}
+
+.watch-face {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  border-radius: calc(var(--w) * 0.3);
+  padding: calc(var(--w) * 0.05);
+  background: linear-gradient(135deg, #c98a96, #5a2230 30%, #3a1219 60%, #a86a77);
+  box-shadow: 0 calc(var(--w) * 0.2) calc(var(--w) * 0.35) rgba(0, 0, 0, 0.9);
+}
+
+.watch-face img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 18%;
+  border-radius: calc(var(--w) * 0.26);
+  background: radial-gradient(circle at 50% 42%, #3a2708, #000 72%);
+}
+
+@media (min-width: 735px) {
+  .lineup {
+    aspect-ratio: 2.5 / 1;
+  }
+
+  .dev-center {
+    --w: 12cqw;
+    top: 5cqw;
+  }
+
+  .dev-left {
+    --w: 21cqw;
+    left: -2cqw;
+    top: 2cqw;
+  }
+
+  .dev-right {
+    --w: 20cqw;
+    right: -1cqw;
+    top: 0;
+  }
+
+  .watch {
+    --w: 6.5cqw;
+    left: 59cqw;
+    top: 25cqw;
+  }
+}
+
+/* The slots carry the position and the entrance; the devices inside them carry
+   the tilt, so the fade-in's own transform never flattens it. */
+.dev-slot {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  perspective: 1400px;
+}
+
+.dev {
+  aspect-ratio: 9 / 18.2;
+}
+
+.dev-screen img {
+  object-fit: cover;
+  object-position: center top;
+}
+
+.dev {
+  aspect-ratio: 9 / 16.3;
+}
