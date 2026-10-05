@@ -6,7 +6,6 @@ import Features from './components/Features.jsx'
 import Words from './components/Words.jsx'
 import Phone from './components/Phone.jsx'
 import Ribbon from './components/Ribbon.jsx'
-import Segments from './components/Segments.jsx'
 import {
   ABOUT_FACTS,
   FEATURES,
@@ -26,6 +25,7 @@ import { Link } from './router.jsx'
 
 const SECTIONS = [
   { id: 'overview', label: 'Overview' },
+  { id: 'highlights', label: 'Highlights' },
   { id: 'lyrics', label: 'Lyrics' },
   { id: 'design', label: 'Design' },
   { id: 'features', label: 'Features' },
@@ -42,10 +42,49 @@ function Bars({ active, onSelect }) {
       <AnnounceBar />
       <TopBar />
 
-      <div className="segbar">
-        <Segments items={SECTIONS} active={active} onSelect={onSelect} />
-      </div>
+      <LocalNav active={active} onSelect={onSelect} />
     </>
+  )
+}
+
+/**
+ * The page's own bar, the way Apple's product pages carry one: the product's
+ * name on the left, the page's sections on the right and one filled button to
+ * get it. Sticks under the top of the window and frosts what passes beneath.
+ */
+function LocalNav({ active, onSelect }) {
+  const go = (index) => (event) => {
+    const node = document.getElementById(SECTIONS[index].id)
+    if (!node) return
+    event.preventDefault()
+    onSelect(index)
+    node.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' })
+  }
+
+  return (
+    <nav className="localnav" aria-label="On this page">
+      <div className="localnav-inner">
+        <a className="localnav-title" href="#overview" onClick={go(0)}>
+          Exhale
+        </a>
+        <div className="localnav-menu">
+          {SECTIONS.slice(1, -1).map((section, i) => (
+            <a
+              key={section.id}
+              href={`#${section.id}`}
+              className="localnav-link"
+              data-on={active === i + 1}
+              onClick={go(i + 1)}
+            >
+              {section.label}
+            </a>
+          ))}
+          <a className="localnav-cta" href={RELEASES} target="_blank" rel="noreferrer">
+            Download
+          </a>
+        </div>
+      </div>
+    </nav>
   )
 }
 
@@ -122,6 +161,99 @@ function HeroDevice({ running }) {
         <Phone shots={SHOTS} index={index} />
       </div>
     </div>
+  )
+}
+
+/* ------------------------------------------------------------ highlights */
+
+/**
+ * "Get the highlights." The release in a row of tall tiles you swipe through:
+ * a sentence at the top of each, its lead in white, and the screen it is about
+ * rising out of the bottom. Arrows and dots underneath, as on Apple's pages.
+ */
+const HIGHLIGHTS = [
+  { shot: SHOTS_304[SHOT304.home], lead: 'Home leads with what you play.', rest: 'Top Picks for You is learned from your own listening, and says why each one is there.' },
+  { shot: SHOTS_304[SHOT304.player], lead: 'The song brings its own color.', rest: 'The cover fills the player, and the controls take their tint from it.' },
+  { shot: SHOTS_304[SHOT304.lyrics], lead: 'Lyrics land on the word.', rest: 'The line being sung lights up as it is sung, and the rest fall out of focus.' },
+  { shot: SHOTS_304[SHOT304.downloads], lead: 'It plays with the radio off.', rest: 'Downloads play with no network at all, cover edge to edge.' },
+  { shot: SHOTS[SHOT.artist], lead: 'Artists, the way they should look.', rest: 'Portrait, story and the songs that matter, on one page.' },
+  { shot: SHOTS_304[SHOT304.settings], lead: 'One material, everywhere.', rest: 'Grouped glass tables all the way down to Settings.' },
+  { shot: SHOTS_304[SHOT304.about], lead: 'It updates itself.', rest: 'Check, download and install without leaving the app.' },
+]
+
+function Highlights() {
+  const rail = useRef(null)
+  const [at, setAt] = useState(0)
+
+  useEffect(() => {
+    const node = rail.current
+    if (!node) return undefined
+    const onScroll = () => {
+      const first = node.firstElementChild
+      if (!first) return
+      const pitch = first.getBoundingClientRect().width + 20
+      setAt(Math.round(node.scrollLeft / pitch))
+    }
+    node.addEventListener('scroll', onScroll, { passive: true })
+    return () => node.removeEventListener('scroll', onScroll)
+  }, [])
+
+  const goTo = (index) => {
+    const node = rail.current
+    const card = node?.children[index]
+    if (!node || !card) return
+    const clamped = Math.max(0, Math.min(HIGHLIGHTS.length - 1, index))
+    const target = node.children[clamped]
+    node.scrollTo({
+      left: target.offsetLeft - node.firstElementChild.offsetLeft,
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+    })
+  }
+
+  return (
+    <section className="hl" id="highlights">
+      <h2 className="hl-title shell reveal">Get the highlights.</h2>
+      <div className="hl-rail" ref={rail}>
+        {HIGHLIGHTS.map((item, index) => (
+          <article className="hl-card" key={item.lead}>
+            <p className="hl-cap">
+              <b>{item.lead}</b> {item.rest}
+            </p>
+            <div className="hl-shot">
+              <img src={item.shot.src} alt={item.shot.alt} loading={index < 3 ? 'eager' : 'lazy'} decoding="async" />
+            </div>
+          </article>
+        ))}
+      </div>
+      <div className="hl-controls shell">
+        <div className="hl-dots" role="tablist" aria-label="Highlights">
+          {HIGHLIGHTS.map((item, index) => (
+            <button
+              key={item.lead}
+              type="button"
+              className="hl-dot"
+              data-on={index === at}
+              aria-label={item.lead}
+              onClick={() => goTo(index)}
+            />
+          ))}
+        </div>
+        <div className="hl-arrows">
+          <button type="button" className="hl-arrow" aria-label="Previous" disabled={at <= 0} onClick={() => goTo(at - 1)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6 8.5 12l6 6" /></svg>
+          </button>
+          <button
+            type="button"
+            className="hl-arrow"
+            aria-label="Next"
+            disabled={at >= HIGHLIGHTS.length - 1}
+            onClick={() => goTo(at + 1)}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6" /></svg>
+          </button>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -348,6 +480,8 @@ export default function App() {
             <HeroDevice running={ambient} />
           </div>
         </section>
+
+        <Highlights />
 
         <div className="tour shell">
           <LyricsPanel running={ambient} />
