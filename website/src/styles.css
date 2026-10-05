@@ -4655,3 +4655,253 @@ html:has(.release) {
 .dev {
   aspect-ratio: 9 / 16.3;
 }
+
+/* ===================================================== lineup, on a table
+   Every object lies on one surface seen from above, so they share a single
+   perspective the way a product photograph does. Dark, thin frames; screens a
+   touch dimmed so they glow rather than shout; a soft shadow under each. */
+
+.dev-slot,
+.dev,
+.watch {
+  display: none;
+}
+
+.lineup {
+  perspective: 1500px;
+  perspective-origin: 50% 0%;
+  aspect-ratio: 1 / 1.08;
+}
+
+.table {
+  position: absolute;
+  inset: -4% -6% 0;
+  transform-style: preserve-3d;
+}
+
+.table.reveal.in,
+.table {
+  transform: rotateX(24deg);
+  transform-origin: 50% 0%;
+}
+
+.obj {
+  --w: 30cqw;
+  position: absolute;
+  width: var(--w);
+  background: #18181a;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    inset 0 0 0 calc(var(--w) * 0.006) #000,
+    0 calc(var(--w) * 0.08) calc(var(--w) * 0.16) rgba(0, 0, 0, 0.85),
+    0 calc(var(--w) * 0.02) calc(var(--w) * 0.03) rgba(0, 0, 0, 0.6);
+}
+
+.obj-screen {
+  position: relative;
+  overflow: hidden;
+  height: 100%;
+  background: #000;
+}
+
+.obj-screen img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  filter: brightness(0.88) saturate(1.05);
+}
+
+/* the glass: a faint reflection, and the edges falling into shadow */
+.obj-screen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(118deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.02) 30%, transparent 48%),
+    radial-gradient(ellipse 120% 90% at 50% 40%, transparent 60%, rgba(0, 0, 0, 0.35) 100%);
+}
+
+.hw-tab {
+  --w: 62cqw;
+  aspect-ratio: 3 / 4;
+  left: -30cqw;
+  top: 10cqw;
+  padding: calc(var(--w) * 0.035);
+  border-radius: calc(var(--w) * 0.07);
+  rotate: 3deg;
+}
+
+.hw-tab .obj-screen {
+  border-radius: calc(var(--w) * 0.04);
+}
+
+.hw-phone {
+  aspect-ratio: 9 / 18.6;
+  padding: calc(var(--w) * 0.03);
+  border-radius: calc(var(--w) * 0.17);
+}
+
+.hw-phone .obj-screen {
+  border-radius: calc(var(--w) * 0.14);
+}
+
+.hw-side {
+  --w: 44cqw;
+  right: -20cqw;
+  top: 2cqw;
+  rotate: -4deg;
+}
+
+.hw-hero {
+  --w: 26cqw;
+  left: 50%;
+  translate: -50% 0;
+  top: 22cqw;
+  z-index: 2;
+  /* the coloured one: a deep plum band with a lit edge */
+  background: #3a1820;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 190, 200, 0.28),
+    inset 0 0 0 calc(var(--w) * 0.012) #2a0f15,
+    0 calc(var(--w) * 0.08) calc(var(--w) * 0.18) rgba(0, 0, 0, 0.9);
+}
+
+.hw-wrist {
+  --w: 16cqw;
+  left: 66cqw;
+  top: 84cqw;
+  z-index: 3;
+  aspect-ratio: 1 / 1.2;
+  padding: calc(var(--w) * 0.06);
+  border-radius: calc(var(--w) * 0.3);
+  background: #2c1419;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 190, 200, 0.22),
+    0 calc(var(--w) * 0.1) calc(var(--w) * 0.2) rgba(0, 0, 0, 0.9);
+}
+
+/* the band, running off above and below */
+.hw-wrist::before {
+  content: '';
+  position: absolute;
+  left: 16%;
+  right: 16%;
+  top: -55%;
+  bottom: -55%;
+  z-index: -1;
+  border-radius: calc(var(--w) * 0.1);
+  background: linear-gradient(180deg, transparent 0%, #3b151d 18%, #3b151d 82%, transparent 100%);
+}
+
+.hw-wrist::after {
+  content: '';
+  position: absolute;
+  right: calc(var(--w) * -0.05);
+  top: 30%;
+  width: calc(var(--w) * 0.07);
+  height: 16%;
+  border-radius: 2px;
+  background: #4a2129;
+}
+
+.hw-wrist-face {
+  height: 100%;
+  border-radius: calc(var(--w) * 0.24);
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--w) * 0.04);
+}
+
+.hw-wrist-time {
+  font-size: calc(var(--w) * 0.24);
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+.hw-wrist-face img {
+  width: 34%;
+  height: auto;
+  opacity: 0.95;
+}
+
+@media (min-width: 735px) {
+  .lineup {
+    aspect-ratio: 2.6 / 1;
+  }
+
+  .table {
+    inset: -6% 0 0;
+    transform: rotateX(30deg);
+  }
+
+  .hw-tab {
+    --w: 30cqw;
+    left: 2cqw;
+    top: 3cqw;
+    aspect-ratio: 4 / 3;
+  }
+
+  .hw-side {
+    --w: 17cqw;
+    right: 6cqw;
+    top: 0;
+  }
+
+  .hw-hero {
+    --w: 11.5cqw;
+    top: 8cqw;
+  }
+
+  .hw-wrist {
+    --w: 6.6cqw;
+    left: 61cqw;
+    top: 26cqw;
+  }
+}
+
+.hw-phone {
+  aspect-ratio: 9 / 16.4;
+}
+
+@media (min-width: 735px) {
+  .lineup {
+    aspect-ratio: 2.4 / 1;
+  }
+
+  .table {
+    inset: 0;
+    transform: rotateX(26deg);
+  }
+
+  .hw-tab {
+    --w: 24cqw;
+    aspect-ratio: 3 / 4;
+    left: 3cqw;
+    top: 1cqw;
+  }
+
+  .hw-side {
+    --w: 15cqw;
+    right: 8cqw;
+    top: 1cqw;
+  }
+
+  .hw-hero {
+    --w: 11cqw;
+    top: 5cqw;
+  }
+
+  .hw-wrist {
+    --w: 6.2cqw;
+    left: 60cqw;
+    top: 22cqw;
+  }
+}

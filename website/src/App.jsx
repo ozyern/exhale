@@ -135,28 +135,25 @@ function HeroDevice({ running }) {
 function HeroLineup() {
   return (
     <div className="lineup" aria-hidden="true">
-      <div className="lu-stage">
-        <div className="dev-slot dev-slot-left reveal" style={{ '--d': '200ms' }}>
-        <div className="dev dev-left">
-          <div className="dev-screen">
-            <img src={SHOTS_304[SHOT304.downloads].src} alt="" decoding="async" />
+      <div className="table reveal" style={{ '--d': '160ms' }}>
+        <div className="obj hw-tab">
+          <div className="obj-screen">
+            <img src="/media/keyart.jpg" alt="" decoding="async" />
           </div>
         </div>
-        </div>
-        <div className="dev-slot dev-slot-right reveal" style={{ '--d': '320ms' }}>
-        <div className="dev dev-right">
-          <div className="dev-screen">
+        <div className="obj hw-phone hw-side">
+          <div className="obj-screen">
             <img src={SHOTS_304[SHOT304.lyrics].src} alt="" decoding="async" />
           </div>
         </div>
-        </div>
-        <div className="dev dev-center reveal" style={{ '--d': '120ms' }}>
-          <div className="dev-screen">
+        <div className="obj hw-phone hw-hero">
+          <div className="obj-screen">
             <img src={SHOTS_304[SHOT304.home].src} alt="" decoding="async" />
           </div>
         </div>
-        <div className="watch reveal" style={{ '--d': '440ms' }}>
-          <div className="watch-face">
+        <div className="obj hw-wrist">
+          <div className="hw-wrist-face">
+            <span className="hw-wrist-time">8:12</span>
             <img src="/logo.png" alt="" decoding="async" />
           </div>
         </div>
