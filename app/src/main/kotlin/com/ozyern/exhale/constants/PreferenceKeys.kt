@@ -1011,3 +1011,16 @@ val SpotifyAccountNameKey = stringPreferencesKey("spotify_account_name")
 val SpotifyAccountAvatarUrlKey = stringPreferencesKey("spotify_account_avatar_url")
 val ShowSpotifyPlaylistsKey = booleanPreferencesKey("show_spotify_playlists")
 val SpotifyLibraryPlaylistsCacheKey = stringPreferencesKey("spotify_library_playlists_cache")
+/** How the open dock (state A) draws its tabs. The folded dock is the same in every style. */
+val DockStyleKey = stringPreferencesKey("dockStyle")
+val DockLabelsKey = booleanPreferencesKey("dockLabels")
+val DockCompactKey = booleanPreferencesKey("dockCompact")
+val DockGlowKey = booleanPreferencesKey("dockGlow")
+
+enum class DockStyle {
+    /** The glass capsule riding on the selected tab. */
+    LIQUID,
+
+    /** A soft pill that stretches between tabs and can be dragged. */
+    JELLY,
+}

@@ -166,6 +166,22 @@ fun AppearanceSettings(
         DarkModeKey,
         defaultValue = DarkMode.AUTO
     )
+    val (dockStyle, onDockStyleChange) = rememberEnumPreference(
+        com.ozyern.exhale.constants.DockStyleKey,
+        defaultValue = com.ozyern.exhale.constants.DockStyle.LIQUID
+    )
+    val (dockLabels, onDockLabelsChange) = rememberPreference(
+        com.ozyern.exhale.constants.DockLabelsKey,
+        defaultValue = true
+    )
+    val (dockCompact, onDockCompactChange) = rememberPreference(
+        com.ozyern.exhale.constants.DockCompactKey,
+        defaultValue = false
+    )
+    val (dockGlow, onDockGlowChange) = rememberPreference(
+        com.ozyern.exhale.constants.DockGlowKey,
+        defaultValue = true
+    )
     val (playerDesignStyle, onPlayerDesignStyleChange) = rememberEnumPreference(
         PlayerDesignStyleKey,
         defaultValue = PlayerDesignStyle.V8
@@ -712,6 +728,59 @@ fun AppearanceSettings(
             }
         }
 
+
+        // The open dock's tabs. The folded dock (a song playing, page scrolled) is the same in
+        // every style, so these only describe the bar you see at the top of a page.
+        PreferenceGroupTitle(
+            title = "Dock",
+        )
+        PreferenceGroup {
+            EnumListPreference(
+                title = { Text("Dock style") },
+                icon = { Icon(painterResource(R.drawable.nav_bar), null) },
+                selectedValue = dockStyle,
+                onValueSelected = onDockStyleChange,
+                valueText = {
+                    when (it) {
+                        com.ozyern.exhale.constants.DockStyle.LIQUID -> "Liquid glass"
+                        com.ozyern.exhale.constants.DockStyle.JELLY -> "Jelly"
+                    }
+                },
+            )
+
+            // The rest belong to the jelly dock, and are hidden rather than left inert under the
+            // liquid one.
+            AnimatedVisibility(dockStyle == com.ozyern.exhale.constants.DockStyle.JELLY) {
+                Column {
+                    PreferenceGroupDivider()
+                    SwitchPreference(
+                        title = { Text("Tab labels") },
+                        description = "Names under the icons",
+                        icon = { Icon(painterResource(R.drawable.tab), null) },
+                        checked = dockLabels,
+                        onCheckedChange = onDockLabelsChange,
+                    )
+
+                    PreferenceGroupDivider()
+                    SwitchPreference(
+                        title = { Text("Compact") },
+                        description = "A shorter dock with smaller icons",
+                        icon = { Icon(painterResource(R.drawable.nav_bar), null) },
+                        checked = dockCompact,
+                        onCheckedChange = onDockCompactChange,
+                    )
+
+                    PreferenceGroupDivider()
+                    SwitchPreference(
+                        title = { Text("Touch glow") },
+                        description = "A light under your finger while you drag between tabs",
+                        icon = { Icon(painterResource(R.drawable.palette), null) },
+                        checked = dockGlow,
+                        onCheckedChange = onDockGlowChange,
+                    )
+                }
+            }
+        }
 
         PreferenceGroupTitle(
             title = stringResource(R.string.misc),

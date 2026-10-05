@@ -122,6 +122,15 @@ import com.ozyern.exhale.constants.AquamorphicStiffness
 import com.ozyern.exhale.extensions.togglePlayPause
 import com.ozyern.exhale.ui.component.liquid.LocalAppBackdrop
 import com.ozyern.exhale.ui.screens.Screens
+import com.ozyern.exhale.constants.DockCompactKey
+import com.ozyern.exhale.constants.DockGlowKey
+import com.ozyern.exhale.constants.DockLabelsKey
+import com.ozyern.exhale.constants.DockStyle
+import com.ozyern.exhale.constants.DockStyleKey
+import com.ozyern.exhale.ui.component.jelly.JellyDock
+import com.ozyern.exhale.ui.component.jelly.JellyDockItem
+import com.ozyern.exhale.utils.rememberEnumPreference
+import com.ozyern.exhale.utils.rememberPreference
 import kotlin.math.abs
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -243,6 +252,12 @@ fun LiquidGlassBottomBar(
     val homeGap = 10.dp * (homeCircleSize / CollapsedCircleSize).coerceIn(0f, 1f)
     val chromeInk = clearGlassContentColor()
 
+    // How the open dock draws its tabs (Settings -> Appearance -> Dock). Only state A changes.
+    val dockStyle by rememberEnumPreference(DockStyleKey, DockStyle.LIQUID)
+    val dockLabels by rememberPreference(DockLabelsKey, true)
+    val dockCompact by rememberPreference(DockCompactKey, false)
+    val dockGlow by rememberPreference(DockGlowKey, true)
+
     androidx.compose.foundation.layout.BoxWithConstraints(
         modifier = modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center,
@@ -340,41 +355,62 @@ fun LiquidGlassBottomBar(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    LiquidTabBar(
-                        tabs = tabs,
-                        pureBlack = pureBlack,
-                        isSelected = isSelected,
-                        onItemClick = onItemClickHaptic,
-                        modifier = Modifier
-                            // Fills the space it is given, rather than wrapping its content.
-                            //
-                            // With `fill = false` the strip was measured wrap-content, so its
-                            // weighted tabs fell back to their intrinsic widths - one tab as wide
-                            // as its label, the next as narrow as its own - while the selected
-                            // capsule is drawn on an even pitch of total/tabs. The two disagreed,
-                            // and the widest label ("Mood & Genres") ran straight out of the
-                            // capsule and across its neighbours. Filling makes the pitch real, so
-                            // every tab is the same width the capsule assumes and a long label
-                            // ellipsises inside its own slot instead of escaping it.
-                            .weight(1f)
-                            .widthIn(max = LiquidTabBarMaxWidth)
-                            // Folds along its length into the footprint the home circle is about
-                            // to occupy, and unfolds back out of it.
-                            //
-                            // The fold is on X alone, and the target is measured rather than
-                            // guessed: whatever the strip is this frame, it collapses to exactly
-                            // 64dp of it. A uniform `scaleOut` squashed the height too, which
-                            // turns a bar folding away into a lozenge shrinking to a point — a
-                            // different object leaving rather than this one.
-                            .graphicsLayer {
-                                alpha = stripInk
-                                transformOrigin = TransformOrigin(0f, 0.5f)
-                                val folded =
-                                    (DockCircleSize.toPx() / size.width.coerceAtLeast(1f))
-                                        .fastCoerceIn(0.05f, 1f)
-                                scaleX = folded + (1f - folded) * stripFold
+                    val stripModifier = Modifier
+                        // Fills the space it is given, rather than wrapping its content.
+                        //
+                        // With `fill = false` the strip was measured wrap-content, so its
+                        // weighted tabs fell back to their intrinsic widths - one tab as wide
+                        // as its label, the next as narrow as its own - while the selected
+                        // capsule is drawn on an even pitch of total/tabs. The two disagreed,
+                        // and the widest label ("Mood & Genres") ran straight out of the
+                        // capsule and across its neighbours. Filling makes the pitch real, so
+                        // every tab is the same width the capsule assumes and a long label
+                        // ellipsises inside its own slot instead of escaping it.
+                        .weight(1f)
+                        .widthIn(max = LiquidTabBarMaxWidth)
+                        // Folds along its length into the footprint the home circle is about
+                        // to occupy, and unfolds back out of it.
+                        //
+                        // The fold is on X alone, and the target is measured rather than
+                        // guessed: whatever the strip is this frame, it collapses to exactly
+                        // 64dp of it. A uniform `scaleOut` squashed the height too, which
+                        // turns a bar folding away into a lozenge shrinking to a point — a
+                        // different object leaving rather than this one.
+                        .graphicsLayer {
+                            alpha = stripInk
+                            transformOrigin = TransformOrigin(0f, 0.5f)
+                            val folded =
+                                (DockCircleSize.toPx() / size.width.coerceAtLeast(1f))
+                                    .fastCoerceIn(0.05f, 1f)
+                            scaleX = folded + (1f - folded) * stripFold
+                        }
+                    if (dockStyle == DockStyle.JELLY) {
+                        val labels = tabs.map { stringResource(it.dockTitleId) }
+                        JellyDock(
+                            items = tabs.mapIndexed { i, tab ->
+                                val here = isSelected(tab)
+                                JellyDockItem(
+                                    label = labels[i],
+                                    iconActive = tab.iconIdActive,
+                                    iconInactive = tab.iconIdInactive,
+                                    selected = here,
+                                    onClick = { onItemClickHaptic(tab, here) },
+                                )
                             },
-                    )
+                            showLabels = dockLabels,
+                            compact = dockCompact,
+                            glow = dockGlow,
+                            modifier = stripModifier,
+                        )
+                    } else {
+                        LiquidTabBar(
+                            tabs = tabs,
+                            pureBlack = pureBlack,
+                            isSelected = isSelected,
+                            onItemClick = onItemClickHaptic,
+                            modifier = stripModifier,
+                        )
+                    }
                 }
             } else {
                 // ---- STATE B: home circle | center pill | search circle ----
