@@ -5,6 +5,7 @@ import Dock from './components/Dock.jsx'
 import Features from './components/Features.jsx'
 import Words from './components/Words.jsx'
 import Phone from './components/Phone.jsx'
+import Ribbon from './components/Ribbon.jsx'
 import Segments from './components/Segments.jsx'
 import {
   ABOUT_FACTS,
@@ -450,22 +451,33 @@ export default function App() {
       <Bars active={section} onSelect={goToSection} />
 
       <main>
-        {/* Apple's product-page opening: the name small, three short lines
-            large, one grey sentence, then the devices on black. */}
-        <section className="os-hero" id="overview">
-          <div className="shell os-hero-copy">
-            <p className="os-hero-name reveal">Exhale {VERSION}</p>
-            <h1 className="os-hero-title reveal" style={{ '--d': '80ms' }}>
-              <span>Music that breathes.</span>
-              <span>Truly beautiful.</span>
-              <span>Truly yours.</span>
-            </h1>
-            <p className="os-hero-sub reveal" style={{ '--d': '160ms' }}>
-              {VERSION} is rolling out now, free for Android 13 and newer.
-            </p>
-          </div>
+        <Ribbon playing={ambient} onToggle={() => setAmbient((p) => !p)} />
 
-          <HeroLineup />
+        <section className="block" id="overview">
+          <div className="shell statement center">
+            <p className="kicker reveal">{TAGLINE}</p>
+            <h1 className="headline reveal" style={{ '--d': '90ms' }}>
+              A music player
+              <br />
+              that breathes.
+            </h1>
+            <p className="lede reveal" style={{ '--d': '180ms' }}>
+              Live glass on every surface, lyrics that land on the beat, and
+              color that follows whatever is playing.
+              <br />
+              Open source, for Android 13 and newer.
+            </p>
+            <div className="linkrow reveal" style={{ '--d': '270ms' }}>
+              <a className="textlink" href={RELEASES} target="_blank" rel="noreferrer">
+                Get the APK <i>›</i>
+              </a>
+              <a className="textlink" href={REPO} target="_blank" rel="noreferrer">
+                Read the source <i>›</i>
+              </a>
+            </div>
+
+            <HeroDevice running={ambient} />
+          </div>
         </section>
 
         <Highlights />

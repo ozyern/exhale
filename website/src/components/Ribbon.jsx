@@ -81,8 +81,8 @@ export default function Ribbon({ playing, onToggle }) {
       // Resolution rises as the element shrinks. 55% is fine on a 1020px hero
       // because the blur hides what's missing; at phone size it left each band
       // ~3px tall and the whole thing read as a loading bar.
-      const scale = rect.width < 560 ? 0.9 : 0.55
-      steps = rect.width < 560 ? 56 : 88
+      const scale = rect.width < 560 ? 1 : 0.8
+      steps = rect.width < 560 ? 72 : 120
 
       w = Math.max(1, Math.round(rect.width * scale))
       h = Math.max(1, Math.round(rect.height * scale))
@@ -91,7 +91,7 @@ export default function Ribbon({ playing, onToggle }) {
 
       // Blur scales with the object. A fixed 9px is a soft edge at desktop size
       // and wider than the bands themselves on a phone.
-      const blur = Math.min(13, Math.max(3.5, rect.height * 0.041))
+      const blur = Math.min(6, Math.max(1.6, rect.height * 0.018))
       wrap.style.setProperty('--ribbon-blur', `${blur.toFixed(2)}px`)
     }
 
@@ -133,8 +133,8 @@ export default function Ribbon({ playing, onToggle }) {
       // that pinch travels along its length. One multiply, and it's most of
       // what separates a ribbon from a stack of glowing bars.
       const pinch = (u, band) =>
-        0.42 +
-        0.58 * Math.abs(Math.sin(u * Math.PI * 0.85 + t * 0.13 + band.xphase * 0.12))
+        0.1 +
+        0.9 * Math.abs(Math.sin(u * Math.PI * 1.15 + t * 0.21 + band.xphase * 0.6))
 
       bands.forEach((band, index) => {
         const [r, g, b] = rgb[index]
@@ -192,6 +192,34 @@ export default function Ribbon({ playing, onToggle }) {
           ctx.closePath()
           ctx.fill()
         }
+
+        // The lit edge. Silk catches the light along one rim, and it is that
+        // thin hot line, more than the fill, that says ribbon rather than glow.
+        // It brightens where the band turns face-on and fades where it twists
+        // away, so the twist reads as a turn in space.
+        const edge = ctx.createLinearGradient(0, 0, w, 0)
+        const hot = 0.9 * bloom * intro
+        const lr = Math.round(r + (255 - r) * 0.55)
+        const lg = Math.round(g + (255 - g) * 0.55)
+        const lb = Math.round(b + (255 - b) * 0.55)
+        edge.addColorStop(0, `rgba(${lr},${lg},${lb},0)`)
+        edge.addColorStop(0.22, `rgba(${lr},${lg},${lb},${hot * 0.5})`)
+        edge.addColorStop(0.55, `rgba(${lr},${lg},${lb},${hot})`)
+        edge.addColorStop(0.95, `rgba(${lr},${lg},${lb},0)`)
+        ctx.strokeStyle = edge
+        ctx.lineCap = 'round'
+        for (let i = 0; i < steps; i += 1) {
+          const u0 = i / steps
+          const u1 = (i + 1) / steps
+          const face = pinch(u0, band)
+          ctx.globalAlpha = 0.25 + 0.75 * face * face
+          ctx.lineWidth = Math.max(0.8, h * 0.006 * (0.4 + face))
+          ctx.beginPath()
+          ctx.moveTo(u0 * w, centre(u0) - half(u0) * 0.92)
+          ctx.lineTo(u1 * w, centre(u1) - half(u1) * 0.92)
+          ctx.stroke()
+        }
+        ctx.globalAlpha = 1
       })
 
       ctx.globalCompositeOperation = 'source-over'
