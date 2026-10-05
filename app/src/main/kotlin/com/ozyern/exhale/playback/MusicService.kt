@@ -2273,68 +2273,27 @@ class MusicService :
 
     private fun updateNotification() {
         try {
+            val liked = currentSong.value?.song?.liked == true
+            // Exactly two buttons, the way the system media card lays a music player out: like and
+            // the output picker, one either side of the transport. ColorOS shows only the first
+            // one or two of the list and nothing past them, so anything more here only pushes one
+            // of these two out of sight — repeat, shuffle and radio stay in the app's own player.
             val customLayout = listOf(
-                // First, so the system media card puts it in the left-hand slot beside previous —
-                // where every other player keeps the choice of where the sound goes.
+                CommandButton
+                    .Builder()
+                    .setDisplayName(getString(if (liked) R.string.action_remove_like else R.string.action_like))
+                    .setIconResId(if (liked) R.drawable.favorite else R.drawable.favorite_border)
+                    .setSessionCommand(CommandToggleLike)
+                    .setEnabled(currentSong.value != null)
+                    .build(),
                 CommandButton
                     .Builder()
                     .setDisplayName(getString(R.string.output_device))
                     .setIconResId(R.drawable.output_devices)
                     .setSessionCommand(CommandOutputSwitcher)
-                    // Pinned beside previous, and like beside next: without a slot of their own the
-                    // system card shows only one extra button and the second falls into overflow.
-                    .setSlots(CommandButton.SLOT_BACK_SECONDARY)
-                    .build(),
-                CommandButton
-                    .Builder()
-                    .setDisplayName(
-                        getString(
-                            if (currentSong.value?.song?.liked == true) {
-                                R.string.action_remove_like
-                            } else {
-                                R.string.action_like
-                            },
-                        ),
-                    )
-                    .setIconResId(if (currentSong.value?.song?.liked == true) R.drawable.favorite else R.drawable.favorite_border)
-                    .setSessionCommand(CommandToggleLike)
-                    .setEnabled(currentSong.value != null)
-                    .setSlots(CommandButton.SLOT_FORWARD_SECONDARY)
-                    .build(),
-                CommandButton
-                    .Builder()
-                    .setDisplayName(
-                        getString(
-                            when (player.repeatMode) {
-                                REPEAT_MODE_OFF -> R.string.repeat_mode_off
-                                REPEAT_MODE_ONE -> R.string.repeat_mode_one
-                                REPEAT_MODE_ALL -> R.string.repeat_mode_all
-                                else -> R.string.repeat_mode_off
-                            },
-                        ),
-                    ).setIconResId(
-                        when (player.repeatMode) {
-                            REPEAT_MODE_OFF -> R.drawable.repeat
-                            REPEAT_MODE_ONE -> R.drawable.repeat_one_on
-                            REPEAT_MODE_ALL -> R.drawable.repeat_on
-                            else -> R.drawable.repeat
-                        },
-                    ).setSessionCommand(CommandToggleRepeatMode)
-                    .build(),
-                CommandButton
-                    .Builder()
-                    .setDisplayName(getString(if (player.shuffleModeEnabled) R.string.action_shuffle_off else R.string.action_shuffle_on))
-                    .setIconResId(if (player.shuffleModeEnabled) R.drawable.shuffle_on else R.drawable.shuffle)
-                    .setSessionCommand(CommandToggleShuffle)
-                    .build(),
-                CommandButton.Builder()
-                    .setDisplayName(getString(R.string.start_radio))
-                    .setIconResId(R.drawable.radio)
-                    .setSessionCommand(CommandToggleStartRadio)
-                    .setEnabled(currentSong.value != null)
                     .build(),
             )
-            mediaSession.setMediaButtonPreferences(customLayout)
+            mediaSession.setCustomLayout(customLayout)
         } catch (e: Exception) {
             reportException(e)
         }
