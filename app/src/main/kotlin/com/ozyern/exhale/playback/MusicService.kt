@@ -2281,6 +2281,9 @@ class MusicService :
                     .setDisplayName(getString(R.string.output_device))
                     .setIconResId(R.drawable.output_devices)
                     .setSessionCommand(CommandOutputSwitcher)
+                    // Pinned beside previous, and like beside next: without a slot of their own the
+                    // system card shows only one extra button and the second falls into overflow.
+                    .setSlots(CommandButton.SLOT_BACK_SECONDARY)
                     .build(),
                 CommandButton
                     .Builder()
@@ -2296,6 +2299,7 @@ class MusicService :
                     .setIconResId(if (currentSong.value?.song?.liked == true) R.drawable.favorite else R.drawable.favorite_border)
                     .setSessionCommand(CommandToggleLike)
                     .setEnabled(currentSong.value != null)
+                    .setSlots(CommandButton.SLOT_FORWARD_SECONDARY)
                     .build(),
                 CommandButton
                     .Builder()
@@ -2330,7 +2334,7 @@ class MusicService :
                     .setEnabled(currentSong.value != null)
                     .build(),
             )
-            mediaSession.setCustomLayout(customLayout)
+            mediaSession.setMediaButtonPreferences(customLayout)
         } catch (e: Exception) {
             reportException(e)
         }
