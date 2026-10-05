@@ -3,15 +3,282 @@ import { PauseIcon, PlayIcon } from '../icons.jsx'
 import { prefersReducedMotion } from '../hooks.js'
 
 /**
- * Five lens-shaped ribbons of light weaving through each other, on canvas.
+ * Five ribbons of light weaving through each other.
  *
- * CSS can't do this. An ellipse only translates, rotates and scales, so the
- * shape never actually changes and it ends up looking like a lava lamp.
+ * Drawn by one fragment shader. Every pixel works out how far it sits from
+ * each band's centre line and lights itself from that, so the softness, the
+ * glow and the reflection are arithmetic rather than blur passes. The whole
+ * thing is one draw call a frame, where the 2D version was a CSS blur over a
+ * large layer and hundreds of paths. Without WebGL it falls back to that 2D
+ * drawing, simplified.
  *
- * Drawn crisp at reduced scale with `lighter` compositing; the blur is a CSS
- * filter on the element rather than `ctx.filter`, which would re-run a CPU
- * convolution per path per frame. Stops when off screen, hidden or paused.
+ * Stops when off screen, hidden or paused; a paused ribbon is not redrawn.
  */
+
+// Each band drifts on its own period, so they pass through each other and the
+// color order keeps inverting. Periods share no common factors so the pattern
+// doesn't visibly repeat.
+const BANDS = [
+  { css: '--iris', fallback: '#7b6cff', base: -0.1, drift: 0.105, period: 9, phase: 0, freq: 1, xphase: 0, speed: 0.16, thick: 0.15, alpha: 0.85 },
+  { css: '--cyan', fallback: '#38d3d6', base: -0.05, drift: 0.095, period: 11.5, phase: 1.7, freq: 1.25, xphase: 1.1, speed: -0.13, thick: 0.125, alpha: 0.8 },
+  { css: null, fallback: '#fff2dc', base: 0, drift: 0.055, period: 7.5, phase: 3.1, freq: 1.1, xphase: 2.4, speed: 0.1, thick: 0.09, alpha: 0.6 },
+  { css: '--ember', fallback: '#ff8a6b', base: 0.05, drift: 0.095, period: 13, phase: 4.4, freq: 1.35, xphase: 3.3, speed: -0.17, thick: 0.125, alpha: 0.8 },
+  { css: '--rose', fallback: '#ed5564', base: 0.1, drift: 0.105, period: 10, phase: 5.6, freq: 0.95, xphase: 4.9, speed: 0.14, thick: 0.15, alpha: 0.85 },
+]
+
+// How far the canvas reaches past the ribbon's frame, above and below, as a
+// share of the frame's height. The glow and the floor reflection live there.
+const BLEED_TOP = 0.45
+const BLEED_BOTTOM = 0.9
+
+const VERTEX = `
+attribute vec2 p;
+varying vec2 v;
+void main() {
+  v = p * 0.5 + 0.5;
+  gl_Position = vec4(p, 0.0, 1.0);
+}
+`
+
+const FRAGMENT = `
+precision highp float;
+varying vec2 v;
+uniform float t;
+uniform float intro;
+uniform vec2 res;
+uniform float bleedTop;
+uniform float bleedBottom;
+uniform vec3 col[5];
+uniform vec4 shape[5];   // base, drift, period, phase
+uniform vec4 wave[5];    // freq, xphase, speed, thick
+uniform float alpha[5];
+
+const float PI = 3.14159265;
+const float TAU = 6.2831853;
+
+// The light at one point of the frame: x along it, y down it, both 0..1, with
+// the frame's height as the unit.
+vec3 light(float x, float y, float px) {
+  float breath = 0.84 + 0.16 * sin(t / 13.0 * TAU);
+  float tilt = 0.052 + sin(t / 21.0 * TAU) * 0.038;
+  float bloom = 0.88 + 0.12 * sin(t / 9.5 * TAU + 1.2);
+  float spine = sin(x * PI * 0.92 + t * 0.17) * 0.055 + sin(x * PI * 1.9 - t * 0.11) * 0.021;
+
+  // Fades in from both ends, peaking a little right of centre.
+  float along = pow(max(sin(PI * x), 0.0), 1.15) * (0.82 + 0.18 * x);
+
+  vec3 sum = vec3(0.0);
+  for (int i = 0; i < 5; i++) {
+    vec4 s = shape[i];
+    vec4 w = wave[i];
+    float centre = 0.5
+      + spine * intro
+      + s.x * 0.82 * breath
+      + (x - 0.5) * tilt
+      + sin(t / s.z * TAU + s.w) * s.y * breath * intro
+      + sin(x * TAU * w.x + w.y + t * w.z) * 0.045 * intro
+      + sin(x * TAU * w.x * 2.3 + w.y * 1.7 - t * w.z * 0.63) * 0.017 * intro;
+
+    // A flat ribbon turning in space: full where it faces you, a line where
+    // it turns edge-on, and the turn travels along it.
+    float face = abs(sin(x * PI * 1.15 + t * 0.21 + w.y * 0.6));
+    float hw = pow(max(sin(PI * x), 0.0), 0.86) * w.w * (0.12 + 0.88 * face)
+      * (0.32 + 0.68 * breath) * intro;
+    hw = max(hw, px * 1.2);
+
+    float d = (y - centre) / hw;
+    float body = exp(-d * d * 1.1);
+    float core = exp(-d * d * 9.0);
+    // The rim: silk catches the light along one edge, brightest face-on.
+    float rim = exp(-pow((d + 0.8) / 0.16, 2.0)) * (0.35 + 0.65 * face * face);
+    // A wide, faint halo: the room the light is in.
+    float dg = (y - centre) / (w.w * 2.6 + 0.02);
+    float halo = exp(-dg * dg) * 0.07;
+
+    // Edge-on, the same light squeezes into less area and so gets brighter.
+    float squeeze = 1.0 + 0.6 * (1.0 - face);
+    vec3 c = col[i];
+    sum += c * alpha[i] * (body * 0.62 + core * 0.4) * squeeze * along * bloom
+      + mix(c, vec3(1.0), 0.6) * rim * 0.55 * along * bloom
+      + c * halo * along;
+  }
+  return sum * intro;
+}
+
+void main() {
+  // Canvas y, top down, in frame units: 0..1 is the frame.
+  float span = 1.0 + bleedTop + bleedBottom;
+  float y = (1.0 - v.y) * span - bleedTop;
+  float x = v.x;
+  float px = span / res.y;
+
+  vec3 c = light(x, y, px);
+
+  // The floor: the ribbon mirrored below its frame, dimmer, softer and
+  // falling away with distance.
+  if (y > 0.78) {
+    float my = 0.78 - (y - 0.78) * 1.35;
+    float fall = exp(-(y - 0.78) * 4.2) * smoothstep(0.78, 0.9, y);
+    c += light(x, my, px * 3.0) * 0.16 * fall;
+  }
+
+  // Nothing reaches the canvas's top or bottom edge, so it has none.
+  c *= smoothstep(0.0, 0.18, v.y) * smoothstep(1.0, 0.8, v.y);
+
+  // Additive light rolls off to white instead of clipping.
+  c = 1.0 - exp(-c * 1.35);
+  float l = dot(c, vec3(0.299, 0.587, 0.114));
+  c = mix(vec3(l), c, 1.35);
+
+  // A little noise, so the long dark falloff doesn't band.
+  float n = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+  c += (n - 0.5) / 255.0;
+
+  gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+}
+`
+
+const parse = (css) => {
+  const hex = css.replace('#', '').trim()
+  const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex
+  return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16) / 255)
+}
+
+function readColors() {
+  const styles = getComputedStyle(document.documentElement)
+  return BANDS.map((band) => {
+    const value = band.css ? styles.getPropertyValue(band.css).trim() : ''
+    return parse(value.startsWith('#') ? value : band.fallback)
+  })
+}
+
+function createGl(canvas) {
+  const gl = canvas.getContext('webgl', {
+    alpha: false,
+    antialias: false,
+    depth: false,
+    stencil: false,
+    premultipliedAlpha: false,
+    powerPreference: 'low-power',
+  })
+  if (!gl) return null
+
+  const compile = (type, source) => {
+    const shader = gl.createShader(type)
+    gl.shaderSource(shader, source)
+    gl.compileShader(shader)
+    return gl.getShaderParameter(shader, gl.COMPILE_STATUS) ? shader : null
+  }
+  const vs = compile(gl.VERTEX_SHADER, VERTEX)
+  const fs = compile(gl.FRAGMENT_SHADER, FRAGMENT)
+  if (!vs || !fs) return null
+
+  const program = gl.createProgram()
+  gl.attachShader(program, vs)
+  gl.attachShader(program, fs)
+  gl.linkProgram(program)
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return null
+  gl.useProgram(program)
+
+  const buffer = gl.createBuffer()
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW)
+  const loc = gl.getAttribLocation(program, 'p')
+  gl.enableVertexAttribArray(loc)
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
+
+  const u = (name) => gl.getUniformLocation(program, name)
+  gl.uniform3fv(u('col'), readColors().flat())
+  gl.uniform4fv(u('shape'), BANDS.flatMap((b) => [b.base, b.drift, b.period, b.phase]))
+  gl.uniform4fv(u('wave'), BANDS.flatMap((b) => [b.freq, b.xphase, b.speed, b.thick]))
+  gl.uniform1fv(u('alpha'), BANDS.map((b) => b.alpha))
+  gl.uniform1f(u('bleedTop'), BLEED_TOP)
+  gl.uniform1f(u('bleedBottom'), BLEED_BOTTOM)
+
+  const uTime = u('t')
+  const uIntro = u('intro')
+  const uRes = u('res')
+
+  return {
+    resize(w, h) {
+      gl.viewport(0, 0, w, h)
+      gl.uniform2f(uRes, w, h)
+    },
+    draw(time) {
+      const raw = Math.min(1, time / 1.6)
+      gl.uniform1f(uTime, time)
+      gl.uniform1f(uIntro, raw * raw * (3 - 2 * raw))
+      gl.drawArrays(gl.TRIANGLES, 0, 3)
+    },
+  }
+}
+
+/** The 2D fallback: the same weave as filled paths, softened by a CSS blur. */
+function create2d(canvas) {
+  const ctx = canvas.getContext('2d', { alpha: true })
+  if (!ctx) return null
+  const rgb = readColors().map((c) => c.map((v) => Math.round(v * 255)))
+  const TAU = Math.PI * 2
+  let w = 1
+  let h = 1
+  let frameTop = 0
+  let frameH = 1
+
+  return {
+    resize(cw, ch) {
+      w = cw
+      h = ch
+      frameH = ch / (1 + BLEED_TOP + BLEED_BOTTOM)
+      frameTop = frameH * BLEED_TOP
+    },
+    draw(t) {
+      ctx.clearRect(0, 0, w, h)
+      ctx.globalCompositeOperation = 'lighter'
+      const raw = Math.min(1, t / 1.6)
+      const intro = raw * raw * (3 - 2 * raw)
+      const breath = 0.84 + 0.16 * Math.sin((t / 13) * TAU)
+      const tilt = 0.052 + Math.sin((t / 21) * TAU) * 0.038
+      const steps = 64
+      BANDS.forEach((band, index) => {
+        const [r, g, b] = rgb[index]
+        const centre = (u) =>
+          frameTop +
+          frameH *
+            (0.5 +
+              (Math.sin(u * Math.PI * 0.92 + t * 0.17) * 0.055 + Math.sin(u * Math.PI * 1.9 - t * 0.11) * 0.021) * intro +
+              band.base * 0.82 * breath +
+              (u - 0.5) * tilt +
+              Math.sin((t / band.period) * TAU + band.phase) * band.drift * breath * intro +
+              Math.sin(u * TAU * band.freq + band.xphase + t * band.speed) * 0.045 * intro)
+        const half = (u) =>
+          Math.sin(Math.PI * u) ** 0.86 *
+          frameH *
+          band.thick *
+          (0.12 + 0.88 * Math.abs(Math.sin(u * Math.PI * 1.15 + t * 0.21 + band.xphase * 0.6))) *
+          intro
+        const gradient = ctx.createLinearGradient(0, 0, w, 0)
+        const peak = band.alpha * 0.7 * intro
+        gradient.addColorStop(0, `rgba(${r},${g},${b},0)`)
+        gradient.addColorStop(0.58, `rgba(${r},${g},${b},${peak})`)
+        gradient.addColorStop(1, `rgba(${r},${g},${b},0)`)
+        ctx.fillStyle = gradient
+        ctx.beginPath()
+        for (let i = 0; i <= steps; i += 1) {
+          const u = i / steps
+          ctx.lineTo(u * w, centre(u) - half(u))
+        }
+        for (let i = steps; i >= 0; i -= 1) {
+          const u = i / steps
+          ctx.lineTo(u * w, centre(u) + half(u))
+        }
+        ctx.closePath()
+        ctx.fill()
+      })
+      ctx.globalCompositeOperation = 'source-over'
+    },
+  }
+}
+
 export default function Ribbon({ playing, onToggle }) {
   const canvasRef = useRef(null)
   const wrapRef = useRef(null)
@@ -23,257 +290,104 @@ export default function Ribbon({ playing, onToggle }) {
     const wrap = wrapRef.current
     if (!canvas || !wrap) return
 
-    const ctx = canvas.getContext('2d', { alpha: true })
-    if (!ctx) return
-
-    const styles = getComputedStyle(document.documentElement)
-    const hue = (name, fallback) =>
-      styles.getPropertyValue(name).trim() || fallback
-
-    // Each band drifts on its own period, so they pass through each other and
-    // the color order keeps inverting. `base` is the resting position, `drift`
-    // how far it wanders. Both are needed: base alone and the order never
-    // changes, drift alone and all five pile up and sum to white. Periods share
-    // no common factors so the pattern doesn't visibly repeat.
-    const bands = [
-      { css: hue('--iris', '#7b6cff'), base: -0.1, drift: 0.105, period: 9, phase: 0, freq: 1, xphase: 0, speed: 0.16, thick: 0.095, alpha: 0.8 },
-      { css: hue('--cyan', '#38d3d6'), base: -0.05, drift: 0.095, period: 11.5, phase: 1.7, freq: 1.25, xphase: 1.1, speed: -0.13, thick: 0.078, alpha: 0.7 },
-      { css: '#fff2dc', base: 0, drift: 0.055, period: 7.5, phase: 3.1, freq: 1.1, xphase: 2.4, speed: 0.1, thick: 0.055, alpha: 0.55 },
-      { css: hue('--ember', '#ff8a6b'), base: 0.05, drift: 0.095, period: 13, phase: 4.4, freq: 1.35, xphase: 3.3, speed: -0.17, thick: 0.078, alpha: 0.7 },
-      { css: hue('--rose', '#ed5564'), base: 0.1, drift: 0.105, period: 10, phase: 5.6, freq: 0.95, xphase: 4.9, speed: 0.14, thick: 0.095, alpha: 0.8 },
-    ]
-
-    const parse = (css) => {
-      const hex = css.replace('#', '').trim()
-      const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex
-      return [
-        parseInt(full.slice(0, 2), 16),
-        parseInt(full.slice(2, 4), 16),
-        parseInt(full.slice(4, 6), 16),
-      ]
+    let renderer = createGl(canvas)
+    const isGl = !!renderer
+    // A canvas that has handed out a WebGL context can never give a 2D one,
+    // so a shader that fails to compile draws its fallback on a fresh canvas.
+    let canvas2d = null
+    if (!renderer) {
+      canvas2d = document.createElement('canvas')
+      canvas2d.className = 'ribbon-canvas'
+      canvas2d.setAttribute('aria-hidden', 'true')
+      canvas.style.display = 'none'
+      canvas.after(canvas2d)
+      renderer = create2d(canvas2d)
     }
+    if (!renderer) return
+    const surface = canvas2d ?? canvas
+    wrap.dataset.renderer = isGl ? 'gl' : '2d'
 
-    const rgb = bands.map((band) => parse(band.css))
-
-    // Halo, core, spine. Alphas sum to just under 1 for a single band; the
-    // headroom left over is what crossings spend reaching white. `fade` is
-    // where each pass peaks along its own length.
-    const PASSES = [
-      { width: 2.05, alpha: 0.28, fade: [0.14, 0.52, 0.9] },
-      { width: 1, alpha: 0.7, fade: [0.2, 0.58, 1] },
-      // Narrow and hot. Five of these overlapping give the white core.
-      { width: 0.4, alpha: 0.36, fade: [0.26, 0.62, 0.99] },
-    ]
-
-    // Pulled in from the authored spread so they overlap at the waist.
-    const SPREAD = 0.82
-
-    const TAU = Math.PI * 2
-    let w = 0
-    let h = 0
-    // Segment count follows the canvas: a crest needs enough points to stay a
-    // curve, and on a phone there are barely enough pixels for half as many.
-    let steps = 88
-
-    const resize = () => {
-      const rect = wrap.getBoundingClientRect()
-
-      // Resolution rises as the element shrinks. 55% is fine on a 1020px hero
-      // because the blur hides what's missing; at phone size it left each band
-      // ~3px tall and the whole thing read as a loading bar.
-      const scale = rect.width < 560 ? 1 : 0.8
-      steps = rect.width < 560 ? 72 : 120
-
-      w = Math.max(1, Math.round(rect.width * scale))
-      h = Math.max(1, Math.round(rect.height * scale))
-      canvas.width = w
-      canvas.height = h
-
-      // Blur scales with the object. A fixed 9px is a soft edge at desktop size
-      // and wider than the bands themselves on a phone.
-      const blur = Math.min(6, Math.max(1.6, rect.height * 0.018))
-      wrap.style.setProperty('--ribbon-blur', `${blur.toFixed(2)}px`)
-    }
-
-    resize()
-    const observer = new ResizeObserver(resize)
-    observer.observe(wrap)
-
-    const draw = (t) => {
-      ctx.clearRect(0, 0, w, h)
-      // Additive: every crossing climbs towards white the way real light does,
-      // so the bright core is produced by the weave rather than painted in.
-      ctx.globalCompositeOperation = 'lighter'
-
-      // Terms shared by every band. These are what make five paths read as one
-      // object rather than five ribbons that happen to be near each other.
-
-      // Amplitude and thickness together, or it reads as a zoom, not an inhale.
-      const breath = 0.84 + 0.16 * Math.sin((t / 13) * TAU)
-
-      const tilt = 0.052 + Math.sin((t / 21) * TAU) * 0.038
-
-      // Slightly out of phase with the breath, so the brightest moment isn't
-      // also the widest.
-      const bloom = 0.88 + 0.12 * Math.sin((t / 9.5) * TAU + 1.2)
-
-      // Opens from a flat line. Starting mid-motion looks like a video that was
-      // already playing.
-      const raw = Math.min(1, t / 1.6)
-      const intro = raw * raw * (3 - 2 * raw)
-
-      // One shared path with an S in it that everything rides, so a band's own
-      // drift is a departure from a common line. Two components on unrelated
-      // periods so the S migrates rather than standing still.
-      const spine = (u) =>
-        Math.sin(u * Math.PI * 0.92 + t * 0.17) * h * 0.055 +
-        Math.sin(u * Math.PI * 1.9 - t * 0.11) * h * 0.021
-
-      // A flat ribbon rotating in space goes thin where it turns edge-on, and
-      // that pinch travels along its length. One multiply, and it's most of
-      // what separates a ribbon from a stack of glowing bars.
-      const pinch = (u, band) =>
-        0.1 +
-        0.9 * Math.abs(Math.sin(u * Math.PI * 1.15 + t * 0.21 + band.xphase * 0.6))
-
-      bands.forEach((band, index) => {
-        const [r, g, b] = rgb[index]
-
-        // Drift is the weave, the two waves are the flex along its length.
-        // Two rather than one: a single sine is a shape the eye solves in a
-        // couple of seconds.
-        const centre = (u) =>
-          h * 0.5 +
-          spine(u) * intro +
-          h * band.base * SPREAD * breath +
-          (u - 0.5) * h * tilt +
-          Math.sin((t / band.period) * TAU + band.phase) * h * band.drift * breath * intro +
-          Math.sin(u * TAU * band.freq + band.xphase + t * band.speed) * h * 0.045 * intro +
-          Math.sin(u * TAU * band.freq * 2.3 + band.xphase * 1.7 - t * band.speed * 0.63) *
-            h *
-            0.017 *
-            intro
-
-        // Lens: full through the middle, pointed at both ends. Below 1 the
-        // exponent leaves a blunt edge; above it the band comes to a point.
-        const half = (u) =>
-          Math.sin(Math.PI * u) ** 0.86 *
-          h *
-          band.thick *
-          pinch(u, band) *
-          (0.32 + 0.68 * breath) *
-          intro
-
-        // One pass at a single width gives a band with an edge. Stacking a
-        // faint wide halo under a narrow core gives a bright middle falling
-        // away, without a second blur.
-        for (const pass of PASSES) {
-          const gradient = ctx.createLinearGradient(0, 0, w, 0)
-          const peak = band.alpha * pass.alpha * bloom * intro
-          const [rise, crest, end] = pass.fade
-          gradient.addColorStop(0, `rgba(${r},${g},${b},0)`)
-          gradient.addColorStop(rise, `rgba(${r},${g},${b},${peak * 0.5})`)
-          gradient.addColorStop(crest, `rgba(${r},${g},${b},${peak})`)
-          gradient.addColorStop(end, `rgba(${r},${g},${b},0)`)
-          if (end < 1) gradient.addColorStop(1, `rgba(${r},${g},${b},0)`)
-          ctx.fillStyle = gradient
-
-          ctx.beginPath()
-          for (let i = 0; i <= steps; i += 1) {
-            const u = i / steps
-            const y = centre(u) - half(u) * pass.width
-            if (i === 0) ctx.moveTo(u * w, y)
-            else ctx.lineTo(u * w, y)
-          }
-          for (let i = steps; i >= 0; i -= 1) {
-            const u = i / steps
-            ctx.lineTo(u * w, centre(u) + half(u) * pass.width)
-          }
-          ctx.closePath()
-          ctx.fill()
-        }
-
-        // The lit edge. Silk catches the light along one rim, and it is that
-        // thin hot line, more than the fill, that says ribbon rather than glow.
-        // It brightens where the band turns face-on and fades where it twists
-        // away, so the twist reads as a turn in space.
-        const edge = ctx.createLinearGradient(0, 0, w, 0)
-        const hot = 0.9 * bloom * intro
-        const lr = Math.round(r + (255 - r) * 0.55)
-        const lg = Math.round(g + (255 - g) * 0.55)
-        const lb = Math.round(b + (255 - b) * 0.55)
-        edge.addColorStop(0, `rgba(${lr},${lg},${lb},0)`)
-        edge.addColorStop(0.22, `rgba(${lr},${lg},${lb},${hot * 0.5})`)
-        edge.addColorStop(0.55, `rgba(${lr},${lg},${lb},${hot})`)
-        edge.addColorStop(0.95, `rgba(${lr},${lg},${lb},0)`)
-        ctx.strokeStyle = edge
-        ctx.lineCap = 'round'
-        for (let i = 0; i < steps; i += 1) {
-          const u0 = i / steps
-          const u1 = (i + 1) / steps
-          const face = pinch(u0, band)
-          ctx.globalAlpha = 0.25 + 0.75 * face * face
-          ctx.lineWidth = Math.max(0.8, h * 0.006 * (0.4 + face))
-          ctx.beginPath()
-          ctx.moveTo(u0 * w, centre(u0) - half(u0) * 0.92)
-          ctx.lineTo(u1 * w, centre(u1) - half(u1) * 0.92)
-          ctx.stroke()
-        }
-        ctx.globalAlpha = 1
-      })
-
-      ctx.globalCompositeOperation = 'source-over'
-    }
-
-    let frame = 0
     let clock = 0
+    let frame = 0
     let last = performance.now()
     let onScreen = true
+    let painted = false
+
+    const resize = () => {
+      const rect = surface.getBoundingClientRect()
+      // The light is soft everywhere but the rims, so it doesn't need every
+      // device pixel: a little over one per CSS pixel on a retina screen,
+      // capped so a wide monitor doesn't shade millions of pixels a frame.
+      const dpr = Math.min(window.devicePixelRatio || 1, 2)
+      let scale = isGl ? dpr * 0.6 : 0.5
+      const cap = 1.1e6
+      if (rect.width * rect.height * scale * scale > cap) {
+        scale = Math.sqrt(cap / (rect.width * rect.height))
+      }
+      const w = Math.max(1, Math.round(rect.width * scale))
+      const h = Math.max(1, Math.round(rect.height * scale))
+      if (surface.width !== w || surface.height !== h) {
+        surface.width = w
+        surface.height = h
+      }
+      renderer.resize(w, h)
+      renderer.draw(clock)
+    }
+    resize()
+    const observer = new ResizeObserver(resize)
+    observer.observe(surface)
 
     const tick = (now) => {
+      frame = 0
       const dt = Math.min(0.05, (now - last) / 1000)
       last = now
-      if (playingRef.current) clock += dt
-      draw(clock)
-      frame = onScreen ? requestAnimationFrame(tick) : 0
+      const moving = playingRef.current
+      if (moving) clock += dt
+      // A paused ribbon stands still, so there is nothing to redraw.
+      if (moving || !painted) {
+        renderer.draw(clock)
+        painted = true
+      }
+      if (onScreen && !document.hidden) frame = requestAnimationFrame(tick)
     }
 
-    // Reduced motion gets one frame of the shape, never a loop.
-    if (prefersReducedMotion()) {
-      draw(0)
-    } else {
+    const start = () => {
+      if (frame || prefersReducedMotion()) return
+      last = performance.now()
       frame = requestAnimationFrame(tick)
     }
-
-    // Some browsers still service rAF in a hidden tab.
-    const onVisibility = () => {
-      if (document.hidden) {
-        if (frame) cancelAnimationFrame(frame)
-        frame = 0
-      } else if (onScreen && !frame && !prefersReducedMotion()) {
-        last = performance.now()
-        frame = requestAnimationFrame(tick)
-      }
+    const stop = () => {
+      if (frame) cancelAnimationFrame(frame)
+      frame = 0
     }
+
+    // Reduced motion gets one still frame of the full shape.
+    if (prefersReducedMotion()) {
+      clock = 6
+      renderer.draw(clock)
+    } else {
+      start()
+    }
+
+    const onVisibility = () => (document.hidden ? stop() : onScreen && start())
     document.addEventListener('visibilitychange', onVisibility)
 
     const io = new IntersectionObserver(
       ([entry]) => {
         onScreen = entry.isIntersecting
-        if (onScreen && !frame && !prefersReducedMotion()) {
-          last = performance.now()
-          frame = requestAnimationFrame(tick)
-        }
+        if (onScreen) start()
+        else stop()
       },
       { rootMargin: '80px' },
     )
     io.observe(wrap)
 
     return () => {
-      if (frame) cancelAnimationFrame(frame)
+      stop()
       document.removeEventListener('visibilitychange', onVisibility)
       observer.disconnect()
       io.disconnect()
+      canvas2d?.remove()
     }
   }, [])
 

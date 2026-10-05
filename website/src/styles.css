@@ -4869,23 +4869,24 @@ html:has(.release) {
   }
 }
 
-/* The ribbon, lit like an object in a room: a faint wash of its own colors
-   behind it, and its reflection on a dark floor below. */
-.ribbon::before {
-  content: '';
-  position: absolute;
-  inset: -30% 6%;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse 38% 46% at 38% 52%, rgba(56, 211, 214, 0.16), transparent 70%),
-    radial-gradient(ellipse 40% 48% at 62% 50%, rgba(237, 85, 100, 0.16), transparent 70%),
-    radial-gradient(ellipse 30% 40% at 50% 50%, rgba(123, 108, 255, 0.14), transparent 72%);
-  filter: blur(30px);
+/* The canvas reaches past the ribbon's frame, 45% above and 90% below, for
+   the glow and the floor reflection the shader draws there. In WebGL mode the
+   softness is computed, so there is no CSS blur to pay for. */
+.ribbon-canvas {
+  inset: auto;
+  left: 0;
+  top: -45%;
+  width: 100%;
+  height: 235%;
 }
 
-.ribbon-canvas {
-  -webkit-box-reflect: below -6% linear-gradient(transparent 52%, rgba(0, 0, 0, 0.22));
+.ribbon[data-renderer='gl'] .ribbon-canvas {
+  filter: none;
+}
+
+.ribbon[data-renderer='gl']::after {
+  /* The shader fades its own ends into black. */
+  display: none;
 }
 
 @media (max-width: 700px) {
