@@ -320,31 +320,33 @@ export default function App() {
       <Bars active={section} onSelect={goToSection} />
 
       <main>
-        <Ribbon playing={ambient} onToggle={() => setAmbient((p) => !p)} />
-
-        <section className="block" id="overview">
-          <div className="shell statement center">
-            <p className="kicker reveal">{TAGLINE}</p>
-            <h1 className="headline reveal" style={{ '--d': '90ms' }}>
+        <section className="hero-open" id="overview">
+          <Ribbon playing={ambient} onToggle={() => setAmbient((p) => !p)}>
+            <p className="kicker hero-kicker">{TAGLINE}</p>
+            <h1 className="hero-title">
               A music player
               <br />
               that breathes.
             </h1>
-            <p className="lede reveal" style={{ '--d': '180ms' }}>
+            <p className="hero-lede">
               Live glass on every surface, lyrics that land on the beat, and
               color that follows whatever is playing.
-              <br />
-              Open source, for Android 13 and newer.
             </p>
-            <div className="linkrow reveal" style={{ '--d': '270ms' }}>
-              <a className="textlink" href={RELEASES} target="_blank" rel="noreferrer">
-                Get the APK <i>›</i>
+            <div className="hero-actions">
+              <a className="btn btn-gold" href={RELEASES} target="_blank" rel="noreferrer">
+                Download v{VERSION}
               </a>
-              <a className="textlink" href={REPO} target="_blank" rel="noreferrer">
-                Read the source <i>›</i>
-              </a>
+              <Link className="btn btn-glass" to={RELEASE_PATH}>
+                What&rsquo;s new in {VERSION}
+              </Link>
             </div>
+            <p className="hero-meta">
+              Android 13+ <span aria-hidden="true">·</span> {ABOUT_FACTS.find((f) => f.label === 'Size')?.value}{' '}
+              <span aria-hidden="true">·</span> Free and open source
+            </p>
+          </Ribbon>
 
+          <div className="shell statement center hero-device-row">
             <HeroDevice running={ambient} />
           </div>
         </section>

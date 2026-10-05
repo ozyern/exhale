@@ -12,7 +12,7 @@ import { prefersReducedMotion } from '../hooks.js'
  * filter on the element rather than `ctx.filter`, which would re-run a CPU
  * convolution per path per frame. Stops when off screen, hidden or paused.
  */
-export default function Ribbon({ playing, onToggle }) {
+export default function Ribbon({ playing, onToggle, children }) {
   const canvasRef = useRef(null)
   const wrapRef = useRef(null)
   const playingRef = useRef(playing)
@@ -250,10 +250,14 @@ export default function Ribbon({ playing, onToggle }) {
   }, [])
 
   return (
-    <div className="ribbon-wrap">
+    <div className="ribbon-wrap" data-copy={children ? 'true' : undefined}>
       <div className="ribbon" ref={wrapRef}>
         <canvas className="ribbon-canvas" ref={canvasRef} aria-hidden="true" />
       </div>
+
+      {/* The page's opening words sit on the light rather than a screen below
+          it: the first thing anyone sees is what this is and where to get it. */}
+      {children ? <div className="ribbon-copy">{children}</div> : null}
 
       <button
         type="button"

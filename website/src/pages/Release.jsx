@@ -206,6 +206,9 @@ function Chapter({ chapter, index, shots }) {
   return (
     <section className="rl-chap" id={chapter.id} data-wide={wide} data-flip={!!chapter.flip}>
       <div className="rl-chap-say reveal">
+        <span className="rl-chap-num" aria-hidden="true">
+          {String(index + 1).padStart(2, '0')}
+        </span>
         <p className="rl-chap-kick">{chapter.kicker}</p>
         <h2 className="rl-chap-h">{chapter.title}</h2>
         <p className="rl-chap-p">{chapter.body}</p>
@@ -227,6 +230,50 @@ function Chapter({ chapter, index, shots }) {
         </figure>
       )}
     </section>
+  )
+}
+
+/**
+ * The chapters, in the margin of a wide screen, with the one being read lit.
+ * Shows only while the story is on screen, so it never sits over the hero or
+ * the footer.
+ */
+function ChapterRail({ story }) {
+  const [active, setActive] = useState(null)
+  const [on, setOn] = useState(false)
+
+  useEffect(() => {
+    const nodes = story.map((c) => document.getElementById(c.id)).filter(Boolean)
+    if (!nodes.length) return undefined
+    const visible = new Map()
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => visible.set(e.target.id, e.isIntersecting ? e.intersectionRatio : 0))
+        let best = null
+        let bestRatio = 0
+        visible.forEach((ratio, id) => {
+          if (ratio > bestRatio) {
+            best = id
+            bestRatio = ratio
+          }
+        })
+        setOn(bestRatio > 0)
+        if (best) setActive(best)
+      },
+      { threshold: [0, 0.15, 0.35, 0.6], rootMargin: '-20% 0px -30% 0px' },
+    )
+    nodes.forEach((n) => io.observe(n))
+    return () => io.disconnect()
+  }, [story])
+
+  return (
+    <nav className="rl-rail" data-on={on} aria-label="Chapters">
+      {story.map((chapter) => (
+        <a key={chapter.id} href={`#${chapter.id}`} data-on={active === chapter.id}>
+          {chapter.kicker}
+        </a>
+      ))}
+    </nav>
   )
 }
 
@@ -432,6 +479,8 @@ export default function Release({ release = LATEST_RELEASE }) {
 
             <ReleaseShots hero={release.hero} shots={release.heroShots} />
           </header>
+
+          <ChapterRail story={release.story} />
 
           <div className="rl-story">
             {release.story.map((chapter, index) => (
