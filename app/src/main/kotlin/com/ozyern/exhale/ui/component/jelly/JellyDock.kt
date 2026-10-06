@@ -190,8 +190,12 @@ fun JellyDock(
     val selectedSurface = accent.copy(alpha = 0.15f)
     val glowColor = accent.copy(alpha = accent.alpha * glowStrength)
 
+    // Off the tabs (an album, an artist) nothing is selected and there is no pill. Coming back,
+    // the pill appears on its tab rather than sliding over from wherever it was last.
+    var hadSelection by remember { mutableStateOf(visualSelectedIndex >= 0) }
     LaunchedEffect(visualSelectedIndex, items.size) {
-        motion.select(visualSelectedIndex)
+        if (!hadSelection && visualSelectedIndex >= 0) motion.snapTo(visualSelectedIndex) else motion.select(visualSelectedIndex)
+        hadSelection = visualSelectedIndex >= 0
     }
     LaunchedEffect(motion.running) {
         if (!motion.running) return@LaunchedEffect
@@ -224,28 +228,17 @@ fun JellyDock(
                 detectJellyGestures(motion, density.density, { currentItems }, { currentIsRtl })
             },
     ) {
-        // Pressed, the whole track swells a little.
-        Box(
-            Modifier
-                .matchParentSize()
-                .graphicsLayer {
-                    scaleX = motion.frame.trackScale
-                    scaleY = motion.frame.trackScale
-                },
-        ) {
-            // Dragged up or down, it stretches after the finger and narrows from where you hold it.
+        // The original also swells and stretches the whole track while it is held. That is a scale
+        // on every ancestor of the glass, and the glass samples the page by layout position — it
+        // can't follow a scaled parent, so for those frames what showed through it was drawn in the
+        // wrong place, a smear along the track. The track now only moves: dragged up or down it
+        // follows the finger a little, dragged sideways it is tugged a few dp. Translation the
+        // glass follows exactly.
+        Box(Modifier.matchParentSize()) {
             Box(
                 Modifier
                     .matchParentSize()
-                    .graphicsLayer {
-                        val frame = motion.frame
-                        transformOrigin = TransformOrigin(
-                            if (size.width > 0) frame.originX * density.density / size.width else 0.5f,
-                            0.5f,
-                        )
-                        scaleX = frame.trackScaleX
-                        translationY = frame.trackOffsetY * density.density
-                    },
+                    .graphicsLayer { translationY = motion.frame.trackOffsetY * density.density },
             ) {
                 // Dragged sideways, it is tugged a few dp the same way.
                 Box(
@@ -689,7 +682,10 @@ private suspend fun PointerInputScope.detectJellyGestures(
                 }
             }
         } finally {
-            if (!finished) {
+            // A plain tap is answered by the tab under it, which has already sent the pill on its
+            // way (and set it no longer dragging). Sending it back to the old tab here — the page
+            // hasn't changed yet — made every tap go there, back, and there again.
+            if (!finished && motion.dragging) {
                 val items = currentItems()
                 motion.cancel(visualIndex(items.indexOfFirst { it.selected }, items.size, isRtl()))
             }
@@ -829,6 +825,20 @@ private class JellyMotion(initialIndex: Int, count: Int) {
         releasePending = true
         pressTarget = 0.0
         shapeTarget = 1.0
+        running = true
+    }
+
+    /** Straight to [index], at rest, with no travel. */
+    fun snapTo(index: Int) {
+        if (index < 0) return
+        dragging = false
+        target = index.coerceAtMost(maxIndex).toDouble()
+        position.snapTo(target)
+        velocity.snapTo(0.0)
+        releasePending = false
+        pressTarget = 0.0
+        shapeTarget = 1.0
+        publish()
         running = true
     }
 
