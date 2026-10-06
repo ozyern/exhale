@@ -504,10 +504,25 @@ fun Bitmap.extractGradientColors(): List<Color> {
         .sortedByDescending { it.luminance() }
 }
 
+/**
+ * AMOLED black: the page itself is #000, so an OLED panel switches those pixels off, and every
+ * surface above it — cards, sheets, menus, the settings groups — steps up from black by only a few
+ * levels. Enough for one surface to read as sitting on another; not enough to light the panel up
+ * the way the theme's own dark greys do.
+ */
 fun ColorScheme.pureBlack(apply: Boolean) =
     if (apply) copy(
+        background = Color.Black,
         surface = Color.Black,
-        background = Color.Black
+        surfaceDim = Color.Black,
+        surfaceContainerLowest = Color.Black,
+        surfaceContainerLow = Color(0xFF070707),
+        surfaceContainer = Color(0xFF0C0C0C),
+        surfaceContainerHigh = Color(0xFF121212),
+        surfaceContainerHighest = Color(0xFF181818),
+        surfaceBright = Color(0xFF1C1C1C),
+        surfaceVariant = Color(0xFF111111),
+        inverseOnSurface = Color.Black,
     ) else this
 
 val ColorSaver = object : Saver<Color, Int> {

@@ -228,7 +228,7 @@ fun AppearanceSettings(
             PlayerBackgroundStyleKey,
             defaultValue = PlayerBackgroundStyle.DEFAULT,
         )
-    val (pureBlack, onPureBlackChange) = rememberPreference(PureBlackKey, defaultValue = true)
+    val (pureBlack, onPureBlackChange) = rememberPreference(PureBlackKey, defaultValue = false)
     val (disableBlur, onDisableBlurChange) = rememberPreference(DisableBlurKey, defaultValue = false)
     val (liquidGlass, onLiquidGlassChange) = rememberPreference(LiquidGlassNavBarKey, defaultValue = true)
     val (useSystemFont, onUseSystemFontChange) = rememberPreference(UseSystemFontKey, defaultValue = false)
@@ -463,6 +463,18 @@ fun AppearanceSettings(
                     }
                 },
             )
+
+            // AMOLED black: only meaningful when the app can be dark, and Sabrina keeps its own
+            // warm neutrals, so the switch is hidden rather than left there doing nothing.
+            AnimatedVisibility(visible = darkMode != DarkMode.OFF && !sabrinaTheme) {
+                SwitchPreference(
+                    title = { Text("AMOLED black") },
+                    description = "Pure black backgrounds in dark theme. Easier on OLED screens and on the battery",
+                    icon = { Icon(painterResource(R.drawable.dark_mode), null) },
+                    checked = pureBlack,
+                    onCheckedChange = onPureBlackChange,
+                )
+            }
 
             // True Blacks (AMOLED) is enforced ON by default — toggle intentionally removed.
 

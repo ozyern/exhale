@@ -35,6 +35,7 @@ val SettingsIndex: List<SettingsIndexEntry> = listOf(
     SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Res(R.string.theme), IndexText.Res(R.string.random_theme_on_startup)),
     SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Res(R.string.theme), IndexText.Res(R.string.color_palette)),
     SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Res(R.string.theme), IndexText.Res(R.string.dark_theme)),
+    SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Res(R.string.theme), IndexText.Plain("AMOLED black"), listOf("amoled", "oled", "pure black", "black", "true black", "dark", "night", "battery")),
     SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Res(R.string.theme), IndexText.Res(R.string.use_system_font)),
     SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Res(R.string.display), IndexText.Res(R.string.ui_scale)),
     SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Res(R.string.display), IndexText.Res(R.string.app_icon)),
