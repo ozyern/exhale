@@ -199,7 +199,8 @@ fun PlayerSettings(
     )
     val (autoSkipNextOnError, onAutoSkipNextOnErrorChange) = rememberPreference(
         AutoSkipNextOnErrorKey,
-        defaultValue = false
+        // On: a song that can't be played is skipped, rather than the whole queue stopping on it.
+        defaultValue = true
     )
     val (pauseOnDeviceMute, onPauseOnDeviceMuteChange) = rememberPreference(
         PauseOnDeviceMuteKey,

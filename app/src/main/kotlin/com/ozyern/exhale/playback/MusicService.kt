@@ -1844,20 +1844,36 @@ class MusicService :
          */
         consecutivePlaybackErr += 2
         val nextWindowIndex = player.nextMediaItemIndex
+        val failed = player.currentMediaItem?.mediaMetadata?.title?.toString()
 
         if (consecutivePlaybackErr <= MAX_CONSECUTIVE_ERR && nextWindowIndex != C.INDEX_UNSET) {
+            tellPlaybackProblem(failed?.let { "Couldn't play \"$it\", so it was skipped" } ?: "Skipped a song that couldn't play")
             player.seekTo(nextWindowIndex, C.TIME_UNSET)
             player.prepare()
             player.play()
             return
         }
 
+        tellPlaybackProblem("Several songs in a row couldn't play, so playback stopped")
         player.pause()
         consecutivePlaybackErr = 0
     }
 
     private fun stopOnError() {
+        val failed = player.currentMediaItem?.mediaMetadata?.title?.toString()
+        tellPlaybackProblem(failed?.let { "Couldn't play \"$it\"" } ?: "Couldn't play this song")
         player.pause()
+    }
+
+    /**
+     * A pause the app makes on its own has to say so. Stopping silently on a song that won't load
+     * looks exactly like being paused by something else — a headset, another app — and leaves no
+     * way to tell the two apart.
+     */
+    private fun tellPlaybackProblem(message: String) {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
+        }
     }
 
     /**
@@ -5174,7 +5190,7 @@ class MusicService :
                 } catch (t: Throwable) {
                     Timber.tag("MusicService").e(t, "failed to recover from silence-skipper error")
                 }
-                if (dataStore.get(AutoSkipNextOnErrorKey, false)) {
+                if (dataStore.get(AutoSkipNextOnErrorKey, true)) {
                     skipOnError()
                 } else {
                     stopOnError()
@@ -5184,7 +5200,7 @@ class MusicService :
             return
         }
 
-        if (dataStore.get(AutoSkipNextOnErrorKey, false)) {
+        if (dataStore.get(AutoSkipNextOnErrorKey, true)) {
             skipOnError()
         } else {
             stopOnError()

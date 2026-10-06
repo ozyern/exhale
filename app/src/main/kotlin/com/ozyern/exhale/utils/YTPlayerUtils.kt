@@ -125,7 +125,9 @@ object YTPlayerUtils {
     }
 
     fun markStreamClientFailed(videoId: String, clientKey: String?, httpStatusCode: Int?) {
-        if (httpStatusCode != 403) return
+        // Any refusal from the server, not only a 403: the retry has to go to a different client,
+        // or it asks the same one again and gets the same answer — and the song stops.
+        if (httpStatusCode == null || httpStatusCode < 400) return
         val normalizedClientKey = normalizeStreamClientKey(clientKey)
         if (normalizedClientKey.isEmpty()) return
         failedStreamClientsUntil[buildFailedClientKey(videoId, normalizedClientKey)] =
