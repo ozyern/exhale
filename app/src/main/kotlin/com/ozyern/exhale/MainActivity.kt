@@ -2326,14 +2326,25 @@ class MainActivity : ComponentActivity() {
                                                                 ).coerceIn(0f, 1f),
                                                         )
                                                         alpha = 1f - leave
-                                                        // And it steps back as it goes: a few
-                                                        // percent smaller about its own foot, so
-                                                        // the player rises *over* the bar into
-                                                        // the foreground instead of wiping it.
-                                                        val recede = 1f - 0.04f * leave
+                                                        // And it is pushed back and down by the
+                                                        // player rising over it: smaller about its
+                                                        // own foot, sinking a little, and going out
+                                                        // of focus — depth, not a wipe. The same
+                                                        // curve run backwards brings it up and into
+                                                        // focus as the player comes down, for either
+                                                        // dock in either state.
+                                                        val recede = 1f - 0.08f * leave
                                                         scaleX = recede
                                                         scaleY = recede
+                                                        translationY = 22.dp.toPx() * leave
                                                         transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
+                                                        val blur = 12.dp.toPx() * leave
+                                                        renderEffect =
+                                                            if (blur > 0.5f && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                                                androidx.compose.ui.graphics.BlurEffect(blur, blur, androidx.compose.ui.graphics.TileMode.Decal)
+                                                            } else {
+                                                                null
+                                                            }
                                                     },
                                         ) {
                                             if ((isSearchScreen || isSearchResultsRoute) && !active) {
