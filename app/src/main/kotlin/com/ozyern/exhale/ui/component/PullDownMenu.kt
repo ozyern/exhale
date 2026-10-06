@@ -95,16 +95,34 @@ fun <T> PullDownMenu(
     label: @Composable (T) -> String,
     onSelect: (T) -> Unit,
 ) {
-    val visible = remember { MutableTransitionState(false) }
-    LaunchedEffect(expanded) { visible.targetState = expanded }
-    if (!visible.currentState && !visible.targetState) return
+    // The menu grows out of the row you touched, Morphlet-style: the panel starts as that row —
+    // its place, its width, its rounded corners — and springs into the menu, and folds back into
+    // the row on close. One shape changing, rather than a popup appearing over the page.
+    var present by remember { mutableStateOf(false) }
+    val morph = remember { Animatable(0f) }
+    LaunchedEffect(expanded) {
+        if (expanded) {
+            present = true
+            val (k, d) = swiftSpring(response = 0.5f, dampingFraction = 0.82f)
+            morph.animateTo(1f, spring(dampingRatio = d, stiffness = k))
+        } else if (present) {
+            val (k, d) = swiftSpring(response = 0.32f, dampingFraction = 1f)
+            morph.animateTo(0f, spring(dampingRatio = d, stiffness = k))
+            present = false
+        }
+    }
+    if (!present && !expanded) return
 
     val density = LocalDensity.current
     val gap = with(density) { 6.dp.roundToPx() }
     val edge = with(density) { 12.dp.roundToPx() }
+    val rowRadius = with(density) { 22.dp.toPx() }
+    val menuRadius = with(density) { MenuCornerRadius.toPx() }
     // The popup covers the whole window — so the page behind can be dimmed and a tap anywhere off
     // the menu closes it — and the panel is placed inside it against the row that opened it.
     var anchor by remember { mutableStateOf(IntRect.Zero) }
+    // Where the menu lands, written by its layout and read only while drawing the shape.
+    val target = remember { FloatArray(4) }
     val position = remember {
         object : PopupPositionProvider {
             override fun calculatePosition(
@@ -118,7 +136,6 @@ fun <T> PullDownMenu(
             }
         }
     }
-    var opensUp by remember { mutableStateOf(false) }
 
     Popup(
         popupPositionProvider = position,
@@ -126,51 +143,98 @@ fun <T> PullDownMenu(
         properties = PopupProperties(focusable = true),
     ) {
         Box(Modifier.fillMaxSize()) {
-            // The page steps back while the choice is made.
-            AnimatedVisibility(
-                visibleState = visible,
-                enter = fadeIn(tween(180)),
-                exit = fadeOut(tween(160)),
-                modifier = Modifier.matchParentSize(),
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.32f))
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
-                )
-            }
+            // The page steps back while the choice is made, on the same spring as the shape.
             Box(
-                Modifier.layout { measurable, constraints ->
-                    val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
-                    val windowW = constraints.maxWidth
-                    val windowH = constraints.maxHeight
-                    // Right edge on the row's right edge, just below it — or above, when there isn't room.
-                    val x = (anchor.right - placeable.width - edge)
-                        .coerceIn(edge, (windowW - placeable.width - edge).coerceAtLeast(edge))
-                    val below = anchor.bottom + gap
-                    val up = below + placeable.height > windowH - edge
-                    if (up != opensUp) opensUp = up
-                    val y = if (up) (anchor.top - gap - placeable.height).coerceAtLeast(edge) else below
-                    layout(windowW, windowH) { placeable.place(x, y) }
-                },
-            ) {
-                AnimatedVisibility(
-                    visibleState = visible,
-                    enter = fadeIn(tween(140)) + scaleIn(
-                        initialScale = 0.6f,
-                        transformOrigin = TransformOrigin(1f, if (opensUp) 1f else 0f),
-                        animationSpec = spring(dampingRatio = 0.78f, stiffness = 560f),
-                    ),
-                    exit = fadeOut(tween(120)) + scaleOut(
-                        targetScale = 0.9f,
-                        transformOrigin = TransformOrigin(1f, if (opensUp) 1f else 0f),
-                        animationSpec = tween(140),
-                    ),
-                ) {
-                    MenuPanel(options, selected, label) { value ->
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = morph.value.coerceIn(0f, 1f) }
+                    .background(Color.Black.copy(alpha = 0.32f))
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
+            )
+            // The shape itself: drawn across the window, from the row's exact bounds to the menu's,
+            // so it really does start as the row. The menu's content shows through it as it lands.
+            val panelColor = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFC1C1C1F) else Color(0xFCFBFBFD)
+            val rimColor = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.07f)
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .drawWithContent {
+                        val m = morph.value
+                        if (m <= 0.001f || target[2] <= 0f) return@drawWithContent
+                        fun mix(a: Float, b: Float) = a + (b - a) * m
+                        val l = mix(anchor.left.toFloat(), target[0])
+                        val t = mix(anchor.top.toFloat(), target[1])
+                        val r = mix(anchor.right.toFloat(), target[0] + target[2])
+                        val b = mix(anchor.bottom.toFloat(), target[1] + target[3])
+                        val radius = mix(rowRadius, menuRadius)
+                        // A soft shadow: the outline drawn a few times, each larger and fainter.
+                        for (i in 3 downTo 1) {
+                            val spread = i * 6.dp.toPx()
+                            drawPath(
+                                squirclePath(l - spread, t - spread + i * 3.dp.toPx(), r - l + spread * 2, b - t + spread * 2, radius + spread),
+                                Color.Black.copy(alpha = 0.07f * m.coerceIn(0f, 1f)),
+                            )
+                        }
+                        val outline = squirclePath(l, t, (r - l).coerceAtLeast(1f), (b - t).coerceAtLeast(1f), radius)
+                        drawPath(outline, panelColor.copy(alpha = panelColor.alpha * (m * 3f).coerceIn(0f, 1f)))
+                        drawPath(outline, rimColor, style = androidx.compose.ui.graphics.drawscope.Stroke(0.7.dp.toPx()))
+                    },
+            )
+            androidx.compose.ui.layout.Layout(
+                content = {
+                    MenuPanel(
+                        options = options,
+                        selected = selected,
+                        label = label,
+                        // The words arrive once the shape is mostly there, and leave first.
+                        contentAlpha = { ((morph.value - 0.4f) / 0.45f).coerceIn(0f, 1f) },
+                    ) { value ->
                         onSelect(value)
                         onDismiss()
+                    }
+                },
+            ) { measurables, constraints ->
+                val panel = measurables.first().measure(constraints.copy(minWidth = 0, minHeight = 0))
+                val windowW = constraints.maxWidth
+                val windowH = constraints.maxHeight
+                // Right edge on the row's right edge, just below it — or above, when there isn't room.
+                val x = (anchor.right - panel.width - edge)
+                    .coerceIn(edge, (windowW - panel.width - edge).coerceAtLeast(edge))
+                val below = anchor.bottom + gap
+                val y = if (below + panel.height > windowH - edge) {
+                    (anchor.top - gap - panel.height).coerceAtLeast(edge)
+                } else {
+                    below
+                }
+                // The row, in the panel's own coordinates: where the shape starts from.
+                val fromL = (anchor.left - x).toFloat()
+                val fromT = (anchor.top - y).toFloat()
+                val fromR = (anchor.right - x).toFloat()
+                val fromB = (anchor.bottom - y).toFloat()
+                val toR = panel.width.toFloat()
+                val toB = panel.height.toFloat()
+                target[0] = x.toFloat(); target[1] = y.toFloat(); target[2] = toR; target[3] = toB
+                layout(windowW, windowH) {
+                    panel.placeWithLayer(x, y) {
+                        val m = morph.value
+                        fun mix(a: Float, b: Float) = a + (b - a) * m
+                        val l = mix(fromL, 0f)
+                        val t = mix(fromT, 0f)
+                        val r = mix(fromR, toR)
+                        val b = mix(fromB, toB)
+                        val radius = mix(rowRadius, menuRadius)
+                        shape = object : androidx.compose.ui.graphics.Shape {
+                            override fun createOutline(
+                                size: androidx.compose.ui.geometry.Size,
+                                layoutDirection: LayoutDirection,
+                                density: androidx.compose.ui.unit.Density,
+                            ) = androidx.compose.ui.graphics.Outline.Generic(
+                                squirclePath(l, t, (r - l).coerceAtLeast(1f), (b - t).coerceAtLeast(1f), radius),
+                            )
+                        }
+                        clip = true
+                        // The panel's own surface takes over from the drawn shape as it lands.
+                        alpha = ((m - 0.55f) / 0.35f).coerceIn(0f, 1f)
                     }
                 }
             }
@@ -183,6 +247,7 @@ private fun <T> MenuPanel(
     options: List<T>,
     selected: T?,
     label: @Composable (T) -> String,
+    contentAlpha: () -> Float = { 1f },
     onPick: (T) -> Unit,
 ) {
     // The app's own theme, which can differ from the system's.
@@ -190,7 +255,8 @@ private fun <T> MenuPanel(
 
     // iOS menu geometry, not Material's: no rules between items, rows built on 44pt, the panel
     // sized by its longest label rather than by the row that opened it.
-    val shape = RoundedCornerShape(MenuCornerRadius)
+    // Continuous corners, the way iOS draws a menu.
+    val shape = SquircleShape(MenuCornerRadius)
     // Nearly opaque: a popup gets no backdrop blur, so a translucent panel shows the rows under it.
     val panel = if (dark) Color(0xFC1C1C1F) else Color(0xFCFBFBFD)
     val rim = if (dark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.07f)
@@ -208,19 +274,16 @@ private fun <T> MenuPanel(
 
     // The rows arrive one after another, a few ms apart, as the panel opens.
     val cascade = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { cascade.animateTo(1f, tween(320, easing = FastOutSlowInEasing)) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(110)
+        cascade.animateTo(1f, tween(320, easing = FastOutSlowInEasing))
+    }
 
     Column(
         Modifier
             .widthIn(min = 210.dp, max = 270.dp)
             .width(IntrinsicSize.Max)
-            .shadow(
-                elevation = 34.dp,
-                shape = shape,
-                clip = false,
-                ambientColor = Color.Black.copy(alpha = 0.5f),
-                spotColor = Color.Black.copy(alpha = 0.5f),
-            )
+            // The shadow is the morphing layer's, so it follows the shape as it grows.
             .clip(shape)
             .background(panel)
             // One pass of light across the top, so the panel sits above the page rather than on it.
@@ -269,7 +332,7 @@ private fun <T> MenuPanel(
             MenuRow(
                 text = label(option),
                 checked = option == selected,
-                appear = { ((cascade.value - step) / 0.44f).coerceIn(0f, 1f) },
+                appear = { ((cascade.value - step) / 0.44f).coerceIn(0f, 1f) * contentAlpha() },
             ) { onPick(option) }
         }
     }
