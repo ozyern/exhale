@@ -22,11 +22,8 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,12 +46,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import com.ozyern.exhale.R
 import com.ozyern.exhale.utils.rememberAppIconPack
@@ -69,27 +61,22 @@ import kotlin.math.sin
 /**
  * The cold-start boot animation, drawn as the TOP-MOST layer of the root composition.
  *
- * The beats, in order:
+ * The beats, in order — it is called Exhale, so the whole thing is one breath:
  *
  *  1. **Bloom.** A warm amber glow swells out of pure black behind the mark, and drifts: two
  *     light sources circling slowly, so the black is lit rather than printed. It starts on
  *     frame one — before the logo is even decoded — so the screen is never a dead black slab.
- *  2. **Arrival.** The mark comes into focus: it fades up out of a soft blur and settles from
- *     0.92x on a near-critically-damped spring, the way a lens pulls focus. One gesture, no bounce.
- *  3. **Glint.** Once, a band of warm light crosses the mark's glossy black body — the only
- *     highlight the whole sequence has, masked to the mark so it reads as a reflection on it.
- *  4. **Name.** "Exhale" tracks in beneath: the letters start apart and draw together as they
- *     fade up, in the mark's own gold.
- *  5. **Breath.** Through the hold the mark expands by 3.5% on a dead-linear ramp — slow enough
- *     that you never catch it moving, fast enough that the frame is never frozen. The app is
- *     called Exhale; the launch mark should be alive rather than parked.
- *  6. **Exhale.** Through that same hold a few specks of the mark's gold drift out of it and rise,
- *     like breath on cold air — sparse, slow, and gone before the exit.
- *  7. **Iris, and home.** The exit is not a crossfade. A circular hole opens out of the centre
- *     (`BlendMode.Clear` into an offscreen layer) and the app is revealed through it — while the
- *     mark, drawn above that layer rather than in it, flies to its own place in Home's top bar and
- *     lands on the glass disc the logo lives in there. The launch mark doesn't vanish; it goes
- *     home. The bloom goes with the iris, so the last frames are clean.
+ *  2. **Inhale.** Two thin rings of the mark's gold close in from the edges of the screen and
+ *     are drawn into it, while the mark comes into focus: it fades up out of a soft blur and
+ *     settles from 0.92x on a near-critically-damped spring. The light goes *in*.
+ *  3. **Glint.** Once, a band of warm light crosses the mark's glossy black body — the light it
+ *     just took in, crossing it.
+ *  4. **Exhale.** The mark draws back a few percent, and a single gold ring leaves it and runs
+ *     out across the screen. The app opens behind that ring — the aperture's edge *is* the ring —
+ *     while the mark flies to its own place in Home's top bar and lands on the glass disc the
+ *     logo lives in there. The light goes *out*, and takes the splash with it.
+ *
+ * No text. The mark is the name.
  *
  * ### What was taken out, and what came back
  *
@@ -162,10 +149,9 @@ private val SplashBase = Color.Black
 private val BloomDeep = Color(0xFFE0A020)   // warm amber core, the mark's mid-gold pushed brighter
 private val BloomDark = Color(0xFF33200A)   // deep brown-amber mid-tone, the mark's own shadow
 
-// The rim's highlight, mid and shadow, top to bottom — the wordmark wears the mark's own gold.
-private val WordmarkGold = listOf(Color(0xFFFFF07F), Color(0xFFDEB41A), Color(0xFF9A6A0C))
-private const val WORDMARK = "Exhale"
-private val WordmarkFont = FontFamily(Font(R.font.sfprodisplaybold, FontWeight.Bold))
+/** The mark's rim gold, highlight to mid: what the breath rings are drawn in. */
+private val RingGold = Color(0xFFFFE07A)
+private val RingGoldDeep = Color(0xFFDEB41A)
 
 @Composable
 fun BootSplash(
@@ -199,14 +185,13 @@ fun BootSplash(
     val logoBlur = remember { Animatable(14f) }
     // -0.3 to 1.3 across the mark, so the band enters and leaves entirely off it.
     val glint = remember { Animatable(-0.3f) }
-    val wordmark = remember { Animatable(0f) }
-    val wordmarkExit = remember { Animatable(0f) }
+    // The inhale: rings closing on the mark. The exhale ring rides the aperture's edge (iris).
+    val inhale = remember { Animatable(0f) }
     // The bloom's two light sources, circling. Runs from frame one to the last.
     val drift = remember { Animatable(0f) }
     val iris = remember { Animatable(0f) }
-    // The mark's flight to the top bar, and the breath of dust through the hold.
+    // The mark's flight to the top bar.
     val flight = remember { Animatable(0f) }
-    val dust = remember { Animatable(0f) }
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
     val statusBarTop = WindowInsets.statusBars.getTop(density)
@@ -241,14 +226,10 @@ fun BootSplash(
             // The one tactile beat: the lens clicking into focus.
             haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
         }
-        launch { dust.animateTo(1f, tween(durationMillis = (ENTRANCE_MS + IRIS_MS).toInt(), easing = LinearEasing)) }
+        launch { inhale.animateTo(1f, tween(durationMillis = ENTRANCE_MS.toInt() - 60, easing = FastOutSlowInEasing)) }
         launch {
             delay(260)
             glint.animateTo(1.3f, tween(durationMillis = 700, easing = FastOutSlowInEasing))
-        }
-        launch {
-            delay(200)
-            wordmark.animateTo(1f, tween(durationMillis = 620, easing = FastOutSlowInEasing))
         }
         launch {
             // Damping 0.88: it settles rather than bounces. The old 0.62 gave a visible rebound,
@@ -275,8 +256,8 @@ fun BootSplash(
         // carries on from wherever it had reached, so the hand-off has no seam in it.
         // The mark goes home: to the logo's disc in the top bar, on the aperture's own curve.
         launch { flight.animateTo(1f, tween(durationMillis = IRIS_MS, easing = EmphasizedEasing)) }
-        // The name leaves first and upward, clearing the way for the mark to open.
-        launch { wordmarkExit.animateTo(1f, tween(durationMillis = 240, easing = FastOutSlowInEasing)) }
+        // The breath out: felt as well as seen.
+        haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
         // The glow leaves with the mark. Left up, it is a warm haze lying over the first frames of
         // a fully drawn app, which is the one thing that can make an otherwise clean hand-off look
         // like a rendering fault.
@@ -311,12 +292,31 @@ fun BootSplash(
                     // of the splash is genuinely empty and the hand-off has nothing left to hide.
                     val start = artworkSize.toPx() * 0.30f
                     val end = hypot(size.width, size.height) * 0.52f
+                    val radius = lerp(start, end, progress)
                     drawCircle(
                         color = Color.Black,
-                        radius = lerp(start, end, progress),
+                        radius = radius,
                         center = center,
                         blendMode = BlendMode.Clear,
                     )
+                    // The exhale: a gold ring on the aperture's edge, bright as it leaves the mark
+                    // and spent by the time it reaches the corners. A wide faint stroke under a
+                    // fine bright one, so it glows without a blur pass.
+                    val fade = (1f - progress) * (1f - progress)
+                    if (fade > 0.01f) {
+                        drawCircle(
+                            color = RingGoldDeep.copy(alpha = 0.28f * fade),
+                            radius = radius,
+                            center = center,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 14.dp.toPx()),
+                        )
+                        drawCircle(
+                            color = RingGold.copy(alpha = 0.9f * fade),
+                            radius = radius,
+                            center = center,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.6.dp.toPx()),
+                        )
+                    }
                 }
             }
             .background(SplashBase),
@@ -358,30 +358,35 @@ fun BootSplash(
                 },
         )
 
-        // ---- Exhale: gold dust drifting out of the mark through the hold ----
+        // ---- Inhale: two rings of gold drawn in from the edges, into the mark ----
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .drawWithContent {
-                    val t = dust.value
+                    val t = inhale.value
                     if (t <= 0f || t >= 1f) return@drawWithContent
-                    val origin = center
-                    val from = artworkSize.toPx() * 0.30f
-                    DUST.forEach { speck ->
-                        val local = ((t - speck.delay) / 0.62f).coerceIn(0f, 1f)
+                    val far = hypot(size.width, size.height) * 0.5f
+                    val near = artworkSize.toPx() * 0.36f
+                    // The second ring follows the first a beat behind, so the light arrives as a
+                    // breath drawn in, not as one hoop.
+                    listOf(0f, 0.22f).forEach { lag ->
+                        val local = ((t - lag) / (1f - lag)).coerceIn(0f, 1f)
                         if (local <= 0f || local >= 1f) return@forEach
-                        val travel = size.minDimension * speck.reach * (1f - (1f - local) * (1f - local))
-                        val x = origin.x + cos(speck.angle) * (from + travel)
-                        val y = origin.y + sin(speck.angle) * (from + travel) - local * 38.dp.toPx()
-                        val a = sin(local * Math.PI.toFloat()) * speck.strength * bloom.value
+                        val eased = FastOutSlowInEasing.transform(local)
+                        val radius = lerp(far, near, eased)
+                        // Faint far out, brightest on the way in, gone as it reaches the mark.
+                        val a = sin(local * Math.PI.toFloat()) * bloom.value * (if (lag == 0f) 1f else 0.6f)
                         drawCircle(
-                            brush = Brush.radialGradient(
-                                listOf(WordmarkGold[0].copy(alpha = a), WordmarkGold[1].copy(alpha = a * 0.4f), Color.Transparent),
-                                center = Offset(x, y),
-                                radius = speck.size.dp.toPx() * 2.2f,
-                            ),
-                            radius = speck.size.dp.toPx() * 2.2f,
-                            center = Offset(x, y),
+                            color = RingGoldDeep.copy(alpha = 0.22f * a),
+                            radius = radius,
+                            center = center,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 12.dp.toPx()),
+                        )
+                        drawCircle(
+                            color = RingGold.copy(alpha = 0.75f * a),
+                            radius = radius,
+                            center = center,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.2.dp.toPx()),
                         )
                     }
                 },
@@ -466,52 +471,5 @@ fun BootSplash(
             }
         }
 
-        // ---- The name, tracking in beneath the mark ----
-        // Placed off the mark's drawn bottom edge (the artwork has transparent margin; its ink ends
-        // about 38% of the box below centre), and letter by letter so the tracking is a draw-phase
-        // translation rather than a letter-spacing relayout every frame.
-        Row(
-            modifier = Modifier
-                .offset(y = artworkSize * 0.38f + 34.dp)
-                .graphicsLayer {
-                    alpha = 1f - wordmarkExit.value
-                    translationY = -10.dp.toPx() * wordmarkExit.value
-                },
-        ) {
-            val letters = WORDMARK.toList()
-            letters.forEachIndexed { index, letter ->
-                val fromCentre = index - (letters.size - 1) / 2f
-                Text(
-                    text = letter.toString(),
-                    style = TextStyle(
-                        fontFamily = WordmarkFont,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 26.sp,
-                        letterSpacing = 1.5.sp,
-                        brush = Brush.verticalGradient(WordmarkGold),
-                    ),
-                    modifier = Modifier.graphicsLayer {
-                        val t = wordmark.value
-                        alpha = t
-                        translationX = fromCentre * 9.dp.toPx() * (1f - t)
-                    },
-                )
-            }
-        }
     }
-}
-
-/** One speck of the exhaled dust: its direction, how far and how late it goes, its size and glow. */
-private class DustSpeck(val angle: Float, val reach: Float, val delay: Float, val size: Float, val strength: Float)
-
-/** Fixed, not random per launch: the same breath every morning. */
-private val DUST: List<DustSpeck> = List(22) { i ->
-    val golden = 2.39996f // the golden angle, so the specks never bunch
-    DustSpeck(
-        angle = i * golden,
-        reach = 0.10f + ((i * 37) % 11) / 11f * 0.16f,
-        delay = 0.18f + ((i * 53) % 13) / 13f * 0.30f,
-        size = 1.2f + ((i * 29) % 7) / 7f * 1.6f,
-        strength = 0.35f + ((i * 17) % 5) / 5f * 0.45f,
-    )
 }
