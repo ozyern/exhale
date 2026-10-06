@@ -215,7 +215,16 @@ fun LiquidGlassBottomBar(
     // Folded with nothing playing: the dock is just the two circles, side by side in the
     // middle — no empty pill between them saying the name of the page you are already on. The
     // change between that and the full dock is a soft cross-dissolve with a little scale, not a cut.
-    val idleFold = collapsed && !hasNowPlaying
+    // How the open dock draws its tabs (Settings -> Appearance -> Dock). Only state A changes.
+    val dockStyle by rememberEnumPreference(DockStyleKey, DockStyle.LIQUID)
+    val dockLabels by rememberPreference(DockLabelsKey, true)
+    val dockCompact by rememberPreference(DockCompactKey, false)
+    val dockGlow by rememberPreference(DockGlowKey, true)
+    // The jelly dock folds the way the original does: with nothing playing it stays one bar, just
+    // minimised — icons only, shorter, narrower. Only with a song playing does it become state B.
+    val jellyStyle = dockStyle == DockStyle.JELLY
+    val stateB = collapsed && !(jellyStyle && !hasNowPlaying)
+    val idleFold = collapsed && !hasNowPlaying && !jellyStyle
     // One bar narrowing into the two circles rather than two layouts trading places: the row's
     // width springs from the full dock down to exactly two circles and their gap, the empty middle
     // closing between them as they slide together.
@@ -244,21 +253,16 @@ fun LiquidGlassBottomBar(
     // and the pill takes the rest. The gap follows it, so the expanded row has no hole where the
     // circle will be.
     val homeCircleSize by animateDpAsState(
-        targetValue = if (collapsed) CollapsedCircleSize else 0.dp,
+        targetValue = if (stateB) CollapsedCircleSize else 0.dp,
         animationSpec = spring(dampingRatio = 0.9f, stiffness = 420f),
         label = "homeCircleSize",
     )
     val homeGap = 10.dp * (homeCircleSize / CollapsedCircleSize).coerceIn(0f, 1f)
     val chromeInk = clearGlassContentColor()
 
-    // How the open dock draws its tabs (Settings -> Appearance -> Dock). Only state A changes.
-    val dockStyle by rememberEnumPreference(DockStyleKey, DockStyle.LIQUID)
-    val dockLabels by rememberPreference(DockLabelsKey, true)
-    val dockCompact by rememberPreference(DockCompactKey, false)
-    val dockGlow by rememberPreference(DockGlowKey, true)
     // The jelly dock carries Search as one of its tabs, so while it is open the search circle
     // shrinks away into it, and grows back out when the dock folds.
-    val jellyOpen = dockStyle == DockStyle.JELLY && !collapsed
+    val jellyOpen = jellyStyle && !stateB
     val searchCircleSize by animateDpAsState(
         targetValue = if (jellyOpen) 0.dp else chromeCircleSize,
         animationSpec = spring(dampingRatio = 0.9f, stiffness = 420f),
@@ -323,7 +327,7 @@ fun LiquidGlassBottomBar(
         Spacer(Modifier.width(homeGap))
 
         AnimatedContent(
-            targetState = collapsed,
+            targetState = stateB,
             transitionSpec = {
                 // Nothing on the container. Every piece of the dock animates itself.
                 //
@@ -408,6 +412,7 @@ fun LiquidGlassBottomBar(
                             showLabels = dockLabels,
                             compact = dockCompact,
                             glow = dockGlow,
+                            minimized = collapsed,
                             modifier = stripModifier,
                         )
                     } else {

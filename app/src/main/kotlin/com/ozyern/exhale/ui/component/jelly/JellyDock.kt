@@ -100,8 +100,20 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.util.lerp
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.isRuntimeShaderSupported
+import com.kyant.backdrop.shadow.InnerShadow
+import com.kyant.backdrop.shadow.Shadow
 import com.ozyern.exhale.ui.component.liquid.LocalAppBackdrop
 import kotlin.math.abs
 import kotlin.math.cos
@@ -133,6 +145,7 @@ class JellyDockItem(
  * @param showLabels labels under the icons, or icons alone.
  * @param compact a shorter track with smaller icons.
  * @param glow the light under the finger while the pill is held.
+ * @param minimized the scrolled-away dock: icons only, a shorter and narrower track, the same tabs.
  */
 @Composable
 fun JellyDock(
@@ -141,6 +154,7 @@ fun JellyDock(
     showLabels: Boolean = true,
     compact: Boolean = false,
     glow: Boolean = true,
+    minimized: Boolean = false,
 ) {
     if (items.isEmpty()) return
     // The pill and the lit tab are the ink colour, not the theme's accent: a white pill at 15% on
@@ -153,9 +167,16 @@ fun JellyDock(
         label = "jellyGlow",
     )
     val labelFraction by animateFloatAsState(
-        targetValue = if (showLabels) 1f else 0f,
+        targetValue = if (showLabels && !minimized) 1f else 0f,
         animationSpec = tween(300),
         label = "jellyLabels",
+    )
+    // Minimised, the track also draws in from both ends, the way it does in the original when the
+    // page scrolls: 30dp a side, on the same curve as the labels going.
+    val shrink by animateFloatAsState(
+        targetValue = if (minimized) 1f else 0f,
+        animationSpec = tween(300),
+        label = "jellyShrink",
     )
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val selectedIndex = items.indexOfFirst { it.selected }
@@ -183,11 +204,20 @@ fun JellyDock(
         }
     }
 
+    // Glass needs runtime shaders; without them the pill is the original's flat tint.
+    val glassy = remember { isRuntimeShaderSupported() }
+    val appBackdrop = LocalAppBackdrop.current
+    val tabsBackdrop = rememberLayerBackdrop()
+    val pillBackdrop = rememberCombinedBackdrop(appBackdrop, tabsBackdrop)
+    var trackSize by remember { mutableStateOf(IntSize.Zero) }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .padding(horizontal = 30.dp * shrink)
             .height(trackHeight)
             .onSizeChanged {
+                trackSize = it
                 motion.resize(it.width / density.density, it.height / density.density, items.size)
             }
             .pointerInput(motion, density, items.size, isRtl) {
@@ -249,9 +279,22 @@ fun JellyDock(
                     ) {
                         JellyTabRow(items, labelFraction, motion, active = false, compact, accent, Modifier.matchParentSize())
                     }
+                    if (glassy && selectedIndex >= 0 && trackSize.width > 0) {
+                        GlassPill(
+                            items = items,
+                            motion = motion,
+                            trackSize = trackSize,
+                            labelFraction = labelFraction,
+                            compact = compact,
+                            ink = accent,
+                            glowColor = glowColor,
+                            appBackdrop = appBackdrop,
+                            tabsBackdrop = tabsBackdrop,
+                            pillBackdrop = pillBackdrop,
+                        )
+                    } else if (selectedIndex >= 0) {
                     // The pill, and the tabs again in full colour, seen only through it: a tab under
                     // the pill turns accent exactly as far as the pill covers it.
-                    if (selectedIndex >= 0) {
                         Box(
                             Modifier
                                 .matchParentSize()
@@ -369,6 +412,131 @@ half4 main(float2 position) {
     return half4(color, max(color.r, max(color.g, color.b)));
 }
 """
+
+/* ----------------------------------------------------------------------- */
+/* The glass pill                                                           */
+/* ----------------------------------------------------------------------- */
+
+/**
+ * The pill as liquid glass, in place of the original's flat tint.
+ *
+ * At rest it is the same white 15% pill with the tab crisp on it, frosted a little. Held, it clears
+ * to glass and bends what is under it: a hidden twin of the tab row, drawn bright over a live sample
+ * of the page, is recorded into [tabsBackdrop], and the pill reads the page and that twin together
+ * through a lens that strengthens with the press — so while you drag, the tabs and the page swim
+ * under it rather than being covered by it. It swells, stretches and wobbles with the same jelly
+ * motion as before; only its material changed.
+ */
+@Composable
+private fun GlassPill(
+    items: List<JellyDockItem>,
+    motion: JellyMotion,
+    trackSize: IntSize,
+    labelFraction: Float,
+    compact: Boolean,
+    ink: Color,
+    glowColor: Color,
+    appBackdrop: com.kyant.backdrop.Backdrop,
+    tabsBackdrop: com.kyant.backdrop.backdrops.LayerBackdrop,
+    pillBackdrop: com.kyant.backdrop.Backdrop,
+) {
+    val density = LocalDensity.current
+    val shape = remember { RoundedCornerShape(percent = 50) }
+    val insetPx = with(density) { 4.dp.toPx() }
+    val tabWidthPx = (trackSize.width - insetPx * 2) / items.size
+    val pillHeightPx = trackSize.height - insetPx * 2
+    val tabWidth = with(density) { tabWidthPx.toDp() }
+    val pillHeight = with(density) { pillHeightPx.toDp() }
+
+    Box(Modifier.fillMaxWidth().height(with(density) { trackSize.height.toDp() })) {
+        // The twin the pill reads. Never seen directly.
+        Box(
+            Modifier
+                .matchParentSize()
+                .clearAndSetSemantics {}
+                .alpha(0f)
+                .layerBackdrop(tabsBackdrop)
+                .drawBackdrop(
+                    backdrop = appBackdrop,
+                    shape = { shape },
+                    effects = {
+                        val press = motion.frame.press
+                        vibrancy()
+                        blur(2f.dp.toPx())
+                        lens(15f.dp.toPx() * press, 18f.dp.toPx() * press)
+                    },
+                    highlight = { null },
+                    shadow = { null },
+                ),
+        ) {
+            JellyTabRow(items, labelFraction, motion, active = true, compact, ink, Modifier.matchParentSize())
+        }
+
+        // The pill.
+        Box(
+            Modifier
+                .graphicsLayer {
+                    translationX = insetPx + motion.frame.position * tabWidthPx
+                    translationY = insetPx
+                }
+                .width(tabWidth)
+                .height(pillHeight)
+                .drawBackdrop(
+                    backdrop = pillBackdrop,
+                    shape = { shape },
+                    effects = {
+                        val press = motion.frame.press
+                        // Softly frosted at rest; clear, bending glass while held.
+                        blur(3f.dp.toPx() * (1f - press))
+                        lens(
+                            lerp(0f, 10f.dp.toPx(), press),
+                            lerp(0f, 12f.dp.toPx(), press),
+                            chromaticAberration = press > 0.01f,
+                        )
+                    },
+                    highlight = { Highlight.Default.copy(alpha = lerp(0.45f, 1f, motion.frame.press)) },
+                    shadow = { Shadow(alpha = lerp(0.2f, 0.9f, motion.frame.press)) },
+                    innerShadow = {
+                        val press = motion.frame.press
+                        InnerShadow(radius = 8f.dp * press, alpha = press)
+                    },
+                    layerBlock = {
+                        scaleX = motion.frame.pillScaleX
+                        scaleY = motion.frame.pillScaleY
+                    },
+                    onDrawSurface = {
+                        val press = motion.frame.press
+                        drawRect(ink.copy(alpha = 0.15f * (1f - 0.7f * press)))
+                        if (glowColor.alpha > 0f && press > 0f) {
+                            drawRect(
+                                Brush.radialGradient(
+                                    listOf(glowColor.copy(alpha = 0.12f * press * glowColor.alpha), Color.Transparent),
+                                    center = Offset(size.width / 2f, size.height / 2f),
+                                    radius = size.maxDimension,
+                                ),
+                            )
+                        }
+                    },
+                ),
+        )
+
+        // The selected tab, crisp on the pill at rest; it gives way to what the glass shows as
+        // soon as the pill is pressed.
+        Box(
+            Modifier
+                .matchParentSize()
+                .clearAndSetSemantics {}
+                .graphicsLayer { alpha = (1f - motion.frame.press * 3f).coerceIn(0f, 1f) }
+                .drawWithContent {
+                    clipPath(jellyPillPath(motion.frame, items.size)) {
+                        this@drawWithContent.drawContent()
+                    }
+                },
+        ) {
+            JellyTabRow(items, labelFraction, motion, active = true, compact, ink, Modifier.matchParentSize())
+        }
+    }
+}
 
 /* ----------------------------------------------------------------------- */
 /* Tabs                                                                     */
@@ -604,6 +772,8 @@ private data class JellyFrame(
     val originX: Float = 0f,
     val glowY: Float = 0f,
     val glowOpacity: Float = 0f,
+    /** 0 at rest, 1 fully held. */
+    val press: Float = 0f,
 )
 
 /** Every spring in the dock, advanced together. Units are dp and seconds. */
@@ -753,6 +923,7 @@ private class JellyMotion(initialIndex: Int, count: Int) {
             originX = originX.toFloat(),
             glowY = downY.toFloat(),
             glowOpacity = glow.value.toFloat().coerceIn(0f, 1f),
+            press = press.value.toFloat().coerceIn(0f, 1f),
         )
     }
 }
