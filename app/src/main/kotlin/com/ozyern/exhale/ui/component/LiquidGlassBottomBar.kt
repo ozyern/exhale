@@ -261,6 +261,8 @@ fun LiquidGlassBottomBar(
     )
     val homeGap = 10.dp * (homeCircleSize / CollapsedCircleSize).coerceIn(0f, 1f)
     val chromeInk = clearGlassContentColor()
+    // The jelly dock greys what isn't selected further than the clear glass does.
+    val chromeInactiveAlpha = if (jellyStyle) 0.55f else 0.8f
 
     // The jelly dock carries Search as one of its tabs, so while it is open the search circle
     // shrinks away into it, and grows back out when the dock folds.
@@ -294,6 +296,7 @@ fun LiquidGlassBottomBar(
             var fanOpen by remember { mutableStateOf(false) }
             FrostedCircle(
                 size = homeCircleSize,
+                jelly = jellyStyle,
                 onClick = { onItemClickHaptic(leftTab, here) },
                 onLongClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -308,7 +311,7 @@ fun LiquidGlassBottomBar(
                     NavGlyph(
                         iconRes = if (isSelected(tab)) tab.iconIdActive else tab.iconIdInactive,
                         contentDescription = stringResource(tab.titleId),
-                        tint = if (isSelected(tab)) chromeInk else chromeInk.copy(alpha = 0.8f),
+                        tint = if (isSelected(tab)) chromeInk else chromeInk.copy(alpha = chromeInactiveAlpha),
                         scale = (homeCircleSize / DockCircleSize).coerceAtMost(1f),
                     )
                 }
@@ -438,6 +441,7 @@ fun LiquidGlassBottomBar(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     FrostedPill(
+                        jelly = jellyStyle,
                         // Level with the circles either side: one
                         // band of three pieces of glass, not a tall pill between two buttons.
                         height = CollapsedCircleSize,
@@ -481,12 +485,13 @@ fun LiquidGlassBottomBar(
             FrostedCircle(
                 size = searchCircleSize,
                 openDockGlass = !collapsed,
+                jelly = jellyStyle,
                 onClick = { onItemClickHaptic(searchScreen, searchActive) },
             ) {
                 NavGlyph(
                     iconRes = if (searchActive) searchScreen.iconIdActive else searchScreen.iconIdInactive,
                     contentDescription = stringResource(searchScreen.titleId),
-                    tint = if (searchActive) chromeInk else chromeInk.copy(alpha = 0.8f),
+                    tint = if (searchActive) chromeInk else chromeInk.copy(alpha = chromeInactiveAlpha),
                     scale = searchCircleSize / DockCircleSize,
                 )
             }
@@ -608,6 +613,8 @@ private fun FrostedPill(
     sharedAccessoryScope: androidx.compose.animation.AnimatedVisibilityScope? = null,
     extraTint: Float = DockGlassExtraTint,
     blurRadius: Dp = DockGlassBlurRadius,
+    // The jelly dock's smoked glass instead of the clear one, so state B matches the jelly bar.
+    jelly: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val shape = RoundedCornerShape(percent = 50)
@@ -615,7 +622,7 @@ private fun FrostedPill(
         modifier = modifier
             .height(height)
             .nowPlayingAccessory(sharedAccessoryScope)
-            .clearGlass(shape),
+            .then(if (jelly) Modifier.jellyGlass(shape) else Modifier.clearGlass(shape)),
         contentAlignment = Alignment.Center,
     ) { content() }
 }
@@ -631,9 +638,17 @@ private fun FrostedCircle(
     blurRadius: Dp = DockGlassBlurRadius,
     // The folded dock keeps the softer clear glass; the open dock's circle matches its tab strip.
     openDockGlass: Boolean = false,
+    // Jelly glass, and a jelly press: it squashes wide and short under the finger and wobbles back,
+    // the way the jelly dock's pill does, instead of sinking.
+    jelly: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     var pressed by remember { mutableStateOf(false) }
+    val squash by animateFloatAsState(
+        targetValue = if (pressed && jelly) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = 600f),
+        label = "circleSquash",
+    )
     val pressScale by animateFloatAsState(
         targetValue = if (pressed) 0.88f else 1f,
         // Underdamped and stiff. At 0.8/300 the circle sank under the finger and eased back like
@@ -647,8 +662,23 @@ private fun FrostedCircle(
     Box(
         modifier = modifier
             .size(size)
-            .scale(pressScale)
-            .then(if (openDockGlass) Modifier.dockGlass(CircleShape) else Modifier.clearGlass(CircleShape))
+            .then(
+                if (jelly) {
+                    Modifier.graphicsLayer {
+                        scaleX = 1f + 0.07f * squash
+                        scaleY = 1f - 0.08f * squash
+                    }
+                } else {
+                    Modifier.scale(pressScale)
+                },
+            )
+            .then(
+                when {
+                    jelly -> Modifier.jellyGlass(CircleShape)
+                    openDockGlass -> Modifier.dockGlass(CircleShape)
+                    else -> Modifier.clearGlass(CircleShape)
+                },
+            )
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
