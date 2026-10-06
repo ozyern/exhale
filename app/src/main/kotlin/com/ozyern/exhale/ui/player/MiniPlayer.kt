@@ -116,7 +116,8 @@ private fun NewMiniPlayer(
             )
         }
 
-        if (liquidGlass && !pureBlack) {
+        // AMOLED black keeps the glass: the pill is a lens onto the live artwork, not a surface.
+        if (liquidGlass) {
             // The SAME glass as the dock, from the same helper, with the same numbers — not a
             // second frosted material that happens to sit next to it.
             //

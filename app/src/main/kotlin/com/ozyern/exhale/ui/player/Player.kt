@@ -1336,7 +1336,8 @@ fun BottomSheetPlayer(
                     MaterialTheme.colorScheme.surfaceContainer
                 },
             onBackgroundColor = queueOnBackgroundColor,
-            artworkColors = if (useBlackBackground) emptyList() else gradientColors,
+            // AMOLED black blackens plain surfaces; it never takes the artwork's colours away.
+            artworkColors = gradientColors,
             TextBackgroundColor = TextBackgroundColor,
             textButtonColor = textButtonColor,
             iconButtonColor = iconButtonColor,
