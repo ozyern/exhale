@@ -37,6 +37,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
@@ -2543,15 +2544,7 @@ class MainActivity : ComponentActivity() {
                                             // should feel like the page was already there. The
                                             // fade is halved and the scale is a hair off 1, so
                                             // there is a breath of motion and nothing to wait for.
-                                            fadeIn(
-                                                animationSpec = tween(150)
-                                            ) + scaleIn(
-                                                initialScale = 0.985f,
-                                                animationSpec = spring(
-                                                    dampingRatio = 0.9f,
-                                                    stiffness = 700f
-                                                )
-                                            )
+                                            TabEnter
                                         } else {
                                         // Push, don't dissolve.
                                         //
@@ -2583,12 +2576,7 @@ class MainActivity : ComponentActivity() {
                                             // The other half of the pair, equally brief: the old
                                             // tab is gone before the new one has finished arriving,
                                             // so the two are never both legible at once.
-                                            fadeOut(
-                                                animationSpec = tween(110)
-                                            ) + scaleOut(
-                                                targetScale = 0.995f,
-                                                animationSpec = tween(110)
-                                            )
+                                            TabExit
                                         } else {
                                         // The page being covered. It falls away from the viewer rather than
                                         // sliding, so the incoming screen is the only thing in motion.
@@ -2611,15 +2599,7 @@ class MainActivity : ComponentActivity() {
                                         ) {
                                             // Same brief pair as the forward tab switch: going
                                             // back to a tab is still just a change of subject.
-                                            fadeIn(
-                                                animationSpec = tween(150)
-                                            ) + scaleIn(
-                                                initialScale = 0.985f,
-                                                animationSpec = spring(
-                                                    dampingRatio = 0.9f,
-                                                    stiffness = 700f
-                                                )
-                                            )
+                                            TabEnter
                                         } else {
                                         // Coming back: the screen underneath rises out of depth, from exactly
                                         // the 0.94 it receded to. The mirror of the exit above, which is what
@@ -2639,12 +2619,7 @@ class MainActivity : ComponentActivity() {
                                                     initialState.destination.route?.startsWith("search/") == true) &&
                                             targetState.destination.route in topLevelScreens
                                         ) {
-                                            fadeOut(
-                                                animationSpec = tween(200)
-                                            ) + scaleOut(
-                                                targetScale = 0.96f,
-                                                animationSpec = tween(200)
-                                            )
+                                            TabExit
                                         } else {
                                         // The screen you backed out of leaves along the axis it came in on, and
                                         // a little further than it arrived from so it clears the frame cleanly.
@@ -2968,7 +2943,17 @@ val LocalDownloadUtil = staticCompositionLocalOf<DownloadUtil> { error("No Downl
 val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils provided") }
 
 /** UIKit's push timing and curve, and the covered page's parallax and dim. */
-private const val PushMillis = 260
+/**
+ * Tab switches: the new page fades up and rises about 13dp into place on a soft spring, after the old
+ * one has already gone. A change of subject, not a journey — so no horizontal travel, and no zoom
+ * of the whole page, which on a screen of album art read as the page being shoved at you.
+ */
+private val TabEnter = fadeIn(tween(200, delayMillis = 40, easing = androidx.compose.animation.core.LinearOutSlowInEasing)) +
+    // A sixtieth of the page's height: about 13dp on a phone.
+    slideInVertically(spring(dampingRatio = 0.86f, stiffness = 520f)) { it / 60 }
+private val TabExit = fadeOut(tween(90, easing = androidx.compose.animation.core.FastOutLinearInEasing))
+
+private const val PushMillis = 340
 private val PushEasing = androidx.compose.animation.core.CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
 private const val PushParallax = 0.30f
 private const val PushDimAlpha = 0.85f

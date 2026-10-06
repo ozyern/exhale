@@ -452,7 +452,26 @@ class App : Application(), SingletonImageLoader.Factory {
             .memoryCachePolicy(CachePolicy.ENABLED)
             .diskCache(diskCache)
             .diskCachePolicy(imageCacheConfig.policy)
+            .components { add(MaxResFallbackInterceptor) }
             .build()
+    }
+
+    /**
+     * The players ask for YouTube covers at `maxresdefault.jpg`, which plenty of videos don't
+     * have: the request 404s and the cover simply isn't there — the Apple Music player was a flat
+     * colour while the mini player showed the art. Every video has `hqdefault.jpg`, so a failed
+     * max-res request is tried again at that before anything gives up.
+     */
+    private object MaxResFallbackInterceptor : coil3.intercept.Interceptor {
+        override suspend fun intercept(chain: coil3.intercept.Interceptor.Chain): coil3.request.ImageResult {
+            val result = chain.proceed()
+            val url = chain.request.data as? String ?: return result
+            if (result !is coil3.request.ErrorResult || !url.contains("maxresdefault.jpg")) return result
+            val fallback = chain.request.newBuilder()
+                .data(url.replace("maxresdefault.jpg", "hqdefault.jpg"))
+                .build()
+            return chain.withRequest(fallback).proceed()
+        }
     }
 
     private fun trimImageDiskCache(diskCache: DiskCache) {

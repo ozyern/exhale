@@ -44,6 +44,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -92,8 +102,10 @@ fun <T> PullDownMenu(
     val density = LocalDensity.current
     val gap = with(density) { 6.dp.roundToPx() }
     val edge = with(density) { 12.dp.roundToPx() }
-    var opensUp by remember { androidx.compose.runtime.mutableStateOf(false) }
-    val position = remember(gap, edge) {
+    // The popup covers the whole window — so the page behind can be dimmed and a tap anywhere off
+    // the menu closes it — and the panel is placed inside it against the row that opened it.
+    var anchor by remember { mutableStateOf(IntRect.Zero) }
+    val position = remember {
         object : PopupPositionProvider {
             override fun calculatePosition(
                 anchorBounds: IntRect,
@@ -101,37 +113,66 @@ fun <T> PullDownMenu(
                 layoutDirection: LayoutDirection,
                 popupContentSize: IntSize,
             ): IntOffset {
-                // Right edge on the row's right edge, just below it — or above, when there isn't room.
-                val x = (anchorBounds.right - popupContentSize.width - edge).coerceIn(edge, (windowSize.width - popupContentSize.width - edge).coerceAtLeast(edge))
-                val below = anchorBounds.bottom + gap
-                opensUp = below + popupContentSize.height > windowSize.height - edge
-                val y = if (opensUp) (anchorBounds.top - gap - popupContentSize.height).coerceAtLeast(edge) else below
-                return IntOffset(x, y)
+                if (anchor != anchorBounds) anchor = anchorBounds
+                return IntOffset.Zero
             }
         }
     }
+    var opensUp by remember { mutableStateOf(false) }
 
     Popup(
         popupPositionProvider = position,
         onDismissRequest = onDismiss,
         properties = PopupProperties(focusable = true),
     ) {
-        AnimatedVisibility(
-            visibleState = visible,
-            enter = fadeIn(tween(120)) + scaleIn(
-                initialScale = 0.72f,
-                transformOrigin = TransformOrigin(1f, if (opensUp) 1f else 0f),
-                animationSpec = spring(dampingRatio = 0.72f, stiffness = 620f),
-            ),
-            exit = fadeOut(tween(110)) + scaleOut(
-                targetScale = 0.85f,
-                transformOrigin = TransformOrigin(1f, if (opensUp) 1f else 0f),
-                animationSpec = tween(130),
-            ),
-        ) {
-            MenuPanel(options, selected, label) { value ->
-                onSelect(value)
-                onDismiss()
+        Box(Modifier.fillMaxSize()) {
+            // The page steps back while the choice is made.
+            AnimatedVisibility(
+                visibleState = visible,
+                enter = fadeIn(tween(180)),
+                exit = fadeOut(tween(160)),
+                modifier = Modifier.matchParentSize(),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.32f))
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
+                )
+            }
+            Box(
+                Modifier.layout { measurable, constraints ->
+                    val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                    val windowW = constraints.maxWidth
+                    val windowH = constraints.maxHeight
+                    // Right edge on the row's right edge, just below it — or above, when there isn't room.
+                    val x = (anchor.right - placeable.width - edge)
+                        .coerceIn(edge, (windowW - placeable.width - edge).coerceAtLeast(edge))
+                    val below = anchor.bottom + gap
+                    val up = below + placeable.height > windowH - edge
+                    if (up != opensUp) opensUp = up
+                    val y = if (up) (anchor.top - gap - placeable.height).coerceAtLeast(edge) else below
+                    layout(windowW, windowH) { placeable.place(x, y) }
+                },
+            ) {
+                AnimatedVisibility(
+                    visibleState = visible,
+                    enter = fadeIn(tween(140)) + scaleIn(
+                        initialScale = 0.6f,
+                        transformOrigin = TransformOrigin(1f, if (opensUp) 1f else 0f),
+                        animationSpec = spring(dampingRatio = 0.78f, stiffness = 560f),
+                    ),
+                    exit = fadeOut(tween(120)) + scaleOut(
+                        targetScale = 0.9f,
+                        transformOrigin = TransformOrigin(1f, if (opensUp) 1f else 0f),
+                        animationSpec = tween(140),
+                    ),
+                ) {
+                    MenuPanel(options, selected, label) { value ->
+                        onSelect(value)
+                        onDismiss()
+                    }
+                }
             }
         }
     }
@@ -147,74 +188,124 @@ private fun <T> MenuPanel(
     // The app's own theme, which can differ from the system's.
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
 
-    // iOS menu geometry, not Material's.
-    //
-    // What was here read as a dialog that had lost its dialog: a 16dp panel as wide as the screen
-    // allowed, rows of `bodyLarge` at 12dp padding, and a hairline between *every* option. A menu
-    // on iOS has no rules between its items - they only separate sections - and its rows are 44pt
-    // with a 17pt label, so five options take about the room three took here. The panel is also
-    // narrow: it is sized by its longest label, not by the row that opened it.
+    // iOS menu geometry, not Material's: no rules between items, rows built on 44pt, the panel
+    // sized by its longest label rather than by the row that opened it.
     val shape = RoundedCornerShape(MenuCornerRadius)
-    // Nearly opaque. iOS can afford a translucent menu because the system blurs everything under
-    // it; a popup here gets no blur, so at 94% the settings rows underneath stayed legible through
-    // the panel and the whole thing read as a rendering fault.
-    val panel = if (dark) Color(0xFA17171A) else Color(0xFAFBFBFD)
-    val rim = if (dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.06f)
+    // Nearly opaque: a popup gets no backdrop blur, so a translucent panel shows the rows under it.
+    val panel = if (dark) Color(0xFC1C1C1F) else Color(0xFCFBFBFD)
+    val rim = if (dark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.07f)
+
+    val scroll = rememberScrollState()
+    // A long list opens on the current choice, not on its first row.
+    val selectedIndex = options.indexOf(selected)
+    val rowPx = with(LocalDensity.current) { MenuRowHeight.roundToPx() }
+    LaunchedEffect(Unit) {
+        if (selectedIndex > 2) scroll.scrollTo(((selectedIndex - 2) * rowPx).coerceAtMost(scroll.maxValue))
+    }
+    // Where there is more to scroll, the edge fades instead of cutting a row in half.
+    val fadeTop by animateFloatAsState(if (scroll.value > 0) 1f else 0f, tween(160), label = "menuFadeTop")
+    val fadeBottom by animateFloatAsState(if (scroll.value < scroll.maxValue) 1f else 0f, tween(160), label = "menuFadeBottom")
+
+    // The rows arrive one after another, a few ms apart, as the panel opens.
+    val cascade = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { cascade.animateTo(1f, tween(320, easing = FastOutSlowInEasing)) }
 
     Column(
         Modifier
-            .widthIn(min = 200.dp, max = 260.dp)
-            // Sized by its longest option, like a menu, rather than always taking the maximum.
+            .widthIn(min = 210.dp, max = 270.dp)
             .width(IntrinsicSize.Max)
             .shadow(
-                elevation = 30.dp,
+                elevation = 34.dp,
                 shape = shape,
                 clip = false,
-                ambientColor = Color.Black.copy(alpha = 0.45f),
-                spotColor = Color.Black.copy(alpha = 0.45f),
+                ambientColor = Color.Black.copy(alpha = 0.5f),
+                spotColor = Color.Black.copy(alpha = 0.5f),
             )
             .clip(shape)
             .background(panel)
             // One pass of light across the top, so the panel sits above the page rather than on it.
             .background(
                 Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = if (dark) 0.05f else 0.25f),
-                        Color.Transparent,
-                    ),
+                    listOf(Color.White.copy(alpha = if (dark) 0.06f else 0.3f), Color.Transparent),
                 ),
             )
             .border(0.7.dp, rim, shape)
             .heightIn(max = 420.dp)
-            .verticalScroll(rememberScrollState()),
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                val fade = 28.dp.toPx()
+                if (fadeTop > 0f) {
+                    drawRect(
+                        Brush.verticalGradient(
+                            0f to Color.Black.copy(alpha = 1f - fadeTop),
+                            1f to Color.Black,
+                            startY = 0f,
+                            endY = fade,
+                        ),
+                        size = androidx.compose.ui.geometry.Size(size.width, fade),
+                        blendMode = BlendMode.DstIn,
+                    )
+                }
+                if (fadeBottom > 0f) {
+                    drawRect(
+                        Brush.verticalGradient(
+                            0f to Color.Black,
+                            1f to Color.Black.copy(alpha = 1f - fadeBottom),
+                            startY = size.height - fade,
+                            endY = size.height,
+                        ),
+                        topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - fade),
+                        size = androidx.compose.ui.geometry.Size(size.width, fade),
+                        blendMode = BlendMode.DstIn,
+                    )
+                }
+            }
+            .verticalScroll(scroll)
+            .padding(vertical = 5.dp),
     ) {
-        options.forEach { option ->
-            MenuRow(label(option), option == selected) { onPick(option) }
+        options.forEachIndexed { index, option ->
+            val step = (index.coerceAtMost(8)) * 0.07f
+            MenuRow(
+                text = label(option),
+                checked = option == selected,
+                appear = { ((cascade.value - step) / 0.44f).coerceIn(0f, 1f) },
+            ) { onPick(option) }
         }
     }
 }
 
-/** iOS menus round at 13-14pt, not at the 16-20 a card uses. */
-private val MenuCornerRadius = 14.dp
+/** iOS menus round at 13-14pt; a little more here, for the inset rows inside it. */
+private val MenuCornerRadius = 16.dp
 
 /** 44pt, the row height every iOS list and menu is built on. */
 private val MenuRowHeight = 44.dp
 
 @Composable
-private fun MenuRow(text: String, checked: Boolean, onClick: () -> Unit) {
+private fun MenuRow(text: String, checked: Boolean, appear: () -> Float, onClick: () -> Unit) {
     val haptic = LocalHapticFeedback.current
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
+    val press by animateFloatAsState(if (pressed) 1f else 0f, tween(if (pressed) 60 else 220), label = "menuRowPress")
+    val ink = MaterialTheme.colorScheme.onSurface
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .graphicsLayer {
+                val a = appear()
+                alpha = a
+                translationY = (1f - a) * -6.dp.toPx()
+            }
+            .padding(horizontal = 5.dp)
             .heightIn(min = MenuRowHeight)
-            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = if (pressed) 0.10f else 0f))
+            // Pressed, the row lights as its own rounded tile inside the panel, the way iOS does.
+            .clip(RoundedCornerShape(11.dp))
+            .background(ink.copy(alpha = 0.11f * press))
             .clickable(interactionSource = source, indication = null) {
                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
             }
-            .padding(horizontal = 14.dp, vertical = 6.dp),
+            .padding(horizontal = 11.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // The check leads, the way UIMenu shows a chosen item, so every label starts in the same
@@ -224,7 +315,7 @@ private fun MenuRow(text: String, checked: Boolean, onClick: () -> Unit) {
                 Icon(
                     painterResource(R.drawable.check),
                     null,
-                    tint = MaterialTheme.colorScheme.onSurface,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(16.dp),
                 )
             }
@@ -232,10 +323,10 @@ private fun MenuRow(text: String, checked: Boolean, onClick: () -> Unit) {
         Spacer(Modifier.width(6.dp))
         Text(
             text,
-            fontSize = 17.sp,
-            lineHeight = 22.sp,
+            fontSize = 16.sp,
+            lineHeight = 21.sp,
             fontWeight = if (checked) FontWeight.SemiBold else FontWeight.Normal,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = ink,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )

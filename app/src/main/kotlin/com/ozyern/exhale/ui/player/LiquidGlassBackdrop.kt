@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
@@ -94,22 +96,32 @@ fun LiquidGlassArtworkBackdrop(
             transitionSpec = { fadeIn(tween(900)) togetherWith fadeOut(tween(900)) },
             label = label,
         ) { artworkUrl ->
+            // The high-res rewrite asks YouTube for `maxresdefault.jpg`, which many videos don't
+            // have: that request 404s and the player was left with no cover at all, though the
+            // mini player beside it showed one. On failure, fall back to the URL as given.
+            var highResFailed by remember(artworkUrl) { mutableStateOf(false) }
+            val model = artworkUrl?.let { if (highResFailed) it else it.highRes() }
+            val onArtState: (coil3.compose.AsyncImagePainter.State) -> Unit = {
+                if (it is coil3.compose.AsyncImagePainter.State.Error && !highResFailed) highResFailed = true
+            }
             if (artworkUrl == null) {
                 Box(Modifier.fillMaxSize().background(Color.Black))
             } else if (sharpArtwork) {
                 // FOREGROUND album art. No .blur(), no RenderEffect, no graphicsLayer alpha —
                 // deliberately a bare AsyncImage so nothing can soften it. Do not add one here.
                 AsyncImage(
-                    model = artworkUrl.highRes(),
+                    model = model,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
+                    onState = onArtState,
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
                 AsyncImage(
-                    model = artworkUrl.highRes(),
+                    model = model,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
+                    onState = onArtState,
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
