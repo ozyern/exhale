@@ -129,6 +129,8 @@ import com.ozyern.exhale.constants.DockStyle
 import com.ozyern.exhale.constants.DockStyleKey
 import com.ozyern.exhale.ui.component.jelly.JellyDock
 import com.ozyern.exhale.ui.component.jelly.JellyDockItem
+import com.ozyern.exhale.ui.component.jelly.jellyGlass
+import com.ozyern.exhale.ui.component.jelly.jellyInk
 import com.ozyern.exhale.utils.rememberEnumPreference
 import com.ozyern.exhale.utils.rememberPreference
 import kotlin.math.abs
@@ -1590,6 +1592,13 @@ fun SearchBottomBar(
     // actually does once you are a level deep in results.
     leadingIsBack: Boolean = false,
 ) {
+    // In the jelly style the search row is made of the dock's own material, so the bottom of the
+    // screen doesn't change from one kind of glass to another when you open Search.
+    val dockStyle by rememberEnumPreference(DockStyleKey, DockStyle.LIQUID)
+    if (dockStyle == DockStyle.JELLY) {
+        JellySearchRow(placeholder, onHomeClick, onSearchClick, modifier, committedQuery, leadingIsBack)
+        return
+    }
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -1663,6 +1672,120 @@ fun SearchBottomBar(
             }
         }
     }
+}
+
+/**
+ * The search row in the jelly style: the home (or back) circle and the field, both smoked jelly
+ * glass lit at the rim, in the dock's grey-and-white ink. Pressed, each gives like the dock's pill
+ * does — a quick squash and an underdamped settle — rather than sinking like a button.
+ */
+@Composable
+private fun JellySearchRow(
+    placeholder: String,
+    onHomeClick: () -> Unit,
+    onSearchClick: () -> Unit,
+    modifier: Modifier,
+    committedQuery: String?,
+    leadingIsBack: Boolean,
+) {
+    val haptic = LocalHapticFeedback.current
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        JellyPress(
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onHomeClick()
+            },
+            shape = CircleShape,
+            modifier = Modifier.size(SearchRowHeight),
+        ) {
+            Icon(
+                painter = painterResource(if (leadingIsBack) R.drawable.chevron_back else R.drawable.home_outlined),
+                contentDescription = stringResource(if (leadingIsBack) R.string.back else R.string.home),
+                tint = jellyInk(active = true),
+                modifier = Modifier.size(24.dp),
+            )
+        }
+
+        Spacer(Modifier.width(10.dp))
+
+        JellyPress(
+            onClick = onSearchClick,
+            shape = RoundedCornerShape(percent = 50),
+            modifier = Modifier.weight(1f).height(SearchRowHeight),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.search),
+                    contentDescription = null,
+                    tint = jellyInk(active = committedQuery != null),
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = committedQuery ?: placeholder,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (committedQuery != null) FontWeight.Bold else FontWeight.Medium,
+                    color = jellyInk(active = committedQuery != null),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    painter = painterResource(if (committedQuery != null) R.drawable.close else R.drawable.mic),
+                    contentDescription = null,
+                    tint = jellyInk(active = false),
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+    }
+}
+
+/** A piece of jelly glass that squashes under the finger and springs back with a wobble. */
+@Composable
+private fun JellyPress(
+    onClick: () -> Unit,
+    shape: androidx.compose.ui.graphics.Shape,
+    modifier: Modifier,
+    content: @Composable () -> Unit,
+) {
+    var pressed by remember { mutableStateOf(false) }
+    val squash by animateFloatAsState(
+        targetValue = if (pressed) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = 600f),
+        label = "jellyPress",
+    )
+    Box(
+        modifier = modifier
+            .graphicsLayer {
+                // Wider and shorter as it is pressed, the way the dock's pill swells.
+                scaleX = 1f + 0.05f * squash
+                scaleY = 1f - 0.06f * squash
+            }
+            .jellyGlass(shape)
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    pressed = true
+                    waitForUpOrCancellation(pass = PointerEventPass.Initial)
+                    pressed = false
+                }
+            }
+            .clip(shape)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) { content() }
 }
 
 /* ----------------------------------------------------------------------- */

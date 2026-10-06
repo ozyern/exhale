@@ -990,3 +990,17 @@ private fun panelOffset(rawOffset: Double, width: Double): Float {
     val eased = parameter * parameter * (3 * (1 - parameter) + parameter)
     return ((if (fraction < 0) -4 else 4) * eased).toFloat()
 }
+
+/**
+ * The jelly dock's track material — smoked glass, lit at the rim — for the chrome that sits with
+ * it, such as the search row, so the bottom of the screen is one material in the jelly style.
+ */
+@Composable
+fun Modifier.jellyGlass(shape: Shape): Modifier = jellyTrack(shape, isSystemInDarkTheme(), 1f)
+
+/** Ink on [jellyGlass]: white or black at rest, the way the dock's tabs are. */
+@Composable
+fun jellyInk(active: Boolean): Color {
+    val ink = if (isSystemInDarkTheme()) Color.White else Color.Black
+    return if (active) ink else ink.copy(alpha = 0.55f)
+}

@@ -533,6 +533,9 @@ class MusicService :
 
     private var lockLyricsReceiver: android.content.BroadcastReceiver? = null
 
+    /** Songs whose line-timed lyrics were already re-checked for a word-timed copy this session. */
+    private val lyricsUpgradeChecked = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     /** The ticker itself; one at a time, cancelled on every track change. */
     private var liveLyricTickerJob: Job? = null
 
@@ -908,6 +911,25 @@ class MusicService :
                         }
 
                         publishLiveLyrics(mediaMetadata, lyrics)
+
+                        // A saved copy is kept for good, so a song first found with lyrics timed
+                        // only by the line stayed that way even once a source had it word by word.
+                        // Once a session, such a song is looked up again, and a word-timed copy
+                        // replaces the saved one.
+                        if (cached != null && mediaMetadata.id !in lyricsUpgradeChecked &&
+                            cached.lyrics != com.ozyern.exhale.db.entities.LyricsEntity.LYRICS_NOT_FOUND &&
+                            !lyricsHelper.isWordSynced(cached.lyrics) &&
+                            (dataStore.data.first()[com.ozyern.exhale.constants.PreferWordSyncedLyricsKey] ?: true)
+                        ) {
+                            lyricsUpgradeChecked.add(mediaMetadata.id)
+                            val better = lyricsHelper.getLyrics(mediaMetadata, trackLookup = false, skipCache = true)
+                            if (better != com.ozyern.exhale.db.entities.LyricsEntity.LYRICS_NOT_FOUND &&
+                                lyricsHelper.isWordSynced(better)
+                            ) {
+                                database.query { upsert(LyricsEntity(id = mediaMetadata.id, lyrics = better)) }
+                                publishLiveLyrics(mediaMetadata, better)
+                            }
+                        }
                         break
                     } catch (e: kotlinx.coroutines.CancellationException) {
                         // Ours (the song changed): stop. Anyone else's: treat as a failure.

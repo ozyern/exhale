@@ -59,11 +59,13 @@ constructor(
         trackLookup: Boolean = !preferredProviderOnly,
         /** Set on the inner lookup for a music video's song, so it does not go looking again. */
         forVideo: Boolean = false,
+        /** Ask the sources even when a copy is already cached: looking for a better-timed one. */
+        skipCache: Boolean = false,
     ): String {
         currentLyricsJob?.cancel()
 
         // A censored copy is not worth keeping: ask the sources again, where an uncensored one wins.
-        val cached = cache.get(mediaMetadata.id)?.firstOrNull()
+        val cached = if (skipCache) null else cache.get(mediaMetadata.id)?.firstOrNull()
             ?.takeUnless { Uncensor.isCensored(Uncensor.restore(it.lyrics)) }
         if (cached != null) {
             GlobalLog.append(Log.DEBUG, "LyricsHelper", "Found lyrics in cache for ${mediaMetadata.title}")
@@ -426,6 +428,9 @@ constructor(
             done[finished] = true
         }
     }
+
+    /** Whether these lyrics carry a time for each word, not only for each line. */
+    fun isWordSynced(lyrics: String): Boolean = syncLevel(lyrics) == 0
 
     /** 0 for word-timed, 1 for line-timed, 2 for plain text. */
     private fun syncLevel(lyrics: String): Int {
