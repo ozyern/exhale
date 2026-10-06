@@ -85,6 +85,7 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.LocalTextStyle
@@ -710,8 +711,21 @@ fun SettingsRow(
     // quietly threw away the colours the account sheet had chosen for its four rows and handed two
     // of them the same grey - a grouped list where half the icons are grey squares reads as
     // unfinished, which is exactly what it was.
-    val effectiveAccent = item.accentColor.takeIf { it != Color.Unspecified }
-        ?: IosAutoColors[(item.title.hashCode() and 0x7fffffff) % IosAutoColors.size]
+    // A real brand colour (Discord's blurple) is kept; anything that is just one of the theme's
+    // roles — pastel under Material You, and the same on every row — is swapped for a ColorOS
+    // colour picked from the title, so the row keeps it.
+    val scheme = MaterialTheme.colorScheme
+    val themeRoles = remember(scheme) {
+        setOf(scheme.primary, scheme.secondary, scheme.tertiary, scheme.error, scheme.onSurfaceVariant)
+    }
+    val given = item.accentColor
+    val effectiveAccent = if (given == Color.Unspecified || given in themeRoles || given.luminance() > 0.8f) {
+        com.ozyern.exhale.ui.component.ColorOsIconColors[
+            (item.title.hashCode() and 0x7fffffff) % com.ozyern.exhale.ui.component.ColorOsIconColors.size
+        ]
+    } else {
+        given
+    }
 
     // Subtle premium haptic tick on row taps — routed through the app-wide custom
     // LocalHapticFeedback provider, which already respects the user's haptics preference.
@@ -745,7 +759,9 @@ fun SettingsRow(
                 .padding(horizontal = 16.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // A coloured glyph, not a coloured tile.
+            // A coloured disc with a white glyph, the way ColorOS draws its own Settings.
+            //
+            // (It was once a bare coloured glyph, and before that an iOS tile.)
             //
             // iOS fills a rounded square and puts a white glyph on it; ColorOS - which is what this
             // app is read on - draws the glyph itself in its colour and gives it no container at
@@ -765,20 +781,14 @@ fun SettingsRow(
                             )
                         },
                     ) {
-                        Icon(
-                            painter = item.icon,
-                            contentDescription = null,
-                            tint = effectiveAccent,
-                            modifier = Modifier.size(25.dp),
-                        )
+                        com.ozyern.exhale.ui.component.ColorOsIconDisc(effectiveAccent) {
+                            Icon(painter = item.icon, contentDescription = null, modifier = Modifier.size(24.dp))
+                        }
                     }
                 } else {
-                    Icon(
-                        painter = item.icon,
-                        contentDescription = null,
-                        tint = effectiveAccent,
-                        modifier = Modifier.size(25.dp),
-                    )
+                    com.ozyern.exhale.ui.component.ColorOsIconDisc(effectiveAccent) {
+                        Icon(painter = item.icon, contentDescription = null, modifier = Modifier.size(24.dp))
+                    }
                 }
             }
 

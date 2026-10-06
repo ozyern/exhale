@@ -86,16 +86,7 @@ private val PreferenceIconSize = 30.dp
  * the pick is a hash, and a one-in-nine chance of grey means a page can come up with three pale
  * squares in a row, which reads as icons that failed to load.
  */
-private val PreferenceIconColors = listOf(
-    Color(0xFF0A84FF), // blue
-    Color(0xFF30D158), // green
-    Color(0xFFFF9F0A), // orange
-    Color(0xFFFF375F), // pink
-    Color(0xFFBF5AF2), // purple
-    Color(0xFF5E5CE6), // indigo
-    Color(0xFFFF453A), // red
-    Color(0xFF64D2FF), // cyan
-)
+private val PreferenceIconColors = ColorOsIconColors
 
 /** A stable colour for [key], so a row is the same colour every time the page is opened. */
 private fun preferenceIconColor(key: String): Color =
@@ -184,21 +175,13 @@ fun PreferenceEntry(
                 // wash of the same accent, which on a page of ten rows is ten near-identical
                 // pastel squares - and it read as a different app from the Settings page that
                 // linked to it.
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterVertically)
-                        .size(PreferenceIconSize),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    // The glyph carries the colour itself - see the note on the Settings row.
-                    // One quiet ink for every glyph: a page of rows in eight
-                    // colours read as noise, and the glyph is a signpost, not decoration.
-                    CompositionLocalProvider(
-                        LocalContentColor provides MaterialTheme.colorScheme.onSurface.copy(alpha = 0.86f),
-                    ) {
-                        icon()
-                    }
-                }
+                // The same ColorOS disc as the top-level Settings list: a solid colour, white glyph,
+                // the colour taken from the row's place on the page so neighbours differ.
+                ColorOsIconDisc(
+                    color = iconColor,
+                    size = PreferenceIconSize,
+                    modifier = Modifier.align(Alignment.CenterVertically),
+                ) { icon() }
                 Spacer(Modifier.width(14.dp))
             }
 

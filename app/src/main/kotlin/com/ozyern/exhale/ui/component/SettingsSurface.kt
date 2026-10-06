@@ -18,6 +18,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.graphics.graphicsLayer
 
 /**
  * The Apple-Music "inset grouped table" palette, in one place.
@@ -175,3 +177,62 @@ fun Modifier.settingsIconPuck(
         ),
         shape = shape,
     )
+
+/**
+ * The colours ColorOS paints its Settings icons in: saturated, warm-leaning, every one strong
+ * enough to carry a white glyph. Ordered so neighbours in a list never sit side by side in the
+ * same family.
+ */
+val ColorOsIconColors = listOf(
+    Color(0xFFF7931E), // orange
+    Color(0xFF1DA1F2), // sky blue
+    Color(0xFF2DBE5B), // green
+    Color(0xFF3B7BF6), // blue
+    Color(0xFFF2642E), // deep orange
+    Color(0xFF8C5CF6), // purple
+    Color(0xFFF5B321), // yellow
+    Color(0xFF14B8A6), // teal
+    Color(0xFFF2545B), // red
+    Color(0xFF5B6CF0), // indigo
+)
+
+/**
+ * A settings icon the way ColorOS draws one: a solid disc of colour, lit from above — a touch
+ * lighter at the top, a touch deeper at the foot, with a hairline of light on the upper rim — and
+ * the glyph in white on it.
+ */
+@androidx.compose.runtime.Composable
+fun ColorOsIconDisc(
+    color: Color,
+    modifier: Modifier = Modifier,
+    size: androidx.compose.ui.unit.Dp = 30.dp,
+    content: @androidx.compose.runtime.Composable () -> Unit,
+) {
+    val top = androidx.compose.ui.graphics.lerp(color, Color.White, 0.16f)
+    val foot = androidx.compose.ui.graphics.lerp(color, Color.Black, 0.08f)
+    androidx.compose.foundation.layout.Box(
+        modifier = modifier
+            .size(size)
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .background(Brush.verticalGradient(listOf(top, color, foot)))
+            .border(
+                width = 0.6.dp,
+                brush = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.35f), Color.Transparent)),
+                shape = androidx.compose.foundation.shape.CircleShape,
+            ),
+        contentAlignment = androidx.compose.ui.Alignment.Center,
+    ) {
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.material3.LocalContentColor provides Color.White,
+        ) {
+            // Glyphs arrive at their usual 24dp; on a 30dp disc they want to be about 17.
+            androidx.compose.foundation.layout.Box(
+                Modifier.graphicsLayer {
+                    scaleX = 0.72f
+                    scaleY = 0.72f
+                },
+                contentAlignment = androidx.compose.ui.Alignment.Center,
+            ) { content() }
+        }
+    }
+}
