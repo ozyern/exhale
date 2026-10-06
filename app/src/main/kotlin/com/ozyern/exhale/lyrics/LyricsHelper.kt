@@ -27,6 +27,7 @@ import com.ozyern.exhale.constants.DefaultProviderOrder
 import com.ozyern.exhale.constants.LegacyDefaultProviderOrder
 import com.ozyern.exhale.constants.PreferWordSyncedLyricsKey
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -100,7 +101,19 @@ constructor(
             val jobs = providers.map { provider ->
                 async(Dispatchers.IO) {
                     if (trackLookup) LyricsLookups.update(mediaMetadata.id, provider.name, LyricsSourceState.FETCHING)
-                    val found = fetchFrom(provider, phrasings, mediaMetadata, recording)
+                    // One source failing in a way [fetchFrom] doesn't expect — an Error, or a
+                    // cancellation of its own rather than ours — must cost only that source. Left
+                    // to escape, it failed the whole race in [pickBest], throwing away answers the
+                    // other sources already had.
+                    val found = try {
+                        fetchFrom(provider, phrasings, mediaMetadata, recording)
+                    } catch (e: CancellationException) {
+                        if (!kotlinx.coroutines.currentCoroutineContext().isActive) throw e
+                        null
+                    } catch (e: Throwable) {
+                        reportException(e)
+                        null
+                    }
                     if (trackLookup) LyricsLookups.update(
                         mediaMetadata.id,
                         provider.name,

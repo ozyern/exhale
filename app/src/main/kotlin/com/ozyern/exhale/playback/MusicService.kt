@@ -882,26 +882,42 @@ class MusicService :
             .collectLatest(ioScope) { mediaMetadata ->
                 if (mediaMetadata == null) return@collectLatest
 
-                // Saved lyrics a source censored beyond repair are looked up again.
-                val cached = database.lyrics(mediaMetadata.id).first()?.takeUnless {
-                    com.ozyern.exhale.lyrics.Uncensor.isCensored(com.ozyern.exhale.lyrics.Uncensor.restore(it.lyrics))
-                }
-                val lyrics = if (cached == null) {
-                    lyricsHelper.getLyrics(mediaMetadata).also { fetched ->
-                        database.query {
-                            upsert(
-                                LyricsEntity(
-                                    id = mediaMetadata.id,
-                                    lyrics = fetched,
-                                ),
-                            )
+                // Guarded, because this collector runs for the whole session: a lookup that threw
+                // used to end it, and from then on no song had lyrics until its lyrics screen was
+                // opened — the player's lyric line just waited. A failure now costs one song, and
+                // that song is tried once more after a pause before giving up.
+                for (attempt in 0..1) {
+                    try {
+                        // Saved lyrics a source censored beyond repair are looked up again.
+                        val cached = database.lyrics(mediaMetadata.id).first()?.takeUnless {
+                            com.ozyern.exhale.lyrics.Uncensor.isCensored(com.ozyern.exhale.lyrics.Uncensor.restore(it.lyrics))
                         }
-                    }
-                } else {
-                    cached.lyrics
-                }
+                        val lyrics = if (cached == null) {
+                            lyricsHelper.getLyrics(mediaMetadata).also { fetched ->
+                                database.query {
+                                    upsert(
+                                        LyricsEntity(
+                                            id = mediaMetadata.id,
+                                            lyrics = fetched,
+                                        ),
+                                    )
+                                }
+                            }
+                        } else {
+                            cached.lyrics
+                        }
 
-                publishLiveLyrics(mediaMetadata, lyrics)
+                        publishLiveLyrics(mediaMetadata, lyrics)
+                        break
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        // Ours (the song changed): stop. Anyone else's: treat as a failure.
+                        if (!kotlinx.coroutines.currentCoroutineContext().isActive) throw e
+                        Timber.tag("MusicService").w(e, "Lyrics prefetch cancelled from inside")
+                    } catch (e: Exception) {
+                        Timber.tag("MusicService").w(e, "Lyrics prefetch failed")
+                    }
+                    if (attempt == 0) delay(2_000)
+                }
             }
 
         // Cached so the per-line ticker never suspends on a datastore read. Turning it off
