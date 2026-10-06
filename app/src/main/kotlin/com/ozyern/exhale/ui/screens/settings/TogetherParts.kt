@@ -57,6 +57,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.shadow
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.animation.togetherWith
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -147,25 +150,60 @@ internal fun CapsuleButton(
  */
 @Composable
 internal fun TogetherOrb(active: Boolean, error: Boolean, busy: Boolean, modifier: Modifier = Modifier) {
-    val accent = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-    val ripple by rememberInfiniteTransition(label = "orbRipple").animateFloat(
-        0f, 1f, infiniteRepeatable(tween(2800, easing = LinearEasing)), label = "orbRipplePhase",
+    // The colour eases between states instead of snapping: blue to red reads as something going
+    // wrong, not as a different picture.
+    val accent by androidx.compose.animation.animateColorAsState(
+        if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+        tween(420),
+        label = "orbAccent",
+    )
+    val transition = rememberInfiniteTransition(label = "orbRipple")
+    val ripple by transition.animateFloat(
+        0f, 1f, infiniteRepeatable(tween(3200, easing = LinearEasing)), label = "orbRipplePhase",
+    )
+    // It breathes: deeper while a room is live, barely at all while idle.
+    val breath by transition.animateFloat(
+        0f, 1f,
+        infiniteRepeatable(tween(2600, easing = androidx.compose.animation.core.FastOutSlowInEasing), androidx.compose.animation.core.RepeatMode.Reverse),
+        label = "orbBreath",
+    )
+    val liveness by androidx.compose.animation.core.animateFloatAsState(
+        if (active) 1f else 0f, tween(600), label = "orbLive",
     )
     Box(modifier.size(164.dp), contentAlignment = Alignment.Center) {
-        if (active) {
-            Canvas(Modifier.size(164.dp)) {
-                val core = 52.dp.toPx()
-                val reach = size.minDimension / 2f
+        Canvas(Modifier.size(164.dp)) {
+            val core = 52.dp.toPx()
+            val reach = size.minDimension / 2f
+            // A soft halo of the orb's own colour, so it sits in light rather than on the page.
+            drawCircle(
+                Brush.radialGradient(
+                    listOf(accent.copy(alpha = 0.26f + 0.12f * liveness * breath), Color.Transparent),
+                    center = center,
+                    radius = reach,
+                ),
+                radius = reach,
+            )
+            if (liveness > 0f) {
                 repeat(3) { i ->
                     val t = (ripple + i / 3f) % 1f
-                    val radius = core + (reach - core) * t
-                    drawCircle(accent.copy(alpha = 0.34f * (1f - t)), radius = radius, style = Stroke(1.6.dp.toPx()))
+                    // Eased outward: quick off the orb, slowing as it spreads, like a ring on water.
+                    val e = 1f - (1f - t) * (1f - t)
+                    val radius = core + (reach - core) * e
+                    val a = 0.4f * (1f - t) * liveness
+                    drawCircle(accent.copy(alpha = a * 0.35f), radius = radius, style = Stroke(6.dp.toPx()))
+                    drawCircle(accent.copy(alpha = a), radius = radius, style = Stroke(1.4.dp.toPx()))
                 }
             }
         }
         Box(
             Modifier
                 .size(104.dp)
+                .graphicsLayer {
+                    val s = 1f + (0.012f + 0.03f * liveness) * breath
+                    scaleX = s
+                    scaleY = s
+                }
+                .shadow(18.dp, CircleShape, ambientColor = accent, spotColor = accent)
                 .clip(CircleShape)
                 .drawBehind {
                     // Lit from the top left: bright where the light lands, deepening to the far edge.
@@ -180,15 +218,30 @@ internal fun TogetherOrb(active: Boolean, error: Boolean, busy: Boolean, modifie
                 .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.55f), Color.Transparent)), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            if (busy) {
-                LoadingRing(Modifier.size(38.dp), stroke = 3.dp, color = Color.White)
-            } else {
-                Icon(
-                    painterResource(if (error) R.drawable.error else R.drawable.group),
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(48.dp),
-                )
+            val glyph = when {
+                busy -> 0
+                error -> 1
+                else -> 2
+            }
+            // The glyph changes in place — a quick scale and fade — rather than being swapped.
+            androidx.compose.animation.AnimatedContent(
+                targetState = glyph,
+                transitionSpec = {
+                    (androidx.compose.animation.fadeIn(tween(200)) +
+                        androidx.compose.animation.scaleIn(spring(dampingRatio = 0.6f, stiffness = 500f), initialScale = 0.6f)) togetherWith
+                        (androidx.compose.animation.fadeOut(tween(120)) + androidx.compose.animation.scaleOut(tween(140), targetScale = 0.8f))
+                },
+                label = "orbGlyph",
+            ) { g ->
+                when (g) {
+                    0 -> LoadingRing(Modifier.size(38.dp), stroke = 3.dp, color = Color.White)
+                    else -> Icon(
+                        painterResource(if (g == 1) R.drawable.error else R.drawable.group),
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(48.dp),
+                    )
+                }
             }
         }
     }
@@ -203,9 +256,21 @@ internal fun AvatarStack(names: List<String>, hostIndex: Int?, modifier: Modifie
     val ring = MaterialTheme.colorScheme.surface
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         shown.forEachIndexed { index, name ->
+            // Each face pops in as it joins, a beat after the one before it.
+            val pop = remember(name) { androidx.compose.animation.core.Animatable(0f) }
+            LaunchedEffect(name) {
+                kotlinx.coroutines.delay(60L * index)
+                pop.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = 420f))
+            }
             Box(
                 Modifier
                     .offset(x = (-10 * index).dp)
+                    .graphicsLayer {
+                        val p = pop.value
+                        scaleX = 0.4f + 0.6f * p
+                        scaleY = 0.4f + 0.6f * p
+                        alpha = p.coerceIn(0f, 1f)
+                    }
                     .size(40.dp)
                     .clip(CircleShape)
                     .background(ring)

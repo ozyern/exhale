@@ -40,6 +40,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -368,7 +369,21 @@ fun MusicTogetherScreen(
             onDismissError = { playerConnection?.service?.leaveTogether() },
         )
 
-        if (idle) {
+        // Starting, joining and leaving move the page between two layouts; they cross with a
+        // fade and a short rise rather than one frame swapping for the other.
+        androidx.compose.animation.AnimatedContent(
+            targetState = idle,
+            transitionSpec = {
+                (androidx.compose.animation.fadeIn(tween(260, delayMillis = 60)) +
+                    androidx.compose.animation.slideInVertically(spring(dampingRatio = 0.85f, stiffness = 380f)) { it / 14 }) togetherWith
+                    (androidx.compose.animation.fadeOut(tween(140)) +
+                        androidx.compose.animation.slideOutVertically(tween(180)) { -it / 24 }) using
+                    androidx.compose.animation.SizeTransform(clip = false)
+            },
+            label = "togetherBody",
+        ) { showIdle ->
+        Column {
+        if (showIdle) {
             ModeSwitch(mode = mode, onMode = { mode = it })
 
             CapsuleButton(
@@ -391,7 +406,11 @@ fun MusicTogetherScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 18.dp),
             )
 
-            if (mode == TogetherMode.Nearby) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = mode == TogetherMode.Nearby,
+                enter = androidx.compose.animation.fadeIn(tween(220, delayMillis = 60)) + androidx.compose.animation.expandVertically(spring(dampingRatio = 0.9f, stiffness = 420f)),
+                exit = androidx.compose.animation.fadeOut(tween(120)) + androidx.compose.animation.shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)),
+            ) {
                 TogetherCard {
                     TogetherTip(
                         icon = R.drawable.wifi,
@@ -451,7 +470,13 @@ fun MusicTogetherScreen(
                 onRequireApproval = setRequireApproval,
             )
 
-            if (mode == TogetherMode.Online) RelayCard()
+            androidx.compose.animation.AnimatedVisibility(
+                visible = mode == TogetherMode.Online,
+                enter = androidx.compose.animation.fadeIn(tween(220, delayMillis = 60)) + androidx.compose.animation.expandVertically(spring(dampingRatio = 0.9f, stiffness = 420f)),
+                exit = androidx.compose.animation.fadeOut(tween(120)) + androidx.compose.animation.shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)),
+            ) {
+                RelayCard()
+            }
         } else {
             // A room is running (or being joined): the way in, who is in, and what they may do.
             if (hostingOnline != null) {
@@ -498,6 +523,8 @@ fun MusicTogetherScreen(
                 onClick = { playerConnection?.service?.leaveTogether() },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 24.dp),
             )
+        }
+        }
         }
 
         Spacer(Modifier.height(24.dp))
@@ -685,22 +712,41 @@ private fun TogetherHeader(
         TogetherOrb(active = isActive && !waiting, error = isError, busy = busy)
         // Title 1, the size iOS gives a sheet's subject. 30sp was a hair over every other heading
         // in the app, which made this page look like it came from somewhere else.
-        Text(
-            title,
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 24.dp),
-        )
+        // The state's name changes like a page turning: the old line lifts away, the new one rises.
+        androidx.compose.animation.AnimatedContent(
+            targetState = title,
+            transitionSpec = {
+                (androidx.compose.animation.fadeIn(tween(240, delayMillis = 70)) +
+                    androidx.compose.animation.slideInVertically(spring(dampingRatio = 0.82f, stiffness = 420f)) { it / 2 }) togetherWith
+                    (androidx.compose.animation.fadeOut(tween(130)) + androidx.compose.animation.slideOutVertically(tween(160)) { -it / 3 })
+            },
+            label = "togetherTitle",
+        ) { text ->
+            Text(
+                text,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 24.dp),
+            )
+        }
         Spacer(Modifier.height(4.dp))
-        Text(
-            subtitle,
-            fontSize = 15.sp,
-            lineHeight = 20.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 32.dp),
-        )
+        androidx.compose.animation.AnimatedContent(
+            targetState = subtitle,
+            transitionSpec = {
+                androidx.compose.animation.fadeIn(tween(260, delayMillis = 110)) togetherWith androidx.compose.animation.fadeOut(tween(120))
+            },
+            label = "togetherSubtitle",
+        ) { text ->
+            Text(
+                text,
+                fontSize = 15.sp,
+                lineHeight = 20.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 32.dp),
+            )
+        }
         if (people.isNotEmpty()) {
             Spacer(Modifier.height(16.dp))
             AvatarStack(people, hostIndex)
@@ -766,13 +812,15 @@ private fun ModeSwitch(mode: TogetherMode, onMode: (TogetherMode) -> Unit, modif
                     }
                 }
             }
-            Text(
-                if (mode == TogetherMode.Nearby) "Phones on the same Wi-Fi. No server, nothing leaves the network."
-                else "Friends anywhere join with a short code, through a relay server.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp),
-            )
+            androidx.compose.animation.Crossfade(targetState = mode, animationSpec = tween(220), label = "togetherModeText") { m ->
+                Text(
+                    if (m == TogetherMode.Nearby) "Phones on the same Wi-Fi. No server, nothing leaves the network."
+                    else "Friends anywhere join with a short code, through a relay server.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp),
+                )
+            }
         }
 
     }
