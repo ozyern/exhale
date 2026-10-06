@@ -271,7 +271,7 @@ private val MAX_WIDTH = 560.dp
 private const val COLLAPSE_MS = 420
 
 /** Share of the full-bleed banner's height given over to its dissolve into the colours below. */
-private const val HERO_FADE_FRACTION = 0.42f
+private const val HERO_FADE_FRACTION = 0.1f
 
 /** How far up the cover has to be dragged for a release to open the queue. */
 private const val QUEUE_CARRY_FRACTION = 0.3f
@@ -545,6 +545,8 @@ internal fun NowPlayingScreen(
     }
     LaunchedEffect(collapseStarted) { if (!collapseStarted) morphToGlass = glassLyrics }
     var screenOrigin by remember { mutableStateOf(Offset.Zero) }
+    // The player's full height: the cover fills all of it, as Apple Music's does.
+    var screenHeight by remember { mutableStateOf(0.dp) }
     val heroShowing by remember { derivedStateOf { heroVisible() > 0.001f } }
     var heroHeight by remember { mutableStateOf(0.dp) }
 
@@ -725,7 +727,13 @@ internal fun NowPlayingScreen(
         panel = if (panel == NowPlayingPanel.Queue) NowPlayingPanel.None else NowPlayingPanel.Queue
     }
 
-    Box(modifier = modifier.fillMaxSize().onGloballyPositioned { screenOrigin = it.boundsInRoot().topLeft }) {
+    Box(
+        modifier = modifier.fillMaxSize().onGloballyPositioned {
+            screenOrigin = it.boundsInRoot().topLeft
+            val h = with(density) { it.size.height.toDp() }
+            if (h != screenHeight) screenHeight = h
+        },
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -883,6 +891,27 @@ internal fun NowPlayingScreen(
                         .padding(top = statusBarTop + TOP_STRIP_HEIGHT),
                 )
             }
+        }
+
+        // Over a full-screen cover, the controls need their own contrast: clear through the upper
+        // half of the picture, darkening towards the foot where the scrubber and buttons sit. It
+        // goes as the cover shrinks into the header, where the square needs none.
+        if (heroHeight > 0.dp && !collapsePastHalf) {
+            Box(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .fillMaxWidth()
+                    .height(heroHeight)
+                    .graphicsLayer { alpha = (1f - 2f * g()).coerceIn(0f, 1f) * heroVisible() }
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Black.copy(alpha = 0.12f),
+                            0.38f to Color.Transparent,
+                            0.58f to Color.Black.copy(alpha = 0.28f),
+                            1f to Color.Black.copy(alpha = 0.72f),
+                        ),
+                    ),
+            )
         }
 
         // Keeps the status bar legible over a bright cover without boxing it in.
@@ -1109,8 +1138,13 @@ internal fun NowPlayingScreen(
                     // Where the banner has to stop for the credits under it to stay put. Only
                     // measured on the settled player: the controls' footprint changes under the
                     // lyrics, and the banner should not breathe with it.
-                    val bannerBottom = statusBarTop + TOP_STRIP_HEIGHT + ART_BOX_TOP_PAD +
-                        groupTop + fullArt + ART_TITLE_GAP / 2
+                    // The cover runs the full height of the player, behind the controls, rather
+                    // than stopping under the credits and dissolving into the colour backdrop.
+                    val bannerBottom = if (screenHeight > 0.dp) {
+                        screenHeight
+                    } else {
+                        statusBarTop + TOP_STRIP_HEIGHT + ART_BOX_TOP_PAD + groupTop + fullArt + ART_TITLE_GAP / 2
+                    }
                     if ((panel == NowPlayingPanel.None && !collapseStarted || heroHeight == 0.dp) &&
                         bannerBottom != heroHeight
                     ) {
