@@ -102,6 +102,14 @@
                     android:scheme="exhale" />
             </intent-filter>
 
+            <!-- "Play … on Exhale" from Gemini / Assistant. Its own filter with no <data>: the
+                 platform's play-from-search intent carries no URI, so the YouTube filters below
+                 (which list this action but require a link) never matched it. -->
+            <intent-filter>
+                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
             <!-- Youtube filter -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

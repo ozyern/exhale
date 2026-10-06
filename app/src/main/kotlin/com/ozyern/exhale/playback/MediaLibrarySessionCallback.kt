@@ -735,17 +735,22 @@ constructor(
                 }
 
                 else -> {
-                    val query = firstItem.requestMetadata.searchQuery?.trim().orEmpty()
-                    if (query.isBlank()) return@future defaultResult
-
-                    val matchedSongs = database.searchSongs(query, previewSize = 50).first()
-                    val songId = matchedSongs.firstOrNull()?.id ?: return@future defaultResult
-                    val allSongs = database.songsByCreateDateAsc().first()
-                    MediaSession.MediaItemsWithStartPosition(
-                        allSongs.map { it.toMediaItem() },
-                        allSongs.indexOfFirst { it.id == songId }.takeIf { it != -1 } ?: 0,
-                        startPositionMs,
+                    // A voice request — Gemini, Assistant, Android Auto — arriving through the
+                    // session: the words in searchQuery, and the focus, title, artist and album
+                    // in the extras when the assistant could tell them apart.
+                    val request = VoiceSearch.request(
+                        firstItem.requestMetadata.searchQuery,
+                        firstItem.requestMetadata.extras,
                     )
+                    if (request.isOpenEnded) {
+                        // "Play some music on Exhale": the liked songs, shuffled.
+                        val liked = database.likedSongsByCreateDateAsc().first().shuffled()
+                        if (liked.isEmpty()) return@future defaultResult
+                        return@future MediaSession.MediaItemsWithStartPosition(liked.map { it.toMediaItem() }, 0, 0L)
+                    }
+                    val items = VoiceSearch.resolve(request, database)
+                    if (items.isEmpty()) return@future defaultResult
+                    MediaSession.MediaItemsWithStartPosition(items, 0, 0L)
                 }
             }
         }

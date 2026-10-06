@@ -405,13 +405,54 @@ class MainActivity : ComponentActivity() {
 
     private data class PendingDeepLinkSong(
         val mediaItem: MediaItem,
+        /** A whole queue to start from [mediaItem], as a voice request plays: the song, then its radio. */
+        val queue: List<MediaItem>? = null,
     )
 
     private fun playPendingDeepLinkSongIfReady() {
         val pending = pendingDeepLinkSong ?: return
         val connection = playerConnection ?: return
         pendingDeepLinkSong = null
-        connection.playQueue(ListQueue(items = listOf(pending.mediaItem)))
+        connection.playQueue(ListQueue(items = pending.queue ?: listOf(pending.mediaItem)))
+    }
+
+    /**
+     * "Play … on Exhale" from Gemini or Assistant, as the platform's play-from-search intent. The
+     * same resolver as the media session's, so asking either way gets the same answer.
+     */
+    private fun handleVoicePlay(intent: Intent) {
+        val request = com.ozyern.exhale.playback.VoiceSearch.request(
+            intent.getStringExtra(android.app.SearchManager.QUERY),
+            intent.extras,
+        )
+        lifecycleScope.launch {
+            val items = if (request.isOpenEnded) {
+                // "Play music on Exhale": carry on with what was playing, or the liked songs shuffled.
+                val player = playerConnection?.player
+                if (player != null && player.mediaItemCount > 0) {
+                    player.play()
+                    return@launch
+                }
+                withContext(Dispatchers.IO) {
+                    database.likedSongsByCreateDateAsc().first().shuffled().map { it.toMediaItem() }
+                }
+            } else {
+                withContext(Dispatchers.IO) { com.ozyern.exhale.playback.VoiceSearch.resolve(request, database) }
+            }
+            if (items.isEmpty()) {
+                val what = listOfNotNull(request.title, request.artist).filter { it.isNotBlank() }
+                    .joinToString(" by ").ifBlank { request.query }
+                android.widget.Toast.makeText(
+                    this@MainActivity,
+                    if (what.isBlank()) "Nothing to play yet" else "Couldn't find \"$what\"",
+                    android.widget.Toast.LENGTH_SHORT,
+                ).show()
+                return@launch
+            }
+            pendingDeepLinkSong = PendingDeepLinkSong(mediaItem = items.first(), queue = items)
+            startMusicServiceSafely()
+            playPendingDeepLinkSongIfReady()
+        }
     }
 
     private fun joinPendingTogetherIfReady() {
@@ -2822,6 +2863,11 @@ class MainActivity : ComponentActivity() {
     private fun handleDeepLinkIntent(intent: Intent, navController: NavHostController) {
         if (intent.action == ACTION_DOWNLOAD_QUEUE) {
             navController.navigate(Screens.DownloadQueue.route)
+            return
+        }
+
+        if (intent.action == android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH && intent.data == null) {
+            handleVoicePlay(intent)
             return
         }
 
