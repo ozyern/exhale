@@ -67,6 +67,11 @@
             android:name="io.github.andrealtb.lockscreenlyrics.OPLUS_MEDIA_HISTORY"
             android:value="true" />
 
+        <!-- Chromecast: which receiver to talk to and how; see playback/cast/CastOptionsProvider. -->
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="com.ozyern.exhale.playback.cast.CastOptionsProvider" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

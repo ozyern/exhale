@@ -84,7 +84,9 @@ fun V8DeviceSelector(
         getActiveDevice(context, availableDevices)
     }
 
+    val castState by com.ozyern.exhale.playback.cast.CastController.state.collectAsState()
     val deviceIcon = when {
+        castState.casting -> R.drawable.cast
         activeDevice?.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
                 activeDevice?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
                 activeDevice?.type == AudioDeviceInfo.TYPE_BLE_HEADSET -> R.drawable.bluetooth
@@ -92,7 +94,7 @@ fun V8DeviceSelector(
         else -> R.drawable.airplay
     }
 
-    val isBluetooth = activeDevice?.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+    val isBluetooth = castState.casting || activeDevice?.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
             activeDevice?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
             activeDevice?.type == AudioDeviceInfo.TYPE_BLE_HEADSET
 
@@ -211,8 +213,21 @@ fun DeviceSelectionBottomSheet(
                 }
             }
 
+            // ── Chromecast ────────────────────────────────────────────────
+            CastSection(accent = accent)
+
             // ── Volume ────────────────────────────────────────────────────
-            if (playerConnection != null) {
+            // The TV's own volume while casting: the phone is silent then, and its level is moot.
+            val castState by com.ozyern.exhale.playback.cast.CastController.state.collectAsState()
+            if (castState.casting) {
+                Spacer(Modifier.height(14.dp))
+                val castVolume by com.ozyern.exhale.playback.cast.CastController.volume.collectAsState()
+                IosVolumeBar(
+                    value = castVolume,
+                    onValueChange = { com.ozyern.exhale.playback.cast.CastController.setVolume(it) },
+                    tint = onSurface,
+                )
+            } else if (playerConnection != null) {
                 Spacer(Modifier.height(14.dp))
                 val volume by playerConnection.service.playerVolume.collectAsState()
                 IosVolumeBar(
@@ -274,6 +289,125 @@ fun DeviceSelectionBottomSheet(
             )
 
             Spacer(Modifier.height(4.dp))
+        }
+    }
+}
+
+/**
+ * The Chromecasts on this network, as rows in the same card style as the outputs above.
+ *
+ * Scanned for actively only while the sheet is open — a receiver turns up in a couple of seconds
+ * that way instead of a minute — and not at all where Google Play Services is missing. Tapping a
+ * receiver casts to it; tapping the one in use brings the music back to this phone.
+ */
+@Composable
+private fun CastSection(accent: Color) {
+    val context = LocalContext.current
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val state by com.ozyern.exhale.playback.cast.CastController.state.collectAsState()
+    androidx.compose.runtime.DisposableEffect(state.supported) {
+        com.ozyern.exhale.playback.cast.CastController.ensureStarted(context)
+        val stop = com.ozyern.exhale.playback.cast.CastController.discover(active = true)
+        onDispose { stop() }
+    }
+    if (!state.supported) return
+
+    Spacer(Modifier.height(18.dp))
+    Text(
+        text = "Cast",
+        fontSize = 13.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = onSurface.copy(alpha = 0.55f),
+        modifier = Modifier.padding(start = 6.dp, bottom = 8.dp),
+    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(onSurface.copy(alpha = 0.07f)),
+    ) {
+        if (state.devices.isEmpty()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 15.dp),
+            ) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    strokeWidth = 2.dp,
+                    color = onSurface.copy(alpha = 0.5f),
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(14.dp))
+                Text(
+                    text = "Looking for TVs and speakers on this Wi-Fi…",
+                    fontSize = 15.sp,
+                    color = onSurface.copy(alpha = 0.6f),
+                )
+            }
+        }
+        state.devices.forEachIndexed { index, device ->
+            if (index > 0) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 58.dp),
+                    thickness = 0.5.dp,
+                    color = onSurface.copy(alpha = 0.12f),
+                )
+            }
+            val haptic = LocalHapticFeedback.current
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        if (device.connected) {
+                            com.ozyern.exhale.playback.cast.CastController.disconnect(resumeHere = true)
+                        } else {
+                            com.ozyern.exhale.playback.cast.CastController.connect(device.id)
+                        }
+                    }
+                    .padding(horizontal = 16.dp, vertical = 13.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.cast),
+                    contentDescription = null,
+                    tint = if (device.connected) accent else onSurface.copy(alpha = 0.70f),
+                    modifier = Modifier.size(24.dp),
+                )
+                Spacer(Modifier.width(18.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = device.name,
+                        fontSize = 17.sp,
+                        fontWeight = if (device.connected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (device.connected) {
+                        Text(
+                            text = "Playing here · tap to bring it back to this phone",
+                            fontSize = 13.sp,
+                            color = onSurface.copy(alpha = 0.55f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                when {
+                    device.connecting ->
+                        androidx.compose.material3.CircularProgressIndicator(
+                            strokeWidth = 2.dp,
+                            color = accent,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    device.connected -> Icon(
+                        painter = painterResource(R.drawable.done),
+                        contentDescription = null,
+                        tint = accent,
+                        modifier = Modifier.size(21.dp),
+                    )
+                }
+            }
         }
     }
 }

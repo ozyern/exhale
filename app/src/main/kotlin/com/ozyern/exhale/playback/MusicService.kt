@@ -534,6 +534,19 @@ class MusicService :
     private var lockLyricsReceiver: android.content.BroadcastReceiver? = null
 
     /** Songs whose line-timed lyrics were already re-checked for a word-timed copy this session. */
+    /**
+     * What plays on a Cast receiver while one is the speaker. The phone keeps playing the queue,
+     * muted, and the receiver follows it; see [com.ozyern.exhale.playback.cast.CastMirror].
+     */
+    private val castMirror = com.ozyern.exhale.playback.cast.CastMirror(
+        scope = { scope },
+        localPlayer = { if (::player.isInitialized) player else null },
+        resolve = ::resolveForCast,
+        say = { message ->
+            android.widget.Toast.makeText(applicationContext, message, android.widget.Toast.LENGTH_SHORT).show()
+        },
+    )
+
     /** A queue page is being fetched; see onMediaItemTransition. */
     @Volatile
     private var loadingNextPage = false
@@ -826,6 +839,12 @@ class MusicService :
         updateNotification()
         player.repeatMode = REPEAT_MODE_OFF
 
+        // Chromecast: adopts a receiver that outlived the app, once the player exists.
+        runCatching {
+            com.ozyern.exhale.playback.cast.CastController.ensureStarted(this)
+            com.ozyern.exhale.playback.cast.CastController.attach(castMirror)
+        }
+
         val sessionToken = SessionToken(this, ComponentName(this, MusicService::class.java))
         val controllerFuture = MediaController.Builder(this, sessionToken).buildAsync()
         controllerFuture.addListener({ controllerFuture.get() }, MoreExecutors.directExecutor())
@@ -859,8 +878,15 @@ class MusicService :
             }
         }
 
-        combine(playerVolume, normalizeFactor, audioFocusVolumeFactor, playbackFadeFactor) { playerVolume, normalizeFactor, audioFocusVolumeFactor, playbackFadeFactor ->
-            playerVolume * normalizeFactor * audioFocusVolumeFactor * playbackFadeFactor
+        combine(
+            combine(playerVolume, normalizeFactor, audioFocusVolumeFactor, playbackFadeFactor) { playerVolume, normalizeFactor, audioFocusVolumeFactor, playbackFadeFactor ->
+                playerVolume * normalizeFactor * audioFocusVolumeFactor * playbackFadeFactor
+            },
+            castMirror.active,
+        ) { volume, casting ->
+            // Silent while a Cast receiver is the speaker: the phone still plays, as the clock the
+            // receiver follows, but only the TV is heard.
+            if (casting) 0f else volume
         }.collectLatest(scope) { finalVolume ->
             player.volume = finalVolume
         }
@@ -5926,6 +5952,31 @@ class MusicService :
             playerCacheHasWhole(mediaId)
 
     /** True when [mediaId] is complete in the download cache, so playback never asks the network. */
+    /**
+     * The stream a Cast receiver can open for [item], or null when there is none it can: a file on
+     * this phone is out of its reach. The same resolution the phone's own playback uses, so the
+     * receiver is handed the stream the phone would have played — usually the very one it is.
+     */
+    private suspend fun resolveForCast(item: MediaItem): com.ozyern.exhale.playback.cast.CastStream? =
+        withContext(Dispatchers.IO) {
+            val scheme = item.localConfiguration?.uri?.scheme
+            if (scheme == "content" || scheme == "file") return@withContext null
+            val mediaId = item.mediaId
+            val cached = playbackUrlCache[mediaId]
+                ?.takeIf { it.second > System.currentTimeMillis() + 60_000L }
+                ?.first
+            val url = cached ?: YTPlayerUtils.playerResponseForPlayback(
+                mediaId,
+                audioQuality = audioQuality,
+                connectivityManager = connectivityManager,
+                preferredStreamClient = preferredStreamClient,
+                avoidCodecs = avoidStreamCodecs,
+                preferredCodec = preferredAudioCodec,
+            ).getOrNull()?.let { storeResolvedStream(mediaId, it) } ?: return@withContext null
+            val uri = url.toUri()
+            com.ozyern.exhale.playback.cast.CastStream(url, com.ozyern.exhale.playback.cast.CastMirror.mimeTypeOf(uri))
+        }
+
     private fun isDownloadedLocally(mediaId: String): Boolean {
         val contentLength = runCatching {
             downloadCache.getContentMetadata(mediaId)
@@ -6406,6 +6457,11 @@ class MusicService :
 
 
     override fun onDestroy() {
+        runCatching {
+            if (castMirror.active.value) com.ozyern.exhale.playback.cast.CastController.disconnect(resumeHere = false)
+            com.ozyern.exhale.playback.cast.CastController.detach(castMirror)
+            castMirror.release()
+        }
         LockScreenLyrics.unregister(this, lockLyricsReceiver)
         lockLyricsReceiver = null
         if (::audioManager.isInitialized) runCatching { audioManager.unregisterAudioDeviceCallback(usbDeviceCallback) }

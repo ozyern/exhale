@@ -268,6 +268,10 @@ ksp {
 }
 
 dependencies {
+    // Chromecast: the framework and the router only. media3-cast is left out: the receiver is
+    // handed finished stream URLs resolved on the phone, see playback/cast/CastMirror.
+    implementation("com.google.android.gms:play-services-cast-framework:22.2.0")
+    implementation("androidx.mediarouter:mediarouter:1.8.1")
     implementation(libs.guava)
     implementation(libs.coroutines.guava)
     implementation(libs.concurrent.futures)
