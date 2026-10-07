@@ -133,6 +133,12 @@ private fun rememberCanvasPlayback(
                         false,
                     )
                     volume = 0f
+                    // No audio track at all, not just a muted one: a silent media stream is still
+                    // a second "player" to the system, and the notification and lock screen could
+                    // follow it — a source with no cover — instead of the song.
+                    trackSelectionParameters = trackSelectionParameters.buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                        .build()
                     repeatMode = Player.REPEAT_MODE_ONE
                     playWhenReady = isPlaying
                 }
