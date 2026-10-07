@@ -225,7 +225,6 @@ import com.ozyern.exhale.constants.SearchSource
 import com.ozyern.exhale.constants.SearchSourceKey
 import com.ozyern.exhale.constants.SlimFloatingToolbarHeight
 import com.ozyern.exhale.constants.SlimNavBarKey
-import com.ozyern.exhale.constants.StopMusicOnTaskClearKey
 import com.ozyern.exhale.constants.UseNewMiniPlayerDesignKey
 import com.ozyern.exhale.constants.UseSystemFontKey
 import com.ozyern.exhale.db.MusicDatabase
@@ -516,18 +515,9 @@ class MainActivity : ComponentActivity() {
             try { DiscordPresenceManager.stop() } catch (_: Exception) {}
         }
 
-        val shouldStopOnTaskClear =
-            if (!isFinishing) {
-                false
-            } else {
-                dataStore.get(StopMusicOnTaskClearKey, false)
-            }
-
-        if (shouldStopOnTaskClear) {
-            safeUnbindMusicService()
-            stopService(Intent(this, MusicService::class.java))
-            playerConnection = null
-        }
+        // Clearing the app from Recents is the service's to handle (MusicService.onTaskRemoved).
+        // Stopping here too also stopped the music on a plain Back out of the app, which is not
+        // closing it.
     }
 
 

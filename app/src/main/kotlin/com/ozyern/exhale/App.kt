@@ -465,8 +465,15 @@ class App : Application(), SingletonImageLoader.Factory {
     private object MaxResFallbackInterceptor : coil3.intercept.Interceptor {
         override suspend fun intercept(chain: coil3.intercept.Interceptor.Chain): coil3.request.ImageResult {
             val result = chain.proceed()
-            val url = chain.request.data as? String ?: return result
-            if (result !is coil3.request.ErrorResult || !url.contains("maxresdefault.jpg")) return result
+            if (result !is coil3.request.ErrorResult) return result
+            // Asked for as a String by the app's own images, but as an android.net.Uri by the media
+            // session's bitmap loader — which is what the notification, lock screen and car show.
+            // Matching only a String left every system surface without a cover.
+            val url = when (val data = chain.request.data) {
+                is String, is android.net.Uri, is coil3.Uri, is okhttp3.HttpUrl -> data.toString()
+                else -> return result
+            }
+            if (!url.contains("maxresdefault.jpg")) return result
             val fallback = chain.request.newBuilder()
                 .data(url.replace("maxresdefault.jpg", "hqdefault.jpg"))
                 .build()

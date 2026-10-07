@@ -6530,7 +6530,9 @@ class MusicService :
         try { DiscordPresenceManager.stop() } catch (_: Exception) {}
         lastPresenceToken = null
 
-        val stopMusicOnTaskClearEnabled = dataStore.get(StopMusicOnTaskClearKey, false)
+        // On by default: swiping the app away from Recents is how people close it, and music that
+        // carried on afterwards read as the app refusing to close.
+        val stopMusicOnTaskClearEnabled = dataStore.get(StopMusicOnTaskClearKey, true)
 
         try {
             val state = togetherSessionState.value
