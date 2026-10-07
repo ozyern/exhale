@@ -52,6 +52,8 @@ object SpotifyHashProvider {
                 "addToLibrary" to "7c5a69420e2bfae3da5cc4e14cbc8bb3f6090f80afc00ffc179177f19be3f33d",
                 "removeFromLibrary" to "7c5a69420e2bfae3da5cc4e14cbc8bb3f6090f80afc00ffc179177f19be3f33d",
                 "home" to "23e37f2e58d82d567f27080101d36609009d8c3676457b1086cb0acc55b72a5d",
+                // The web player's Canvas query (the looping video behind a track).
+                "canvas" to "575138ab27cd5c1b3e54da54d0a7cc8d85485402de26340c2145f0f6bb5e7a9f",
             )
         defaults.forEach { (op, hash) ->
             hashes[op] = GqlHashEntry(hash = hash, source = HashSource.HARDCODED)

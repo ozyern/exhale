@@ -1165,6 +1165,24 @@ object Spotify {
             }
         }
 
+    // ── Canvas (GQL: canvas) ────────────────────────────────────────────
+
+    /**
+     * The looping video Spotify plays behind [trackUri] (`spotify:track:…`), asked for the way the
+     * current web player asks; null when the track has none, or only a still image.
+     */
+    suspend fun canvasUrl(trackUri: String): String? =
+        runCatching {
+            val response = graphqlPost(
+                operationName = "canvas",
+                variables = buildJsonObject { put("trackUri", trackUri) },
+            )
+            response.obj("data")?.obj("trackUnion")?.obj("canvas")?.str("url")
+                ?.takeIf { it.startsWith("https://") && CANVAS_VIDEO.containsMatchIn(it) }
+        }.getOrNull()
+
+    private val CANVAS_VIDEO = Regex("""\.mp4(?:[?#]|$)""", RegexOption.IGNORE_CASE)
+
     // ── Search (GQL: searchDesktop) ─────────────────────────────────────
 
     suspend fun search(

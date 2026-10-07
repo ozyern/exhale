@@ -364,7 +364,13 @@ fun OnlinePlaylistScreen(
                                 palette = releasePalette,
                                 title = playlist.title,
                                 credit = playlist.author?.name,
-                                meta = listOfNotNull("Playlist", playlist.songCountText).joinToString("  \u00b7  "),
+                                meta = listOfNotNull(
+                                    "Playlist",
+                                    playlist.songCountText,
+                                    // Of the songs loaded so far, which is every song once the page has paged in.
+                                    com.ozyern.exhale.utils.totalLengthString(songs.sumOf { (it.duration ?: 0).toLong() })
+                                        .takeIf { it.isNotEmpty() },
+                                ).joinToString("  \u00b7  "),
                                 lazyListState = lazyListState,
                                 artwork = { PlaylistArtwork(listOfNotNull(playlist.thumbnail), R.drawable.queue_music) },
                                 actions = {

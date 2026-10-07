@@ -59,10 +59,12 @@ private suspend fun fetchFromSource(
 ): CanvasArtwork? {
 
     val result: CanvasArtwork? = when (source) {
-        // Apple first, where most moving covers are; Tidal has some Apple doesn't.
+        // Apple first, where most moving covers are; then Spotify's Canvas; Tidal has some neither does.
         CanvasSource.AUTO ->
             AppleMusicCanvasProvider.getBySongArtist(song, artist, album, storefront)
                 ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
+                // Spotify's own Canvas, for a listener who has connected Spotify.
+                ?: runCatching { com.ozyern.exhale.spotify.SpotifyCanvasSource.canvas(song, artist) }.getOrNull()
                 ?: TidalCanvasProvider.getBySongArtist(song, artist, album)
 
         CanvasSource.APPLE_MUSIC ->

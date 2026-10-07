@@ -40,6 +40,22 @@ fun makeTimeString(duration: Long?): String {
     }
 }
 
+/**
+ * A collection's running time the way Apple Music writes it: "1 hr 23 min", "45 min", or seconds
+ * only when it is under a minute. Empty for nothing.
+ */
+fun totalLengthString(totalSeconds: Long): String {
+    if (totalSeconds <= 0) return ""
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600 + 30) / 60
+    return when {
+        hours > 0 && minutes > 0 -> "$hours hr $minutes min"
+        hours > 0 -> "$hours hr"
+        minutes > 0 -> "$minutes min"
+        else -> "$totalSeconds sec"
+    }
+}
+
 fun md5(str: String): String {
     val md = MessageDigest.getInstance("MD5")
     return BigInteger(1, md.digest(str.toByteArray())).toString(16).padStart(32, '0')

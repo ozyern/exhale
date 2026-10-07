@@ -514,7 +514,7 @@ fun LocalPlaylistScreen(
                                 meta = listOfNotNull(
                                     "Playlist",
                                     pluralStringResource(R.plurals.n_song, songCount, songCount),
-                                    makeTimeString(playlistLength * 1000L).takeIf { playlistLength > 0 },
+                                    com.ozyern.exhale.utils.totalLengthString(playlistLength.toLong()).takeIf { it.isNotEmpty() },
                                 ).joinToString("  \u00b7  "),
                                 lazyListState = lazyListState,
                                 artwork = { PlaylistArtwork(playlist.thumbnails, R.drawable.queue_music) },
