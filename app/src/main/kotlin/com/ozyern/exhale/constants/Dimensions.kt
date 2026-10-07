@@ -153,8 +153,11 @@ const val AquamorphicStiffness = 330f
  * only ever appears on the way *down*, which is the direction the transition is about.
  */
 val BottomSheetAnimationSpec = spring<Dp>(
-	dampingRatio = 0.84f,
-	stiffness = 380f,
+	// Critically damped, as Apple Music's sheet moves: a fling leaves with the finger's own speed
+	// and then settles into place without ever going past it and back. The old 0.84 bounced the
+	// player — and the cover flying with it — off the dock on every close.
+	dampingRatio = 1f,
+	stiffness = 300f,
 	// Stops on the last visible pixel rather than easing through sub-pixel motion for another
 	// hundred milliseconds, which is what made a fling feel like it never quite landed.
 	visibilityThreshold = 0.5.dp,
@@ -172,21 +175,25 @@ val BottomSheetAnimationSpec = spring<Dp>(
  * long enough to read as the pill becoming the player, short enough that nobody waits for it.
  */
 val BottomSheetSoftAnimationSpec = spring<Dp>(
-	dampingRatio = 0.86f,
+	dampingRatio = 1f,
 	stiffness = 210f,
 	visibilityThreshold = 0.5.dp,
 )
 
-/** Tapping the mini player open: a little weight, and the faintest settle as it seats. */
+/**
+ * Tapping the mini player open. No bounce, and slow enough to watch: it leaves briskly and spends
+ * most of its time settling, slower and slower, which is where the eye is following the cover up
+ * from the dock to its place. (About 0.45 s of response — Apple Music's own sheet.)
+ */
 val BottomSheetOpenAnimationSpec = spring<Dp>(
-	dampingRatio = 0.86f,
-	stiffness = 250f,
+	dampingRatio = 1f,
+	stiffness = 195f,
 	visibilityThreshold = 0.5.dp,
 )
 
-/** Closing into the dock: quicker and with no bounce, so it lands in the pill and stays there. */
+/** Closing into the dock: the same no-bounce settle, a touch quicker, landing in the pill and staying. */
 val BottomSheetCloseAnimationSpec = spring<Dp>(
-	dampingRatio = 0.95f,
-	stiffness = 340f,
+	dampingRatio = 1f,
+	stiffness = 240f,
 	visibilityThreshold = 0.5.dp,
 )

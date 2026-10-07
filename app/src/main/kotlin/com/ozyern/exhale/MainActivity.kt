@@ -67,6 +67,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
@@ -1753,20 +1754,21 @@ class MainActivity : ComponentActivity() {
                                                         // in white (black in light theme) on a 44dp
                                                         // disc of clear glass, matched by the account
                                                         // disc opposite. Taps home to the top.
-                                                        LiquidGlassMark(
-                                                            // Exhale's own mark, in its own colours —
-                                                            // the one the icon pack in Settings picks.
-                                                            markRes = appIconPack.splashLogoRes,
-                                                            backdrop = appBackdrop,
+                                                        // The mark on its own, as BitChord shows it:
+                                                        // no disc, no glass, no bounce — the logo
+                                                        // sits still in the bar and lets the page
+                                                        // move under it. Still taps home to the top.
+                                                        androidx.compose.foundation.Image(
+                                                            painter = painterResource(appIconPack.splashLogoRes),
                                                             contentDescription = stringResource(R.string.app_name),
-                                                            diameter = 44.dp,
-                                                            tint = Color.Unspecified,
-                                                            modifier = Modifier.bounceClick(
-                                                                onClick = {
+                                                            modifier = Modifier
+                                                                .size(38.dp)
+                                                                .clickable(
+                                                                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                                                    indication = null,
+                                                                ) {
                                                                     navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
                                                                 },
-                                                                shape = CircleShape,
-                                                            ),
                                                         )
                                                     }
                                                 },

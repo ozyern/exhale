@@ -476,8 +476,11 @@ class BottomSheetState(
             }
         } else {
             val l0 = dismissedBound
-            val l1 = (collapsedBound - dismissedBound) / 2
-            val l2 = (expandedBound - collapsedBound) / 2
+            // Midpoints between the anchors. l2 was half the open travel measured from zero rather
+            // than from the collapsed bar, which put the "opens" line well below halfway: a pull
+            // released a third of the way up still sprang the player open.
+            val l1 = dismissedBound + (collapsedBound - dismissedBound) / 2
+            val l2 = collapsedBound + (expandedBound - collapsedBound) / 2
             val l3 = expandedBound
 
             when (value) {
@@ -642,10 +645,19 @@ fun Modifier.bottomSheetDraggable(
 ): Modifier {
     return this.pointerInput(state) {
         val velocityTracker = VelocityTracker()
+        // Where the pull began and when: a short, quick swipe can lift with no speed on its last
+        // event at all, and read as a slow release it snapped back instead of flying.
+        var pullStartNanos = 0L
+        var pulled = 0f
 
         detectVerticalDragGestures(
+            onDragStart = {
+                pullStartNanos = System.nanoTime()
+                pulled = 0f
+            },
             onVerticalDrag = { change, dragAmount ->
                 velocityTracker.addPointerInputChange(change)
+                pulled += dragAmount
                 state.dispatchRawDelta(dragAmount)
             },
             onDragCancel = {
@@ -653,8 +665,14 @@ fun Modifier.bottomSheetDraggable(
                 state.snapTo(state.collapsedBound)
             },
             onDragEnd = {
-                val velocity = -velocityTracker.calculateVelocity().y
+                val lifted = -velocityTracker.calculateVelocity().y
                 velocityTracker.resetTracking()
+                val seconds = (System.nanoTime() - pullStartNanos) / 1e9f
+                // Only for a quick swipe: over a long, deliberate drag the average would overrule a
+                // finger that came to rest where it meant to leave the player.
+                val average = if (seconds in 0.001f..0.25f) -pulled / seconds else 0f
+                // The finger's speed as it lifted, or across the whole pull if that was faster.
+                val velocity = if (kotlin.math.abs(average) > kotlin.math.abs(lifted)) average else lifted
                 state.performFling(velocity, onDismiss)
             },
         )
