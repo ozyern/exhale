@@ -101,6 +101,7 @@ fun PreferredLyricsProvider.enabledKey(): Preferences.Key<Boolean> = when (this)
     PreferredLyricsProvider.GENIUS -> EnableGeniusLyricsKey
     PreferredLyricsProvider.PAXSENIX -> EnablePaxSenixLyricsKey
     PreferredLyricsProvider.MUSIXMATCH -> EnableMusixmatchLyricsKey
+    PreferredLyricsProvider.LRC_RED -> com.ozyern.exhale.constants.EnableLrcRedLyricsKey
 }
 
 /** The order in force: what was saved, with anything added since after it. */
@@ -109,7 +110,7 @@ fun lyricsSourceOrder(saved: String?): List<PreferredLyricsProvider> {
         .mapNotNull { name -> PreferredLyricsProvider.entries.find { it.name == name.trim() } }
         .distinct()
     if (parsed.isEmpty() || parsed == LegacyDefaultProviderOrder) return DefaultProviderOrder
-    return parsed + DefaultProviderOrder.filterNot { it in parsed }
+    return com.ozyern.exhale.constants.withNewSources(parsed)
 }
 
 /**

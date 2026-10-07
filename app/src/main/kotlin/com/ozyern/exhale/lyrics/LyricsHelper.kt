@@ -348,7 +348,9 @@ constructor(
         recordingJob: Deferred<Recording?>? = null,
     ): String? {
         // Only the sources that can use it wait for the recording; everyone else starts at once.
-        val recording = if (provider === BinimumLyricsProvider || provider === LyricsPlusProvider) {
+        val recording = if (provider === BinimumLyricsProvider || provider === LyricsPlusProvider ||
+            provider === LrcRedLyricsProvider
+        ) {
             recordingJob?.let { job -> withTimeoutOrNull(IDENTIFY_TIMEOUT_MS) { runCatching { job.await() }.getOrNull() } }
         } else {
             null
@@ -393,6 +395,7 @@ constructor(
         val results = arrayOfNulls<String>(n)
         val done = BooleanArray(n)
         var graceDeadline = Long.MAX_VALUE
+        var firstAnswerAt = Long.MAX_VALUE
         fun rank(i: Int): Int {
             val level = syncLevel(results[i]!!)
             // A source that masked its words ranks behind every one that didn't.
@@ -408,8 +411,14 @@ constructor(
             // The best any unfinished source could still do is word-timed at its own place.
             val couldBeat = (0 until n).any { j -> !done[j] && (best == null || j < rank(best)) }
             if (!couldBeat) return best?.let { it to results[it]!! }
-            if (best != null && graceDeadline == Long.MAX_VALUE) {
-                graceDeadline = SystemClock.elapsedRealtime() + BETTER_ANSWER_GRACE_MS
+            if (best != null && firstAnswerAt == Long.MAX_VALUE) firstAnswerAt = SystemClock.elapsedRealtime()
+            // The Apple-catalogue sources wait on the recording being identified first, so they
+            // are routinely the last to answer; a line-timed database back in a second used to
+            // win on the clock alone, and a song every one of them has word-timed played
+            // line by line. Until something word-timed is in, they get longer.
+            if (best != null) {
+                val grace = if (preferWord && syncLevel(results[best]!!) > 0) WORD_SYNC_GRACE_MS else BETTER_ANSWER_GRACE_MS
+                graceDeadline = firstAnswerAt + grace
             }
             val waitMs = if (graceDeadline == Long.MAX_VALUE) null else graceDeadline - SystemClock.elapsedRealtime()
             if (waitMs != null && waitMs <= 0L) return best?.let { it to results[it]!! }
@@ -454,6 +463,7 @@ constructor(
         PreferredLyricsProvider.GENIUS -> GeniusLyricsProvider
         PreferredLyricsProvider.PAXSENIX -> PaxSenixLyricsProvider
         PreferredLyricsProvider.MUSIXMATCH -> MusixmatchLyricsProvider
+        PreferredLyricsProvider.LRC_RED -> LrcRedLyricsProvider
     }
 
     private suspend fun orderedProviders(): List<LyricsProvider> {
@@ -464,7 +474,7 @@ constructor(
             .orEmpty()
         val order = if (saved.isNotEmpty() && saved != LegacyDefaultProviderOrder) {
             // Sources added since the order was saved go after the ones the listener placed.
-            saved + DefaultProviderOrder.filterNot { it in saved }
+            com.ozyern.exhale.constants.withNewSources(saved)
         } else {
             // LRCLIB is what the settings page showed as the default before, so a stored LRCLIB is
             // far more likely that default kept than a choice — and it put whole-line lyrics in
@@ -515,6 +525,7 @@ constructor(
         private val WORD_SPAN_REGEX = Regex("""<span[^>]*\bbegin=""", RegexOption.IGNORE_CASE)
         private val ENHANCED_LRC_REGEX = Regex("""<\d{1,2}:\d{1,2}(?:\.\d{1,3})?>""")
         private const val BETTER_ANSWER_GRACE_MS = 3_000L
+        private const val WORD_SYNC_GRACE_MS = 8_000L
         private const val IDENTIFY_TIMEOUT_MS = 2_500L
 
         /** Video id to recording, for this session: a shortcut, never a store. */

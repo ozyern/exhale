@@ -107,6 +107,7 @@ val ProviderOrderKey = stringPreferencesKey("lyrics_provider_order")
  * then the syllable-timed community sources, then the line-timed databases, and plain text last.
  */
 val DefaultProviderOrder = listOf(
+    PreferredLyricsProvider.LRC_RED,
     PreferredLyricsProvider.BINIMUM,
     PreferredLyricsProvider.BETTER_LYRICS,
     PreferredLyricsProvider.PAXSENIX,
@@ -119,6 +120,21 @@ val DefaultProviderOrder = listOf(
     PreferredLyricsProvider.LRCLIB,
     PreferredLyricsProvider.GENIUS,
 )
+
+/**
+ * [saved] with any source added since put back where [DefaultProviderOrder] places it — just ahead
+ * of the source it comes before there — rather than at the bottom, where a new word-timed source
+ * would sit behind every line-timed one the listener never moved.
+ */
+fun withNewSources(saved: List<PreferredLyricsProvider>): List<PreferredLyricsProvider> {
+    val order = saved.distinct().toMutableList()
+    DefaultProviderOrder.forEachIndexed { index, source ->
+        if (source in order) return@forEachIndexed
+        val next = DefaultProviderOrder.drop(index + 1).firstOrNull { it in order }
+        if (next == null) order += source else order.add(order.indexOf(next), source)
+    }
+    return order
+}
 
 /** The order shipped before 1.0.405. A saved order identical to it was never chosen, only kept. */
 val LegacyDefaultProviderOrder = listOf(
@@ -145,10 +161,12 @@ fun PreferredLyricsProvider.displayName(): String = when (this) {
     PreferredLyricsProvider.GENIUS -> "Genius"
     PreferredLyricsProvider.PAXSENIX -> "PaxSenix"
     PreferredLyricsProvider.MUSIXMATCH -> "Musixmatch"
+    PreferredLyricsProvider.LRC_RED -> "lrc.red"
 }
 
 /** One line on what a source is good for, for the sources list. */
 fun PreferredLyricsProvider.detail(): String = when (this) {
+    PreferredLyricsProvider.LRC_RED -> "Apple Music timings, filed by recording — never the wrong edit"
     PreferredLyricsProvider.BINIMUM -> "Apple Music timings, matched on the recording itself"
     PreferredLyricsProvider.BETTER_LYRICS -> "Apple Music timings, word by word"
     PreferredLyricsProvider.PAXSENIX -> "Apple Music timings, found through Apple's own catalogue"
@@ -165,6 +183,7 @@ fun PreferredLyricsProvider.detail(): String = when (this) {
 /** Whether a source can return per-word timing, or only whole lines. */
 val PreferredLyricsProvider.wordSynced: Boolean
     get() = when (this) {
+        PreferredLyricsProvider.LRC_RED,
         PreferredLyricsProvider.BINIMUM, PreferredLyricsProvider.BETTER_LYRICS, PreferredLyricsProvider.PAXSENIX,
         PreferredLyricsProvider.LYRICS_PLUS, PreferredLyricsProvider.SIMPMUSIC, PreferredLyricsProvider.UNISON,
         PreferredLyricsProvider.MUSIXMATCH -> true
@@ -189,6 +208,7 @@ val EnableBetterLyricsKey = booleanPreferencesKey("enableBetterLyrics")
 val EnableSimpMusicLyricsKey = booleanPreferencesKey("enableSimpMusicLyrics")
 val EnableLyricsPlusKey = booleanPreferencesKey("enableLyricsPlus")
 val EnableBinimumLyricsKey = booleanPreferencesKey("enableBinimumLyrics")
+val EnableLrcRedLyricsKey = booleanPreferencesKey("enableLrcRedLyrics")
 val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
 val EnableMegalobizLyricsKey = booleanPreferencesKey("enableMegalobizLyrics")
 val EnableGeniusLyricsKey = booleanPreferencesKey("enableGeniusLyrics")
@@ -622,6 +642,7 @@ enum class PreferredLyricsProvider {
     GENIUS,
     PAXSENIX,
     MUSIXMATCH,
+    LRC_RED,
 }
 
 enum class PlayerButtonsStyle {
