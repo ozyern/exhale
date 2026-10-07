@@ -365,6 +365,13 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var navController: NavHostController
     private var pendingIntent: Intent? = null
+
+    /**
+     * False when the activity is being rebuilt — a rotation, a theme change, a restore after the
+     * process was killed. The launch intent is handed back unchanged then, and acting on it again
+     * replayed whatever it asked for: a voice request or an opened file started over from the top.
+     */
+    private var launchIntentIsNew = true
     private var pendingDeepLinkSong: PendingDeepLinkSong? = null
     private var pendingTogetherJoinLink: String? = null
 
@@ -561,6 +568,7 @@ class MainActivity : ComponentActivity() {
     )
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        launchIntentIsNew = savedInstanceState == null
         // Modern edge-to-edge: draw fully behind the status & navigation bars with transparent,
         // scrim-free system bars for a truly immersive, bezel-less look. Android 15+ enforces
         // edge-to-edge regardless; declaring it explicitly keeps it correct and back-compatible.
@@ -1477,7 +1485,7 @@ class MainActivity : ComponentActivity() {
                         if (pendingIntent != null) {
                             handleDeepLinkIntent(pendingIntent!!, navController)
                             pendingIntent = null
-                        } else {
+                        } else if (launchIntentIsNew) {
                             handleDeepLinkIntent(intent, navController)
                         }
                     }

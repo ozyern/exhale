@@ -738,6 +738,14 @@ constructor(
                     // A voice request — Gemini, Assistant, Android Auto — arriving through the
                     // session: the words in searchQuery, and the focus, title, artist and album
                     // in the extras when the assistant could tell them apart.
+                    // Only a search is a voice request. An item that is neither one of our own
+                    // paths nor a search (a watch, a car or another app handing over a plain id)
+                    // is not "play anything", and must not be swapped for the liked songs.
+                    if (firstItem.requestMetadata.searchQuery == null &&
+                        firstItem.requestMetadata.extras?.isEmpty != false
+                    ) {
+                        return@future defaultResult
+                    }
                     val request = VoiceSearch.request(
                         firstItem.requestMetadata.searchQuery,
                         firstItem.requestMetadata.extras,

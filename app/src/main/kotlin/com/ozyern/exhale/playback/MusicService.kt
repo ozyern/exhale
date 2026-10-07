@@ -892,11 +892,21 @@ class MusicService :
                 for (attempt in 0..1) {
                     try {
                         // Saved lyrics a source censored beyond repair are looked up again.
+                        // So is a saved miss, once a session: one lookup that came back empty — a
+                        // slow network, every source timing out — used to mean that song never had
+                        // lyrics again, however many sources had them since.
                         val cached = database.lyrics(mediaMetadata.id).first()?.takeUnless {
                             com.ozyern.exhale.lyrics.Uncensor.isCensored(com.ozyern.exhale.lyrics.Uncensor.restore(it.lyrics))
+                        }?.takeUnless {
+                            it.lyrics == com.ozyern.exhale.db.entities.LyricsEntity.LYRICS_NOT_FOUND &&
+                                lyricsUpgradeChecked.add(mediaMetadata.id)
                         }
                         val lyrics = if (cached == null) {
                             lyricsHelper.getLyrics(mediaMetadata).also { fetched ->
+                                // A miss never replaces lyrics already saved.
+                                if (fetched == com.ozyern.exhale.db.entities.LyricsEntity.LYRICS_NOT_FOUND &&
+                                    database.lyrics(mediaMetadata.id).first() != null
+                                ) return@also
                                 database.query {
                                     upsert(
                                         LyricsEntity(

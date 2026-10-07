@@ -96,6 +96,7 @@ import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.runCatching
 import com.ozyern.exhale.utils.makeTimeString
@@ -144,10 +145,16 @@ fun LyricsScreen(
                     )
                     val lyricsHelper = entryPoint.lyricsHelper()
                     
+                    // The service looks the song up too, and may have saved it in the meantime.
+                    if (database.lyrics(mediaMetadata.id).first() != null) return@launch
+
                     // Fetch lyrics automatically
                     val lyrics = lyricsHelper.getLyrics(mediaMetadata)
-                    
-                    // Save to database
+
+                    // A miss must not overwrite lyrics the service found while this was asking.
+                    if (lyrics == LyricsEntity.LYRICS_NOT_FOUND && database.lyrics(mediaMetadata.id).first() != null) {
+                        return@launch
+                    }
                     database.query {
                         upsert(LyricsEntity(mediaMetadata.id, lyrics))
                     }
