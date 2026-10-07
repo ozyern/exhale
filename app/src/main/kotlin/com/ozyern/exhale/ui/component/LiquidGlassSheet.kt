@@ -49,6 +49,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -134,6 +136,12 @@ fun LiquidGlassSheet(
     modifier: Modifier = Modifier,
     dismissible: Boolean = true,
     maxHeightFraction: Float = 0.86f,
+    /**
+     * Where on screen a hold opened this, for a popup in place of a sheet: the panel opens out of
+     * that point — scaled up from it, the page blurring behind — and sits beside the finger
+     * rather than at the bottom edge, the way Apple Music answers a long press. Null for a sheet.
+     */
+    anchor: androidx.compose.ui.geometry.Offset? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -213,31 +221,72 @@ fun LiquidGlassSheet(
             dragPx = (dragPx + resisted).coerceAtLeast(-24f)
         }
 
+        var originOnScreen by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .onGloballyPositioned { originOnScreen = it.localToScreen(androidx.compose.ui.geometry.Offset.Zero) }
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
                 ) { if (dismissible) dismissAnimated() },
-            contentAlignment = Alignment.BottomCenter,
+            contentAlignment = if (anchor != null) Alignment.TopCenter else Alignment.BottomCenter,
         ) {
             BoxWithConstraints {
+                val boxHeightPx = constraints.maxHeight.toFloat()
+                // The held point, in this window's own coordinates.
+                val held = anchor?.let { it - originOnScreen }
+                val density = androidx.compose.ui.platform.LocalDensity.current
+                val marginPx = with(density) { 16.dp.toPx() }
+                val sideMarginPx = with(density) { SheetSideMargin.toPx() }
                 Column(
                     modifier = modifier
                         .fillMaxWidth()
-                        .navigationBarsPadding()
+                        .then(if (held == null) Modifier.navigationBarsPadding() else Modifier)
                         .padding(
                             start = SheetSideMargin,
                             end = SheetSideMargin,
-                            bottom = SheetBottomMargin,
+                            bottom = if (held == null) SheetBottomMargin else 0.dp,
                         )
                         .heightIn(max = maxHeight * maxHeightFraction)
                         .onSizeChanged { sheetHeightPx = it.height.toFloat() }
+                        .then(
+                            if (held == null) {
+                                Modifier
+                            } else {
+                                // Just under the finger, kept wholly on screen.
+                                Modifier.offset {
+                                    androidx.compose.ui.unit.IntOffset(
+                                        0,
+                                        (held.y - marginPx * 2f)
+                                            .coerceAtMost(boxHeightPx - sheetHeightPx - marginPx * 3f)
+                                            .coerceAtLeast(marginPx * 3f)
+                                            .roundToInt(),
+                                    )
+                                }
+                            },
+                        )
                         // Translate in the draw phase — animating an offset or padding here would
                         // relayout the whole sheet on every frame of the entrance.
                         .graphicsLayer {
-                            translationY = (1f - progress.value) * size.height + dragPx
+                            if (held == null) {
+                                translationY = (1f - progress.value) * size.height + dragPx
+                            } else {
+                                // Out of the held point: scaled up from it and faded in, rather
+                                // than slid up from the bottom edge.
+                                val p = progress.value
+                                val top = (held.y - marginPx * 2f)
+                                    .coerceAtMost(boxHeightPx - sheetHeightPx - marginPx * 3f)
+                                    .coerceAtLeast(marginPx * 3f)
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(
+                                    ((held.x - sideMarginPx) / size.width.coerceAtLeast(1f)).coerceIn(0f, 1f),
+                                    ((held.y - top) / size.height.coerceAtLeast(1f)).coerceIn(0f, 1f),
+                                )
+                                val scale = 0.6f + 0.4f * p
+                                scaleX = scale
+                                scaleY = scale
+                                alpha = p.coerceIn(0f, 1f)
+                            }
                         }
                         .clip(sheetShape)
                         .background(
@@ -276,7 +325,7 @@ fun LiquidGlassSheet(
                             interactionSource = remember { MutableInteractionSource() },
                         ) {},
                 ) {
-                    if (dismissible) {
+                    if (dismissible && anchor == null) {
                         // The handle is a control, not a decoration.
                         //
                         // It looked exactly like this before and did nothing: every sheet in every
@@ -348,3 +397,4 @@ private val SheetEntranceSpring = spring<Float>(
     dampingRatio = AquamorphicDampingRatio,
     stiffness = AquamorphicStiffness,
 )
+

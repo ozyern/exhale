@@ -791,8 +791,12 @@ class MainActivity : ComponentActivity() {
             ) {
                 BoxWithConstraints(
                     modifier =
-                        Modifier
-                            .fillMaxSize()
+                        with(com.ozyern.exhale.ui.component.HoldTracker) {
+                            Modifier
+                                .fillMaxSize()
+                                // Where a long press is held, so its menu can open there.
+                                .trackHolds()
+                        }
                             .background(
                                 if (pureBlack) Color.Black else MaterialTheme.colorScheme.surface
                             )

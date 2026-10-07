@@ -44,8 +44,12 @@ class MenuState(
     var isVisible by mutableStateOf(isVisible)
     var content by mutableStateOf(content)
 
+    /** Where a hold opened this menu, on screen; null when it was opened any other way. */
+    var heldAt by mutableStateOf<androidx.compose.ui.geometry.Offset?>(null)
+
     @OptIn(ExperimentalMaterial3Api::class)
     fun show(content: @Composable ColumnScope.() -> Unit) {
+        heldAt = HoldTracker.heldNow()
         isVisible = true
         this.content = content
     }
@@ -74,6 +78,9 @@ fun BottomSheetMenu(
                 state.isVisible = false
             },
             maxHeightFraction = 0.9f,
+            // A long press opens the menu where the finger is, as a popup; a tap on ⋮ keeps
+            // the sheet.
+            anchor = state.heldAt,
             modifier = modifier,
         ) {
             Column(
