@@ -143,16 +143,41 @@ internal fun enhancedLrcToTtml(lrc: String): String? {
     val lines = parsed.mapIndexed { index, (start, content) ->
         val nextStart = parsed.getOrNull(index + 1)?.first ?: (start + 5_000L)
         val stamps = ENHANCED_WORD.findAll(content).toList()
-        val words = stamps.mapIndexedNotNull { i, stamp ->
+        // Each stamped run as written, spacing kept: a run with no space after it is a syllable
+        // of a word that carries on ("<31.83>e<31.99>nough "), and is glued to the next rather
+        // than shown as a word of its own. A line with no spaces anywhere states no boundaries
+        // (or is in a script written without them), so there every run stays a word.
+        val runs = stamps.mapIndexed { i, stamp ->
             val textEnd = stamps.getOrNull(i + 1)?.range?.first ?: content.length
-            val text = content.substring(stamp.range.last + 1, textEnd).trim()
-            if (text.isEmpty()) return@mapIndexedNotNull null
-            val wordStart = clockMs(stamp.groupValues[1], stamp.groupValues[2])
-            val wordEnd = stamps.getOrNull(i + 1)
-                ?.let { clockMs(it.groupValues[1], it.groupValues[2]) }
-                ?: nextStart
-            TimedWord(wordStart, wordEnd.coerceAtLeast(wordStart), text)
+            val raw = content.substring(stamp.range.last + 1, textEnd)
+            val start = clockMs(stamp.groupValues[1], stamp.groupValues[2])
+            // The last run with no closing stamp is held until the next line, but not across a
+            // whole instrumental break.
+            val end = stamps.getOrNull(i + 1)?.let { clockMs(it.groupValues[1], it.groupValues[2]) }
+                ?: minOf(nextStart, start + 3_000L)
+            Triple(start, end.coerceAtLeast(start), raw)
         }
+        val glue = runs.any { (_, _, raw) -> raw.trim().isNotEmpty() && raw.any(Char::isWhitespace) }
+        val words = mutableListOf<TimedWord>()
+        var pending: TimedWord? = null
+        for ((start, end, raw) in runs) {
+            val text = raw.trim()
+            if (text.isEmpty()) {
+                pending?.let(words::add); pending = null
+                continue
+            }
+            val held = pending
+            pending = if (held != null && glue && !raw.first().isWhitespace()) {
+                TimedWord(held.startMs, maxOf(held.endMs, end), held.text + text)
+            } else {
+                held?.let(words::add)
+                TimedWord(start, end, text)
+            }
+            if (!glue || raw.last().isWhitespace()) {
+                pending?.let(words::add); pending = null
+            }
+        }
+        pending?.let(words::add)
         val text = ENHANCED_WORD.replace(content, "").replace(Regex("\\s+"), " ").trim()
         TimedLine(
             startMs = start,

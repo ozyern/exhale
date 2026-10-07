@@ -367,7 +367,16 @@ constructor(
                     mediaMetadata.duration,
                     recording,
                 )
-                val lyrics = result.getOrNull()
+                // Word-stamped LRC is stored as the TTML the word-by-word view reads; left as
+                // LRC, it won the race as word-timed and then showed whole lines, with the
+                // stamps printed in the text.
+                val lyrics = result.getOrNull()?.let { text ->
+                    if (text.trimStart().startsWith("[") && ENHANCED_LRC_REGEX.containsMatchIn(text)) {
+                        enhancedLrcToTtml(text) ?: text
+                    } else {
+                        text
+                    }
+                }
                 if (lyrics != null && isMeaningfulLyrics(lyrics)) return lyrics
                 // A source that simply doesn't have the song is not an error worth reporting.
                 result.exceptionOrNull()?.takeIf { it !is NoSuchElementException }?.let(::reportException)

@@ -57,6 +57,8 @@ object TTMLParser {
             val translations = parseTranslations(doc.documentElement)
 
             val divElements = doc.getElementsByTagName("*")
+            // A <div> inside another <div> would otherwise hand its lines over twice.
+            val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Element, Boolean>())
 
             for (divIdx in 0 until divElements.length) {
                 val divElement = divElements.item(divIdx) as? Element ?: continue
@@ -67,6 +69,7 @@ object TTMLParser {
                 for (pIdx in 0 until pElements.length) {
                     val pElement = pElements.item(pIdx) as? Element ?: continue
                     if (!pElement.tagName.endsWith("p", ignoreCase = true)) continue
+                    if (!seen.add(pElement)) continue
 
                     val begin = pElement.getAttribute("begin")
                     val end = pElement.getAttribute("end")
@@ -448,8 +451,13 @@ object TTMLParser {
     ): Double {
         if (raw == null || raw.isNaN() || raw.isInfinite()) return fallback
         val lineDuration = (lineEndTime - lineStartTime).coerceAtLeast(0.0)
+        // A word timed from its line's start rather than the song's is only recognisable once the
+        // line starts later than any word in it could: early in a song the two read the same, and
+        // a word stamped a moment before its line (Apple does this) was taken for an offset and
+        // pushed to the line's end — the first lines of a song then raced through every word.
         val isProbablyRelative =
-            raw < (lineStartTime - 0.25) && raw <= (lineDuration + 1.0)
+            lineStartTime > lineDuration + 1.25 &&
+                raw < (lineStartTime - 0.25) && raw <= (lineDuration + 1.0)
         val adjusted = if (isProbablyRelative) lineStartTime + raw else raw
         return adjusted.coerceIn(lineStartTime.coerceAtLeast(0.0), lineEndTime.coerceAtLeast(lineStartTime))
     }

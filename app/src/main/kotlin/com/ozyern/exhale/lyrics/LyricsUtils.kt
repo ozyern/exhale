@@ -26,8 +26,12 @@ data class LyricsRomanizationPreferences(
 
 @Suppress("RegExpRedundantEscape")
 object LyricsUtils {
-    val LINE_REGEX = "((\\[\\d\\d:\\d\\d\\.\\d{2,3}\\] ?)+)(.+)".toRegex()
-    val TIME_REGEX = "\\[(\\d\\d):(\\d\\d)\\.(\\d{2,3})\\]".toRegex()
+    // Minutes of any width, and the fraction optional or after a colon: `[1:02.5]`, `[01:02]` and
+    // `[01:02:50]` are all written by real sources, and a line the pattern missed simply vanished.
+    val LINE_REGEX = "((\\[\\d{1,3}:\\d{1,2}(?:[.:]\\d{1,3})?\\] ?)+)(.+)".toRegex()
+    val TIME_REGEX = "\\[(\\d{1,3}):(\\d{1,2})(?:[.:](\\d{1,3}))?\\]".toRegex()
+    private val INLINE_WORD_STAMP = "<\\d{1,3}:\\d{1,2}(?:[.:]\\d{1,3})?>".toRegex()
+    private val OFFSET_TAG = "^\\[offset:\\s*([+-]?\\d+)\\s*]".toRegex(RegexOption.IGNORE_CASE)
 
     private val KANA_ROMAJI_MAP: Map<String, String> = mapOf(
         // Digraphs (Yōon - combinations like kya, sho)
@@ -158,11 +162,16 @@ object LyricsUtils {
     fun parseLyrics(lyrics: String): List<LyricsEntry> {
         val lines = lyrics.lines()
         val result = mutableListOf<LyricsEntry>()
+        // `[offset:+500]` means every line shows 500 ms earlier; ignored, the whole file ran late.
+        val offsetMs = lines.firstNotNullOfOrNull { OFFSET_TAG.find(it.trim())?.groupValues?.get(1)?.toLongOrNull() } ?: 0L
 
         for (line in lines) {
             val entries = parseLine(line)
             if (entries != null) {
-                result.addAll(entries)
+                result.addAll(
+                    if (offsetMs == 0L) entries
+                    else entries.map { it.copy(time = (it.time - offsetMs).coerceAtLeast(0L)) },
+                )
             }
         }
         return result.sorted()
@@ -174,7 +183,9 @@ object LyricsUtils {
         }
         val matchResult = LINE_REGEX.matchEntire(line.trim()) ?: return null
         val times = matchResult.groupValues[1]
-        val text = matchResult.groupValues[3]
+        // Word stamps left in a line (enhanced LRC read as plain) are timing, not words.
+        val text = matchResult.groupValues[3].replace(INLINE_WORD_STAMP, "").replace(Regex(" {2,}"), " ").trim()
+        if (text.isEmpty()) return null
         val timeMatchResults = TIME_REGEX.findAll(times)
 
         return timeMatchResults
@@ -182,9 +193,12 @@ object LyricsUtils {
                 val min = timeMatchResult.groupValues[1].toLong()
                 val sec = timeMatchResult.groupValues[2].toLong()
                 val milString = timeMatchResult.groupValues[3]
-                var mil = milString.toLong()
-                if (milString.length == 2) {
-                    mil *= 10
+                // A fraction is tenths, hundredths or thousandths by its width.
+                val mil = when (milString.length) {
+                    0 -> 0L
+                    1 -> milString.toLong() * 100
+                    2 -> milString.toLong() * 10
+                    else -> milString.toLong()
                 }
                 val time = min * DateUtils.MINUTE_IN_MILLIS + sec * DateUtils.SECOND_IN_MILLIS + mil
                 LyricsEntry(time, text)
