@@ -86,8 +86,10 @@ constructor(
         }
 
         val ordered = orderedProviders()
-        val providers = (if (preferredProviderOnly) listOf(ordered.first()) else ordered)
-            .filter { it.isEnabled(context) }
+        // The first source that is switched on: the first in the list may well be off, and a
+        // preload asking only it asked nobody.
+        val enabled = ordered.filter { it.isEnabled(context) }
+        val providers = if (preferredProviderOnly) enabled.take(1) else enabled
         val phrasings = phrasingsOf(mediaMetadata)
         val preferWord = context.dataStore.data.first()[PreferWordSyncedLyricsKey] ?: true
 

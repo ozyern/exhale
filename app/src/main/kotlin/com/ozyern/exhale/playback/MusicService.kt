@@ -5700,10 +5700,12 @@ class MusicService :
                     id = mediaId,
                     itag = format.itag,
                     mimeType = format.mimeType.split(";")[0],
-                    codecs = format.mimeType.split("codecs=")[1].removeSurrounding("\""),
+                    // Both thrown on the database thread, where a throw takes the app down with it:
+                    // a format without a codecs list, or without a length, is still a format.
+                    codecs = format.mimeType.substringAfter("codecs=", "").removeSurrounding("\""),
                     bitrate = format.bitrate,
                     sampleRate = format.audioSampleRate,
-                    contentLength = format.contentLength!!,
+                    contentLength = format.contentLength ?: 0L,
                     loudnessDb = loudnessDb,
                     perceptualLoudnessDb = perceptualLoudnessDb,
                     playbackUrl = playbackData.playbackTracking?.videostatsPlaybackUrl?.baseUrl
