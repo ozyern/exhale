@@ -193,8 +193,8 @@ fun YouTubePlaylistMenu(
                                     }
                                 }
                             } else {
-                                database.transaction {
-                                    val currentPlaylist = dbPlaylist!!.playlist
+                                val currentPlaylist = dbPlaylist?.playlist
+                                if (currentPlaylist != null) database.transaction {
                                     update(currentPlaylist, playlist)
                                     update(currentPlaylist.toggleLike())
                                 }

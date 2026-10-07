@@ -78,9 +78,11 @@ fun TagsManagementDialog(
                 tagToEdit = null
             },
             onSave = { name, color ->
-                if (tagToEdit != null) {
+                // Read now: the dialog clears it on dismiss, before the transaction runs.
+                val editing = tagToEdit
+                if (editing != null) {
                     database.transaction {
-                        update(tagToEdit!!.copy(name = name, color = color))
+                        update(editing.copy(name = name, color = color))
                     }
                 } else {
                     database.transaction {

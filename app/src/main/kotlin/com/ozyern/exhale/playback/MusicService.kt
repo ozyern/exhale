@@ -534,6 +534,10 @@ class MusicService :
     private var lockLyricsReceiver: android.content.BroadcastReceiver? = null
 
     /** Songs whose line-timed lyrics were already re-checked for a word-timed copy this session. */
+    /** A queue page is being fetched; see onMediaItemTransition. */
+    @Volatile
+    private var loadingNextPage = false
+
     private val lyricsUpgradeChecked = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     /** The ticker itself; one at a time, cancelled on every track change. */
@@ -4606,15 +4610,26 @@ class MusicService :
         reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
         player.mediaItemCount - player.currentMediaItemIndex <= 5 &&
         currentQueue.hasNextPage() &&
-        player.repeatMode == REPEAT_MODE_OFF
+        player.repeatMode == REPEAT_MODE_OFF &&
+        !loadingNextPage
     ) {
+        // One page at a time: every skip inside the last five songs asked again, and two answers
+        // to the same continuation put the same songs in the queue twice.
+        loadingNextPage = true
+        val pagedQueue = currentQueue
         scope.launch(SilentHandler) {
-            val mediaItems =
-                currentQueue.nextPage().filterExplicit(dataStore.get(HideExplicitKey, false)).filterVideo(dataStore.get(HideVideoKey, false))
-            if (player.playbackState != STATE_IDLE) {
-                player.addMediaItems(mediaItems.drop(1))
-            } else {
-                scope.launch { discordRpc?.stopActivity() }
+            try {
+                val mediaItems =
+                    pagedQueue.nextPage().filterExplicit(dataStore.get(HideExplicitKey, false)).filterVideo(dataStore.get(HideVideoKey, false))
+                // A different queue started while this page was loading: it isn't this one's.
+                if (pagedQueue !== currentQueue) return@launch
+                if (player.playbackState != STATE_IDLE) {
+                    player.addMediaItems(mediaItems.drop(1))
+                } else {
+                    scope.launch { discordRpc?.stopActivity() }
+                }
+            } finally {
+                loadingNextPage = false
             }
         }
     }
