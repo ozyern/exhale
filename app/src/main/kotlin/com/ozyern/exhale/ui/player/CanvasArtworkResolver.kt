@@ -59,8 +59,11 @@ private suspend fun fetchFromSource(
 ): CanvasArtwork? {
 
     val result: CanvasArtwork? = when (source) {
+        // Apple first, where most moving covers are; Tidal has some Apple doesn't.
         CanvasSource.AUTO ->
             AppleMusicCanvasProvider.getBySongArtist(song, artist, album, storefront)
+                ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
+                ?: TidalCanvasProvider.getBySongArtist(song, artist, album)
 
         CanvasSource.APPLE_MUSIC ->
             AppleMusicCanvasProvider.getBySongArtist(song, artist, album, storefront)

@@ -2785,7 +2785,7 @@ fun V8PlayerBackdrop(
 }
 
 @Composable
-private fun BoxScope.V8MotionArtwork(mediaMetadata: MediaMetadata, isPlaying: Boolean) {
+internal fun BoxScope.V8MotionArtwork(mediaMetadata: MediaMetadata, isPlaying: Boolean) {
     val enabled by com.ozyern.exhale.utils.rememberPreference(com.ozyern.exhale.constants.ExhaleCanvasKey, defaultValue = true)
     val source by com.ozyern.exhale.utils.rememberEnumPreference(
         com.ozyern.exhale.constants.CanvasSourceKey,

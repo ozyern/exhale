@@ -39,14 +39,6 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
 object AppleMusicCanvasProvider {
-
-    // JWT público de solo lectura del web player de Apple Music (By Vivi Music)
-    private const val APPLE_MUSIC_TOKEN =
-        "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiIsImtpZCI6IldlYlBsYXlLaWQifQ" +
-                ".eyJpc3MiOiJBTVBXZWJQbGF5IiwiaWF0IjoxNzgxMDMyODU1LCJleHAiOjE3ODQw" +
-                "NTY4NTUsInJvb3RfaHR0cHNfb3JpZ2luIjpbImFwcGxlLmNvbSJdfQ" +
-                ".fiMFcJWkfSlxKP9NVA0UW9CbItD1Rge0SISuepz203XcpU762OqdCpU9M-YkmtKkjRmaIWtjsfGgqZPrlMonpA"
-
     private const val AMP_BASE_URL = "https://amp-api.music.apple.com"
 
     private val json = Json {
@@ -57,6 +49,8 @@ object AppleMusicCanvasProvider {
 
     private val client by lazy {
         HttpClient(OkHttp) {
+            // Puts a live token on every catalogue request; see AppleMusicToken.
+            engine { addInterceptor(AppleMusicToken.interceptor) }
             install(ContentNegotiation) {
                 json(json)
                 register(ContentType.Text.JavaScript, KotlinxSerializationConverter(json))
@@ -121,7 +115,6 @@ object AppleMusicCanvasProvider {
         cache[key]?.takeIf { it.expiresAtMs > System.currentTimeMillis() }?.let { return it.value?.animated }
         val url = runCatching {
             val response = client.get("$AMP_BASE_URL/v1/catalog/$storefront/search") {
-                header("Authorization", "Bearer $APPLE_MUSIC_TOKEN")
                 header("Origin", "https://music.apple.com")
                 header("Referer", "https://music.apple.com/")
                 header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
@@ -169,7 +162,6 @@ object AppleMusicCanvasProvider {
         }
 
         val response = client.get("$AMP_BASE_URL/v1/catalog/$storefront/search") {
-            header("Authorization", "Bearer $APPLE_MUSIC_TOKEN")
             header("Origin", "https://music.apple.com")
             header("Referer", "https://music.apple.com/")
             header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
@@ -312,7 +304,6 @@ object AppleMusicCanvasProvider {
 
         return runCatching {
             val response = client.get("$AMP_BASE_URL/v1/catalog/$storefront/albums/$albumId") {
-                header("Authorization", "Bearer $APPLE_MUSIC_TOKEN")
                 header("Origin", "https://music.apple.com")
                 header("Referer", "https://music.apple.com/")
                 header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")

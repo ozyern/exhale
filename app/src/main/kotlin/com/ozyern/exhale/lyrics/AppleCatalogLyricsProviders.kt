@@ -240,7 +240,7 @@ object PaxSenixLyricsProvider : LyricsProvider {
     private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
     private fun JsonObject.long(key: String): Long? = (this[key] as? JsonPrimitive)?.longOrNull
 
-    private val APPLE_INDEX_SCRIPT = Regex("""/assets/index~[^"]+\.js""")
+    private val APPLE_INDEX_SCRIPT = Regex("""/assets/index[~-][^"]+\.js""")
     private val APPLE_TOKEN = Regex("""eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+""")
 }
 

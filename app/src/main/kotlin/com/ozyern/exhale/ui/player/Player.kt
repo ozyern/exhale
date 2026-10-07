@@ -937,6 +937,8 @@ fun BottomSheetPlayer(
                             disableBlur = disableBlur,
                             label = "v7BackdropLandscape",
                         )
+                        // The song's moving cover, where it has one, as the other players show it.
+                        mediaMetadata?.let { V8MotionArtwork(it, isPlaying && state.isExpanded) }
 
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -1200,6 +1202,8 @@ fun BottomSheetPlayer(
                             disableBlur = disableBlur,
                             label = "v7BackdropPortrait",
                         )
+                        // The song's moving cover, where it has one, as the other players show it.
+                        mediaMetadata?.let { V8MotionArtwork(it, isPlaying && state.isExpanded) }
 
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
