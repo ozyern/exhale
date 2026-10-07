@@ -49,6 +49,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -295,78 +298,33 @@ fun TopSearch(
             }
 
             if (inputAtBottom) {
-                // Apple-Music layout: browse/result content fills the top, the search
-                // field floats as a frosted pill docked at the bottom of the screen.
+                // The pill is tapped at the bottom, where the thumb is, but typing happens at the
+                // TOP: a field sitting on the keyboard covers the very suggestions and history it
+                // is producing. So once active, the field rises to just under the status bar and
+                // the list reads downward from it, the way it does in Apple Music.
+                val topSafe = with(LocalDensity.current) {
+                    WindowInsets.safeDrawing.getTop(this).toDp()
+                }
+                val listHeight = (contentTargetHeight + bottomBarPadding - topSafe - 16.dp)
+                    .coerceAtLeast(0.dp)
                 Column(Modifier.fillMaxSize()) {
-                    if (animationProgress > 0) {
-                        // PERF: the surface's height animates from the collapsed bar to the
-                        // full screen, and this used to be `weight(1f)` — so the entire
-                        // result list (two LazyColumns behind a Crossfade, plus the browse
-                        // grid) was re-measured and re-laid-out on EVERY frame of the
-                        // expansion, from one pixel tall upward. That is the search-page
-                        // stutter: not the blur, not the network, a full layout pass 60×/s
-                        // over the heaviest subtree in the app.
-                        //
-                        // `requiredHeight` overrides the incoming constraint, so the list is
-                        // measured once at its final height and the growing surface simply
-                        // clips it. Anchoring to the bottom means the window opens upward
-                        // from the field — the list is revealed rather than stretched, which
-                        // also happens to be the motion Apple Music uses.
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clipToBounds(),
-                            contentAlignment = Alignment.BottomCenter,
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .requiredHeight(contentTargetHeight)
-                                    .fillMaxWidth()
-                                    // The docked layout bypasses the classic top-anchored inset
-                                    // handling, so the safe-area inset must be applied here —
-                                    // without it "Search history" rams into the status bar and
-                                    // camera cutout. 12dp of extra breathing room below the inset.
-                                    .windowInsetsPadding(
-                                        WindowInsets.safeDrawing.only(WindowInsetsSides.Top)
-                                    )
-                                    .padding(top = 12.dp)
-                                    // Read inside graphicsLayer, not as a composition-phase
-                                    // `alpha()` — this keeps the fade in the draw phase and off
-                                    // the recomposition path entirely.
-                                    .graphicsLayer { alpha = animationProgress },
-                            ) {
-                                content()
-                            }
-                        }
-                    }
-
                     val pillHorizontalPadding = lerp(0.dp, SearchBarHorizontalPadding, animationProgress)
-                    val pillBottomPadding = lerp(0.dp, bottomBarPadding, animationProgress)
-                    // Apple-Music search field: a heavily-frosted, pill-shaped glass capsule that
-                    // reads as part of the floating bottom chrome — NOT a flat Material text field.
-                    // Uses the same genuine Kyant liquid-glass backdrop as the nav bar so content
-                    // scrolling behind it refracts through the pill. When the field is active a
-                    // "Cancel" text button slides in on the trailing edge (outside the capsule),
-                    // exactly like iOS.
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .imePadding()
-                            .padding(
-                                start = pillHorizontalPadding,
-                                end = pillHorizontalPadding,
-                                bottom = pillBottomPadding,
-                            ),
+                            .padding(top = topSafe + 8.dp, bottom = 8.dp)
+                            .padding(start = pillHorizontalPadding, end = pillHorizontalPadding)
+                            // Rises the last stretch into place rather than appearing there.
+                            .graphicsLayer {
+                                translationY = (1f - animationProgress) * 48.dp.toPx()
+                                alpha = animationProgress
+                            },
                     ) {
                         SearchFrostedPill(
                             contentColor = contentColorFor(colors.containerColor),
                             modifier = Modifier.weight(1f),
                         ) {
-                            // NO animated padding here: that padding (which includes the status-bar
-                            // inset) belongs to the classic top-anchored expansion. Applied to the
-                            // docked pill it ballooned the capsule into a chunky slab when focused.
-                            // The pill keeps its slim InputFieldHeight in every state.
                             inputField(Modifier)
                         }
 
@@ -381,12 +339,6 @@ fun TopSearch(
                                 shrinkTowards = Alignment.Start,
                             ),
                         ) {
-                            // The cancel affordance, as glass rather than as a bare glyph.
-                            //
-                            // It sits immediately beside a frosted pill, which is what made the
-                            // old version stand out: one half of the row was a surface and the
-                            // other was ink printed on the background. Same disc, same lens, same
-                            // press as the back arrow and the app-bar search icon.
                             LiquidGlassIconButton(
                                 onClick = { onActiveChange(false) },
                                 icon = R.drawable.expand_more, // Closes search; the X inside the field only clears it.
@@ -395,12 +347,36 @@ fun TopSearch(
                                 diameter = 34.dp,
                                 iconSize = 17.dp,
                                 modifier = Modifier.padding(start = 6.dp),
-                                // The pill's own backdrop. This sits in chrome, immediately beside
-                                // the bar, so it can and should bend exactly the pixels the bar is
-                                // bending — anything else and two touching surfaces would be
-                                // showing two different views of what is behind them.
                                 backdrop = LocalAppBackdrop.current,
                             )
+                        }
+                    }
+
+                    if (animationProgress > 0) {
+                        // PERF: the surface grows every frame of the expansion; measuring the
+                        // result lists at their final height once (and letting the surface clip
+                        // them) keeps that from being a full re-layout of the heaviest subtree
+                        // 60 times a second.
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clipToBounds(),
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .wrapContentHeight(Alignment.Top, unbounded = true)
+                                    .requiredHeight(listHeight)
+                                    .fillMaxWidth()
+                                    // Stops above the keyboard, or above the floating bars when
+                                    // the keyboard is down, so the last suggestion is never under
+                                    // either.
+                                    .windowInsetsPadding(
+                                        WindowInsets.ime.union(WindowInsets(bottom = bottomBarPadding))
+                                    )
+                                    .graphicsLayer { alpha = animationProgress },
+                            ) {
+                                content()
+                            }
                         }
                     }
                 }

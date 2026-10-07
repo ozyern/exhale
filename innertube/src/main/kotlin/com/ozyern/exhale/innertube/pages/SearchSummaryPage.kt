@@ -17,7 +17,9 @@ import com.ozyern.exhale.innertube.models.SongItem
 import com.ozyern.exhale.innertube.models.YTItem
 import com.ozyern.exhale.innertube.models.filterExplicit
 import com.ozyern.exhale.innertube.models.filterVideo
+import com.ozyern.exhale.innertube.models.isMusicVideo
 import com.ozyern.exhale.innertube.models.oddElements
+import com.ozyern.exhale.innertube.models.songsFirst
 import com.ozyern.exhale.innertube.models.splitBySeparator
 import com.ozyern.exhale.innertube.utils.parseTime
 
@@ -59,6 +61,17 @@ data class SearchSummaryPage(
         } else {
             this
         }
+
+    /**
+     * Songs ahead of videos, inside each section and between sections: a section that is mostly
+     * videos moves below the ones that are not. The top section keeps its place.
+     */
+    fun songsFirst(): SearchSummaryPage {
+        val ranked = summaries.map { SearchSummary(it.title, it.items.songsFirst()) }
+        if (ranked.size < 2) return SearchSummaryPage(ranked)
+        val rest = ranked.drop(1).sortedBy { s -> if (s.items.count { it.isMusicVideo } * 2 > s.items.size) 1 else 0 }
+        return SearchSummaryPage(listOf(ranked.first()) + rest)
+    }
 
     companion object {
         fun fromMusicCardShelfRenderer(renderer: MusicCardShelfRenderer): YTItem? {

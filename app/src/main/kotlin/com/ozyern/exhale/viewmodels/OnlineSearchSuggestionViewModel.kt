@@ -16,6 +16,7 @@ import com.ozyern.exhale.innertube.models.SearchSuggestions
 import com.ozyern.exhale.innertube.models.YTItem
 import com.ozyern.exhale.innertube.models.filterExplicit
 import com.ozyern.exhale.innertube.models.filterVideo
+import com.ozyern.exhale.innertube.models.songsFirst
 import com.ozyern.exhale.constants.HideExplicitKey
 import com.ozyern.exhale.constants.HideVideoKey
 import com.ozyern.exhale.db.MusicDatabase
@@ -112,6 +113,7 @@ constructor(
                         // LazyColumn's item lambda where it re-allocated the whole list on
                         // every recomposition — including every frame of a scroll.
                         ?.distinctBy { it.id }
+                        ?.songsFirst()
                         .orEmpty(),
                 )
             }.collect { _viewState.value = it }

@@ -133,3 +133,25 @@ fun <T : YTItem> List<T>.filterVideo(enabled: Boolean = true) =
     } else {
         this
     }
+
+/** A music video or a user upload rather than the audio track itself. */
+val YTItem.isMusicVideo: Boolean
+    get() = this is SongItem && endpoint?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType
+        .let { it == MUSIC_VIDEO_TYPE_OMV || it == MUSIC_VIDEO_TYPE_UGC }
+
+/**
+ * Songs before videos. Most people searching a track want the track — a video loads slower and
+ * carries the intro, the dialogue and the scene. The lead item stays put unless it is a video (an
+ * artist or album the search named is the right first answer); after it come the songs, then
+ * everything else, then the videos, each group in the order the catalogue ranked it.
+ */
+fun <T : YTItem> List<T>.songsFirst(): List<T> {
+    if (isEmpty()) return this
+    fun rank(item: T) = when {
+        item is SongItem && !item.isMusicVideo -> 0
+        item.isMusicVideo -> 2
+        else -> 1
+    }
+    val lead = first()
+    return if (lead.isMusicVideo) sortedBy(::rank) else listOf(lead) + drop(1).sortedBy(::rank)
+}

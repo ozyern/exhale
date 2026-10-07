@@ -179,7 +179,15 @@ fun AccountSettings(
     val openLibrary: (LibraryFilter) -> Unit = { filter ->
         onLibraryFilterChange(filter)
         onClose()
-        navController.navigate(Screens.Library.route)
+        // As a tab switch, not a push: pushed on top of another tab, Library became part of that
+        // tab's saved history, and tapping the tab again restored straight back to Library.
+        navController.navigate(Screens.Library.route) {
+            popUpTo(navController.graph.startDestinationId) {
+                saveState = true
+            }
+            launchSingleTop = true
+            restoreState = true
+        }
     }
 
     var showToken by remember { mutableStateOf(false) }

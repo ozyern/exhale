@@ -19,6 +19,7 @@ import androidx.lifecycle.viewModelScope
 import com.ozyern.exhale.innertube.YouTube
 import com.ozyern.exhale.innertube.models.filterExplicit
 import com.ozyern.exhale.innertube.models.filterVideo
+import com.ozyern.exhale.innertube.models.songsFirst
 import com.ozyern.exhale.innertube.pages.SearchSummaryPage
 import com.ozyern.exhale.constants.HideExplicitKey
 import com.ozyern.exhale.constants.HideVideoKey
@@ -59,7 +60,7 @@ constructor(
                             YouTube
                                 .searchSummary(query)
                                 .onSuccess {
-                                    summaryPage = it.filterExplicit(context.dataStore.get(HideExplicitKey, false)).filterVideo(context.dataStore.get(HideVideoKey, false))
+                                    summaryPage = it.filterExplicit(context.dataStore.get(HideExplicitKey, false)).filterVideo(context.dataStore.get(HideVideoKey, false)).songsFirst()
                                 }.onFailure {
                                     reportException(it)
                                 }
