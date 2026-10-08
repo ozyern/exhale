@@ -53,6 +53,7 @@ val SettingsIndex: List<SettingsIndexEntry> = listOf(
     SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Plain("Dock"), IndexText.Plain("Tab labels"), listOf("dock", "navigation", "nav bar", "navbar", "bottom bar", "tab bar", "tabs", "menu bar", "jelly", "names", "text", "titles", "icons only")),
     SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Plain("Dock"), IndexText.Plain("Compact dock"), listOf("dock", "navigation", "nav bar", "navbar", "bottom bar", "tab bar", "tabs", "menu bar", "jelly", "small", "smaller", "slim", "short", "size")),
     SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Plain("Dock"), IndexText.Plain("Touch glow"), listOf("dock", "navigation", "nav bar", "navbar", "bottom bar", "tab bar", "tabs", "menu bar", "jelly", "glow", "light", "highlight", "drag")),
+    SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Plain("Settings page"), IndexText.Plain("Search bar"), listOf("settings search", "search bar", "search position", "top", "bottom", "move search", "search at top", "settings page", "layout", "customise", "customize")),
     SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Res(R.string.misc), IndexText.Res(R.string.default_open_tab)),
     SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Res(R.string.misc), IndexText.Res(R.string.default_lib_chips)),
     SettingsIndexEntry("settings/appearance", "Appearance", IndexText.Res(R.string.misc), IndexText.Plain("Always On Display")),

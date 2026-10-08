@@ -1038,6 +1038,17 @@ val DockLabelsKey = booleanPreferencesKey("dockLabels")
 val DockCompactKey = booleanPreferencesKey("dockCompact")
 val DockGlowKey = booleanPreferencesKey("dockGlow")
 
+/** Where the Settings page keeps its search bar. */
+val SettingsSearchPositionKey = stringPreferencesKey("settingsSearchPosition")
+
+enum class SettingsSearchPosition {
+    /** iOS's place: a capsule at the foot of the page, resting on the dock, in reach of a thumb. */
+    BOTTOM,
+
+    /** Under the page title, where most Android settings put it. */
+    TOP,
+}
+
 enum class DockStyle {
     /** The glass capsule riding on the selected tab. */
     LIQUID,

@@ -166,6 +166,10 @@ fun AppearanceSettings(
         DarkModeKey,
         defaultValue = DarkMode.AUTO
     )
+    val (settingsSearchPosition, onSettingsSearchPositionChange) = rememberEnumPreference(
+        com.ozyern.exhale.constants.SettingsSearchPositionKey,
+        defaultValue = com.ozyern.exhale.constants.SettingsSearchPosition.BOTTOM
+    )
     val (dockStyle, onDockStyleChange) = rememberEnumPreference(
         com.ozyern.exhale.constants.DockStyleKey,
         defaultValue = com.ozyern.exhale.constants.DockStyle.LIQUID
@@ -792,6 +796,24 @@ fun AppearanceSettings(
                     )
                 }
             }
+        }
+
+        PreferenceGroupTitle(
+            title = "Settings page",
+        )
+        PreferenceGroup {
+            EnumListPreference(
+                title = { Text("Search bar") },
+                icon = { Icon(painterResource(R.drawable.search), null) },
+                selectedValue = settingsSearchPosition,
+                onValueSelected = onSettingsSearchPositionChange,
+                valueText = {
+                    when (it) {
+                        com.ozyern.exhale.constants.SettingsSearchPosition.BOTTOM -> "At the bottom"
+                        com.ozyern.exhale.constants.SettingsSearchPosition.TOP -> "At the top"
+                    }
+                },
+            )
         }
 
         PreferenceGroupTitle(

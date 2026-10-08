@@ -74,6 +74,11 @@ fun SettingsScreen(
     var isSearching by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf(TextFieldValue()) }
     val focusRequester = remember { FocusRequester() }
+    val (searchPosition) = com.ozyern.exhale.utils.rememberEnumPreference(
+        com.ozyern.exhale.constants.SettingsSearchPositionKey,
+        com.ozyern.exhale.constants.SettingsSearchPosition.BOTTOM,
+    )
+    val searchAtTop = searchPosition == com.ozyern.exhale.constants.SettingsSearchPosition.TOP
 
 
     val storagePermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -212,19 +217,32 @@ fun SettingsScreen(
             AdaptiveSettingsLayout(
                 state = contentState,
                 listState = listState,
-                topPadding = innerPadding.calculateTopPadding(),
+                // At the top, the list starts below the search bar as well as the title.
+                topPadding = innerPadding.calculateTopPadding() + if (searchAtTop) SearchAtTopHeight else 0.dp,
                 modifier = Modifier.fillMaxSize(),
             )
 
-            // iOS's place for it: a capsule at the foot of the page, resting on the dock.
+            // iOS's place for it by default: a capsule at the foot of the page, resting on the
+            // dock. Or under the title, for those who'd rather have it there (Appearance >
+            // Settings page). It rides with the title as that collapses.
             SettingsBottomSearch(
                 query = query,
                 onQueryChange = { query = it; isSearching = true },
                 onClear = { resetSearch() },
                 focusRequester = focusRequester,
-                modifier = Modifier.align(Alignment.BottomCenter),
+                atTop = searchAtTop,
+                modifier = if (searchAtTop) {
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = innerPadding.calculateTopPadding())
+                } else {
+                    Modifier.align(Alignment.BottomCenter)
+                },
             )
         }
     }
 }
 
+
+/** The capsule (50dp) and its padding above and below, when it sits under the title. */
+private val SearchAtTopHeight = 62.dp

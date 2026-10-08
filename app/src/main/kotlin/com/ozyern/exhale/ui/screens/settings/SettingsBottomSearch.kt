@@ -76,6 +76,8 @@ internal fun SettingsBottomSearch(
     onClear: () -> Unit,
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
+    /** Placed under the page title instead of on the dock: no dock or keyboard to clear. */
+    atTop: Boolean = false,
 ) {
     val dark = isSystemInDarkTheme()
     val focusManager = LocalFocusManager.current
@@ -90,13 +92,20 @@ internal fun SettingsBottomSearch(
     Box(
         modifier
             .fillMaxWidth()
-            // Above the dock (and the mini player in it), and above the keyboard while typing.
-            .windowInsetsPadding(
-                com.ozyern.exhale.LocalPlayerAwareWindowInsets.current
-                    .only(androidx.compose.foundation.layout.WindowInsetsSides.Bottom)
-                    .union(androidx.compose.foundation.layout.WindowInsets.ime),
+            // At the foot: above the dock (and the mini player in it), and above the keyboard
+            // while typing. At the top there is neither to clear.
+            .then(
+                if (atTop) {
+                    Modifier
+                } else {
+                    Modifier.windowInsetsPadding(
+                        com.ozyern.exhale.LocalPlayerAwareWindowInsets.current
+                            .only(androidx.compose.foundation.layout.WindowInsetsSides.Bottom)
+                            .union(androidx.compose.foundation.layout.WindowInsets.ime),
+                    )
+                },
             )
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = if (atTop) 6.dp else 10.dp),
     ) {
         Row(
             modifier = Modifier
