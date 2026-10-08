@@ -5551,8 +5551,9 @@ class MusicService :
                     dataSpec.length
                 } else {
                     val contentLength =
+                        // A stored length of 0 means the stream never said; ask the caches instead.
                         runBlocking(Dispatchers.IO) {
-                            database.format(mediaId).first()?.contentLength
+                            database.format(mediaId).first()?.contentLength?.takeIf { it > 0L }
                         } ?: runCatching {
                             downloadCache
                                 .getContentMetadata(mediaId)
@@ -5799,7 +5800,11 @@ class MusicService :
         val previous = runCatching {
             runBlocking(Dispatchers.IO) { database.format(mediaId).first() }
         }.getOrNull() ?: return
-        val sameFile = previous.itag == format.itag && previous.contentLength == format.contentLength
+        // A length of 0 (stored) or none (sent) is unknown, not different: the same itag with an
+        // unknown size is taken to be the same file rather than throwing a whole cached song away.
+        val sentLength = format.contentLength?.takeIf { it > 0L }
+        val sameFile = previous.itag == format.itag &&
+            (previous.contentLength <= 0L || sentLength == null || previous.contentLength == sentLength)
         if (sameFile) return
         runCatching {
             if (playerCache.getCachedSpans(mediaId).isNotEmpty()) {
@@ -5967,7 +5972,6 @@ class MusicService :
             isDownloadedLocally(mediaId) ||
             playerCacheHasWhole(mediaId)
 
-    /** True when [mediaId] is complete in the download cache, so playback never asks the network. */
     /**
      * The stream a Cast receiver can open for [item], or null when there is none it can: a file on
      * this phone is out of its reach. The same resolution the phone's own playback uses, so the
@@ -5993,6 +5997,7 @@ class MusicService :
             com.ozyern.exhale.playback.cast.CastStream(url, com.ozyern.exhale.playback.cast.CastMirror.mimeTypeOf(uri))
         }
 
+    /** True when [mediaId] is complete in the download cache, so playback never asks the network. */
     private fun isDownloadedLocally(mediaId: String): Boolean {
         val contentLength = runCatching {
             downloadCache.getContentMetadata(mediaId)

@@ -56,7 +56,7 @@ class CachePlaylistViewModel @Inject constructor(
 
                 val completeSongs = songs.filter {
                     val contentLength = it.format?.contentLength
-                    contentLength != null && playerCache.isCached(it.song.id, 0, contentLength)
+                    contentLength != null && contentLength > 0L && playerCache.isCached(it.song.id, 0, contentLength)
                 }
 
                 if (completeSongs.isNotEmpty()) {
