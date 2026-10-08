@@ -157,6 +157,15 @@ fun PlayerSettings(
         // virtualizers in series is what makes those phones sound wrong. See DeviceAudio.
         defaultValue = com.ozyern.exhale.utils.DeviceAudio.defaultSpatialAudio
     )
+    val (eightD, onEightDChange) = rememberPreference(com.ozyern.exhale.constants.EightDEnabledKey, false)
+    val (eightDSpeed, onEightDSpeedChange) = rememberPreference(
+        com.ozyern.exhale.constants.EightDRotationHzKey,
+        com.ozyern.exhale.playback.EightDAudioProcessor.DEFAULT_ROTATION_HZ,
+    )
+    val (eightDDepth, onEightDDepthChange) = rememberPreference(
+        com.ozyern.exhale.constants.EightDDepthKey,
+        com.ozyern.exhale.playback.EightDAudioProcessor.DEFAULT_DEPTH,
+    )
     val (spatialProfile, onSpatialProfileChange) = rememberEnumPreference(
         SpatialAudioProfileKey,
         // Cinema out of the box. The stage widths are a matter of taste, and the widest one is the
@@ -517,6 +526,23 @@ fun PlayerSettings(
 
             PreferenceGroupDivider()
             SwitchPreference(
+                title = { Text("8D audio") },
+                description = "The song circles your head, passing behind you on the way round. Best on headphones",
+                icon = { Icon(painterResource(R.drawable.headphones), null) },
+                checked = eightD,
+                onCheckedChange = onEightDChange,
+            )
+            AnimatedVisibility(visible = eightD) {
+                EightDControls(
+                    speed = eightDSpeed,
+                    onSpeedChange = onEightDSpeedChange,
+                    width = eightDDepth,
+                    onWidthChange = onEightDDepthChange,
+                )
+            }
+
+            PreferenceGroupDivider()
+            SwitchPreference(
                 title = { Text(stringResource(R.string.audio_normalization)) },
                 description = "Evens out loudness from song to song, from the stream's own measurement",
                 icon = { Icon(painterResource(R.drawable.volume_up), null) },
@@ -738,4 +764,42 @@ fun PlayerSettings(
             )
         }
     )
+}
+
+/** How fast the 8D orbit goes round, and how far out to each ear it swings. */
+@Composable
+private fun EightDControls(
+    speed: Float,
+    onSpeedChange: (Float) -> Unit,
+    width: Float,
+    onWidthChange: (Float) -> Unit,
+) {
+    val ink = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+    androidx.compose.foundation.layout.Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 56.dp, end = 20.dp, bottom = 12.dp),
+    ) {
+        val lap = 1f / speed.coerceAtLeast(0.01f)
+        androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth()) {
+            Text("Speed", color = ink, modifier = Modifier.weight(1f))
+            Text("One lap every ${"%.0f".format(lap)} s", color = ink.copy(alpha = 0.55f))
+        }
+        com.ozyern.exhale.ui.component.liquid.LiquidSlider(
+            value = speed,
+            onValueChange = onSpeedChange,
+            valueRange = com.ozyern.exhale.playback.EightDAudioProcessor.MIN_ROTATION_HZ..
+                com.ozyern.exhale.playback.EightDAudioProcessor.MAX_ROTATION_HZ,
+        )
+        androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
+        androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth()) {
+            Text("Width", color = ink, modifier = Modifier.weight(1f))
+            Text("${(width * 100).toInt()}%", color = ink.copy(alpha = 0.55f))
+        }
+        com.ozyern.exhale.ui.component.liquid.LiquidSlider(
+            value = width,
+            onValueChange = onWidthChange,
+            valueRange = 0.3f..1f,
+        )
+    }
 }

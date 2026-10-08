@@ -317,6 +317,10 @@ val SkipSilenceKey = booleanPreferencesKey("skipSilence")
 /** Play a matching FLAC/WAV/AIFF already on the phone in place of YouTube's stream. */
 val PreferLocalLosslessKey = booleanPreferencesKey("preferLocalLossless")
 val AudioNormalizationKey = booleanPreferencesKey("audioNormalization")
+/** 8D: the song circling the listener's head. See EightDAudioProcessor. */
+val EightDEnabledKey = booleanPreferencesKey("eightDEnabled")
+val EightDRotationHzKey = floatPreferencesKey("eightDRotationHz")
+val EightDDepthKey = floatPreferencesKey("eightDDepth")
 val SpatialAudioKey = booleanPreferencesKey("spatialAudio") // Cavern-style Atmos/spatial upscaling
 
 /**

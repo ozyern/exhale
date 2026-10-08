@@ -1082,6 +1082,39 @@ fun TempoPitchDialog(onDismiss: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
+            // One tap to a whole sound. Speed and pitch move together, the way a record does when
+            // it is played fast or slow — which is what these styles are, and why a tempo change
+            // with the pitch held still sounds like none of them.
+            TunerHeading(
+                iconRes = R.drawable.mix,
+                label = "Sound",
+                value = SoundPresets.firstOrNull { (_, s, p) -> abs(tempo - s) < 0.005f && abs(pitch - p) < 0.005f }
+                    ?.first ?: "Custom",
+            )
+            TunerChipRow(
+                options = SoundPresets.map { it.first },
+                selectedIndex = SoundPresets.indexOfFirst { (_, s, p) -> abs(tempo - s) < 0.005f && abs(pitch - p) < 0.005f },
+                onSelect = { index ->
+                    val (_, s, p) = SoundPresets[index]
+                    tempo = s
+                    pitch = p
+                    applyPlaybackParameters(tempo, pitch)
+                },
+            )
+
+            // 8D, a tap from the song it is for; the speed and width live in Player settings.
+            val (eightD, onEightDChange) = com.ozyern.exhale.utils.rememberPreference(
+                com.ozyern.exhale.constants.EightDEnabledKey,
+                false,
+            )
+            TunerSegmentedControl(
+                options = listOf("8D off", "8D on"),
+                selectedIndex = if (eightD) 1 else 0,
+                onSelect = { onEightDChange(it == 1) },
+            )
+
+            TunerRule()
+
             TunerHeading(
                 iconRes = R.drawable.speed,
                 label = stringResource(R.string.tempo),
@@ -1235,6 +1268,20 @@ fun TempoPitchDialog(onDismiss: () -> Unit) {
         }
     }
 }
+
+/**
+ * The sounds the "Sound" row offers, as (name, speed, pitch). Every one but Normal plays the song
+ * like a record at another speed: Nightcore and Daycore are three semitones up and down, Vaporwave
+ * four down, and Sped up / Slowed the rates those uploads are usually made at.
+ */
+private val SoundPresets = listOf(
+    Triple("Normal", 1f, 1f),
+    Triple("Sped up", 1.25f, 1.25f),
+    Triple("Nightcore", 1.19f, 1.19f),
+    Triple("Slowed", 0.85f, 0.85f),
+    Triple("Daycore", 0.84f, 0.84f),
+    Triple("Vaporwave", 0.79f, 0.79f),
+)
 
 /** The presets both multiplier sliders offer. */
 private val MultiplierPresets = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)

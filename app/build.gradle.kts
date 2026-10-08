@@ -272,6 +272,8 @@ dependencies {
     // handed finished stream URLs resolved on the phone, see playback/cast/CastMirror.
     implementation("com.google.android.gms:play-services-cast-framework:22.2.0")
     implementation("androidx.mediarouter:mediarouter:1.8.1")
+    // Applies baseline-prof.txt on install for a sideloaded APK too, not only one from a store.
+    implementation(libs.androidx.profileinstaller)
     implementation(libs.guava)
     implementation(libs.coroutines.guava)
     implementation(libs.concurrent.futures)

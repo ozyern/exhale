@@ -1051,6 +1051,22 @@ class MusicService :
                 player.skipSilenceEnabled = it
             }
 
+        // 8D, read by the processor once per buffer, like the spatial toggle below.
+        dataStore.data
+            .map {
+                Triple(
+                    it[com.ozyern.exhale.constants.EightDEnabledKey] ?: false,
+                    it[com.ozyern.exhale.constants.EightDRotationHzKey] ?: EightDAudioProcessor.DEFAULT_ROTATION_HZ,
+                    it[com.ozyern.exhale.constants.EightDDepthKey] ?: EightDAudioProcessor.DEFAULT_DEPTH,
+                )
+            }
+            .distinctUntilChanged()
+            .collectLatest(scope) { (on, rotation, depth) ->
+                EightDAudioProcessor.enabled = on
+                EightDAudioProcessor.rotationHz = rotation
+                EightDAudioProcessor.depth = depth
+            }
+
         // Cavern spatial-audio upscaler toggle. The flag is a @Volatile static
         // read once per audio buffer, so flipping it is instant and never
         // requires rebuilding the player/sink.
@@ -6160,6 +6176,8 @@ class MusicService :
                         // Automix's filter sweeps and bass swaps; a straight copy between transitions.
                         transitionFilter,
                         CavernSpatialAudioProcessor(),
+                        // After the stage is built: 8D moves the whole of it round the head.
+                        EightDAudioProcessor(),
                         // Last: it only measures what everything before it made.
                         LevelMeterAudioProcessor(),
                     ),
