@@ -32,6 +32,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
@@ -432,9 +433,21 @@ internal fun NowPlayingScreen(
     // cover arrives at the mini player's artwork instead of dissolving into it; opening runs it
     // backwards, the artwork growing out of the pill into the full cover. Done by three tenths of
     // the way down, before the sheet hands over to the pill.
+    //
+    // With the cover flight on, the cover does not shrink in here at all: it is lifted out of the
+    // player whole and carried to the mini player over everything (see CoverFlight).
+    val flight = LocalCoverFlight.current
+    val flightOn = flight?.enabled == true
     val sheetClose: () -> Float = {
-        FastOutSlowInEasing.transform(((1f - playerSheetState.progress) / 0.7f).coerceIn(0f, 1f))
+        if (flightOn) {
+            0f
+        } else {
+            FastOutSlowInEasing.transform(((1f - playerSheetState.progress) / 0.7f).coerceIn(0f, 1f))
+        }
     }
+    // Hidden while the travelling cover stands in for it. Read where things are drawn.
+    val flying: () -> Boolean = { flight?.inFlight() == true }
+    val flyingNow by remember { derivedStateOf { flying() } }
     // Geometry answers to whichever is further along. The panels answer to [p] alone.
     val g: () -> Float = { max(p(), sheetClose()) }
     val collapseStarted by remember { derivedStateOf { g() > 0f } }
@@ -525,7 +538,13 @@ internal fun NowPlayingScreen(
     LaunchedEffect(artLoaded, canvasRendered) { if (artLoaded || canvasRendered) heroSettled = true }
     val heroT = animateFloatAsState(
         targetValue = if (artLoaded || canvasRendered || heroSettled) 1f else 0f,
-        animationSpec = tween(durationMillis = COLLAPSE_MS, easing = FastOutSlowInEasing),
+        // Behind the travelling cover nobody sees the banner arrive, so it is simply there when
+        // the cover lands on it rather than still fading in under it.
+        animationSpec = if (flyingNow) {
+            snap()
+        } else {
+            tween(durationMillis = COLLAPSE_MS, easing = FastOutSlowInEasing)
+        },
         label = "npHero",
     )
     // The banner dissolves *as* the sleeve shrinks — one movement rather than two in a row.
@@ -725,7 +744,29 @@ internal fun NowPlayingScreen(
         panel = if (panel == NowPlayingPanel.Queue) NowPlayingPanel.None else NowPlayingPanel.Queue
     }
 
-    Box(modifier = modifier.fillMaxSize().onGloballyPositioned { screenOrigin = it.boundsInRoot().topLeft }) {
+    // How the banner is drawn, for the travelling cover to leave from and land on: the same
+    // breath of zoom and drift, the same sink and dim when paused, the same dissolve at the foot.
+    val heroLook: (CoverLook) -> Unit = { look ->
+        val depth = pauseDepth.value
+        val landing = g()
+        val settle = 1f - landing
+        val t = coverDrift.floatValue
+        look.scale = (1f - PAUSE_SINK * depth) * (1f + settle * (0.05f + 0.035f * sin(t * 0.21f)))
+        look.shiftX = settle * 0.018f * sin(t * 0.13f)
+        look.shiftY = settle * 0.014f * cos(t * 0.17f)
+        look.pivotY = 0.42f
+        look.dim = 0.28f * depth
+        look.cornerDp = if (landing > 0.001f) 8f * landing else 28f * depth
+        look.footFade = HERO_FADE_FRACTION
+        look.footFloor = landing.coerceIn(0f, 1f)
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .onGloballyPositioned { screenOrigin = it.boundsInRoot().topLeft }
+            .then(flight?.run { Modifier.fullSpace() } ?: Modifier),
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -773,6 +814,7 @@ internal fun NowPlayingScreen(
                             )
                         }
                     }
+                    .then(flight?.run { Modifier.reportFull(heroLook) } ?: Modifier)
                     .graphicsLayer {
                         alpha = heroVisible() * (1f - clipCover())
                         compositingStrategy = CompositingStrategy.Offscreen
@@ -828,7 +870,11 @@ internal fun NowPlayingScreen(
                 isPlaying = isPlaying && !collapseStarted,
                 bottomFade = HERO_FADE_FRACTION,
                 alpha = {
-                    if (canvasRendered) (1f - 2f * g()).coerceIn(0f, 1f) * (1f - 0.3f * pauseDepth.value) else 0f
+                    if (canvasRendered && !flying()) {
+                        (1f - 2f * g()).coerceIn(0f, 1f) * (1f - 0.3f * pauseDepth.value)
+                    } else {
+                        0f
+                    }
                 },
                 scale = { 1f - PAUSE_SINK * pauseDepth.value },
                 onRenderedChanged = { canvasRendered = it },
@@ -851,7 +897,7 @@ internal fun NowPlayingScreen(
                     .fillMaxWidth()
                     .height(heroHeight)
                     .graphicsLayer {
-                        alpha = (1f - 2f * g()).coerceIn(0f, 1f)
+                        alpha = if (flying()) 0f else (1f - 2f * g()).coerceIn(0f, 1f)
                         compositingStrategy = CompositingStrategy.Offscreen
                     }
                     .drawWithContent {
@@ -1150,7 +1196,9 @@ internal fun NowPlayingScreen(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
-                                    alpha = if ((heroArtLoaded || canvasRendered) && heroT.value > 0.999f) {
+                                    alpha = if (flying()) {
+                                        0f
+                                    } else if ((heroArtLoaded || canvasRendered) && heroT.value > 0.999f) {
                                         if (g() >= 0.999f) 1f else 0f
                                     } else if (heroArtLoaded || canvasRendered) {
                                         1f - heroVisible()

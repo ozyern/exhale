@@ -1381,9 +1381,18 @@ private fun MiniPlayerPill(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Album art (clean circle — no wavy/floral shapes).
+                // Album art (clean circle — no wavy/floral shapes). Where the cover is lifted from
+                // when the player opens from the dock, and where it lands on close.
+                val flight = com.ozyern.exhale.ui.player.LocalCoverFlight.current
+                val flightOwner = remember { Any() }
+                if (flight != null) {
+                    androidx.compose.runtime.DisposableEffect(flight) {
+                        onDispose { flight.releaseMini(flightOwner) }
+                    }
+                }
                 Box(
                     modifier = Modifier
+                        .then(flight?.run { Modifier.reportMini(flightOwner, corner = 9.dp) } ?: Modifier)
                         .size(38.dp)
                         .clip(RoundedCornerShape(9.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant),

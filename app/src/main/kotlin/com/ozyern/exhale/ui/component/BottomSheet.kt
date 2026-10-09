@@ -121,6 +121,11 @@ fun BottomSheet(
      */
     dynamicIslandMorph: Boolean = false,
     /**
+     * The cover-flight open instead of the morph: the sheet slides, its content rises into place
+     * a beat behind it, and the cover itself is carried by [com.ozyern.exhale.ui.player.CoverFlight].
+     */
+    coverFlight: Boolean = false,
+    /**
      * Morph target geometry — the bounds, *inside this sheet's own coordinate space*, of whatever
      * the player is collapsing into. Defaults describe the standalone mini-player pill (State A);
      * the host overrides them with the nav bar's centre capsule when the bar is collapsed
@@ -179,6 +184,14 @@ fun BottomSheet(
                 // over the page for the length of every close — the "ghost" behind the pill.
                 if (dynamicIslandMorph) return@drawBehind
                 val p = state.progress.coerceIn(0f, 1f)
+                if (coverFlight) {
+                    // The ground fills in over the first half: the page shows through the rising
+                    // sheet at first and is covered by the time the cover is in place.
+                    val g = (p / 0.5f).coerceIn(0f, 1f)
+                    val alpha = backgroundColor.alpha * g * g * (3f - 2f * g)
+                    if (alpha > 0f) drawRect(backgroundColor.copy(alpha = alpha))
+                    return@drawBehind
+                }
                 // Ramp the scrim in over the first 20% of travel, then hold — the sheet must be
                 // fully opaque well before it reaches the top or the content behind shows through.
                 val fade = p * (p / 0.2f).coerceAtMost(1f)
@@ -238,6 +251,20 @@ fun BottomSheet(
                         .fillMaxSize()
                         .graphicsLayer {
                             val p = state.progress.coerceIn(0f, 1f)
+                            if (coverFlight) {
+                                // The player rises into place a beat behind the sheet carrying it,
+                                // and settles from slightly smaller: it follows the cover rather
+                                // than arriving with it.
+                                val r = ((p - 0.1f) / 0.55f).coerceIn(0f, 1f)
+                                val e = r * r * (3f - 2f * r)
+                                alpha = e
+                                translationY = 56.dp.toPx() * (1f - e)
+                                val s = 0.97f + 0.03f * e
+                                scaleX = s
+                                scaleY = s
+                                transformOrigin = TransformOrigin(0.5f, 0f)
+                                return@graphicsLayer
+                            }
                             if (!dynamicIslandMorph) {
                                 // Legacy behaviour for the queue/lyrics sheets: fade only.
                                 alpha = ((p - 0.25f) * 4).coerceIn(0f, 1f)
@@ -348,6 +375,11 @@ fun BottomSheet(
                             alpha = 1f - handoff
                             // The other half of the focus pull.
                             renderEffect = null
+                        } else if (coverFlight) {
+                            // The bar's title and buttons drift up and out as its cover lifts away.
+                            val f = (p / 0.22f).coerceIn(0f, 1f)
+                            alpha = 1f - f
+                            translationY = -10.dp.toPx() * f
                         } else {
                             alpha = 1f - (p * 4).coerceAtMost(1f)
                         }

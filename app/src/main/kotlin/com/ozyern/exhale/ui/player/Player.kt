@@ -59,6 +59,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -238,6 +239,8 @@ fun BottomSheetPlayer(
     // The Now Playing screen is a portrait layout; a phone on its side keeps the chosen design.
     val nowPlaying = !classicPlayer &&
         LocalConfiguration.current.orientation != Configuration.ORIENTATION_LANDSCAPE
+    val coverFlight = LocalCoverFlight.current
+    if (coverFlight != null) SideEffect { coverFlight.enabled = nowPlaying }
 
     val playerBackground by rememberEnumPreference(
         key = PlayerBackgroundStyleKey,
@@ -724,8 +727,10 @@ fun BottomSheetPlayer(
             useBlackBackground -> Color.Black
             else -> MaterialTheme.colorScheme.surface
         },
-        // Opt this sheet — and only this sheet — into the rectangle→pill morph.
-        dynamicIslandMorph = true,
+        // The Now Playing screen opens by carrying its cover out of the mini player (see
+        // CoverFlight); the other designs keep the rectangle→pill morph.
+        dynamicIslandMorph = !nowPlaying || coverFlight == null,
+        coverFlight = nowPlaying && coverFlight != null,
         pillHeight = morphPillHeight,
         pillHorizontalInset = morphPillHorizontalInset,
         pillCornerRadius = morphPillCornerRadius,

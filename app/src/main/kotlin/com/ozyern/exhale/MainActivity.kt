@@ -74,6 +74,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
@@ -1202,6 +1203,10 @@ class MainActivity : ComponentActivity() {
                             hapticFeedback = true,
                         )
 
+                    // The cover carried between the mini player and the player (see CoverFlight).
+                    val coverFlight = remember { com.ozyern.exhale.ui.player.CoverFlight() }
+                    coverFlight.progress = { playerBottomSheetState.progress }
+
                     val miniPlayerAnchor by remember {
                         derivedStateOf {
                             when {
@@ -1570,6 +1575,7 @@ class MainActivity : ComponentActivity() {
                         LocalBottomSheetPageState provides bottomSheetPageState,
                         LocalMenuState provides menuState,
                         LocalHazeState provides hazeState,
+                        com.ozyern.exhale.ui.player.LocalCoverFlight provides coverFlight,
                     ) {
                         Row {
                             AnimatedVisibility(useRail && shouldShowNavigationBar) {
@@ -2688,6 +2694,29 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     modifier = Modifier
+                                        // The page steps back as the player comes up over it —
+                                        // a little smaller, rounded, a shade darker — and comes
+                                        // forward again as it goes down: the depth half of the
+                                        // cover flight, on the same progress, so a drag held
+                                        // half-way holds the page half-way too.
+                                        .graphicsLayer {
+                                            if (!coverFlight.enabled) return@graphicsLayer
+                                            val r = (playerBottomSheetState.progress / 0.85f).coerceIn(0f, 1f)
+                                            val e = r * r * (3f - 2f * r)
+                                            if (e <= 0f) return@graphicsLayer
+                                            val s = 1f - 0.06f * e
+                                            scaleX = s
+                                            scaleY = s
+                                            shape = RoundedCornerShape(28.dp * e)
+                                            clip = true
+                                        }
+                                        .drawWithContent {
+                                            drawContent()
+                                            if (!coverFlight.enabled) return@drawWithContent
+                                            val r = (playerBottomSheetState.progress / 0.85f).coerceIn(0f, 1f)
+                                            val dim = 0.4f * r * r * (3f - 2f * r)
+                                            if (dim > 0f) drawRect(Color.Black.copy(alpha = dim))
+                                        }
                                         // The app content is the blur/refraction source for every
                                         // piece of floating chrome: `layerBackdrop` records these
                                         // pixels off-screen so `drawBackdrop` can blur AND
@@ -2737,6 +2766,13 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
+
+                        // Over the page, the dock and the player alike: the cover in flight is the
+                        // one thing on screen that belongs to neither end.
+                        com.ozyern.exhale.ui.player.CoverFlightOverlay(
+                            flight = coverFlight,
+                            modifier = Modifier.fillMaxSize(),
+                        )
 
                         BottomSheetMenu(
                             state = LocalMenuState.current,

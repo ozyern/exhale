@@ -55,6 +55,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -341,9 +342,16 @@ private fun MiniPlayerArtwork(
     // pill now appears over settings pages too, where there is no dock of round glyphs for it to
     // play off. Apple shows the cover as the cover.
     val shape = RoundedCornerShape(10.dp)
+    // This is where the cover is lifted from when the player opens, and where it lands on close.
+    val flight = LocalCoverFlight.current
+    val flightOwner = remember { Any() }
+    if (flight != null) {
+        DisposableEffect(flight) { onDispose { flight.releaseMini(flightOwner) } }
+    }
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
+            .then(flight?.run { Modifier.reportMini(flightOwner, corner = 10.dp) } ?: Modifier)
             .size(size)
             // A real shadow under the art. The pill is a pane of glass and the row on it was
             // uniformly flat — every element sitting at exactly the same depth is what made the
