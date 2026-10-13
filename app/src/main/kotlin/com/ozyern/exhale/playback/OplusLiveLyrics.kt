@@ -118,6 +118,33 @@ object OplusLiveLyrics {
      */
     const val BRIDGE_PACKAGE = "io.github.andrealtb.lockscreenlyrics"
 
+    /**
+     * System property set by whatever has added this player to ColorOS's media-controller lyric
+     * config without the Bridge: a root module rewriting the config through the ROM Update Service
+     * (ColorOS Lyrics Unlock) or a ROM that ships the edited config in SystemUI. Its value is the
+     * applied config version; it is empty when nothing has done so.
+     *
+     * The config itself cannot be read from here - the RUS provider is guarded by
+     * `oplus.permission.OPLUS_COMPONENT_SAFE` - so this property is the contract. `debug.*` is
+     * readable by every SELinux domain in AOSP policy, untrusted apps included.
+     */
+    const val LYRIC_PAGE_UNLOCK_PROP = "debug.coloros.lyrics_unlock"
+
+    private val systemPropertiesGet by lazy {
+        runCatching {
+            Class.forName("android.os.SystemProperties").getMethod("get", String::class.java)
+        }.getOrNull()
+    }
+
+    /**
+     * Whether SystemUI has been told to draw this player's `lyricInfo`, by the Bridge or by
+     * [LYRIC_PAGE_UNLOCK_PROP]. Read live (a module applies the config a few seconds after boot),
+     * and cheap enough for the per-line path.
+     */
+    fun lyricPageUnlockedBySystem(): Boolean = runCatching {
+        (systemPropertiesGet?.invoke(null, LYRIC_PAGE_UNLOCK_PROP) as? String).orEmpty().isNotBlank()
+    }.getOrDefault(false)
+
     /** A line-level LRC timestamp: `[m:ss]`, `[mm:ss.xx]`, `[mm:ss:xxx]`. */
     private val LineTimeRegex = Regex("""\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?]""")
 

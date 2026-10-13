@@ -505,8 +505,12 @@ private fun lockScreenLyricsStatus(): String {
     return when {
         !com.ozyern.exhale.utils.DeviceAudio.isOplusDevice -> "Not a ColorOS / OxygenOS phone: the media card line is used"
         bridge -> "Live Lyrics Bridge found: full synced lyrics on the lock screen"
+        com.ozyern.exhale.playback.OplusLiveLyrics.lyricPageUnlockedBySystem() ->
+            "Lock-screen lyric page unlocked by a module/ROM: full synced lyrics on the lock screen " +
+                "(the media card line steps aside automatically)"
         else -> "Live Lyrics Bridge not found: stock ColorOS only shows lyrics from its partner apps, so the " +
-            "current line is shown on the media card instead. Install the Bridge (LSPosed) for full lock-screen lyrics"
+            "current line is shown on the media card instead. Install the Bridge (LSPosed) or the " +
+            "ColorOS Lyrics Unlock module (root) for full lock-screen lyrics"
     }
 }
 

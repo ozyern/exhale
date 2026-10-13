@@ -2287,11 +2287,13 @@ class MusicService :
     // that breaks it. The per-line subtitle was exactly such a rewrite, on every line, which is
     // why the native lyric page stayed empty. On ColorOS the document now owns the lock screen.
     // Only where something will actually draw the document: stock ColorOS admits lyricInfo from
-    // its partner players alone, and the Live Lyrics Bridge is what admits the rest. Without the
-    // Bridge the per-line subtitle is the only lyric the lock screen shows, so it stays on.
+    // its partner players alone; the Live Lyrics Bridge, or a module/ROM that adds us to SystemUI's
+    // media-controller lyric config (announced via OplusLiveLyrics.LYRIC_PAGE_UNLOCK_PROP), is what
+    // admits the rest. Without either, the per-line subtitle is the only lyric the lock screen
+    // shows, so it stays on.
     private val cardLineWouldFightDocument: Boolean
         get() = liveLyricsDocument && com.ozyern.exhale.utils.DeviceAudio.isOplusDevice &&
-            lockScreenLyricBridgeInstalled
+            (lockScreenLyricBridgeInstalled || OplusLiveLyrics.lyricPageUnlockedBySystem())
 
     /**
      * Whether the ColorOS Live Lyrics Bridge is on this phone.
