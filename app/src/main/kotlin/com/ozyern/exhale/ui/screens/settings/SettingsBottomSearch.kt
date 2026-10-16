@@ -110,31 +110,34 @@ internal fun SettingsBottomSearch(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(50.dp)
-                // iOS's capsule, in the search page's material: clear liquid glass.
-                .lightGlass(CircleShape)
+                .height(48.dp)
+                // ColorOS 17's Settings search: a capsule of frosted grey with a hairline rim,
+                // magnifier and "Search" and nothing else.
+                .shadow(if (dark) 0.dp else 6.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.08f), spotColor = Color.Black.copy(alpha = 0.08f))
                 .clip(CircleShape)
+                .background(if (dark) Color(0xFF2A2A2A).copy(alpha = 0.86f) else Color(0xFFF4F4F4).copy(alpha = 0.92f))
+                .border(0.8.dp, if (dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.05f), CircleShape)
                 .padding(start = 16.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(painterResource(R.drawable.search), null, tint = ink.copy(alpha = 0.6f), modifier = Modifier.size(22.dp))
-            Spacer(Modifier.width(10.dp))
+            Icon(painterResource(R.drawable.search), null, tint = ink.copy(alpha = 0.7f), modifier = Modifier.size(24.dp))
+            Spacer(Modifier.width(12.dp))
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                 if (query.text.isEmpty()) {
-                    Text(stringResource(R.string.search), fontSize = 17.sp, color = ink.copy(alpha = 0.45f))
+                    Text(stringResource(R.string.search), fontSize = 18.sp, color = ink.copy(alpha = 0.6f))
                 }
                 BasicTextField(
                     value = query,
                     onValueChange = onQueryChange,
                     singleLine = true,
-                    textStyle = TextStyle(fontSize = 17.sp, color = ink),
+                    textStyle = TextStyle(fontSize = 18.sp, color = ink),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
                     modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
                 )
             }
-            Box(
+            if (query.text.isNotEmpty()) Box(
                 Modifier
                     .size(38.dp)
                     .clip(CircleShape)

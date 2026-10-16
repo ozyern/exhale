@@ -30,7 +30,7 @@ dependencies {
     implementation(libs.ktor.serialization.json)
     implementation(libs.jsoup)
     // The Android app's Material 3 colour generator (pure Java), for accents and artwork theming.
-    implementation("com.github.Kyant0:m3color:2025.4")
+    implementation("com.github.Kyant0:m3color:2026.1")
 
     implementation(compose.desktop.currentOs)
     implementation(libs.compose.desktop.material3)

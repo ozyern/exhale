@@ -73,7 +73,10 @@ class PrecisionAudioSink(
     override fun supportsFormat(format: Format): Boolean =
         getFormatSupport(format) != AudioSink.SINK_FORMAT_UNSUPPORTED
 
-    override fun configure(inputFormat: Format, specifiedBufferSize: Int, outputChannels: IntArray?) {
+    // media3 1.11 made the (Format, bufferSize, channels) overload final; the config object
+    // carries the same three plus the timeline, which is passed through untouched.
+    override fun configure(audioSinkConfig: AudioSink.AudioSinkConfig) {
+        val inputFormat = audioSinkConfig.format
         clearPending()
         val linear = MimeTypes.AUDIO_RAW == inputFormat.sampleMimeType &&
             Util.isEncodingLinearPcm(inputFormat.pcmEncoding) &&
@@ -89,14 +92,22 @@ class PrecisionAudioSink(
                         .setSampleRate(out.sampleRate)
                         .setChannelCount(out.channelCount)
                         .build()
-                    delegate.configure(processed, specifiedBufferSize, outputChannels)
+                    @Suppress("DEPRECATION")
+                    delegate.configure(
+                        AudioSink.AudioSinkConfig.Builder(processed)
+                            .setPreferredBufferSizeOverride(audioSinkConfig.preferredBufferSizeOverride)
+                            .setOutputChannelMapping(audioSinkConfig.outputChannelMapping)
+                            .setTimeline(audioSinkConfig.timeline)
+                            .setMediaPeriodId(audioSinkConfig.mediaPeriodId)
+                            .build(),
+                    )
                     processing = true
                     return
                 }
             }
         }
         processing = false
-        delegate.configure(inputFormat, specifiedBufferSize, outputChannels)
+        delegate.configure(audioSinkConfig)
     }
 
     override fun handleBuffer(buffer: ByteBuffer, presentationTimeUs: Long, encodedAccessUnitCount: Int): Boolean {

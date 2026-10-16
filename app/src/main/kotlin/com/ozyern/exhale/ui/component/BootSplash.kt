@@ -67,9 +67,10 @@ import kotlin.math.sin
  *  1. **Bloom.** A warm amber glow swells out of pure black behind the mark, and drifts: two
  *     light sources circling slowly, so the black is lit rather than printed. It starts on
  *     frame one — before the logo is even decoded — so the screen is never a dead black slab.
- *  2. **Inhale.** Two thin rings of the mark's gold close in from the edges of the screen and
- *     are drawn into it, while the mark comes into focus: it fades up out of a soft blur and
- *     settles from 0.92x on a near-critically-damped spring. The light goes *in*.
+ *  2. **Focus.** The mark comes into focus: it fades up out of a soft blur and settles from
+ *     0.92x on a near-critically-damped spring. (Two inhale rings and three sound-wave arcs used
+ *     to run over this beat as well; with the glint they were five things moving at once in
+ *     under a second, so they went, and the hold is 600ms instead of 760.)
  *  3. **Glint.** Once, a band of warm light crosses the mark's glossy black body — the light it
  *     just took in, crossing it.
  *  4. **Exhale.** The mark draws back a few percent, and a single gold ring leaves it and runs
@@ -116,7 +117,7 @@ import kotlin.math.sin
 
 // ---- Timeline (ms) -------------------------------------------------------------------------
 /** How long the mark is on screen before the aperture opens. Short: it is a flourish, not a wait. */
-private const val ENTRANCE_MS = 760L
+private const val ENTRANCE_MS = 600L
 /**
  * The aperture opening. Also the fade, the zoom and the hand-off — one motion on one easing,
  * because two eases running at once is how a single gesture stops reading as single.
@@ -186,16 +187,12 @@ fun BootSplash(
     val logoBlur = remember { Animatable(14f) }
     // -0.3 to 1.3 across the mark, so the band enters and leaves entirely off it.
     val glint = remember { Animatable(-0.3f) }
-    // The inhale: rings closing on the mark. The exhale ring rides the aperture's edge (iris).
-    val inhale = remember { Animatable(0f) }
     // The bloom's two light sources, circling. Runs from frame one to the last.
     val drift = remember { Animatable(0f) }
     val iris = remember { Animatable(0f) }
     // The system splash window's ember (splash_ember), carried over: full on the first frame, so
     // the hand-off from the launch window has no gap, and handed to the bloom as it widens.
     val ember = remember { Animatable(1f) }
-    // The mark speaking: its own sound waves rippling out of it once it is in focus.
-    val waves = remember { Animatable(0f) }
     // The mark's flight to the top bar.
     val flight = remember { Animatable(0f) }
     val haptic = LocalHapticFeedback.current
@@ -235,14 +232,9 @@ fun BootSplash(
             // The one tactile beat: the lens clicking into focus.
             haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
         }
-        launch { inhale.animateTo(1f, tween(durationMillis = ENTRANCE_MS.toInt() - 60, easing = FastOutSlowInEasing)) }
         launch {
-            delay(260)
-            glint.animateTo(1.3f, tween(durationMillis = 700, easing = FastOutSlowInEasing))
-        }
-        launch {
-            delay(380)
-            waves.animateTo(1f, tween(durationMillis = 1_000, easing = LinearEasing))
+            delay(240)
+            glint.animateTo(1.3f, tween(durationMillis = 620, easing = FastOutSlowInEasing))
         }
         launch {
             // Damping 0.88: it settles rather than bounces. The old 0.62 gave a visible rebound,
@@ -410,78 +402,6 @@ fun BootSplash(
                 },
         )
 
-        // ---- Inhale: two rings of gold drawn in from the edges, into the mark ----
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .drawWithContent {
-                    // The mark's own sound waves, leaving it: three arcs on its right, where the
-                    // logo draws its waves, widening and spending themselves a beat apart.
-                    val w = waves.value
-                    if (w > 0f && w < 1f) {
-                        val art = artworkSize.toPx()
-                        val origin = Offset(center.x + art * 0.10f, center.y)
-                        for (i in 0 until 3) {
-                            val local = ((w - i * 0.16f) / 0.68f).coerceIn(0f, 1f)
-                            if (local <= 0f || local >= 1f) continue
-                            val radius = lerp(art * 0.36f, art * 0.92f, FastOutSlowInEasing.transform(local))
-                            val a = sin(local * Math.PI.toFloat()) * (1f - i * 0.22f)
-                            val arcSize = androidx.compose.ui.geometry.Size(radius * 2f, radius * 2f)
-                            val topLeft = Offset(origin.x - radius, origin.y - radius)
-                            drawArc(
-                                color = RingGoldDeep.copy(alpha = 0.22f * a),
-                                startAngle = -42f,
-                                sweepAngle = 84f,
-                                useCenter = false,
-                                topLeft = topLeft,
-                                size = arcSize,
-                                style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                    width = 10.dp.toPx(),
-                                    cap = androidx.compose.ui.graphics.StrokeCap.Round,
-                                ),
-                            )
-                            drawArc(
-                                color = RingGold.copy(alpha = 0.8f * a),
-                                startAngle = -42f,
-                                sweepAngle = 84f,
-                                useCenter = false,
-                                topLeft = topLeft,
-                                size = arcSize,
-                                style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                    width = 2.dp.toPx(),
-                                    cap = androidx.compose.ui.graphics.StrokeCap.Round,
-                                ),
-                            )
-                        }
-                    }
-                    val t = inhale.value
-                    if (t <= 0f || t >= 1f) return@drawWithContent
-                    val far = hypot(size.width, size.height) * 0.5f
-                    val near = artworkSize.toPx() * 0.36f
-                    // The second ring follows the first a beat behind, so the light arrives as a
-                    // breath drawn in, not as one hoop.
-                    listOf(0f, 0.22f).forEach { lag ->
-                        val local = ((t - lag) / (1f - lag)).coerceIn(0f, 1f)
-                        if (local <= 0f || local >= 1f) return@forEach
-                        val eased = FastOutSlowInEasing.transform(local)
-                        val radius = lerp(far, near, eased)
-                        // Faint far out, brightest on the way in, gone as it reaches the mark.
-                        val a = sin(local * Math.PI.toFloat()) * bloom.value * (if (lag == 0f) 1f else 0.6f)
-                        drawCircle(
-                            color = RingGoldDeep.copy(alpha = 0.22f * a),
-                            radius = radius,
-                            center = center,
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 12.dp.toPx()),
-                        )
-                        drawCircle(
-                            color = RingGold.copy(alpha = 0.75f * a),
-                            radius = radius,
-                            center = center,
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.2.dp.toPx()),
-                        )
-                    }
-                },
-        )
     }
 
         // ---- The mark ----

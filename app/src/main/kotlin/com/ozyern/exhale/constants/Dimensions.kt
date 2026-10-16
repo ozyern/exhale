@@ -27,7 +27,7 @@ val FloatingToolbarBottomPadding = 12.dp
 val NavigationBarHeight = FloatingToolbarHeight
 val SlimNavBarHeight = SlimFloatingToolbarHeight
 val MiniPlayerHeight = 64.dp
-val MiniPlayerBottomSpacing = 8.dp // Space between MiniPlayer and NavigationBar
+val MiniPlayerBottomSpacing = 2.dp // Space between MiniPlayer and NavigationBar; with the slim pill's inset it reads as ~9dp, Apple Music's gap
 
 /**
  * Geometry of the collapsed mini-player *pill*. These three values are the morph target for the
@@ -73,7 +73,7 @@ val MiniPlayerPillCornerRadius = 32.dp
  * resulting gap above it, and the Dynamic-Island morph is handed the same three numbers so the
  * full player still shrinks onto the pill that is actually there.
  */
-val CompactMiniPlayerHeight = 56.dp
+val CompactMiniPlayerHeight = 50.dp
 val CompactMiniPlayerPillCornerRadius = CompactMiniPlayerHeight / 2
 val CompactMiniPlayerTopInset = (MiniPlayerHeight - CompactMiniPlayerHeight) / 2
 

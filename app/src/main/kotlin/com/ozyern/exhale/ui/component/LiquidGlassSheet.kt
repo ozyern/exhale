@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
@@ -241,6 +242,10 @@ fun LiquidGlassSheet(
                 val sideMarginPx = with(density) { SheetSideMargin.toPx() }
                 Column(
                     modifier = modifier
+                        // A form sheet on a tablet or an unfolded foldable, centred, as iPad
+                        // presents one — not a phone sheet stretched across 1000dp. A held popup
+                        // is narrower still: it is a menu beside a finger.
+                        .widthIn(max = if (held == null) SheetMaxWidth else PopupMaxWidth)
                         .fillMaxWidth()
                         .then(if (held == null) Modifier.navigationBarsPadding() else Modifier)
                         .padding(
@@ -398,3 +403,8 @@ private val SheetEntranceSpring = spring<Float>(
     stiffness = AquamorphicStiffness,
 )
 
+/** The widest a sheet grows; wider windows centre it. iPad's form-sheet width, plus margins. */
+private val SheetMaxWidth = 580.dp
+
+/** The widest a long-press popup grows. */
+private val PopupMaxWidth = 420.dp

@@ -968,7 +968,7 @@ Exhale will only extract your token, and everything else is stored locally.</str
     <string name="lock_screen_lyrics">Lock screen lyrics</string>
     <string name="lock_screen_lyrics_desc">Publishes timed lyrics to Live Space on OxygenOS and ColorOS. Stock ColorOS only draws them for players on its own approved list, so on an unmodified phone this does nothing by itself and the media card below is what shows your lyrics.</string>
     <string name="lyrics_on_media_card">Lyrics on the media card</string>
-    <string name="lyrics_on_media_card_desc">Shows the line playing now under the song title on the lock screen and in the notification. Works on every phone. The lyric takes the place of the artist name wherever playback is shown, including Bluetooth and Android Auto. On OnePlus and OPPO phones this steps aside on its own while Live Space above is on, because the two cannot both own the lock screen.</string>
+    <string name="lyrics_on_media_card_desc">Shows the line playing now under the song title on the lock screen and in the notification. Works on every phone. The lyric takes the place of the artist name wherever playback is shown, including Bluetooth and Android Auto.</string>
     <string name="logout">Sign out</string>
     <!-- Account sheet. Distinct from logout_confirm_* above, which is Discord's. -->
     <string name="account_signout_title">Sign out?</string>

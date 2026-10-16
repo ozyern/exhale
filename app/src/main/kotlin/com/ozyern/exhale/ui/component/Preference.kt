@@ -73,7 +73,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ozyern.exhale.R
 import com.ozyern.exhale.ui.component.liquid.LiquidToggle
-import me.saket.squiggles.SquigglySlider
+
 import kotlin.math.roundToInt
 
 val LocalPreferenceInGroup = compositionLocalOf { false }

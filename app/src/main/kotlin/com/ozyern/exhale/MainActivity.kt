@@ -95,8 +95,6 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MotionScheme
 import androidx.core.content.ContextCompat
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBarDefaults
@@ -105,7 +103,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -172,7 +169,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import androidx.window.core.layout.WindowSizeClass
 import coil3.compose.AsyncImage
 import coil3.imageLoader
 import coil3.request.ImageRequest
@@ -857,13 +853,14 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.matchParentSize(),
                                 )
                                 // Pages are read over this, so it is held back under a scrim that
-                                // deepens down the screen — bright enough to see, quiet enough to read on.
+                                // deepens down the screen — the lyrics page's weight, which reads
+                                // clearly at an ordinary brightness. It was 30–72%, which buried it.
                                 Box(
                                     Modifier
                                         .matchParentSize()
                                         .background(
                                             Brush.verticalGradient(
-                                                listOf(ground.copy(alpha = 0.30f), ground.copy(alpha = 0.72f)),
+                                                listOf(ground.copy(alpha = 0.16f), ground.copy(alpha = 0.48f)),
                                             ),
                                         ),
                                 )
@@ -946,8 +943,9 @@ class MainActivity : ComponentActivity() {
                     val chromeHorizontalPadding =
                         FloatingToolbarHorizontalPadding + safeChromeInset
 
-                    val useRail = currentWindowAdaptiveInfo().windowSizeClass
-                        .isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
+                    // No side rail at any width: tablets, foldables and landscape use the same
+                    // floating bottom dock as phones, so the chrome never changes shape when a
+                    // window crosses the medium breakpoint (a fold opening, a rotation).
 
                     val navController = rememberNavController()
 
@@ -1196,7 +1194,7 @@ class MainActivity : ComponentActivity() {
                                 (allLocalItems.isNotEmpty() || allYtItems.isNotEmpty())
 
                     fun getBottomNavPadding(): Dp {
-                        return if (shouldShowNavigationBar && !useRail) {
+                        return if (shouldShowNavigationBar) {
                             if (slimNav) SlimFloatingToolbarHeight else FloatingToolbarHeight
                         } else {
                             0.dp
@@ -1207,7 +1205,7 @@ class MainActivity : ComponentActivity() {
                     val navVisibleHeight = if (slimNav) SlimFloatingToolbarHeight else FloatingToolbarHeight
 
                     val bottomNavigationBarHeight by animateDpAsState(
-                        targetValue = if (shouldShowNavigationBar && !useRail) navVisibleHeight else 0.dp,
+                        targetValue = if (shouldShowNavigationBar) navVisibleHeight else 0.dp,
                         animationSpec = NavigationBarAnimationSpec,
                         label = "",
                     )
@@ -1217,7 +1215,7 @@ class MainActivity : ComponentActivity() {
                             dismissedBound = 0.dp,
                             collapsedBound =
                                 bottomInset +
-                                        (if (shouldShowNavigationBar && !useRail) floatingBarsBottomPadding else 0.dp) +
+                                        (if (shouldShowNavigationBar) floatingBarsBottomPadding else 0.dp) +
                                         getBottomNavPadding() +
                                         (if (useNewMiniPlayerDesign) MiniPlayerBottomSpacing else 0.dp) +
                                         MiniPlayerHeight,
@@ -1349,7 +1347,6 @@ class MainActivity : ComponentActivity() {
 
                     val playerAwareWindowInsets =
                         remember(
-                            useRail,
                             bottomInset,
                             shouldShowNavigationBar,
                             playerBottomSheetState.isDismissed,
@@ -1357,7 +1354,7 @@ class MainActivity : ComponentActivity() {
                             onSettingsRoute,
                         ) {
                             var bottom = bottomInset
-                            if (shouldShowNavigationBar && !useRail) bottom += getBottomNavPadding()
+                            if (shouldShowNavigationBar) bottom += getBottomNavPadding()
                             // Always the full slot, even for the slim pill: the compact layout is
                             // drawn *inside* an unchanged `MiniPlayerHeight` slot rather than
                             // shortening it, because the sheet's collapsed bound is captured once
@@ -1366,13 +1363,11 @@ class MainActivity : ComponentActivity() {
                             // In Settings the song rides inside the folded dock, so there is no separate
                             // mini player above it to leave room for — that room was the empty band.
                             // Every other page opens with the dock open and the mini player above it.
-                            if (!playerBottomSheetState.isDismissed && !(dockOnPage && onSettingsRoute && !useRail)) {
+                            if (!playerBottomSheetState.isDismissed && !(dockOnPage && onSettingsRoute)) {
                                 bottom += MiniPlayerHeight
                             }
                             windowsInsets
-                                .only((if(useRail) {
-                                    WindowInsetsSides.Right
-                                } else WindowInsetsSides.Horizontal) + WindowInsetsSides.Top)
+                                .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)
                                 .add(WindowInsets(top = AppBarHeight, bottom = bottom))
                         }
 
@@ -1623,90 +1618,15 @@ class MainActivity : ComponentActivity() {
                         LocalBottomSheetPageState provides bottomSheetPageState,
                         LocalMenuState provides menuState,
                         LocalHazeState provides hazeState,
+                        com.ozyern.exhale.ui.screens.search.LocalSearchChrome provides
+                            com.ozyern.exhale.ui.screens.search.SearchChrome(
+                                fieldAtTop = searchFieldAtTop,
+                                openSearch = { onActiveChange(true) },
+                                openAccount = { showAccountDialog = true },
+                            ),
                         com.ozyern.exhale.ui.player.LocalCoverFlight provides coverFlight,
                     ) {
                         Row {
-                            AnimatedVisibility(useRail && shouldShowNavigationBar) {
-                                // A floating pill of the dock's own liquid glass, centred on the
-                                // edge, rather than a flat strip the full height of the screen.
-                                val railShape = androidx.compose.foundation.shape.RoundedCornerShape(36.dp)
-                                Box(
-                                    modifier = Modifier
-                                        .then(Modifier.fillMaxHeight())
-                                        .then(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.Start)))
-                                        .padding(start = 12.dp, end = 4.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                                    modifier = Modifier
-                                        .shadow(18.dp, railShape, ambientColor = Color.Black.copy(alpha = 0.3f), spotColor = Color.Black.copy(alpha = 0.3f))
-                                        .clip(railShape)
-                                        .liquidGlassSurface(railShape)
-                                        .width(84.dp)
-                                        .padding(vertical = 14.dp),
-                                ) {
-                                    navigationItems.fastForEach { screen ->
-                                        val isSelected =
-                                            navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } == true
-
-                                        NavigationRailItem(
-                                            selected = isSelected,
-                                            icon = {
-                                                Icon(
-                                                    painter = painterResource(
-                                                        id = if (isSelected) screen.iconIdActive else screen.iconIdInactive
-                                                    ),
-                                                    contentDescription = null,
-                                                )
-                                            },
-                                            label = {
-                                                if (!slimNav) {
-                                                    Text(
-                                                        text = stringResource(screen.titleId),
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
-                                                }
-
-                                            },
-                                            onClick = {
-                                                val wasPlayerActive = playerBottomSheetState.isExpanded
-
-                                                if(wasPlayerActive) {
-                                                    playerBottomSheetState.collapse(spring())
-                                                }
-
-                                                if (screen.route == Screens.Search.route && isSelected) {
-                                                    // Second tap on the already-open Search tab
-                                                    // opens the type-in field.
-                                                    onActiveChange(true)
-                                                } else if (isSelected) {
-                                                    if(wasPlayerActive) return@NavigationRailItem
-
-                                                    navController.currentBackStackEntry?.savedStateHandle?.set("scrollToTop", true)
-                                                    coroutineScope.launch {
-                                                        searchBarScrollBehavior.state.resetHeightOffset()
-                                                    }
-                                                } else {
-                                                    // Search included: it is a standard, peer-level
-                                                    // NavHost destination — NOT an overlay.
-                                                    navController.navigate(screen.route) {
-                                                        popUpTo(navController.graph.startDestinationId) {
-                                                            saveState = true
-                                                        }
-                                                        launchSingleTop = true
-                                                        restoreState = true
-                                                    }
-                                                }
-                                            },
-                                        )
-                                    }
-                                }
-                                }
-                            }
-
                             Scaffold(
                                 topBar = {
                                     if (shouldShowTopBar) {
@@ -1731,7 +1651,9 @@ class MainActivity : ComponentActivity() {
                                         // disc peeked out from behind the field's end and the 70%
                                         // scrim behind the logo turned the field's glass into a
                                         // dark bar.
-                                        if (!(searchFieldAtTop && (onSearchTabRoute || isSearchResultsRoute))) Box(
+                                        // And never on the Search tab itself: it draws Apple Music's
+                                        // header — the title with the avatar beside it — on its own.
+                                        if (!(onSearchTabRoute || (searchFieldAtTop && isSearchResultsRoute))) Box(
                                             modifier = Modifier.offset {
                                                 IntOffset(
                                                     x = 0,
@@ -1768,11 +1690,7 @@ class MainActivity : ComponentActivity() {
 
                                             TopAppBar(
                                                 windowInsets = WindowInsets.safeDrawing.only(
-                                                    (if (useRail) {
-                                                        WindowInsetsSides.Right
-                                                    } else {
-                                                        WindowInsetsSides.Horizontal
-                                                    }) + WindowInsetsSides.Top
+                                                    WindowInsetsSides.Horizontal + WindowInsetsSides.Top
                                                 ),
                                                 title = {
                                                     val googleSans = FontFamily(
@@ -1978,7 +1896,9 @@ class MainActivity : ComponentActivity() {
                                     AnimatedVisibility(
                                         // With the field set to sit at the top, it rests there on the
                                         // Search tab and on results pages too, not only while typing.
-                                        visible = active || (searchFieldAtTop && (onSearchTabRoute || isSearchResultsRoute)),
+                                        // On the Search tab the field at the top is part of the page,
+                                        // under its title; it floats here only on results and while typing.
+                                        visible = active || (searchFieldAtTop && isSearchResultsRoute),
                                         enter = fadeIn(animationSpec = tween(durationMillis = 300)),
                                         exit = fadeOut(animationSpec = tween(durationMillis = 200))
                                     ) {
@@ -2277,16 +2197,14 @@ class MainActivity : ComponentActivity() {
                                             isSearchResultsRoute,
                                             active,
                                             shouldShowNavigationBar,
-                                            useRail,
                                             nowPlayingMetadata,
                                         ) {
                                             derivedStateOf {
                                                 // Off the tabs the dock now arrives open, as State A, and folds
                                                 // when the page is scrolled, the way BitChord's does. Settings keeps
                                                 // it folded: its own search capsule sits at the foot of the page.
-                                                (dockOnPage && onSettingsRoute && !useRail) ||
+                                                (dockOnPage && onSettingsRoute) ||
                                                 shouldShowNavigationBar &&
-                                                        !useRail &&
                                                         !isSettingsScreen &&
                                                         !isSearchScreen &&
                                                         !isSearchResultsRoute &&
@@ -2324,7 +2242,7 @@ class MainActivity : ComponentActivity() {
                                         // which can only happen while the sheet is collapsed, when
                                         // the morph layer is not even composed.
                                         val mergeIntoNavBar =
-                                            bottomBarCollapsed && nowPlayingMetadata != null && !useRail
+                                            bottomBarCollapsed && nowPlayingMetadata != null
 
                                         // The slim pill is drawn inside the standard slot with
                                         // `CompactMiniPlayerTopInset` of air above it, so the
@@ -2349,7 +2267,10 @@ class MainActivity : ComponentActivity() {
                                                 pureBlack = pureBlack,
                                                 lyricsSyncOffset = lyricsSyncOffset,
                                                 hideMiniPlayer = mergeIntoNavBar,
-                                                compactMiniPlayer = useCompactPill,
+                                                // The drawn pill keeps its slim layout through the fold:
+                                                // switching it off with the merge made it swell to the
+                                                // tall layout (heart and all) for the frames it fades out.
+                                                compactMiniPlayer = useCompactPlayer,
                                                 morphPillHeight = when {
                                                     mergeIntoNavBar -> NavBarPillHeight
                                                     useCompactPill -> CompactMiniPlayerHeight
@@ -2381,8 +2302,6 @@ class MainActivity : ComponentActivity() {
                                                 },
                                             )
                                         }
-
-                                        if(useRail) return@Box
 
                                         val navSlideDistance =
                                             bottomInset + floatingBarsBottomPadding + navVisibleHeight
@@ -2490,7 +2409,7 @@ class MainActivity : ComponentActivity() {
                                                 }
                                                 SearchBottomBar(
                                                     pureBlack = pureBlack,
-                                                    placeholder = stringResource(R.string.search),
+                                                    placeholder = "Artists, Songs, Lyrics and More",
                                                     committedQuery = committed,
                                                     leadingIsBack = isSearchResultsRoute,
                                                     onHomeClick = {
@@ -3166,7 +3085,9 @@ val LocalSyncUtils = staticCompositionLocalOf<SyncUtils> { error("No SyncUtils p
 private fun AmbientArtwork(url: String, playing: Boolean, modifier: Modifier) {
     com.ozyern.exhale.ui.component.FluidArtworkBackground(
         url = url,
-        brightness = 0.5f,
+        // As bright as the lyrics page's field: at 0.5 under the old scrim it only showed at full
+        // screen brightness.
+        brightness = 0.62f,
         paused = !playing || com.ozyern.exhale.ui.component.liquid.PageGlass.playerUp ||
             com.ozyern.exhale.utils.PerfFlags.stillAmbient,
         modifier = modifier,

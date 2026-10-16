@@ -128,7 +128,11 @@ constructor(
                 }
             }
             try {
-                withTimeoutOrNull(OVERALL_TIMEOUT_MS) { pickBest(jobs, preferWord) }
+                // The deadline is the race's own, not a timeout around it: wrapped in
+                // `withTimeoutOrNull`, a race still waiting out its grace for a better-timed source
+                // when the 20 s ran out threw away the answer it already had, and the song was saved
+                // as having no lyrics — while asking that same source by hand found them.
+                pickBest(jobs, preferWord, deadline = SystemClock.elapsedRealtime() + OVERALL_TIMEOUT_MS)
             } finally {
                 jobs.forEach { it.cancel() }
                 recording.cancel()
@@ -407,7 +411,12 @@ constructor(
      * holds back lyrics that are already here.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private suspend fun pickBest(jobs: List<Deferred<String?>>, preferWord: Boolean): Pair<Int, String>? {
+    private suspend fun pickBest(
+        jobs: List<Deferred<String?>>,
+        preferWord: Boolean,
+        /** When to settle for the best answer in hand, whatever is still running. */
+        deadline: Long = Long.MAX_VALUE,
+    ): Pair<Int, String>? {
         val n = jobs.size
         if (n == 0) return null
         val results = arrayOfNulls<String>(n)
@@ -438,7 +447,8 @@ constructor(
                 val grace = if (preferWord && syncLevel(results[best]!!) > 0) WORD_SYNC_GRACE_MS else BETTER_ANSWER_GRACE_MS
                 graceDeadline = firstAnswerAt + grace
             }
-            val waitMs = if (graceDeadline == Long.MAX_VALUE) null else graceDeadline - SystemClock.elapsedRealtime()
+            val until = minOf(graceDeadline, deadline)
+            val waitMs = if (until == Long.MAX_VALUE) null else until - SystemClock.elapsedRealtime()
             if (waitMs != null && waitMs <= 0L) return best?.let { it to results[it]!! }
             val finished = select<Int> {
                 for (i in 0 until n) {

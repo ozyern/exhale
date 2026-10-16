@@ -571,7 +571,7 @@ fun SpotifyPlaylistScreen(
                                     modifier = Modifier.size(48.dp),
                                     shapes = ButtonGroupDefaults.connectedLeadingButtonShapes(),
                                     colors =
-                                        ToggleButtonDefaults.toggleButtonColors(
+                                        ToggleButtonDefaults.colors(
                                             containerColor = MaterialTheme.colorScheme.surfaceVariant,
                                             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                             checkedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -595,7 +595,7 @@ fun SpotifyPlaylistScreen(
                                             .height(48.dp),
                                     shapes = ButtonGroupDefaults.connectedMiddleButtonShapes(),
                                     colors =
-                                        ToggleButtonDefaults.toggleButtonColors(
+                                        ToggleButtonDefaults.colors(
                                             containerColor = MaterialTheme.colorScheme.primary,
                                             contentColor = MaterialTheme.colorScheme.onPrimary,
                                             checkedContainerColor = MaterialTheme.colorScheme.primary,
@@ -619,7 +619,7 @@ fun SpotifyPlaylistScreen(
                                             .height(48.dp),
                                     shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
                                     colors =
-                                        ToggleButtonDefaults.toggleButtonColors(
+                                        ToggleButtonDefaults.colors(
                                             containerColor = MaterialTheme.colorScheme.primary,
                                             contentColor = MaterialTheme.colorScheme.onPrimary,
                                             checkedContainerColor = MaterialTheme.colorScheme.primary,

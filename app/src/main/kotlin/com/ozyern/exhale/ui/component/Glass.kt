@@ -170,7 +170,7 @@ fun Modifier.clearGlass(
         .border(0.5.dp, Color.White.copy(alpha = if (dark) 0.10f else 0.35f), shape)
 }
 
-private const val ClearGlassFilm = 0.40f
+private const val ClearGlassFilm = 0.32f
 
 /**
  * The mini player's glass: the dock's own film, saturation and rim bend — so the pill and the dock
@@ -192,11 +192,8 @@ fun Modifier.miniPlayerGlass(
 }
 
 /**
- * BeatWave's glass, for the folded dock: their default GlassEffectConfig, number for number —
- * vibrancy 1.2 (saturation 1.6), a 2dp blur, a lens of 40% and 60% of 48dp with no depth or
- * fringing, a #1A1A1A film at 50%, and the rim at the 0.3 their nav bar passes. A clearer, harder
- * glass than BitChord's: the page stays legible through the circles and the bend at the rim does
- * the work.
+ * The folded dock's glass: BitChord's, the same as [dockGlass]. (It was BeatWave's clearer 2dp
+ * recipe; kept as its own name so the folded pieces can diverge again in one place.)
  */
 @Composable
 fun Modifier.beatWaveGlass(
@@ -204,21 +201,9 @@ fun Modifier.beatWaveGlass(
     backdrop: Backdrop = LocalAppBackdrop.current,
     dark: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
 ): Modifier {
-    val film = if (dark) Color(0xFF1A1A1A).copy(alpha = 0.5f) else Color(0xFFFAFAFA).copy(alpha = 0.5f)
-    return this.drawBackdrop(
-        backdrop = backdrop,
-        shape = { shape },
-        effects = {
-            colorControls(saturation = 1.6f)
-            blur(2f.dp.toPx())
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                lens(refractionHeight = 19.2f.dp.toPx(), refractionAmount = 28.8f.dp.toPx())
-            }
-        },
-        highlight = { Highlight.Default.copy(alpha = 0.3f) },
-        shadow = { Shadow.Default },
-        onDrawSurface = { drawRect(film) },
-    )
+    // Now BitChord's glass, the same as the open dock: the folded circles and the song's pill were
+    // BeatWave's clearer 2dp glass, so folding the dock visibly changed its material.
+    return dockGlass(shape, backdrop, dark)
 }
 
 /**
@@ -226,7 +211,9 @@ fun Modifier.beatWaveGlass(
  * saturation, an 8dp blur, and a 24dp lens with depth and colour fringing at the rim.
  */
 internal fun com.kyant.backdrop.BackdropEffectScope.bitChordGlassEffects() {
-    colorControls(saturation = 1.5f)
+    // A touch past BitChord's 1.5: they render this at a third of the resolution, which pools the
+    // page's colour in the blur, and at full resolution the same number read greyer beside theirs.
+    colorControls(saturation = 1.7f)
     blur(8f.dp.toPx())
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         lens(
@@ -253,7 +240,9 @@ fun Modifier.dockGlass(
     // config): half again the saturation, an 8dp blur, a 24dp lens with depth and colour fringing
     // at the rim, and a near-black film at 40%. Ours was a 2dp blur under a thin grey film — the
     // page read straight through it, so it looked like a tint rather than a slab of glass.
-    val film = if (dark) Color(0xFF121212).copy(alpha = 0.40f) else Color(0xFFFAFAFA).copy(alpha = 0.40f)
+    // 32%, not BitChord's 40%: see the saturation note above — the same film over our full-
+    // resolution blur buried the colours their downscaled one lets through.
+    val film = if (dark) Color(0xFF121212).copy(alpha = 0.32f) else Color(0xFFFAFAFA).copy(alpha = 0.32f)
     return this.drawBackdrop(
         backdrop = backdrop,
         shape = { shape },

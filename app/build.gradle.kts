@@ -84,8 +84,8 @@ android {
         applicationId = "com.ozyern.exhale"
         minSdk = 33
         targetSdk = 36
-        versionCode = 405
-        versionName = "1.0.405"
+        versionCode = 506
+        versionName = "1.0.506"
 //        versionName = "3.0.2-$gitCommit"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -270,7 +270,7 @@ ksp {
 dependencies {
     // Chromecast: the framework and the router only. media3-cast is left out: the receiver is
     // handed finished stream URLs resolved on the phone, see playback/cast/CastMirror.
-    implementation("com.google.android.gms:play-services-cast-framework:22.2.0")
+    implementation("com.google.android.gms:play-services-cast-framework:22.3.1")
     implementation("androidx.mediarouter:mediarouter:1.8.1")
     // Applies baseline-prof.txt on install for a sideloaded APK too, not only one from a store.
     implementation(libs.androidx.profileinstaller)
@@ -305,9 +305,9 @@ dependencies {
     implementation(libs.viewmodel)
     implementation(libs.viewmodel.compose)
 
-    implementation("io.ktor:ktor-client-content-negotiation:3.0.3")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:3.0.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.serialization.json)
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 
     implementation(libs.material3)
     implementation(libs.palette)
@@ -323,7 +323,6 @@ dependencies {
     implementation(libs.media3.session)
     implementation(libs.media3.okhttp)
     implementation("androidx.media3:media3-ui:${libs.versions.media3.get()}")
-    implementation(libs.squigglyslider)
 
     implementation(libs.room.runtime)
     implementation(libs.kuromoji.ipadic)
@@ -347,7 +346,7 @@ dependencies {
     implementation(project(":simpmusic"))
     implementation(project(":canvas"))
     implementation(project(":shazamkit"))
-    implementation("com.github.Kyant0:m3color:2025.4")
+    implementation("com.github.Kyant0:m3color:2026.1")
     implementation(libs.compose.cloudy)
 
     implementation(libs.ktor.client.core)
@@ -367,8 +366,8 @@ dependencies {
     implementation(libs.timber)
     testImplementation(libs.junit)
     implementation("com.github.therealbush:translator:1.1.1")
-    implementation("androidx.lifecycle:lifecycle-process:2.10.0")
-    implementation("androidx.compose.material3.adaptive:adaptive:1.2.0")
+    implementation("androidx.lifecycle:lifecycle-process:${libs.versions.lifecycle.get()}")
+    implementation("androidx.compose.material3.adaptive:adaptive:1.3.0")
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {

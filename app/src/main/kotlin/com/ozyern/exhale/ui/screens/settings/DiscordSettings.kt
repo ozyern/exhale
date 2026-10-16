@@ -390,7 +390,7 @@ fun ActivitySourceDropdown(
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             leadingIcon = { Icon(painterResource(iconRes), null) },
             modifier = Modifier
-                .menuAnchor()
+                .menuAnchor(androidx.compose.material3.ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
         )

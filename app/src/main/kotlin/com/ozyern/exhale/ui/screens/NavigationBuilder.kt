@@ -359,8 +359,17 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         YouTubeBrowseScreen(navController)
     }
-    settingsComposable("settings") {
-        SettingsScreen(navController, scrollBehavior, latestVersionName)
+    composable("settings") {
+        val width = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
+        when {
+            // A tablet or an unfolded foldable: ColorOS's split — the list beside the page.
+            width >= com.ozyern.exhale.ui.screens.settings.SettingsSplitMinWidthDp &&
+                com.ozyern.exhale.ui.screens.settings.LocalSettingsSidebar.current == null ->
+                com.ozyern.exhale.ui.screens.settings.SettingsSplit(navController, latestVersionName)
+            else -> SettingsPage {
+                SettingsScreen(navController, scrollBehavior, latestVersionName)
+            }
+        }
     }
     settingsComposable("settings/appearance") {
         AppearanceSettings(navController, scrollBehavior)

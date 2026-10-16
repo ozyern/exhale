@@ -116,7 +116,7 @@ import com.ozyern.exhale.constants.AodTransitionDurationKey
 import com.ozyern.exhale.ui.component.IconButton
 import com.ozyern.exhale.ui.utils.backToMain
 import com.ozyern.exhale.utils.rememberPreference
-import me.saket.squiggles.SquigglySlider
+import com.ozyern.exhale.ui.component.SquigglySlider
 import kotlin.math.PI
 import kotlin.math.absoluteValue
 import kotlin.math.cos

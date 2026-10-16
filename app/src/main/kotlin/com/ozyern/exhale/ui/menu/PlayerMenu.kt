@@ -1023,7 +1023,7 @@ private fun VolumeSliderL(value: Float, onValueChange: (Float) -> Unit, modifier
     LaunchedEffect(safeValue) { if (!isDragging) sliderValue = safeValue }
 
     Slider(
-        value = sliderValue,
+        state = com.ozyern.exhale.ui.component.rememberSliderStateOf(sliderValue, 0f..1f),
         onValueChange = { updated ->
             isDragging = true
             val coerced = updated.coerceIn(0f, 1f)
@@ -1031,7 +1031,6 @@ private fun VolumeSliderL(value: Float, onValueChange: (Float) -> Unit, modifier
             onValueChange(coerced)
         },
         onValueChangeFinished = { isDragging = false },
-        valueRange = 0f..1f,
         modifier = modifier.height(36.dp),
         thumb = {
             Box(modifier = Modifier.size(14.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))

@@ -187,7 +187,9 @@ fun JellyDock(
     val density = LocalDensity.current
     val trackHeight = 48.dp + (if (compact) 8.dp else 16.dp) * labelFraction
     val shape = remember { RoundedCornerShape(percent = 50) }
-    val selectedSurface = accent.copy(alpha = 0.15f)
+    // Apple Music's bar (iOS 26): the selected tab sits on a capsule *darker* than the track, not a
+    // light tint on it.
+    val selectedSurface = if (dark) JellyPillDark else JellyPillLight
     val glowColor = accent.copy(alpha = accent.alpha * glowStrength)
 
     // Off the tabs (an album, an artist) nothing is selected and there is no pill. Coming back,
@@ -280,6 +282,7 @@ fun JellyDock(
                             labelFraction = labelFraction,
                             compact = compact,
                             ink = accent,
+                            fill = selectedSurface,
                             glowColor = glowColor,
                             appBackdrop = appBackdrop,
                             tabsBackdrop = tabsBackdrop,
@@ -312,8 +315,15 @@ fun JellyDock(
 /* Track                                                                    */
 /* ----------------------------------------------------------------------- */
 
-private val TrackFilmDark = Color(0xFF1C1C1E)
+private val TrackFilmDark = Color(0xFF1E1E1F)
 private val TrackFilmLight = Color(0xFFF2F2F7)
+
+/** The selected tab's capsule: darker than the track in dark theme, whiter in light. */
+private val JellyPillDark = Color(0xFF0B0B0C).copy(alpha = 0.9f)
+private val JellyPillLight = Color.White.copy(alpha = 0.95f)
+
+/** The selected tab's icon and label: Apple Music's red. */
+internal val JellySelectedInk = Color(0xFFFA2D48)
 
 /**
  * The track: smoked glass. The page behind is blurred hard and laid under a dark film, then lit at
@@ -323,7 +333,9 @@ private val TrackFilmLight = Color(0xFFF2F2F7)
  */
 @Composable
 private fun Modifier.jellyTrack(shape: Shape, dark: Boolean, strength: Float): Modifier {
-    val film = if (dark) TrackFilmDark.copy(alpha = 0.55f) else TrackFilmLight.copy(alpha = 0.62f)
+    // Nearly solid, as Apple Music's bar is: a slab of dark glass the page only tints, not a smoked
+    // film it reads through.
+    val film = if (dark) TrackFilmDark.copy(alpha = 0.92f) else TrackFilmLight.copy(alpha = 0.92f)
     val rim = remember {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             runCatching { RuntimeShader(JellyRimShader) }.getOrNull()
@@ -428,6 +440,7 @@ private fun GlassPill(
     labelFraction: Float,
     compact: Boolean,
     ink: Color,
+    fill: Color,
     glowColor: Color,
     appBackdrop: com.kyant.backdrop.Backdrop,
     tabsBackdrop: com.kyant.backdrop.backdrops.LayerBackdrop,
@@ -499,7 +512,7 @@ private fun GlassPill(
                     },
                     onDrawSurface = {
                         val press = motion.frame.press
-                        drawRect(ink.copy(alpha = 0.15f * (1f - 0.7f * press)))
+                        drawRect(fill.copy(alpha = fill.alpha * (1f - 0.7f * press)))
                         if (glowColor.alpha > 0f && press > 0f) {
                             drawRect(
                                 Brush.radialGradient(
@@ -545,7 +558,9 @@ private fun JellyTabRow(
     ink: Color,
     modifier: Modifier,
 ) {
-    val color = if (active) ink else ink.copy(alpha = 0.55f)
+    // The tab you are on in the accent, the rest in full white (black in light theme) — Apple
+    // Music's bar, where unselected tabs are bright rather than greyed.
+    val color = if (active) JellySelectedInk else ink
     val iconSize = if (compact) 24.dp else 28.dp
     val labelHeight = if (compact) 14.dp else 16.dp
     Row(
@@ -586,7 +601,7 @@ private fun JellyTabRow(
                             style = TextStyle(
                                 fontSize = if (compact) 12.sp else 13.sp,
                                 lineHeight = if (compact) 14.sp else 16.sp,
-                                fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                                fontWeight = if (active) FontWeight.Bold else FontWeight.SemiBold,
                                 textAlign = TextAlign.Center,
                             ),
                             maxLines = 1,

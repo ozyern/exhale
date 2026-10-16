@@ -68,6 +68,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.ozyern.exhale.ui.utils.readableListWidth
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
@@ -566,7 +567,7 @@ fun AlbumScreen(
 
         LazyColumn(
             state = lazyListState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.readableListWidth(),
             contentPadding = PaddingValues(
                 bottom = LocalPlayerAwareWindowInsets.current.asPaddingValues()
                     .calculateBottomPadding(),
@@ -723,10 +724,16 @@ fun AlbumScreen(
                             }
                         },
                         onLongClick = {
+                            // Held: the song's options, as everywhere else in the app. Select mode is a
+                            // long press on the back button.
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            if (!selection) selection = true
-                            wrappedSongs.forEach { it.isSelected = false }
-                            songWrapper.isSelected = true
+                            menuState.show {
+                                SongMenu(
+                                    originalSong = song,
+                                    navController = navController,
+                                    onDismiss = menuState::dismiss,
+                                )
+                            }
                         },
                         onMore = {
                             menuState.show {

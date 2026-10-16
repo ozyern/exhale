@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -147,6 +148,9 @@ fun SongPreferencesScreen(
                 )
             )
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current),
+        // Centred at a phone's measure on a tablet or an unfolded foldable, so the chips wrap into
+        // a block and Continue is a button rather than a 1000dp bar.
+        contentAlignment = Alignment.TopCenter,
     ) {
         AnimatedContent(
             targetState = step,
@@ -159,7 +163,7 @@ fun SongPreferencesScreen(
                     (slideOutHorizontally(tween(220), exitOffset) + fadeOut(tween(160)))
             },
             label = "onboardingStep",
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.widthIn(max = 640.dp).fillMaxSize(),
         ) { current ->
             when (current) {
                 0 -> LanguageStep(

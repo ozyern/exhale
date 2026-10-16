@@ -1029,9 +1029,6 @@ class MusicService :
             .distinctUntilChanged()
             .collectLatest(scope) { enabled ->
                 liveLyricsDocument = enabled
-                // Turning the document channel on hands the lock screen back to it, so the
-                // subtitle goes back to being the artist.
-                if (enabled) publishMediaCardLine(null)
             }
 
         dataStore.data
@@ -2117,6 +2114,9 @@ class MusicService :
         withContext(Dispatchers.Main) {
             liveLyricTickerJob?.cancel()
             liveLyricLineIndex = -1
+            // A new track arrives with its real artist in the subtitle; forget the last line, so
+            // the new track's first line is written even if it happens to read the same.
+            liveLyricCardLine = null
             liveLyricLines = parsed
             LockScreenLyrics.publishLines(parsed)
 
@@ -2185,9 +2185,15 @@ class MusicService :
                     // Publishing "" leaves the lock screen showing an empty subtitle under the
                     // title, which looks like the feature broke; null restores the artist, which
                     // is what an instrumental passage should say.
+                    // The lyric holds the artist's place for the whole song. A blank entry — a
+                    // breath between lines or an instrumental — keeps the line just sung rather than
+                    // handing the artist back for a moment, which read as the card flickering
+                    // lyric → artist → lyric.
                     val text = entry.text.takeIf { it.isNotBlank() }
-                    publishSessionCurrentLine(text, entry.time)
-                    publishMediaCardLine(text)
+                    if (text != null) {
+                        publishSessionCurrentLine(text, entry.time)
+                        publishMediaCardLine(text)
+                    }
                 }
 
                 // Sleep until just before the next line rather than for a fixed interval.
@@ -2244,7 +2250,6 @@ class MusicService :
         // A null is a *restore*, so it is allowed through even when the feature is off - that is
         // how switching the preference puts the real artist back straight away.
         if (line != null && !liveLyricsOnMediaCard) return
-        if (line != null && cardLineWouldFightDocument) return
         if (line == liveLyricCardLine) return
 
         val index = player.currentMediaItemIndex
@@ -2291,6 +2296,9 @@ class MusicService :
     // media-controller lyric config (announced via OplusLiveLyrics.LYRIC_PAGE_UNLOCK_PROP), is what
     // admits the rest. Without either, the per-line subtitle is the only lyric the lock screen
     // shows, so it stays on.
+    // Now consulted only for the session-extras line. The subtitle — the lyric in the artist's
+    // place on the lock screen — is written whatever the document path is doing: standing it down
+    // left the lock screen with no lyric at all on phones where the native page didn't draw.
     private val cardLineWouldFightDocument: Boolean
         get() = liveLyricsDocument && com.ozyern.exhale.utils.DeviceAudio.isOplusDevice &&
             (lockScreenLyricBridgeInstalled || OplusLiveLyrics.lyricPageUnlockedBySystem())
@@ -2437,10 +2445,10 @@ class MusicService :
     private fun updateNotification() {
         try {
             val liked = currentSong.value?.song?.liked == true
-            // Exactly two buttons, the way the system media card lays a music player out: like and
-            // the output picker, one either side of the transport. ColorOS shows only the first
-            // one or two of the list and nothing past them, so anything more here only pushes one
-            // of these two out of sight — repeat, shuffle and radio stay in the app's own player.
+            // Like, alone, in the space left of the transport. The output picker used to be the
+            // second button, but the lock screen draws its own output switcher on the right, and
+            // ColorOS gives a player's custom buttons that one left-hand slot: with two, it was
+            // the picker that took it (and only while previous was missing) and Like never showed.
             val customLayout = listOf(
                 CommandButton
                     .Builder()
@@ -2448,15 +2456,13 @@ class MusicService :
                     .setIconResId(if (liked) R.drawable.favorite else R.drawable.favorite_border)
                     .setSessionCommand(CommandToggleLike)
                     .setEnabled(currentSong.value != null)
-                    .build(),
-                CommandButton
-                    .Builder()
-                    .setDisplayName(getString(R.string.output_device))
-                    .setIconResId(R.drawable.output_devices)
-                    .setSessionCommand(CommandOutputSwitcher)
+                    .setSlots(CommandButton.SLOT_OVERFLOW)
                     .build(),
             )
-            mediaSession.setCustomLayout(customLayout)
+            // Pinned to the overflow slot. Published through the deprecated custom layout with no
+            // slots, Media3 was free to seat them in the BACK/FORWARD positions — and a button in
+            // those slots takes previous/next off the lock screen.
+            mediaSession.setMediaButtonPreferences(customLayout)
         } catch (e: Exception) {
             reportException(e)
         }
@@ -6867,6 +6873,7 @@ class MusicService :
 
         /** Shortest, used as a line boundary comes up. This is the placement error, near enough. */
         private const val LiveLyricsMinTickMs = 32L
+
 
         /**
          * How far ahead of a line's own timestamp it is published.

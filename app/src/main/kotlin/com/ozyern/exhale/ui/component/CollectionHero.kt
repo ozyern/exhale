@@ -161,11 +161,16 @@ private fun ReleaseCollectionHero(
     actions: @Composable RowScope.() -> Unit,
     modifier: Modifier,
 ) {
-    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+    // Never more than six tenths of the screen tall: a full-width sleeve on a tablet or an unfolded
+    // foldable was taller than the window, and the title and Play sat a screen below the top.
+    val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth()) {
+    val sleeveHeight = minOf(maxWidth / ReleaseSleeveRatio, screenHeight * 0.6f)
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
                 .fillMaxWidth()
-                .aspectRatio(ReleaseSleeveRatio),
+                .height(sleeveHeight),
         ) {
             artwork()
             // The join: a heavily blurred copy of the cover, shown only across its lower part, so
@@ -255,6 +260,7 @@ private fun ReleaseCollectionHero(
             content = actions,
         )
         Spacer(Modifier.height(18.dp))
+    }
     }
 }
 

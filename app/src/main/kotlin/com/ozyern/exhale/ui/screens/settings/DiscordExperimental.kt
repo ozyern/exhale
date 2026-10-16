@@ -224,7 +224,7 @@ fun DiscordExperimental(
                                 },
                                 modifier =
                                     Modifier.fillMaxWidth()
-                                        .menuAnchor()
+                                        .menuAnchor(androidx.compose.material3.ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                                         .pointerInput(Unit) {
                                             detectTapGestures { expanded = true }
                                         }
@@ -300,7 +300,7 @@ fun DiscordExperimental(
                                 },
                                 modifier =
                                     Modifier.fillMaxWidth()
-                                        .menuAnchor()
+                                        .menuAnchor(androidx.compose.material3.ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                                         .pointerInput(Unit) {
                                             detectTapGestures { expanded2 = true }
                                         }

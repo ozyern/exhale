@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
@@ -250,12 +251,26 @@ fun OnlineSearchResult(
         )
     }
 
+    // With the Search bar set to the top (Appearance > Search), the field rests over this page,
+    // so the filter row and the list start below it rather than underneath it.
+    val (searchFieldPosition) = com.ozyern.exhale.utils.rememberEnumPreference(
+        com.ozyern.exhale.constants.SettingsSearchPositionKey,
+        com.ozyern.exhale.constants.SettingsSearchPosition.BOTTOM,
+    )
+    val topField = if (searchFieldPosition == com.ozyern.exhale.constants.SettingsSearchPosition.TOP) {
+        com.ozyern.exhale.ui.component.InputFieldHeight + 14.dp
+    } else {
+        0.dp
+    }
     val topInset = WindowInsets.systemBars.only(WindowInsetsSides.Top).asPaddingValues()
-        .calculateTopPadding()
+        .calculateTopPadding() + topField
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         LazyColumn(
             state = lazyListState,
+            // Results at a readable measure on a tablet, centred, rather than rows a screen wide
+            // with the duration a hand-span from the title.
+            modifier = Modifier.widthIn(max = 840.dp).fillMaxSize(),
             contentPadding = PaddingValues(
                 // The filter row is no longer an opaque slab pinned under a top search bar —
                 // it floats over the list — so the list only has to clear the status bar plus
@@ -381,8 +396,21 @@ fun OnlineSearchResult(
                         items = rows,
                         key = { itemIndex, item -> "$title/${item.id}/$itemIndex" },
                     ) { itemIndex, item ->
-                        ytItemContent(item)
-                        if (itemIndex < rows.lastIndex) SearchRowDivider()
+                        // Each section is one grouped card, as Apple Music lists results: the rows
+                        // share a plate, rounded at its ends, parted by hairlines inset to the text.
+                        androidx.compose.foundation.layout.Column(
+                            Modifier
+                                .padding(horizontal = 12.dp)
+                                .clip(groupedShape(itemIndex, rows.size))
+                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+                                .padding(
+                                    top = if (itemIndex == 0) 6.dp else 0.dp,
+                                    bottom = if (itemIndex == rows.lastIndex) 6.dp else 0.dp,
+                                ),
+                        ) {
+                            ytItemContent(item)
+                            if (itemIndex < rows.lastIndex) SearchRowDivider()
+                        }
                     }
                 }
 

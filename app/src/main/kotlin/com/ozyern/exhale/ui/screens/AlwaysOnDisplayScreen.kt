@@ -135,7 +135,7 @@ import com.ozyern.exhale.utils.rememberPreference
 import com.skydoves.cloudy.cloudy
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import me.saket.squiggles.SquigglySlider
+import com.ozyern.exhale.ui.component.SquigglySlider
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale

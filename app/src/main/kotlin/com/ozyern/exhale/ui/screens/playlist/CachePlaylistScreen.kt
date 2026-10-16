@@ -67,6 +67,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.ozyern.exhale.ui.utils.readableListWidth
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
@@ -238,6 +239,8 @@ fun CachePlaylistScreen(
 
         LazyColumn(
             state = lazyListState,
+            // Centred at a readable measure on a tablet; the whole width on a phone.
+            modifier = Modifier.readableListWidth(),
             contentPadding = PaddingValues(
                 top = if (isSearching) WindowInsets.systemBars.asPaddingValues().calculateTopPadding() + AppBarHeight else 0.dp,
                 bottom = LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding(),
@@ -365,11 +368,16 @@ fun CachePlaylistScreen(
                                     }
                                 },
                                 onLongClick = {
+                                    // Held: the song's options, as everywhere else in the app. Select mode is a
+                                    // long press on the back button.
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    if (!selection) {
-                                        selection = true
-                                        wrappedSongs.forEach { it.isSelected = false }
-                                        songWrapper.isSelected = true
+                                    menuState.show {
+                                        SongMenu(
+                                            originalSong = songWrapper.item,
+                                            navController = navController,
+                                            onDismiss = menuState::dismiss,
+                                            isFromCache = true,
+                                        )
                                     }
                                 }
                             )

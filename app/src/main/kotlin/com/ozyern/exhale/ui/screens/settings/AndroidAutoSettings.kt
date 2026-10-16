@@ -290,19 +290,19 @@ private fun AndroidAutoHeroCard(
         ),
     )
 
-    val uncheckedColors = ToggleButtonDefaults.toggleButtonColors(
+    val uncheckedColors = ToggleButtonDefaults.colors(
         containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
         contentColor = MaterialTheme.colorScheme.onSurface,
     )
 
-    val checkedColors = ToggleButtonDefaults.toggleButtonColors(
+    val checkedColors = ToggleButtonDefaults.colors(
         checkedContainerColor = MaterialTheme.colorScheme.primary,
         checkedContentColor = MaterialTheme.colorScheme.onPrimary,
         containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
         contentColor = MaterialTheme.colorScheme.onSurface,
     )
 
-    val simplifiedColors = ToggleButtonDefaults.toggleButtonColors(
+    val simplifiedColors = ToggleButtonDefaults.colors(
         checkedContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
         checkedContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
         containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),

@@ -20,6 +20,8 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.ozyern.exhale.db.entities.Song
 import com.ozyern.exhale.utils.DiscordRPC
 import com.ozyern.exhale.utils.DiscordImageResolver
+import com.ozyern.exhale.utils.dataStore
+import kotlinx.coroutines.flow.first
 import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -51,6 +53,7 @@ object DiscordPresenceManager {
     private var shownSongId: String? = null
     private var shownPaused = false
     private var shownStartMs = 0L
+    private var shownSettings: String? = null
     private var sentAtMs = 0L
 
     /** Newest request wins: a request that waited its turn behind a newer one has nothing left to say. */
@@ -142,7 +145,10 @@ object DiscordPresenceManager {
                     return@withLock true
                 }
 
-                val changed = song.song.id != shownSongId || isPaused != shownPaused
+                // The presence settings are part of what is shown: changing one on the Discord pages
+                // has to reach Discord without waiting for the next song.
+                val settings = presenceSettings(context)
+                val changed = song.song.id != shownSongId || isPaused != shownPaused || settings != shownSettings
                 val seeked = !isPaused && abs(startMs - shownStartMs) > SEEK_TOLERANCE
                 if (!changed && !seeked && rpcInstance != null) return@withLock true
 
@@ -177,6 +183,7 @@ object DiscordPresenceManager {
                     shownSongId = song.song.id
                     shownPaused = isPaused
                     shownStartMs = startMs
+                    shownSettings = settings
                     sentAtMs = System.currentTimeMillis()
                     Timber.tag(logTag).d(
                         "updatePresence success (song=%s, paused=%s)",
@@ -205,6 +212,33 @@ object DiscordPresenceManager {
         }
         }
     }
+
+    /** Everything on the Discord pages that changes what the presence looks like, as one string. */
+    private suspend fun presenceSettings(context: Context): String {
+        val prefs = context.dataStore.data.first().asMap()
+        return PresenceKeys.joinToString("|") { key -> prefs[key]?.toString().orEmpty() }
+    }
+
+    private val PresenceKeys: List<androidx.datastore.preferences.core.Preferences.Key<*>> = listOf(
+        com.ozyern.exhale.constants.DiscordAdvancedKey,
+        com.ozyern.exhale.constants.DiscordActivityNameKey,
+        com.ozyern.exhale.constants.DiscordActivityDetailsKey,
+        com.ozyern.exhale.constants.DiscordActivityStateKey,
+        com.ozyern.exhale.constants.DiscordActivityTypeKey,
+        com.ozyern.exhale.constants.DiscordPresenceStatusKey,
+        com.ozyern.exhale.constants.DiscordActivityPlatformKey,
+        com.ozyern.exhale.constants.DiscordShowWhenPausedKey,
+        com.ozyern.exhale.constants.DiscordLargeImageTypeKey,
+        com.ozyern.exhale.constants.DiscordLargeImageCustomUrlKey,
+        com.ozyern.exhale.constants.DiscordSmallImageTypeKey,
+        com.ozyern.exhale.constants.DiscordSmallImageCustomUrlKey,
+        com.ozyern.exhale.constants.DiscordLargeTextSourceKey,
+        com.ozyern.exhale.constants.DiscordLargeTextCustomKey,
+        com.ozyern.exhale.constants.DiscordActivityButton1LabelKey,
+        com.ozyern.exhale.constants.DiscordActivityButton1EnabledKey,
+        com.ozyern.exhale.constants.DiscordActivityButton2LabelKey,
+        com.ozyern.exhale.constants.DiscordActivityButton2EnabledKey,
+    )
 
     /**
      * Start background updater.

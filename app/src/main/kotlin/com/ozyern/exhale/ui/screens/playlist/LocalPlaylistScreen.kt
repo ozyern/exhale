@@ -80,6 +80,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.ozyern.exhale.ui.utils.readableListWidth
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
@@ -485,6 +486,8 @@ fun LocalPlaylistScreen(
 
         LazyColumn(
             state = lazyListState,
+            // Centred at a readable measure on a tablet; the whole width on a phone.
+            modifier = Modifier.readableListWidth(),
             // No top inset: the cover runs under the status bar, as on the album page.
             contentPadding = PaddingValues(
                 top = if (isSearching) systemBarsTopPadding + AppBarHeight else 0.dp,
@@ -816,12 +819,18 @@ fun LocalPlaylistScreen(
                                             }
                                         },
                                         onLongClick = {
+                                            // Held: the song's options, as everywhere else in the app. Select mode is a
+                                            // long press on the back button.
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            if (!selection) {
-                                                selection = true
+                                            menuState.show {
+                                                SongMenu(
+                                                    originalSong = song.song,
+                                                    playlistSong = song,
+                                                    playlistBrowseId = playlist?.playlist?.browseId,
+                                                    navController = navController,
+                                                    onDismiss = menuState::dismiss,
+                                                )
                                             }
-                                            wrappedSongs.forEach { it.isSelected = false }
-                                            wrappedSongs.find { it.item.map.id == song.map.id }?.isSelected = true
                                         },
                                     ),
                             )
@@ -949,12 +958,17 @@ fun LocalPlaylistScreen(
                                             }
                                         },
                                         onLongClick = {
+                                            // Held: the song's options, as everywhere else in the app. Select mode is a
+                                            // long press on the back button.
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            if (!selection) {
-                                                selection = true
+                                            menuState.show {
+                                                SongMenu(
+                                                    originalSong = songWrapper.item.song,
+                                                    playlistBrowseId = playlist?.playlist?.browseId,
+                                                    navController = navController,
+                                                    onDismiss = menuState::dismiss,
+                                                )
                                             }
-                                            wrappedSongs.forEach { it.isSelected = false }
-                                            songWrapper.isSelected = true
                                         },
                                     ),
                             )

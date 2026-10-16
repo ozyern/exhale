@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -56,6 +57,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -129,7 +131,11 @@ import com.ozyern.exhale.ui.component.settingsIconPuck
  * a bar has to be opaque, so they take [SettingsBarGround] instead. See [SettingsTopAppBar].
  */
 @Composable
-fun SettingsPage(content: @Composable BoxScope.() -> Unit) {
+fun SettingsPage(
+    /** How wide the page may grow before it is centred. The index takes more, for its columns. */
+    maxWidth: androidx.compose.ui.unit.Dp = SettingsDimensions.ReadableMaxWidth,
+    content: @Composable BoxScope.() -> Unit,
+) {
     val pageBackground = SettingsDimensions.screenBackgroundColor()
     val mediaMetadata by LocalPlayerConnection.current?.mediaMetadata?.collectAsState()
         ?: remember { mutableStateOf<MediaMetadata?>(null) }
@@ -198,11 +204,39 @@ fun SettingsPage(content: @Composable BoxScope.() -> Unit) {
             // that reads as atmosphere behind Home's artwork cards reads as a stain behind a
             // paragraph of labels.
             CompositionLocalProvider(LocalSettingsScrolled provides scrolled) {
-                content()
+                // Held to a readable measure on tablets, foldables and landscape, and centred:
+                // stretched across 1000dp+ a row put its title and its value a hand-span apart and
+                // the cards read as banners. The ground and the wash above still fill the window.
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.TopCenter,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .widthIn(max = maxWidth)
+                            .fillMaxSize(),
+                        content = content,
+                    )
+                }
             }
         }
     }
 }
+
+/**
+ * The tablet split's sidebar: [reset] clears the right-hand pane back to its first page before a
+ * row opens another, [exit] leaves Settings, and [selected] is the row whose page is open.
+ */
+internal class SettingsSidebar(
+    val reset: () -> Unit,
+    val exit: () -> Unit,
+    initialSelection: String?,
+) {
+    var selected by androidx.compose.runtime.mutableStateOf(initialSelection)
+}
+
+/** Set only inside the sidebar of the tablet split; null everywhere else. */
+internal val LocalSettingsSidebar = staticCompositionLocalOf<SettingsSidebar?> { null }
 
 /**
  * How far the settings page under a bar has scrolled, in px. Each page keeps its own, so a bar
@@ -737,8 +771,15 @@ fun SettingsRow(
     // behaviour shrank the row to 98% and tinted it with the brand colour, which reads as a
     // *button* — and a grouped table is a list of destinations, not a panel of buttons. Scaling
     // also visibly detached each row from the hairlines above and below it.
+    // In the tablet split's sidebar, the page open on the right is marked, as ColorOS marks it.
+    val sidebar = LocalSettingsSidebar.current
+    val selected = sidebar != null && sidebar.selected == item.title
     val bgAlpha by animateFloatAsState(
-        targetValue = if (isPressed) 0.09f else 0f,
+        targetValue = when {
+            isPressed -> 0.09f
+            selected -> 0.12f
+            else -> 0f
+        },
         animationSpec = SettingsAnimations.pressSpring(),
         label = "rowBgAlpha",
     )
@@ -753,6 +794,12 @@ fun SettingsRow(
                     indication = null,
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        // In the sidebar, a row replaces the page on the right rather than stacking
+                        // another page on top of it.
+                        sidebar?.let {
+                            it.reset()
+                            it.selected = item.title
+                        }
                         item.onClick()
                     },
                 )

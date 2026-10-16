@@ -107,7 +107,7 @@ import coil3.compose.AsyncImage
 import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.ui.component.liquid.LiquidSlider
 import com.ozyern.exhale.ui.component.liquid.LocalAppBackdrop
-import me.saket.squiggles.SquigglySlider
+import com.ozyern.exhale.ui.component.SquigglySlider
 import com.ozyern.exhale.R
 import com.ozyern.exhale.constants.PlayerBackgroundStyle
 import com.ozyern.exhale.constants.PlayerDesignStyle
@@ -853,8 +853,7 @@ fun StyledPlaybackSlider(
 
         SliderStyle.Thick -> {
             Slider(
-                value = value,
-                valueRange = valueRange,
+                state = com.ozyern.exhale.ui.component.rememberSliderStateOf(value, valueRange),
                 onValueChange = onValueChange,
                 onValueChangeFinished = onValueChangeFinished,
                 colors = PlayerSliderColors.thickSliderColors(activeColor),
@@ -887,8 +886,7 @@ fun StyledPlaybackSlider(
 
         SliderStyle.Simple -> {
             Slider(
-                value = value,
-                valueRange = valueRange,
+                state = com.ozyern.exhale.ui.component.rememberSliderStateOf(value, valueRange),
                 onValueChange = onValueChange,
                 onValueChangeFinished = onValueChangeFinished,
                 colors = PlayerSliderColors.simpleSliderColors(activeColor),
@@ -3110,16 +3108,15 @@ fun V8PlayerControlsContent(
             label = "v8TrackHeight",
         )
         Slider(
-            value = safeValue,
-            valueRange = 0f..maxOf(1f, safeDuration),
+            state = com.ozyern.exhale.ui.component.rememberSliderStateOf(safeValue, 0f..maxOf(1f, safeDuration)),
             onValueChange = { onSliderValueChange(it.toLong()) },
             onValueChangeFinished = onSliderValueChangeFinished,
             interactionSource = scrubInteraction,
             colors = PlayerSliderColors.thickSliderColors(textBackgroundColor),
             thumb = { Spacer(modifier = Modifier.size(0.dp)) },
             track = { sliderState ->
-                val fraction = ((sliderState.value - sliderState.valueRange.start) /
-                        (sliderState.valueRange.endInclusive - sliderState.valueRange.start))
+                val fraction = ((sliderState.value - sliderState.trackRange.start) /
+                        (sliderState.trackRange.endInclusive - sliderState.trackRange.start))
                     .coerceIn(0f, 1f)
                 GlassTrack(
                     fraction = fraction,
@@ -3265,14 +3262,13 @@ fun V8VolumeSlider(
         )
 
         Slider(
-            value = volume,
-            valueRange = 0f..1f,
+            state = com.ozyern.exhale.ui.component.rememberSliderStateOf(volume, 0f..1f),
             onValueChange = onVolumeChange,
             colors = PlayerSliderColors.thickSliderColors(activeColor),
             thumb = { Spacer(modifier = Modifier.size(0.dp)) },
             track = { sliderState ->
-                val fraction = ((sliderState.value - sliderState.valueRange.start) /
-                        (sliderState.valueRange.endInclusive - sliderState.valueRange.start))
+                val fraction = ((sliderState.value - sliderState.trackRange.start) /
+                        (sliderState.trackRange.endInclusive - sliderState.trackRange.start))
                     .coerceIn(0f, 1f)
                 GlassTrack(
                     fraction = fraction,

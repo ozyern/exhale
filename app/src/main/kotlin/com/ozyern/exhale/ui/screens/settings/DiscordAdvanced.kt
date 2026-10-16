@@ -7,12 +7,29 @@
 package com.ozyern.exhale.ui.screens.settings
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -20,10 +37,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.ozyern.exhale.LocalPlayerConnection
 import com.ozyern.exhale.R
 import com.ozyern.exhale.constants.DiscordActivityDetailsKey
 import com.ozyern.exhale.constants.DiscordActivityNameKey
@@ -41,17 +68,20 @@ import com.ozyern.exhale.constants.DiscordSmallImageCustomUrlKey
 import com.ozyern.exhale.constants.DiscordSmallImageTypeKey
 import com.ozyern.exhale.ui.component.EditTextPreference
 import com.ozyern.exhale.ui.component.LiquidBackButton
-import com.ozyern.exhale.ui.component.ListPreference
 import com.ozyern.exhale.ui.component.PreferenceGroup
+import com.ozyern.exhale.ui.component.PreferenceGroupDivider
 import com.ozyern.exhale.ui.component.SwitchPreference
 import com.ozyern.exhale.utils.rememberPreference
 
 /**
- * Discord, Advanced: every part of the presence, back from the older builds.
+ * Discord, Advanced: every part of the presence, with the presence itself at the top.
  *
- * Off by default, and the main Discord page stays the default — Exhale, the song, the artist, the
- * cover. These choices only reach the presence while Advanced is switched on, so turning it off is
- * always a way back to the presence everyone expects, whatever was left set here.
+ * The page used to be a column of rows that each opened a dialog, so every change meant a round
+ * trip and you never saw what you had made. Now the live preview leads the page and each choice
+ * is a row of pills under its name, so a tap changes the card above straight away - and, since the
+ * presence manager now watches these settings, Discord a few seconds later.
+ *
+ * Off by default, and turning it off is always the way back to Exhale, the song and the artist.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,26 +101,17 @@ fun DiscordAdvanced(navController: NavController) {
     val (largeText, setLargeText) = rememberPreference(DiscordLargeTextSourceKey, "album")
     val (largeTextCustom, setLargeTextCustom) = rememberPreference(DiscordLargeTextCustomKey, "")
 
-    val sources = listOf("APP", "SONG", "ARTIST", "ALBUM")
-    val sourceLabel: (String) -> String = {
-        when (it) {
-            "APP" -> "Exhale"
-            "SONG" -> "Song title"
-            "ARTIST" -> "Artist"
-            "ALBUM" -> "Album"
-            else -> it
-        }
-    }
-    val imageLabel: (String) -> String = {
-        when (it) {
-            "thumbnail" -> "Cover art"
-            "artist" -> "Artist picture"
-            "appicon" -> "Exhale icon"
-            "custom" -> "Custom image"
-            "none" -> "None"
-            else -> it
-        }
-    }
+    val sources = listOf("APP" to "Exhale", "SONG" to "Song", "ARTIST" to "Artist", "ALBUM" to "Album")
+    val images = listOf(
+        "thumbnail" to "Cover",
+        "artist" to "Artist",
+        "appicon" to "Exhale icon",
+        "custom" to "Custom",
+    )
+
+    val playerConnection = LocalPlayerConnection.current
+    val song by (playerConnection?.currentSong ?: kotlinx.coroutines.flow.MutableStateFlow(null)).collectAsState(null)
+    fun source(v: String, fallback: ActivitySource) = runCatching { ActivitySource.valueOf(v) }.getOrDefault(fallback)
 
     Scaffold { inner ->
         Column(Modifier.fillMaxSize()) {
@@ -105,100 +126,82 @@ fun DiscordAdvanced(navController: NavController) {
                     .verticalScroll(rememberScrollState())
                     .padding(bottom = inner.calculateBottomPadding() + 96.dp),
             ) {
+                // What Discord will show, drawn from exactly the values below.
+                RichPresence(
+                    song = song,
+                    currentPlaybackTimeMillis = playerConnection?.player?.currentPosition ?: 0L,
+                    nameSource = if (advanced) source(name, ActivitySource.APP) else ActivitySource.APP,
+                    detailsSource = if (advanced) source(details, ActivitySource.SONG) else ActivitySource.SONG,
+                    stateSource = if (advanced) source(state, ActivitySource.ARTIST) else ActivitySource.ARTIST,
+                    activityType = if (advanced) type else "LISTENING",
+                    largeImageType = if (advanced) largeImage else "thumbnail",
+                    largeImageCustomUrl = if (advanced) largeUrl else "",
+                    smallImageType = if (advanced) smallImage else "artist",
+                    smallImageCustomUrl = if (advanced) smallUrl else "",
+                    isPlaying = playerConnection?.player?.isPlaying == true,
+                )
+
                 PreferenceGroup {
                     SwitchPreference(
                         title = { Text("Advanced presence") },
-                        description = "Use the choices below instead of the standard presence. Off puts it back to Exhale, the song and the artist",
+                        description = if (advanced) "Your own presence, as built below" else "Off: Exhale, the song and the artist",
                         icon = { Icon(painterResource(R.drawable.experiment), null) },
                         checked = advanced,
                         onCheckedChange = setAdvanced,
                     )
                 }
 
-                AnimatedVisibility(visible = advanced) {
+                AnimatedVisibility(
+                    visible = advanced,
+                    enter = fadeIn(tween(220)) + expandVertically(),
+                    exit = fadeOut(tween(160)) + shrinkVertically(),
+                ) {
                     Column {
                         PreferenceGroup(title = "What it says") {
-                            ListPreference(
-                                title = { Text("Activity name") },
-                                icon = { Icon(painterResource(R.drawable.discord), null) },
-                                selectedValue = name,
-                                values = sources,
-                                valueText = { sourceLabel(it) },
-                                onValueSelected = setName,
-                            )
-                            ListPreference(
-                                title = { Text("First line") },
-                                icon = { Icon(painterResource(R.drawable.music_note), null) },
-                                selectedValue = details,
-                                values = sources,
-                                valueText = { sourceLabel(it) },
-                                onValueSelected = setDetails,
-                            )
-                            ListPreference(
-                                title = { Text("Second line") },
-                                icon = { Icon(painterResource(R.drawable.artist), null) },
-                                selectedValue = state,
-                                values = sources,
-                                valueText = { sourceLabel(it) },
-                                onValueSelected = setState,
-                            )
-                            ListPreference(
-                                title = { Text("Activity type") },
-                                icon = { Icon(painterResource(R.drawable.headphones), null) },
-                                selectedValue = type,
-                                values = listOf("LISTENING", "PLAYING", "WATCHING", "COMPETING", "STREAMING"),
-                                valueText = { it.lowercase().replaceFirstChar(Char::uppercase) },
-                                onValueSelected = setType,
-                            )
+                            PillChoice("Activity", type, listOf(
+                                "LISTENING" to "Listening",
+                                "PLAYING" to "Playing",
+                                "WATCHING" to "Watching",
+                                "COMPETING" to "Competing",
+                                "STREAMING" to "Streaming",
+                            ), setType)
+                            PreferenceGroupDivider()
+                            PillChoice("Name", name, sources, setName)
+                            PreferenceGroupDivider()
+                            PillChoice("First line", details, sources, setDetails)
+                            PreferenceGroupDivider()
+                            PillChoice("Second line", state, sources, setState)
                         }
 
                         PreferenceGroup(title = "Pictures") {
-                            ListPreference(
-                                title = { Text("Large image") },
-                                icon = { Icon(painterResource(R.drawable.image), null) },
-                                selectedValue = largeImage,
-                                values = listOf("thumbnail", "artist", "appicon", "custom"),
-                                valueText = { imageLabel(it) },
-                                onValueSelected = setLargeImage,
-                            )
+                            PillChoice("Large picture", largeImage, images, setLargeImage)
                             if (largeImage == "custom") {
                                 EditTextPreference(
-                                    title = { Text("Large image URL") },
+                                    title = { Text("Large picture URL") },
                                     icon = { Icon(painterResource(R.drawable.link), null) },
                                     value = largeUrl,
                                     onValueChange = setLargeUrl,
                                 )
                             }
-                            ListPreference(
-                                title = { Text("Small image") },
-                                icon = { Icon(painterResource(R.drawable.image), null) },
-                                selectedValue = smallImage,
-                                values = listOf("artist", "thumbnail", "appicon", "custom", "none"),
-                                valueText = { imageLabel(it) },
-                                onValueSelected = setSmallImage,
-                            )
+                            PreferenceGroupDivider()
+                            PillChoice("Small picture", smallImage, images + ("none" to "None"), setSmallImage)
                             if (smallImage == "custom") {
                                 EditTextPreference(
-                                    title = { Text("Small image URL") },
+                                    title = { Text("Small picture URL") },
                                     icon = { Icon(painterResource(R.drawable.link), null) },
                                     value = smallUrl,
                                     onValueChange = setSmallUrl,
                                 )
                             }
-                            ListPreference(
-                                title = { Text("Text on the large image") },
-                                icon = { Icon(painterResource(R.drawable.info), null) },
-                                selectedValue = largeText,
-                                values = listOf("album", "song", "artist", "app", "custom", "dontshow"),
-                                valueText = {
-                                    when (it) {
-                                        "app" -> "Exhale"
-                                        "dontshow" -> "None"
-                                        else -> it.replaceFirstChar(Char::uppercase)
-                                    }
-                                },
-                                onValueSelected = setLargeText,
-                            )
+                            PreferenceGroupDivider()
+                            PillChoice("Text on the picture", largeText, listOf(
+                                "album" to "Album",
+                                "song" to "Song",
+                                "artist" to "Artist",
+                                "app" to "Exhale",
+                                "custom" to "Custom",
+                                "dontshow" to "None",
+                            ), setLargeText)
                             if (largeText == "custom") {
                                 EditTextPreference(
                                     title = { Text("Custom text") },
@@ -211,37 +214,33 @@ fun DiscordAdvanced(navController: NavController) {
                     }
                 }
 
-                // These two always applied, Advanced or not; they live here with the rest.
+                // These apply whether Advanced is on or not.
                 PreferenceGroup(title = "Presence") {
-                    ListPreference(
-                        title = { Text("Status") },
-                        icon = { Icon(painterResource(R.drawable.discord), null) },
-                        selectedValue = status,
-                        values = listOf("online", "idle", "dnd", "invisible"),
-                        valueText = {
-                            when (it) {
-                                "online" -> "Online"
-                                "idle" -> "Idle"
-                                "dnd" -> "Do not disturb"
-                                else -> "Invisible"
+                    PillChoice(
+                        "Status",
+                        status,
+                        listOf("online" to "Online", "idle" to "Idle", "dnd" to "Do not disturb", "invisible" to "Invisible"),
+                        setStatus,
+                        dot = { v ->
+                            when (v) {
+                                "online" -> Color(0xFF23A55A)
+                                "idle" -> Color(0xFFF0B232)
+                                "dnd" -> Color(0xFFF23F43)
+                                else -> Color(0xFF80848E)
                             }
                         },
-                        onValueSelected = setStatus,
                     )
-                    ListPreference(
-                        title = { Text("Shown as playing on") },
-                        icon = { Icon(painterResource(R.drawable.headphones), null) },
-                        selectedValue = platform,
-                        values = listOf("desktop", "android", "ios", "xbox", "ps5", "web", "embedded"),
-                        valueText = {
-                            when (it) {
-                                "ios" -> "iOS"
-                                "ps5" -> "PS5"
-                                else -> it.replaceFirstChar(Char::uppercase)
-                            }
-                        },
-                        onValueSelected = setPlatform,
-                    )
+                    PreferenceGroupDivider()
+                    PillChoice("Shown as playing on", platform, listOf(
+                        "desktop" to "Desktop",
+                        "android" to "Android",
+                        "ios" to "iOS",
+                        "web" to "Web",
+                        "xbox" to "Xbox",
+                        "ps5" to "PS5",
+                        "embedded" to "Embedded",
+                    ), setPlatform)
+                    PreferenceGroupDivider()
                     SwitchPreference(
                         title = { Text("Keep showing while paused") },
                         icon = { Icon(painterResource(R.drawable.pause), null) },
@@ -251,11 +250,72 @@ fun DiscordAdvanced(navController: NavController) {
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "Discord shows a change within about fifteen seconds.",
+                    text = "Changes reach Discord within a few seconds.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 32.dp),
                 )
+            }
+        }
+    }
+}
+
+/** A setting's name over a row of pills, one per value; the chosen one filled. */
+@Composable
+private fun PillChoice(
+    label: String,
+    selected: String,
+    options: List<Pair<String, String>>,
+    onSelect: (String) -> Unit,
+    dot: ((String) -> Color)? = null,
+) {
+    val haptic = LocalHapticFeedback.current
+    Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+        Text(
+            text = label,
+            fontSize = 15.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 18.dp),
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp),
+        ) {
+            options.forEach { (value, text) ->
+                val on = value.equals(selected, ignoreCase = true)
+                val fill by animateColorAsState(
+                    if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                    tween(160),
+                    label = "pillFill",
+                )
+                val ink by animateColorAsState(
+                    if (on) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface,
+                    tween(160),
+                    label = "pillInk",
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .heightIn(min = 36.dp)
+                        .clip(CircleShape)
+                        .background(fill)
+                        .clickable {
+                            if (!on) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onSelect(value)
+                            }
+                        }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                ) {
+                    dot?.let {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(it(value)))
+                        Spacer(Modifier.width(7.dp))
+                    }
+                    Text(text, fontSize = 14.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal, color = ink)
+                }
             }
         }
     }

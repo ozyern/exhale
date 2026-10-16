@@ -89,6 +89,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -537,7 +538,10 @@ fun LyricsV2(
             )
 
             val live = sliderPos != null || player.isPlaying
-            delay(if (live) 16L else 200L)
+            // One read per displayed frame while it moves. A flat `delay(16)` drifts against the
+            // display: some frames got two updates and some none, which is the lyric sweep
+            // stuttering and the highlight landing a frame late.
+            if (live) withFrameNanos { } else delay(200L)
         }
     }
 
@@ -814,7 +818,12 @@ fun LyricsV2(
                         .coerceIn(0.15f, inactiveAlpha)
                 }
                 // Word-synced lines: pass 1f alpha so individual words control their own
-                val wordLineAlpha = if (item.words != null && isSynced) 1f else lineAlpha
+                //
+                // Only while the line is being sung. A finished word-synced line kept alpha 1 with
+                // every word filled, so it stayed fully lit for as long as it was on screen — the
+                // sung lines above the singer read as the lyrics lagging two or three lines behind.
+                // Done, it drops back into the column like any other line.
+                val wordLineAlpha = if (item.words != null && isSynced && isActive) 1f else lineAlpha
 
                 // ── Apple-Music line transition physics ──
                 // The active line pops to full size; inactive lines settle at 85% scale and
@@ -1780,12 +1789,19 @@ private fun AnimatedWordV2(
     // The animatable is kept for the tail: when the word ends the target drops to 0 and this
     // eases it home over 350ms instead of snapping, so the word sets down rather than dropping.
     val targetFloat = if (isWordActive) -5.5f * swell else 0f
+    // While the word is sung the target moves every frame, and a tween restarted every frame never
+    // arrives — the lift trailed the voice. So it follows exactly while active, and only the
+    // release is eased.
     val floatOffset by androidx.compose.animation.core.animateFloatAsState(
         targetValue = targetFloat,
-        animationSpec = androidx.compose.animation.core.tween(
-            durationMillis = if (isWordActive) 50 else 350,
-            easing = androidx.compose.animation.core.FastOutSlowInEasing
-        ),
+        animationSpec = if (isWordActive) {
+            androidx.compose.animation.core.snap()
+        } else {
+            androidx.compose.animation.core.tween(
+                durationMillis = 350,
+                easing = androidx.compose.animation.core.FastOutSlowInEasing
+            )
+        },
         label = "wordFloat",
     )
 
@@ -1797,10 +1813,14 @@ private fun AnimatedWordV2(
     val targetGlow = if (isWordActive) swell else 0f
     val glow by androidx.compose.animation.core.animateFloatAsState(
         targetValue = targetGlow,
-        animationSpec = androidx.compose.animation.core.tween(
-            durationMillis = if (isWordActive) 60 else 200,
-            easing = androidx.compose.animation.core.FastOutSlowInEasing
-        ),
+        animationSpec = if (isWordActive) {
+            androidx.compose.animation.core.snap()
+        } else {
+            androidx.compose.animation.core.tween(
+                durationMillis = 200,
+                easing = androidx.compose.animation.core.FastOutSlowInEasing
+            )
+        },
         label = "wordGlow",
     )
     val glowTint = LocalLyricsGlowColor.current

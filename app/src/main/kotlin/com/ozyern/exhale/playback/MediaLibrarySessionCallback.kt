@@ -87,18 +87,30 @@ constructor(
         controller: MediaSession.ControllerInfo,
     ): MediaSession.ConnectionResult {
         val connectionResult = super.onConnect(session, controller)
-        return MediaSession.ConnectionResult.accept(
-            connectionResult.availableSessionCommands
-                .buildUpon()
-                .add(MediaSessionConstants.CommandToggleLike)
-                .add(MediaSessionConstants.CommandToggleStartRadio)
-                .add(MediaSessionConstants.CommandToggleLibrary)
-                .add(MediaSessionConstants.CommandToggleShuffle)
-                .add(MediaSessionConstants.CommandToggleRepeatMode)
-                .add(MediaSessionConstants.CommandOutputSwitcher)
-                .build(),
-            connectionResult.availablePlayerCommands,
-        )
+        val sessionCommands = connectionResult.availableSessionCommands
+            .buildUpon()
+            .add(MediaSessionConstants.CommandToggleLike)
+            .add(MediaSessionConstants.CommandToggleStartRadio)
+            .add(MediaSessionConstants.CommandToggleLibrary)
+            .add(MediaSessionConstants.CommandToggleShuffle)
+            .add(MediaSessionConstants.CommandToggleRepeatMode)
+            .add(MediaSessionConstants.CommandOutputSwitcher)
+            .build()
+        // The lock screen and the shade draw their transport from the platform session, and Media3
+        // builds that session's actions from the player's commands *intersected with the media
+        // notification controller's*. Granted explicitly here, so play/pause and previous/next are
+        // always in that intersection — without them SystemUI drew only play/pause, with the
+        // output button pushed into the empty previous slot.
+        val playerCommands =
+            if (session.isMediaNotificationController(controller)) {
+                MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS
+            } else {
+                connectionResult.availablePlayerCommands
+            }
+        return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+            .setAvailableSessionCommands(sessionCommands)
+            .setAvailablePlayerCommands(playerCommands)
+            .build()
     }
 
     override fun onCustomCommand(

@@ -93,14 +93,16 @@ private const val PILL_VERTICAL_SQUASH = 0.5f
 // song superimposed. That double image was the single most visible flaw in the collapse.
 private const val MORPH_HANDOFF_FRACTION = 0.28f
 
-/** Below this progress the full player's content is gone; only the card is morphing. */
-private const val CONTENT_GONE_BELOW = 0.38f
+/**
+ * Below this progress the full player's content is gone. Low, so the content and the pill trade
+ * places over one window as exact complements: it was 0.38 with the pill gone by 0.26, and between
+ * the two the window showed nothing but the sheet's black ground.
+ */
+private const val CONTENT_GONE_BELOW = 0.12f
 
 /** Over how much progress above [CONTENT_GONE_BELOW] the content fades in or out. */
-private const val CONTENT_FADE_SPAN = 0.32f
+private const val CONTENT_FADE_SPAN = 0.30f
 
-/** Above this progress the mini pill's content is gone. Below [CONTENT_GONE_BELOW], so they never stack. */
-private const val PILL_GONE_ABOVE = 0.26f
 
 
 
@@ -239,8 +241,13 @@ fun BottomSheet(
                         // The sheet's ground, inside the window: it shrinks with the player instead
                         // of hanging behind it at full size.
                         .drawBehind {
+                            // At the content's own opacity. It used to be full by 15% of the travel
+                            // while the content only came in from 38%, and the pill was gone by 26%:
+                            // through that stretch the window was nothing but this ground — the black
+                            // slab between the dock and the player.
                             val p = state.progress.coerceIn(0f, 1f)
-                            val alpha = backgroundColor.alpha * (p / 0.15f).coerceIn(0f, 1f)
+                            val handoff = ((p - CONTENT_GONE_BELOW) / CONTENT_FADE_SPAN).coerceIn(0f, 1f)
+                            val alpha = backgroundColor.alpha * handoff
                             if (alpha > 0f) drawRect(backgroundColor.copy(alpha = alpha))
                         }
                 },
@@ -377,9 +384,10 @@ fun BottomSheet(
                             scaleX = grow
                             scaleY = grow
                             transformOrigin = TransformOrigin(0.5f, 0f)
-                            // Exactly the complement of the content layer's ramp above, so the two
-                            // always sum to 1 and never both paint at full strength.
-                            val handoff = (p / PILL_GONE_ABOVE).coerceIn(0f, 1f)
+                            // Exactly the complement of the content layer's ramp above, over the
+                            // same window, so the two always sum to 1: never both at full strength,
+                            // and never neither.
+                            val handoff = ((p - CONTENT_GONE_BELOW) / CONTENT_FADE_SPAN).coerceIn(0f, 1f)
                             alpha = 1f - handoff
                             // The other half of the focus pull.
                             renderEffect = null

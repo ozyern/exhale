@@ -156,6 +156,8 @@ fun BrowseCategoriesGrid(
     onCategoryClick: (String) -> Unit,
     contentPadding: PaddingValues,
     showProfile: Boolean = true,
+    /** Under the title, full width: the search field, when it sits at the top. */
+    searchField: (@Composable () -> Unit)? = null,
 ) {
     val categoryImages by BrowseCategoryImages.images.collectAsState()
 
@@ -166,8 +168,16 @@ fun BrowseCategoriesGrid(
         }
     }
 
+    // Two across on a phone, as Apple Music sets them; a tablet gets more cards of the same size
+    // rather than two banners half a screen wide each.
+    val windowWidth = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
+    val columns = when {
+        windowWidth >= 900 -> 4
+        windowWidth >= 600 -> 3
+        else -> 2
+    }
     LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
+        columns = GridCells.Fixed(columns),
         contentPadding = contentPadding,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -211,6 +221,12 @@ fun BrowseCategoriesGrid(
                         )
                     }
                 }
+            }
+        }
+
+        if (searchField != null) {
+            item(span = { GridItemSpan(maxLineSpan) }, key = "browse_field", contentType = "field") {
+                Box(Modifier.padding(bottom = 4.dp)) { searchField() }
             }
         }
 

@@ -36,6 +36,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -1056,6 +1058,9 @@ private fun LatestReleaseCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
+            // A card, not a banner: on a tablet it keeps a phone's width at the start of the page.
+            .wrapContentWidth(Alignment.Start)
+            .widthIn(max = 520.dp)
             .clip(shape)
             .background(Color.White.copy(alpha = 0.10f), shape)
             .border(0.5.dp, Color.White.copy(alpha = 0.16f), shape)

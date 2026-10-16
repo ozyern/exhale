@@ -51,8 +51,6 @@ val LiquidGlassPlayerKey = booleanPreferencesKey("liquidGlassPlayer")
 /** Home's Recently Played as pages of rows rather than a row of covers. */
 val HomeRecentsAsListKey = booleanPreferencesKey("homeRecentsAsList")
 
-/** On by default: the Now Playing backdrop breathes with the music's loudness and lights on the beat. */
-val ReactiveBackdropKey = booleanPreferencesKey("reactiveBackdrop")
 val UseNewLibraryDesignKey = booleanPreferencesKey("useNewLibraryDesign")
 val UseNewMiniPlayerDesignKey = booleanPreferencesKey("useNewMiniPlayerDesign")
 val HidePlayerThumbnailKey = booleanPreferencesKey("hidePlayerThumbnail")

@@ -42,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.ozyern.exhale.ui.utils.readableListWidth
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -158,6 +159,8 @@ fun LibrarySongsScreen(
     ) {
         LazyColumn(
             state = lazyListState,
+            // Centred at a readable measure on a tablet; the whole width on a phone.
+            modifier = Modifier.readableListWidth(),
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
         ) {
             item(
@@ -371,14 +374,16 @@ fun LibrarySongsScreen(
                                 }
                             },
                             onLongClick = {
+                                // Held: the song's options, as everywhere else in the app. Select mode is a
+                                // long press on the back button.
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                if (!selection) {
-                                    selection = true
+                                menuState.show {
+                                    SongMenu(
+                                        originalSong = songWrapper.item,
+                                        navController = navController,
+                                        onDismiss = menuState::dismiss,
+                                    )
                                 }
-                                wrappedSongs.forEach {
-                                    it.isSelected = false
-                                } // Clear previous selections
-                                songWrapper.isSelected = true // Select current item
                             },
                         )
                         .animateItem(),

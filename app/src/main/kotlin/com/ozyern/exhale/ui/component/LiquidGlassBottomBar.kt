@@ -57,6 +57,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.ui.unit.lerp
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -423,7 +427,8 @@ fun LiquidGlassBottomBar(
                             scaleX = folded + (1f - folded) * stripFold
                         }
                     if (dockStyle == DockStyle.JELLY) {
-                        val jellyTabs = items
+                        // Search last, at the trailing end, as Apple Music's bar orders it.
+                        val jellyTabs = items.sortedBy { it == searchScreen }
                         val labels = jellyTabs.map { stringResource(it.dockTitleId) }
                         JellyDock(
                             items = jellyTabs.mapIndexed { i, tab ->
@@ -1481,28 +1486,17 @@ private fun MiniPlayerPill(
                     // The title alone, at reading size. Two stacked lines at label size turned the
                     // collapsed pill into a miniature of the full mini-player; the bar has room for
                     // one thing and the song's name is the thing.
+                    // Apple Music's folded bar: the title, bold, and nothing under it.
                     Text(
                         text = metadata?.title.orEmpty(),
-                        fontSize = 15.sp,
-                        lineHeight = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        lineHeight = 20.sp,
+                        fontWeight = FontWeight.Bold,
                         color = clearGlassContentColor(),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.basicMarquee(),
                     )
-                    // Who it is by, quieter, under the name: the pill stops at the title.
-                    val artists = metadata?.artists?.joinToString(", ") { it.name }.orEmpty()
-                    if (artists.isNotBlank()) {
-                        Text(
-                            text = artists,
-                            fontSize = 12.sp,
-                            lineHeight = 14.sp,
-                            color = clearGlassContentColor().copy(alpha = 0.62f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
                 }
             }
         }
@@ -1633,7 +1627,7 @@ private fun DockTabFan(
  * height anyway: it was the row hanging at the bottom of a taller reservation, which is fixed at
  * the call site by filling that band and centring in it.
  */
-private val SearchRowHeight = 58.dp
+private val SearchRowHeight = 50.dp
 
 /**
  * See [frostedGlassModifier]'s `extraTint` for why the search row is not dock-strength glass.
@@ -1706,13 +1700,14 @@ fun SearchBottomBar(
         ) {
             Icon(
                 painter = painterResource(
-                    if (leadingIsBack) R.drawable.chevron_back else R.drawable.home_outlined,
+                    if (leadingIsBack) R.drawable.chevron_back else R.drawable.home_bitchord,
                 ),
                 contentDescription = stringResource(
                     if (leadingIsBack) R.string.back else R.string.home,
                 ),
-                tint = itemContentColor(pureBlack),
-                modifier = Modifier.size(26.dp),
+                // Full ink, as Apple Music's Home beside its field: the grey made it read disabled.
+                tint = clearGlassContentColor(),
+                modifier = Modifier.size(24.dp),
             )
         }
 
@@ -1795,7 +1790,7 @@ private fun JellySearchRow(
             modifier = Modifier.size(SearchRowHeight),
         ) {
             Icon(
-                painter = painterResource(if (leadingIsBack) R.drawable.chevron_back else R.drawable.home_outlined),
+                painter = painterResource(if (leadingIsBack) R.drawable.chevron_back else R.drawable.home_bitchord),
                 contentDescription = stringResource(if (leadingIsBack) R.string.back else R.string.home),
                 tint = jellyInk(active = true),
                 modifier = Modifier.size(24.dp),
@@ -1982,7 +1977,20 @@ private fun Modifier.fluidTabFade(visibility: AnimatedVisibilityScope): Modifier
     }
 }
 
-@OptIn(ExperimentalSharedTransitionApi::class)
+/**
+ * The liquid dock, open (State A) and folded (State B), as one piece of glass in motion.
+ *
+ * Apple Music's fold, frame for frame: the tab bar's plate contracts from its right end into the
+ * circle at the left while its labels fade, the search circle steps down in place at the right, and
+ * the mini player — the shared accessory, flown here from the player sheet — settles into the gap
+ * between them. Unfolding runs the same motion backwards.
+ *
+ * It used to be two separate layouts crossfading under an `AnimatedContent`, joined by shared
+ * elements. Between the old layout fading out and the new one fading in, there were three frames
+ * with no dock on screen at all, and the tab strip and the circle were different glass that never
+ * met. Here every piece is always composed at a geometry interpolated from one spring, so there is
+ * no frame where the dock is missing and nothing pops.
+ */
 @Composable
 private fun FluidDock(
     tabs: List<Screens>,
@@ -1997,139 +2005,214 @@ private fun FluidDock(
     modifier: Modifier = Modifier,
 ) {
     val ink = clearGlassContentColor()
-    SharedTransitionLayout(modifier.fillMaxWidth()) {
-        val shared = this
-        AnimatedContent(
-            targetState = collapsed,
-            // What is not a shared element crossfades, quickly; the shared pieces carry the motion.
-            // No clip: the folded row is narrower than the open one and the springs overshoot.
-            transitionSpec = {
-                (fadeIn(tween(220, easing = FastOutSlowInEasing)) togetherWith
-                    fadeOut(tween(180, easing = FastOutSlowInEasing)))
-                    .using(SizeTransform(clip = false))
-            },
-            contentAlignment = Alignment.BottomCenter,
-            modifier = Modifier.fillMaxWidth(),
-            label = "fluidDock",
-        ) { folded ->
-            val visibility = this
-            if (!folded) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().height(DockCircleSize),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    LiquidTabBar(
-                        tabs = tabs,
-                        pureBlack = pureBlack,
-                        isSelected = isSelected,
-                        onItemClick = onItemClick,
-                        morph = FluidMorph(shared, visibility),
-                        modifier = Modifier
-                            .weight(1f)
-                            .widthIn(max = LiquidTabBarMaxWidth)
-                            .sharedElement(
-                                sharedContentState = rememberSharedContentState(FluidKeyTabs),
-                                animatedVisibilityScope = visibility,
-                                zIndexInOverlay = 1f,
-                            ),
-                    )
-                    if (searchScreen != null) {
-                        FluidSearchCircle(
-                            screen = searchScreen,
-                            size = DockCircleSize,
-                            folded = false,
-                            ink = ink,
-                            isSelected = isSelected,
-                            onItemClick = onItemClick,
-                            modifier = Modifier.sharedElement(
-                                sharedContentState = rememberSharedContentState(FluidKeySearch),
-                                animatedVisibilityScope = visibility,
-                                zIndexInOverlay = 1f,
-                            ),
+    // Near-critically damped: it lands, it doesn't bounce. The reference fold is ~420ms end to end.
+    val fold by animateFloatAsState(
+        targetValue = if (collapsed) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 320f),
+        label = "fluidFold",
+    )
+    // The tab labels are gone in the first third; the folded glass and its glyph arrive in the
+    // second half — so mid-fold the plate is empty glass, as it is in Apple's.
+    val tabsAlpha = 1f - fluidRamp(fold, 0.05f, 0.4f)
+    val foldedAlpha = fluidRamp(fold, 0.35f, 0.8f)
+
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(DockCircleSize),
+    ) {
+        val width = maxWidth
+        val withSearch = searchScreen != null
+        // State A: the tab strip, then the search circle at the right.
+        val tabsWidth = if (withSearch) width - DockCircleSize - 10.dp else width
+        // State B: the two circles at the ends with the song between them, or — nothing playing —
+        // the two circles side by side in the middle.
+        val pairWidth = FluidInlineSize * 2 + FluidInlineGap
+        val leftFoldedX = if (hasNowPlaying || !withSearch) 0.dp else (width - pairWidth) / 2
+        val searchFoldedX = if (hasNowPlaying) width - FluidInlineSize else leftFoldedX + FluidInlineSize + FluidInlineGap
+
+        val size = lerp(DockCircleSize, FluidInlineSize, fold)
+        val plateWidth = lerp(tabsWidth, FluidInlineSize, fold)
+        val plateX = lerp(0.dp, leftFoldedX, fold)
+        val searchX = lerp(width - DockCircleSize, searchFoldedX, fold)
+        // Bottom-aligned, as the folded row always was: the player's morph target counts on it.
+        val y = DockCircleSize - size
+
+        // ---- The left plate: the tab strip contracting into the circle ----
+        //
+        // At rest each end is the real thing: the tab bar open, the Home circle folded. In motion
+        // it is ONE plate of the dock's glass whose width springs between the two, with the tabs
+        // fading out inside it and the Home glyph fading in. It used to be the tab bar's own glass,
+        // clipped, under the circle's glass fading in on top — two panes stacked mid-fold, doubled
+        // rims and a strip being cut off rather than a plate closing.
+        val settledOpen = !collapsed && fold <= 0.001f
+        val settledFolded = collapsed && fold >= 0.999f
+        Box(
+            modifier = Modifier
+                .offset(x = plateX, y = y)
+                .size(plateWidth, size),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            when {
+                settledOpen -> LiquidTabBar(
+                    tabs = tabs,
+                    pureBlack = pureBlack,
+                    isSelected = isSelected,
+                    onItemClick = onItemClick,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                settledFolded && leftTab != null -> {
+                    val here = isSelected(leftTab)
+                    var fanOpen by remember { mutableStateOf(false) }
+                    FrostedCircle(
+                        size = size,
+                        beatWave = true,
+                        onClick = { onItemClick(leftTab, here) },
+                        onLongClick = { fanOpen = true },
+                    ) {
+                        NavGlyph(
+                            iconRes = if (here) leftTab.iconIdActive else leftTab.iconIdInactive,
+                            contentDescription = stringResource(leftTab.titleId),
+                            tint = ink,
                         )
+                        if (fanOpen) {
+                            DockTabFan(
+                                tabs = tabs.filter { it != leftTab },
+                                pureBlack = pureBlack,
+                                anchorHeight = FluidInlineSize,
+                                onPick = { tab ->
+                                    fanOpen = false
+                                    onItemClick(tab, isSelected(tab))
+                                },
+                                onDismiss = { fanOpen = false },
+                            )
+                        }
                     }
                 }
-            } else {
-                Row(
-                    // Full width in both cases, so the fold has one frame to work in: with nothing
-                    // playing the two circles are packed together in its middle.
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(FluidInlineSize),
-                    horizontalArrangement = Arrangement.spacedBy(FluidInlineGap, Alignment.CenterHorizontally),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (leftTab != null) {
-                        // The page you are on. Tapping it there unfolds the dock (the page scrolls
-                        // to its top); holding it fans the other tabs out above it.
-                        val here = isSelected(leftTab)
-                        var fanOpen by remember { mutableStateOf(false) }
-                        FrostedCircle(
-                            size = FluidInlineSize,
-                            beatWave = true,
-                            onClick = { onItemClick(leftTab, here) },
-                            onLongClick = { fanOpen = true },
-                            modifier = Modifier.sharedElement(
-                                sharedContentState = rememberSharedContentState(FluidKeyTabs),
-                                animatedVisibilityScope = visibility,
-                                zIndexInOverlay = 1f,
-                            ),
-                        ) {
-                            NavGlyph(
-                                iconRes = if (here) leftTab.iconIdActive else leftTab.iconIdInactive,
-                                contentDescription = stringResource(leftTab.titleId),
-                                tint = ink,
-                                modifier = Modifier.sharedElement(
-                                    sharedContentState = rememberSharedContentState(FluidKeyIcon),
-                                    animatedVisibilityScope = visibility,
-                                    zIndexInOverlay = 2f,
-                                ),
-                            )
-                            if (fanOpen) {
-                                DockTabFan(
-                                    tabs = tabs.filter { it != leftTab },
-                                    pureBlack = pureBlack,
-                                    anchorHeight = FluidInlineSize,
-                                    onPick = { tab ->
-                                        fanOpen = false
-                                        onItemClick(tab, isSelected(tab))
-                                    },
-                                    onDismiss = { fanOpen = false },
-                                )
-                            }
-                        }
-                    }
-                    if (hasNowPlaying) {
-                        FrostedPill(
-                            height = FluidInlineSize,
-                            beatWave = true,
-                            // The mini player above the open dock, flown down into the row.
-                            sharedAccessoryScope = visibility,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            MiniPlayerPill(pureBlack = pureBlack, onExpand = onMiniPlayerClick)
-                        }
-                    }
-                    if (searchScreen != null) {
-                        FluidSearchCircle(
-                            screen = searchScreen,
-                            size = FluidInlineSize,
-                            folded = true,
-                            ink = ink,
-                            isSelected = isSelected,
-                            onItemClick = onItemClick,
-                            modifier = Modifier.sharedElement(
-                                sharedContentState = rememberSharedContentState(FluidKeySearch),
-                                animatedVisibilityScope = visibility,
-                                zIndexInOverlay = 1f,
-                            ),
+                else -> FoldingPlate(
+                    tabs = tabs,
+                    leftTab = leftTab,
+                    isSelected = isSelected,
+                    openWidth = tabsWidth,
+                    tabsAlpha = tabsAlpha,
+                    foldedAlpha = foldedAlpha,
+                    ink = ink,
+                )
+            }
+        }
+
+        // ---- The search circle, stepping down in place ----
+        if (searchScreen != null) {
+            FluidSearchCircle(
+                screen = searchScreen,
+                size = size,
+                folded = fold > 0.5f,
+                ink = ink,
+                isSelected = isSelected,
+                onItemClick = onItemClick,
+                modifier = Modifier.offset(x = searchX, y = y),
+            )
+        }
+
+        // ---- The song, flown down from above the dock into the gap ----
+        // Its own visibility, so the accessory has a scope to fly in: the sheet's mini player fades
+        // out as this one appears, and the shared bounds carry the pill between the two places.
+        androidx.compose.animation.AnimatedVisibility(
+            visible = collapsed && hasNowPlaying,
+            enter = fadeIn(tween(200, delayMillis = 60)),
+            exit = fadeOut(tween(120)),
+            modifier = Modifier
+                .offset(x = FluidInlineSize + FluidInlineGap, y = DockCircleSize - FluidInlineSize)
+                .width((width - (FluidInlineSize + FluidInlineGap) * 2).coerceAtLeast(0.dp))
+                .height(FluidInlineSize),
+        ) {
+            FrostedPill(
+                height = FluidInlineSize,
+                beatWave = true,
+                sharedAccessoryScope = this,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                MiniPlayerPill(pureBlack = pureBlack, onExpand = onMiniPlayerClick)
+            }
+        }
+    }
+}
+
+/**
+ * The dock mid-fold: one plate of its glass, at whatever width the spring has reached, with the open
+ * dock's tabs laid out at their open width inside it (so they are never squeezed — the plate closes
+ * over them) fading out, and the Home glyph fading in at its centre.
+ */
+@Composable
+private fun FoldingPlate(
+    tabs: List<Screens>,
+    leftTab: Screens?,
+    isSelected: (Screens) -> Boolean,
+    openWidth: Dp,
+    tabsAlpha: Float,
+    foldedAlpha: Float,
+    ink: Color,
+) {
+    val shape = RoundedCornerShape(percent = 50)
+    val dark = isSystemInDarkTheme()
+    val restWash = if (dark) Color(0xFF1C1B1C) else Color(0xFFF2F2F2)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .dockGlass(shape)
+            .clip(shape),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        if (tabsAlpha > 0.001f) {
+            Row(
+                modifier = Modifier
+                    .wrapContentSize(align = Alignment.CenterStart, unbounded = true)
+                    .requiredSize(openWidth, DockCircleSize)
+                    .padding(4.dp)
+                    .graphicsLayer { alpha = tabsAlpha },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                tabs.forEach { tab ->
+                    val here = isSelected(tab)
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .then(if (here) Modifier.background(restWash, shape) else Modifier),
+                        verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Icon(
+                            painter = painterResource(if (here) tab.iconIdActive else tab.iconIdInactive),
+                            contentDescription = null,
+                            tint = if (here) ink else ink.copy(alpha = 0.6f),
+                            modifier = Modifier.size(26.dp),
                         )
                     }
                 }
             }
         }
+        if (leftTab != null && foldedAlpha > 0.001f) {
+            Box(
+                modifier = Modifier
+                    .size(FluidInlineSize)
+                    .graphicsLayer { alpha = foldedAlpha },
+                contentAlignment = Alignment.Center,
+            ) {
+                NavGlyph(
+                    iconRes = if (isSelected(leftTab)) leftTab.iconIdActive else leftTab.iconIdInactive,
+                    contentDescription = null,
+                    tint = ink,
+                )
+            }
+        }
     }
+}
+
+/** 0 before [start], 1 after [end], smoothstepped between. */
+private fun fluidRamp(value: Float, start: Float, end: Float): Float {
+    val t = ((value - start) / (end - start)).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
 }
 
 @Composable

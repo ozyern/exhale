@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
@@ -330,13 +331,23 @@ fun TopSearch(
                                     // `alpha()` — this keeps the fade in the draw phase and off
                                     // the recomposition path entirely.
                                     .graphicsLayer { alpha = animationProgress },
+                                horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
-                                content()
+                                // Suggestions and results at a readable measure on a tablet.
+                                Column(Modifier.widthIn(max = 760.dp).fillMaxWidth().weight(1f)) {
+                                    content()
+                                }
                             }
                         }
                     }
 
-                    val pillHorizontalPadding = lerp(0.dp, SearchBarHorizontalPadding, animationProgress)
+                    // Plus the dock's own centring on a wide window, so the field is the dock's width
+                    // rather than a bar across a tablet.
+                    val pillHorizontalPadding = lerp(
+                        0.dp,
+                        SearchBarHorizontalPadding + com.ozyern.exhale.ui.utils.safeHorizontalChromeInset(),
+                        animationProgress,
+                    )
                     val pillBottomPadding = lerp(0.dp, bottomBarPadding, animationProgress)
                     // Apple-Music search field: a heavily-frosted, pill-shaped glass capsule that
                     // reads as part of the floating bottom chrome — NOT a flat Material text field.

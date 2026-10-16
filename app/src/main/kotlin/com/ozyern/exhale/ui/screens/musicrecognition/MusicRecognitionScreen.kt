@@ -1070,7 +1070,7 @@ private fun SuccessActions(
                 .weight(1f)
                 .heightIn(min = 48.dp),
             shapes = ButtonGroupDefaults.connectedLeadingButtonShapes(),
-            colors = ToggleButtonDefaults.toggleButtonColors(
+            colors = ToggleButtonDefaults.colors(
                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
                 contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -1097,7 +1097,7 @@ private fun SuccessActions(
             modifier = Modifier
                 .weight(1f)
                 .heightIn(min = 48.dp),
-            colors = ToggleButtonDefaults.toggleButtonColors(
+            colors = ToggleButtonDefaults.colors(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 checkedContainerColor = MaterialTheme.colorScheme.primary,

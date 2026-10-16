@@ -97,7 +97,7 @@ fun HomeMadeForYou(
         BoxWithConstraints {
             // A share of the row with a ceiling, so the next card always peeks in — and a tablet
             // doesn't get one card the size of a poster.
-            val cardWidth = minOf(maxWidth * 0.74f, 320.dp)
+            val cardWidth = if (maxWidth >= 600.dp) 260.dp else minOf(maxWidth * 0.74f, 320.dp)
             LazyRow(
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),

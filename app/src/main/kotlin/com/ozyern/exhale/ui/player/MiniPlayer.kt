@@ -18,8 +18,10 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import com.ozyern.exhale.ui.component.jelly.jellyGlass
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntOffset
@@ -75,10 +77,20 @@ private fun NewMiniPlayer(
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val layoutDirection = LocalLayoutDirection.current
+    // The full player's ground, read while the song plays down here, so opening it is instant.
+    val prewarmContext = androidx.compose.ui.platform.LocalContext.current
+    val prewarmSong by playerConnection.mediaMetadata.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(prewarmSong?.thumbnailUrl) {
+        prewarmPlayerBackdrop(prewarmContext, prewarmSong?.thumbnailUrl)
+    }
     val coroutineScope = rememberCoroutineScope()
     val swipeSensitivity by rememberPreference(SwipeSensitivityKey, 0.73f)
     val swipeThumbnail by rememberPreference(com.ozyern.exhale.constants.SwipeThumbnailKey, true)
     val liquidGlass by rememberPreference(LiquidGlassNavBarKey, defaultValue = true)
+    val jellyDock = com.ozyern.exhale.utils.rememberEnumPreference(
+        com.ozyern.exhale.constants.DockStyleKey,
+        com.ozyern.exhale.constants.DockStyle.LIQUID,
+    ).value == com.ozyern.exhale.constants.DockStyle.JELLY
 
     SwipeableMiniPlayerBox(
         modifier = modifier,
@@ -132,7 +144,12 @@ private fun NewMiniPlayer(
                     // colour lifted through it and bent hard at the rim, under a 40% film. It was
                     // the frosted chrome glass with a 76% black film on top — a dark slab with the
                     // glass buried under it. The film still keeps the title legible over a page.
-                    .miniPlayerGlass(shape = shape)
+                    // With the jelly dock under it, the same dark slab as the bar, so the two read
+                    // as one set as Apple Music's do.
+                    .then(
+                        if (jellyDock) Modifier.jellyGlass(shape)
+                        else Modifier.miniPlayerGlass(shape = shape),
+                    )
                     // `drawBackdrop` paints the pane; it does not clip what is drawn on top of
                     // it. Without this the progress hairline runs straight out past the capsule's
                     // rounded ends.

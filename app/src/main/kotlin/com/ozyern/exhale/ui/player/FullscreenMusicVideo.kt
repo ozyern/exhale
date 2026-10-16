@@ -92,6 +92,13 @@ import kotlinx.coroutines.delay
  */
 object FullscreenVideoState {
     var active by androidx.compose.runtime.mutableStateOf(false)
+
+    /**
+     * Whether the Now Playing screen is showing a song's video over its cover. Turning the device
+     * on its side then goes to the full-screen video (issue #6) instead of the landscape player,
+     * which has no video in it and left the person watching with the cover.
+     */
+    var watching by androidx.compose.runtime.mutableStateOf(false)
 }
 
 @Composable

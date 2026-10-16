@@ -790,7 +790,8 @@ fun HomePageSectionContent(
         // The lead shelf: whatever the feed opens with, as big cards with the caption set
         // over the artwork — seven tenths of the row wide, never past 320dp, so the next peeks in.
         androidx.compose.foundation.layout.BoxWithConstraints(modifier) {
-            val cardWidth = minOf(maxWidth * 0.70f, 320.dp)
+            // A tablet shows more cards, not bigger ones.
+            val cardWidth = if (maxWidth >= 600.dp) 260.dp else minOf(maxWidth * 0.70f, 320.dp)
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 contentPadding = homeRowContentPadding(),

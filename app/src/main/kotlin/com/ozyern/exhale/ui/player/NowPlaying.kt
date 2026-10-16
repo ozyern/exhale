@@ -94,6 +94,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalConfiguration
+import com.ozyern.exhale.ui.component.bitChordGlassEffects
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -200,8 +202,6 @@ import com.ozyern.exhale.constants.AutoLoadMoreKey
 import com.ozyern.exhale.constants.CanvasSource
 import com.ozyern.exhale.constants.CanvasSourceKey
 import com.ozyern.exhale.constants.ExhaleCanvasKey
-import com.ozyern.exhale.constants.ReactiveBackdropKey
-import com.ozyern.exhale.playback.AudioLevels
 import com.ozyern.exhale.db.entities.FormatEntity
 import com.ozyern.exhale.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import com.ozyern.exhale.extensions.metadata
@@ -318,11 +318,10 @@ internal fun Modifier.playerGlass(shape: Shape, lit: Boolean = false): Modifier 
     return this.drawBackdrop(
         backdrop = backdrop,
         shape = { shape },
-        effects = {
-            vibrancy()
-            glassBlur(3f.dp.toPx())
-            lens(10f.dp.toPx(), 20f.dp.toPx())
-        },
+        // BitChord's glass strength, as the dock now has it: half again the saturation, an 8dp
+        // blur and a 24dp lens with depth and colour fringing. The film stays light — these sit on
+        // the artwork, not on a page.
+        effects = { bitChordGlassEffects() },
         highlight = { Highlight.Default },
         shadow = { GlassShadow(radius = 10f.dp, color = Color.Black.copy(alpha = 0.22f)) },
         onDrawSurface = { drawRect(film) },
@@ -602,50 +601,6 @@ internal fun NowPlayingScreen(
         label = "npPauseDepth",
     )
 
-    // ---- The music, as light ----
-    val reactive by rememberPreference(ReactiveBackdropKey, defaultValue = true)
-    val breath = remember { mutableFloatStateOf(0f) }
-    val kick = remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(isPlaying, reactive) {
-        var last = System.nanoTime()
-        fun follow(current: Float, target: Float, dt: Float, attack: Float, release: Float): Float {
-            val tau = if (target > current) attack else release
-            return current + (target - current) * (1f - kotlin.math.exp(-dt / tau))
-        }
-        if (!isPlaying || !reactive) {
-            // Settle rather than snap when the music stops.
-            while (breath.floatValue > 0.002f || kick.floatValue > 0.002f) {
-                withFrameNanos { now ->
-                    val dt = ((now - last) / 1e9f).coerceIn(0f, 0.1f)
-                    last = now
-                    breath.floatValue = follow(breath.floatValue, 0f, dt, 0.1f, 0.5f)
-                    kick.floatValue = follow(kick.floatValue, 0f, dt, 0.05f, 0.25f)
-                }
-            }
-            breath.floatValue = 0f
-            kick.floatValue = 0f
-            return@LaunchedEffect
-        }
-        val reader = AudioLevels.Reader()
-        val levels = FloatArray(2)
-        var bassAverage = 0f
-        while (isActive) {
-            withFrameNanos { now ->
-                val dt = ((now - last) / 1e9f).coerceIn(0f, 0.1f)
-                last = now
-                val heard = reader.sample(System.nanoTime(), playerConnection.player.currentPosition, levels)
-                val loud = if (heard) levels[0] else 0f
-                val low = if (heard) levels[1] else 0f
-                // Loudness is a slow breath; a kick is the bass jumping above where it has been
-                // sitting, which is what separates a beat from a song that is simply bass-heavy.
-                breath.floatValue = follow(breath.floatValue, loud, dt, 0.09f, 0.45f)
-                bassAverage += (low - bassAverage) * (1f - kotlin.math.exp(-dt / 0.8f))
-                val onset = ((low - bassAverage) * 4.5f).coerceIn(0f, 1f)
-                kick.floatValue = follow(kick.floatValue, onset, dt, 0.035f, 0.22f)
-            }
-        }
-    }
-
     // Paused, the sleeve steps back (it only shows once the banner has handed over to it).
     val artScale by animateFloatAsState(
         targetValue = if (isPlaying) 1f else 0.86f,
@@ -732,6 +687,15 @@ internal fun NowPlayingScreen(
         videoMissing = !has
     }
     var videoFullscreen by remember { mutableStateOf(false) }
+    // Issue #6: a video playing over the cover, and the device turns on its side — the video goes
+    // full screen, as YouTube's does, instead of the landscape player taking it away.
+    val watchingVideo = videoMode && videoShown && musicVideo != null
+    val landscape = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    SideEffect { FullscreenVideoState.watching = watchingVideo }
+    DisposableEffect(Unit) { onDispose { FullscreenVideoState.watching = false } }
+    LaunchedEffect(landscape, watchingVideo) {
+        if (landscape && watchingVideo) videoFullscreen = true
+    }
     var horizontalLyrics by remember { mutableStateOf(false) }
     // One fresh try when a stream dies mid-play, as the Windows app re-asks for its URL: a stale link
     // is the usual reason, and a new one usually plays.
@@ -807,9 +771,6 @@ internal fun NowPlayingScreen(
         LiveArtworkBackdrop(
             artUrl = artUrl,
             palette = palette,
-            isPlaying = isPlaying,
-            breath = { breath.floatValue },
-            kick = { kick.floatValue },
         )
 
         // The cover, edge to edge, dissolving into the mesh at its foot.
@@ -1001,7 +962,15 @@ internal fun NowPlayingScreen(
             }
         }
         if (videoFullscreen && video != null) {
-            FullscreenMusicVideo(stream = video.stream, onExit = { videoFullscreen = false })
+            FullscreenMusicVideo(
+                stream = video.stream,
+                onExit = {
+                    videoFullscreen = false
+                    // Leaving it with the device still on its side: back to the song, so the
+                    // landscape player takes over rather than this portrait screen stretched wide.
+                    if (landscape) videoMode = false
+                },
+            )
         }
 
         // Keeps the status bar legible over a bright cover without boxing it in.
@@ -2598,6 +2567,12 @@ private fun CurrentLyricStrip(
     }
 }
 
+/** How early the strip changes line: the length of its line transition. */
+private const val STRIP_LINE_LEAD_MS = 340L
+
+/** How far ahead of the playhead the word sweep runs, as the full lyrics' does. */
+private const val STRIP_SWEEP_LEAD_MS = 200L
+
 @Composable
 private fun SyncedStripLine(lines: List<LyricsEntry>, trackKey: String, isPlaying: Boolean) {
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -2605,10 +2580,13 @@ private fun SyncedStripLine(lines: List<LyricsEntry>, trackKey: String, isPlayin
     LaunchedEffect(trackKey, lines, isPlaying) {
         while (isActive) {
             com.ozyern.exhale.utils.awaitAppVisible()
-            val position = playerConnection.player.currentPosition
+            // Early by the length of the line change, so the new line has *finished* arriving
+            // when it is sung. With no lead it began its 340 ms slide on the timestamp and
+            // landed a third of a second late on every line — the strip's lag.
+            val position = playerConnection.player.currentPosition + STRIP_LINE_LEAD_MS
             index = if (lines.isEmpty() || position < lines.first().time) -1
             else findCurrentLineIndex(lines, position, 0L)
-            delay(if (isPlaying) 60L else 300L)
+            if (isPlaying) androidx.compose.runtime.withFrameMillis { } else delay(300L)
         }
     }
     val current = lines.getOrNull(index)
@@ -2676,7 +2654,10 @@ private fun SweptStripText(entry: LyricsEntry, lineEndMs: Long?, isPlaying: Bool
     LaunchedEffect(entry, isPlaying) {
         while (isActive) {
             com.ozyern.exhale.utils.awaitAppVisible()
-            androidx.compose.runtime.withFrameMillis { clock.longValue = playerConnection.player.currentPosition }
+            // The full lyrics' lead: the frame and the eye take a moment to catch up with the voice.
+            androidx.compose.runtime.withFrameMillis {
+                clock.longValue = playerConnection.player.currentPosition + STRIP_SWEEP_LEAD_MS
+            }
             if (!isPlaying) delay(250L)
         }
     }
@@ -3617,222 +3598,43 @@ internal data class MeshPalette(val colors: List<Color>, val accent: Color = Def
 private val DefaultAccent = Color(0xFFF3CE6A)
 
 /**
- * The cover itself as the ground of the player, alive: three copies of it, each larger than the
- * screen, turning slowly against each other and drifting on small orbits so its colours flow into
- * one another the way Apple Music's do. Slower while paused, a little quicker when the music is
- * loud, never still.
+ * The cover itself as the ground of the player, the way the lock screen shows a song: the artwork
+ * across the full width from the top, its bottom edge drawn on down the screen, the whole of it
+ * softened by a blur so its shapes are still recognisable but never compete with the type, and a
+ * fine film grain over it so the blur reads as a photograph rather than a gradient.
  *
- * It costs almost nothing per frame. The cover is read once at 64px, blurred once in software at
- * 160px, and the two copies that float over the first have their edges feathered away into the
- * same pixels, so no edge ever crosses the screen. Stretched across the screen that *is* the blur:
- * no blur effect runs while it moves, and each frame only draws three bitmaps.
+ * Stretching the last rows of the cover down to the foot is the "edge extension" the system lock
+ * screen uses: under the blur it becomes long vertical streaks of the cover's own colours, so the
+ * ground below the cover is unmistakably *that* cover, continued, not a palette sampled from it.
+ *
+ * Still, on purpose: it sits under a cover that already moves (the hero drift), and a ground that
+ * also drifted made the two fight. Nothing here is redrawn per frame; a skip crossfades it.
  */
 @Composable
 private fun LiveArtworkBackdrop(
     artUrl: String?,
     palette: MeshPalette,
-    isPlaying: Boolean,
-    /** How loud the music is right now, 0..1, smoothed. Read while drawing. */
-    breath: () -> Float,
-    /** The kick: bass jumping above its own recent level, 0..1. Read while drawing. */
-    kick: () -> Float,
 ) {
-    val context = LocalContext.current
-    // Held across a skip until the next cover is ready, so the ground never flashes empty.
-    var art by remember { mutableStateOf<LiveArt?>(null) }
-    LaunchedEffect(artUrl) {
-        if (artUrl == null) return@LaunchedEffect
-        val request = ImageRequest.Builder(context)
-            .data(artUrl)
-            .size(64, 64)
-            .allowHardware(false)
-            .build()
-        val bitmap = runCatching { context.imageLoader.execute(request).image?.toBitmap() }.getOrNull()
-            ?: return@LaunchedEffect
-        art = withContext(Dispatchers.Default) { liveArtOf(bitmap) }
-    }
-
-    val colors = (palette.colors.ifEmpty { FallbackMesh } + FallbackMesh).take(2).map { it.tuned() }
-    val baseColor by animateColorAsState(colors.first().dimmed(), tween(1200), label = "npLiveBase")
-    val glowColor by animateColorAsState(colors[1], tween(1200), label = "npLiveGlow")
-
-    // One clock for the motion, in degrees, advanced by a speed that eases between playing and
-    // paused rather than jumping — the drift settles to a crawl on pause and picks back up on play.
-    val playing by rememberUpdatedState(isPlaying)
-    val turn = remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(Unit) {
-        var last = System.nanoTime()
-        var speed = 1f
-        while (isActive) {
-            withFrameNanos { now ->
-                val dt = ((now - last) / 1e9f).coerceIn(0f, 0.1f)
-                last = now
-                val target = if (playing) 1f else 0.3f
-                speed += (target - speed) * (1f - kotlin.math.exp(-dt / 0.8f))
-                turn.floatValue = (turn.floatValue + dt * LIVE_ART_DEG_PER_SEC * speed * (1f + 0.5f * breath())) % 360_000f
-            }
-        }
-    }
-
-    val saturate = remember { ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(1.3f) }) }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(baseColor),
-    ) {
-        Crossfade(targetState = art, animationSpec = tween(1200), label = "npLiveArt") { current ->
-            if (current != null) {
-                Canvas(Modifier.fillMaxSize().clipToBounds()) {
-                    val t = turn.floatValue
-                    val swell = 1f + 0.05f * breath() + 0.03f * kick()
-                    // Sized against the long side, so the solid copy covers every corner at any angle.
-                    val side = size.maxDimension
-                    LIVE_ART_LAYERS.forEachIndexed { index, layer ->
-                        val image = if (index == 0) current.solid else current.feathered
-                        val orbit = ((t * layer.orbitSpeed + layer.phase) * PI / 180.0)
-                        val cx = size.width * (0.5f + layer.x + layer.orbit * cos(orbit).toFloat())
-                        val cy = size.height * (0.5f + layer.y + layer.orbit * 0.6f * sin(orbit * 1.3).toFloat())
-                        val drawn = (side * layer.scale * swell).roundToInt()
-                        rotate(degrees = layer.phase + t * layer.spin, pivot = Offset(cx, cy)) {
-                            drawImage(
-                                image = image,
-                                srcOffset = IntOffset.Zero,
-                                srcSize = IntSize(image.width, image.height),
-                                dstOffset = IntOffset((cx - drawn / 2f).roundToInt(), (cy - drawn / 2f).roundToInt()),
-                                dstSize = IntSize(drawn, drawn),
-                                alpha = layer.alpha,
-                                colorFilter = saturate,
-                                filterQuality = FilterQuality.Low,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        // Keeps white type legible over a bright cover, deepest where the controls are.
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color.Black.copy(alpha = 0.10f), Color.Black.copy(alpha = 0.26f), Color.Black.copy(alpha = 0.46f)),
-                    ),
-                ),
-        )
-        // The beat itself: a soft bloom of the cover's colour rising behind the controls on every
-        // kick. Plain radial light, no blur, so redrawing it each frame costs next to nothing.
-        Canvas(Modifier.fillMaxSize()) {
-            val strength = (0.10f * breath() + 0.30f * kick()).coerceIn(0f, 0.45f)
-            if (strength <= 0.005f) return@Canvas
-            val center = Offset(size.width / 2f, size.height * 0.62f)
-            val radius = size.maxDimension * (0.55f + 0.08f * kick())
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(glowColor.copy(alpha = strength), Color.Transparent),
-                    center = center,
-                    radius = radius,
-                ),
-                radius = radius,
-                center = center,
-            )
-        }
+    // The lyrics page's ground, exactly: the cover as a slow field of its own colours with the
+    // cover blurred over it and a light scrim. It reads at an ordinary screen brightness, which
+    // the darker lock-screen treatment did not. [palette] is kept for callers; the field reads its
+    // own colours from the cover.
+    val metadata = LocalPlayerConnection.current?.mediaMetadata?.collectAsState()?.value
+    if (metadata != null) {
+        AppleLyricsBackground(mediaMetadata = metadata)
+    } else {
+        Box(Modifier.fillMaxSize().background(palette.colors.firstOrNull()?.dimmed() ?: Color.Black))
     }
 }
-
-/** The cover, blurred, twice: once solid for the ground, once with its edges feathered to nothing. */
-private class LiveArt(val solid: ImageBitmap, val feathered: ImageBitmap)
-
-private class LiveArtLayer(
-    /** Drawn size against the screen's long side. */
-    val scale: Float,
-    /** Turn rate against the base clock; negative turns the other way. */
-    val spin: Float,
-    /** Starting angle, degrees, for the turn and the orbit. */
-    val phase: Float,
-    /** Resting centre, as a fraction of the screen away from its middle. */
-    val x: Float,
-    val y: Float,
-    /** Radius of the slow orbit around that centre, as a fraction of the screen. */
-    val orbit: Float,
-    val orbitSpeed: Float,
-    val alpha: Float,
-)
-
-/** Base period of the drift: one full turn of the slowest copy in about a minute and a half. */
-private const val LIVE_ART_DEG_PER_SEC = 13f
-
-private val LIVE_ART_LAYERS = listOf(
-    LiveArtLayer(scale = 1.6f, spin = 1f, phase = 0f, x = 0f, y = 0f, orbit = 0f, orbitSpeed = 0f, alpha = 1f),
-    LiveArtLayer(scale = 1.15f, spin = -1.35f, phase = 120f, x = -0.22f, y = -0.16f, orbit = 0.18f, orbitSpeed = 0.9f, alpha = 0.85f),
-    LiveArtLayer(scale = 1.0f, spin = 0.8f, phase = 240f, x = 0.24f, y = 0.24f, orbit = 0.20f, orbitSpeed = -0.75f, alpha = 0.75f),
-    LiveArtLayer(scale = 0.8f, spin = -0.6f, phase = 60f, x = 0.05f, y = -0.28f, orbit = 0.16f, orbitSpeed = 1.1f, alpha = 0.6f),
-)
-
-private const val LIVE_ART_SIDE = 160
 
 /**
- * The cover as the backdrop draws it: upscaled to [LIVE_ART_SIDE], then three passes of a box blur
- * (close to a Gaussian) wide enough that nothing of the artwork's edges survives, only its colour.
- * Done at this size rather than on the 64px read so the screen-wide stretch has smooth gradients
- * to interpolate between instead of blocks.
+ * Reads the player's ground ahead of time — the high-resolution cover the lyrics-page background
+ * draws — so opening the player finds it in the image cache instead of fetching it on the first
+ * frames of the open. Called by the mini player as each song arrives.
  */
-private fun liveArtOf(source: Bitmap): LiveArt {
-    val side = LIVE_ART_SIDE
-    val scaled = Bitmap.createScaledBitmap(source, side, side, true)
-    val pixels = IntArray(side * side).also { scaled.getPixels(it, 0, side, 0, 0, side, side) }
-    val r = IntArray(pixels.size) { (pixels[it] shr 16) and 0xFF }
-    val g = IntArray(pixels.size) { (pixels[it] shr 8) and 0xFF }
-    val b = IntArray(pixels.size) { pixels[it] and 0xFF }
-    repeat(3) {
-        for (channel in arrayOf(r, g, b)) {
-            boxBlur(channel, side, radius = 9, horizontal = true)
-            boxBlur(channel, side, radius = 9, horizontal = false)
-        }
-    }
-    val solid = IntArray(pixels.size)
-    val feathered = IntArray(pixels.size)
-    val half = side / 2f
-    for (y in 0 until side) {
-        for (x in 0 until side) {
-            val i = y * side + x
-            val rgb = (r[i] shl 16) or (g[i] shl 8) or b[i]
-            solid[i] = (0xFF shl 24) or rgb
-            // A round, soft falloff: full in the middle third, nothing by the edge of the circle.
-            val dx = (x + 0.5f - half) / half
-            val dy = (y + 0.5f - half) / half
-            val d = sqrt(dx * dx + dy * dy)
-            val k = ((1f - d) / 0.6f).coerceIn(0f, 1f)
-            val a = (k * k * (3f - 2f * k) * 255f).roundToInt()
-            // Premultiplied, as Bitmap stores it.
-            feathered[i] = (a shl 24) or
-                ((r[i] * a / 255) shl 16) or ((g[i] * a / 255) shl 8) or (b[i] * a / 255)
-        }
-    }
-    fun bitmapOf(data: IntArray) = Bitmap.createBitmap(side, side, Bitmap.Config.ARGB_8888).apply {
-        setPixels(data, 0, side, 0, 0, side, side)
-    }.asImageBitmap()
-    return LiveArt(solid = bitmapOf(solid), feathered = bitmapOf(feathered))
-}
-
-/** One pass of a sliding-window box blur along rows or columns of a square channel, edges clamped. */
-private fun boxBlur(channel: IntArray, side: Int, radius: Int, horizontal: Boolean) {
-    val line = IntArray(side)
-    val window = radius * 2 + 1
-    for (lane in 0 until side) {
-        fun at(k: Int): Int {
-            val c = k.coerceIn(0, side - 1)
-            return if (horizontal) channel[lane * side + c] else channel[c * side + lane]
-        }
-        var sum = 0
-        for (k in -radius..radius) sum += at(k)
-        for (k in 0 until side) {
-            line[k] = sum / window
-            sum += at(k + radius + 1) - at(k - radius)
-        }
-        for (k in 0 until side) {
-            if (horizontal) channel[lane * side + k] = line[k] else channel[k * side + lane] = line[k]
-        }
-    }
+internal suspend fun prewarmPlayerBackdrop(context: android.content.Context, thumbnailUrl: String?) {
+    val url = thumbnailUrl?.highRes() ?: return
+    runCatching { context.imageLoader.execute(ImageRequest.Builder(context).data(url).build()) }
 }
 
 @Composable
@@ -3991,23 +3793,35 @@ internal fun LandscapeNowPlaying(
     val playerConnection = LocalPlayerConnection.current ?: return
     val haptic = LocalHapticFeedback.current
     val playerVolume by playerConnection.service.playerVolume.collectAsState()
+    val menuState = LocalMenuState.current
+    val bottomSheetPageState = LocalBottomSheetPageState.current
+    val currentSong by playerConnection.currentSong.collectAsState(initial = null)
+    val liked = currentSong?.song?.liked == true
     var panel by rememberSaveable { mutableStateOf(NowPlayingPanel.None) }
     BackHandler(enabled = panel != NowPlayingPanel.None) { panel = NowPlayingPanel.None }
     val artUrl = mediaMetadata.thumbnailUrl?.highRes()
+    val palette = rememberArtworkPalette(artUrl)
+    // The same glass as the portrait player: everything under the controls is recorded into this
+    // layer, so the buttons bend the cover's colours at their rims instead of being flat discs.
+    val glassBackdrop = rememberLayerBackdrop()
+    // Paused, the sleeve steps back, as it does on the phone.
+    val sleeveScale by animateFloatAsState(
+        targetValue = if (isPlaying) 1f else 0.9f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessLow),
+        label = "landscapeSleeve",
+    )
 
     Box(modifier.fillMaxSize().background(Color.Black)) {
-        // The cover, blurred and dimmed, is the room the two columns sit in.
-        AsyncImage(
-            model = artUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(80.dp)
-                .graphicsLayer { alpha = 0.75f },
-        )
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
+        // The cover is the room the two columns sit in: the lock-screen ground the portrait player
+        // stands on, recorded for the glass.
+        Box(Modifier.fillMaxSize().layerBackdrop(glassBackdrop)) {
+            LiveArtworkBackdrop(artUrl = artUrl, palette = palette)
+        }
 
+        CompositionLocalProvider(
+            LocalPlayerBackdrop provides glassBackdrop,
+            LocalPlayerAccent provides palette.accent,
+        ) {
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
@@ -4015,29 +3829,211 @@ internal fun LandscapeNowPlaying(
             contentAlignment = Alignment.TopCenter,
         ) {
             val compact = maxHeight < 440.dp
-            Row(
+
+            // ---- Pieces shared by both arrangements ----
+            val sleeve: @Composable (androidx.compose.ui.unit.Dp) -> Unit = { side ->
+                val sleeveShape = RoundedCornerShape(14.dp)
+                AsyncImage(
+                    model = artUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(side)
+                        .graphicsLayer {
+                            scaleX = sleeveScale
+                            scaleY = sleeveScale
+                        }
+                        .shadow(28.dp, sleeveShape, ambientColor = Color.Black.copy(alpha = 0.5f), spotColor = Color.Black.copy(alpha = 0.5f))
+                        .clip(sleeveShape)
+                        .border(0.5.dp, Color.White.copy(alpha = 0.12f), sleeveShape)
+                        .background(Color.White.copy(alpha = 0.06f)),
+                )
+            }
+            // No volume here: a phone on its side has no room for it, and the tablet layout carries
+            // it in its bottom row, between the toggles.
+            val songControls: @Composable () -> Unit = {
+                Column {
+                    // Title and artist beside the like and more circles, as the portrait player
+                    // sets them.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            MarqueeText(
+                                text = mediaMetadata.title,
+                                style = TextStyle(fontFamily = SfPro, fontWeight = FontWeight.Bold, fontSize = 21.sp),
+                                color = Color.White,
+                                trailing = if (mediaMetadata.explicit) {
+                                    { ExplicitBadge(color = Color.White.copy(alpha = 0.55f)) }
+                                } else null,
+                            )
+                            Text(
+                                text = mediaMetadata.artists.joinToString { it.name },
+                                style = TextStyle(fontFamily = SfPro, fontWeight = FontWeight.Bold, fontSize = 21.sp),
+                                color = Color.White.copy(alpha = 0.55f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        CircleGlyph(
+                            icon = if (liked) R.drawable.favorite_filled else R.drawable.favorite_outline,
+                            active = liked,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                playerConnection.toggleLike()
+                            },
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        CircleGlyph(
+                            icon = R.drawable.more_horiz,
+                            onClick = {
+                                menuState.show {
+                                    PlayerMenu(
+                                        mediaMetadata = mediaMetadata,
+                                        navController = navController,
+                                        playerBottomSheetState = playerSheetState,
+                                        onShowDetailsDialog = {
+                                            bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
+                                        },
+                                        onDismiss = menuState::dismiss,
+                                    )
+                                }
+                            },
+                        )
+                    }
+                    Spacer(Modifier.height(if (compact) 10.dp else 18.dp))
+                    PlayerScrubber(
+                        positionProvider = positionProvider,
+                        durationProvider = durationProvider,
+                        sliderPositionProvider = sliderPositionProvider,
+                        onScrub = onSliderValueChange,
+                        onScrubFinished = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onSliderValueChangeFinished()
+                        },
+                        onScrubbingChange = {},
+                    ) {
+                        Row(Modifier.align(Alignment.Center)) { PlayerSoundLine(format = currentFormat) }
+                    }
+                    TransportRow(
+                        isPlaying = isPlaying,
+                        isLoading = playbackState == Player.STATE_BUFFERING,
+                        ended = playbackState == Player.STATE_ENDED,
+                        previousEnabled = canSkipPrevious,
+                        nextEnabled = canSkipNext,
+                        onPrevious = playerConnection::seekToPrevious,
+                        onPlayPause = {
+                            if (playbackState == Player.STATE_ENDED) {
+                                playerConnection.player.seekTo(0, 0)
+                                playerConnection.player.playWhenReady = true
+                            } else {
+                                playerConnection.player.togglePlayPause()
+                            }
+                        },
+                        onNext = playerConnection::seekToNext,
+                    )
+                }
+            }
+
+            if (!compact) {
+                // ---- Tablet: Apple Music's iPad player ----
+                //
+                // Everything about the song stacked in the left column — the sleeve, its name,
+                // the scrubber, the transport, the volume — and the right column always live:
+                // the lyrics, or the queue. On a screen this size there is room for the words to
+                // run beside the song instead of behind a button, which is the one thing a phone
+                // can never offer and the reason to lay a tablet out differently at all.
+                val rightPane = if (panel == NowPlayingPanel.Queue) NowPlayingPanel.Queue else NowPlayingPanel.Lyrics
+                Row(
+                    modifier = Modifier
+                        .widthIn(max = 1180.dp)
+                        .fillMaxSize()
+                        .padding(top = 24.dp, bottom = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(GUTTER),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .padding(start = GUTTER),
+                    ) {
+                        BoxWithConstraints(
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            sleeve(minOf(maxWidth, maxHeight))
+                        }
+                        Spacer(Modifier.height(18.dp))
+                        songControls()
+                        Spacer(Modifier.height(6.dp))
+                        // Which of the two the right column shows, with the volume between them:
+                        // one row instead of two, and the room goes to the cover.
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            LandscapeToggle(
+                                icon = R.drawable.lyrics,
+                                active = rightPane == NowPlayingPanel.Lyrics,
+                                onClick = { panel = NowPlayingPanel.None },
+                            )
+                            Box(Modifier.weight(1f)) {
+                                VolumeRow(
+                                    value = playerVolume,
+                                    onValueChange = { playerConnection.service.playerVolume.value = it },
+                                    onDraggingChange = {},
+                                )
+                            }
+                            LandscapeToggle(
+                                icon = R.drawable.queue_music,
+                                active = rightPane == NowPlayingPanel.Queue,
+                                onClick = {
+                                    panel = if (panel == NowPlayingPanel.Queue) NowPlayingPanel.None else NowPlayingPanel.Queue
+                                },
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1.15f)
+                            .fillMaxHeight()
+                            .padding(end = GUTTER),
+                    ) {
+                        AnimatedContent(
+                            targetState = rightPane,
+                            transitionSpec = { fadeIn(tween(220, delayMillis = 90)) togetherWith fadeOut(tween(140)) },
+                            label = "tabletPane",
+                            modifier = Modifier.fillMaxSize(),
+                        ) { pane ->
+                            when (pane) {
+                                NowPlayingPanel.Queue -> NowPlayingQueue(
+                                    navController = navController,
+                                    playerSheetState = playerSheetState,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                else -> LyricsV2(
+                                    sliderPositionProvider = sliderPositionProvider,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
+                    }
+                }
+            } else Row(
                 modifier = Modifier
                     .widthIn(max = 1100.dp)
                     .fillMaxSize()
-                    .padding(top = 20.dp, bottom = if (compact) 8.dp else 20.dp),
+                    .padding(top = 20.dp, bottom = 8.dp),
             ) {
-                // ---- The sleeve ----
+                // ---- A phone on its side: the sleeve, and a page that turns ----
                 BoxWithConstraints(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .padding(horizontal = if (compact) 20.dp else GUTTER),
+                        .padding(horizontal = 20.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    AsyncImage(
-                        model = artUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(minOf(maxWidth, maxHeight))
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color.White.copy(alpha = 0.06f)),
-                    )
+                    sleeve(minOf(maxWidth, maxHeight))
                 }
 
                 // ---- The page: controls, lyrics or the queue ----
@@ -4045,7 +4041,7 @@ internal fun LandscapeNowPlaying(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .padding(end = if (compact) 20.dp else GUTTER),
+                        .padding(end = 20.dp),
                 ) {
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         AnimatedContent(
@@ -4064,65 +4060,10 @@ internal fun LandscapeNowPlaying(
                                     playerSheetState = playerSheetState,
                                     modifier = Modifier.fillMaxSize(),
                                 )
-                                NowPlayingPanel.None -> Column(
-                                    verticalArrangement = Arrangement.Center,
+                                NowPlayingPanel.None -> Box(
+                                    contentAlignment = Alignment.Center,
                                     modifier = Modifier.fillMaxSize(),
-                                ) {
-                                    MarqueeText(
-                                        text = mediaMetadata.title,
-                                        style = TextStyle(fontFamily = SfPro, fontWeight = FontWeight.Bold, fontSize = 21.sp),
-                                        color = Color.White,
-                                        trailing = if (mediaMetadata.explicit) {
-                                            { ExplicitBadge(color = Color.White.copy(alpha = 0.55f)) }
-                                        } else null,
-                                    )
-                                    Text(
-                                        text = mediaMetadata.artists.joinToString { it.name },
-                                        style = TextStyle(fontFamily = SfPro, fontWeight = FontWeight.Bold, fontSize = 21.sp),
-                                        color = Color.White.copy(alpha = 0.55f),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Spacer(Modifier.height(if (compact) 10.dp else 18.dp))
-                                    PlayerScrubber(
-                                        positionProvider = positionProvider,
-                                        durationProvider = durationProvider,
-                                        sliderPositionProvider = sliderPositionProvider,
-                                        onScrub = onSliderValueChange,
-                                        onScrubFinished = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            onSliderValueChangeFinished()
-                                        },
-                                        onScrubbingChange = {},
-                                    ) {
-                                        Row(Modifier.align(Alignment.Center)) { PlayerSoundLine(format = currentFormat) }
-                                    }
-                                    TransportRow(
-                                        isPlaying = isPlaying,
-                                        isLoading = playbackState == Player.STATE_BUFFERING,
-                                        ended = playbackState == Player.STATE_ENDED,
-                                        previousEnabled = canSkipPrevious,
-                                        nextEnabled = canSkipNext,
-                                        onPrevious = playerConnection::seekToPrevious,
-                                        onPlayPause = {
-                                            if (playbackState == Player.STATE_ENDED) {
-                                                playerConnection.player.seekTo(0, 0)
-                                                playerConnection.player.playWhenReady = true
-                                            } else {
-                                                playerConnection.player.togglePlayPause()
-                                            }
-                                        },
-                                        onNext = playerConnection::seekToNext,
-                                    )
-                                    if (!compact) {
-                                        Spacer(Modifier.height(8.dp))
-                                        VolumeRow(
-                                            value = playerVolume,
-                                            onValueChange = { playerConnection.service.playerVolume.value = it },
-                                            onDraggingChange = {},
-                                        )
-                                    }
-                                }
+                                ) { songControls() }
                             }
                         }
                     }
@@ -4146,6 +4087,7 @@ internal fun LandscapeNowPlaying(
                 }
             }
         }
+        }
     }
 }
 
@@ -4155,8 +4097,8 @@ private fun LandscapeToggle(icon: Int, active: Boolean, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .size(44.dp)
+            .playerGlass(CircleShape, lit = active)
             .clip(CircleShape)
-            .background(Color.White.copy(alpha = if (active) 0.22f else 0.08f))
             .clickable(onClick = onClick),
     ) {
         Icon(
