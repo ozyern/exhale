@@ -414,7 +414,7 @@ fun Queue(
                 }
 
                 // ============================================================
-                // V8 - Apple Music Style Collapsed Content
+                // V8 - the iOS music app Style Collapsed Content
                 // ============================================================
                 PlayerDesignStyle.V8 -> {
                     QueueCollapsedContentV8(
@@ -985,7 +985,7 @@ fun Queue(
 }
 
 /**
- * Apple Music's heading over what is still to come: "Continue Playing", and under it where the
+ * the iOS music app's heading over what is still to come: "Continue Playing", and under it where the
  * songs come from — the album, playlist or radio that started the queue — or that they are shuffled.
  */
 @Composable

@@ -3,8 +3,8 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * One list for which lyrics sources are asked and in what order, after BitChord's sources page
- * (github.com/kushagrasinghx/BitChord, GPL-3.0).
+ * One list for which lyrics sources are asked and in what order, after the reference design's sources page
+ * (github.com/kushagrasinghx/the reference design, GPL-3.0).
  */
 
 package com.ozyern.exhale.ui.screens.settings

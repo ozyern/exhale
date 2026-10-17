@@ -574,7 +574,7 @@ private fun ArtistTile(
             }
 
             // Artwork disc, inset from the ring by a constant gap so selection reads as
-            // a clean halo, exactly like Apple Music's artist picker.
+            // a clean halo, exactly like the iOS music app's artist picker.
             Box(
                 modifier = Modifier
                     .fillMaxSize()

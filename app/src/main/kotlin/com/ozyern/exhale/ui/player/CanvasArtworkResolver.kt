@@ -6,7 +6,7 @@
  * Orquestador de proveedores de canvas.
  * Reemplaza la implementación anterior basada en un único proxy server.
  *
- * Orden AUTO: Apple Music → Exhale API → Tidal
+ * Orden AUTO: the iOS music app → Exhale API → Tidal
  */
 
 package com.ozyern.exhale.ui.player
@@ -22,8 +22,8 @@ import java.util.Locale
  *
  * @param songTitleRaw  Título tal como viene del MediaMetadata (puede tener feat., etc.)
  * @param artistNameRaw Nombre del artista tal como viene del MediaMetadata
- * @param albumName     Nombre del álbum (opcional, mejora la precisión de Apple Music)
- * @param storefront    Región de Apple Music (ej. "us", "mx")
+ * @param albumName     Nombre del álbum (opcional, mejora la precisión de the iOS music app)
+ * @param storefront    Región de the iOS music app (ej. "us", "mx")
  * @param source        Fuente a usar; [CanvasSource.AUTO] prueba todas en orden
  */
 internal suspend fun fetchCanvasArtworkForPlayback(

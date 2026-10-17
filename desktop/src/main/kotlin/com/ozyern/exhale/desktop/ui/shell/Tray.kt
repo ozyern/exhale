@@ -3,7 +3,7 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * After BitChord's desktop tray menu (github.com/kushagrasinghx/BitChord, GPL-3.0): the song, its
+ * The tray menu: the song, its
  * controls, the way back to the window, and quit.
  */
 

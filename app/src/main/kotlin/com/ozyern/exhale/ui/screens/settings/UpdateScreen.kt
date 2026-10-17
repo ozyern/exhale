@@ -815,7 +815,7 @@ private sealed interface DownloadState {
 }
 
 /**
- * The "Software Update" sheet — Apple's presentation of an available update, in our glass.
+ * The "Software Update" sheet — iOS's presentation of an available update, in our glass.
  *
  * Replaces an `AlertDialog` whose only action kicked the user out to a browser to download the APK
  * by hand. The download now happens in place, which is the whole point of the ported backend: the

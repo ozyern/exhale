@@ -4,7 +4,7 @@
  * Licensed Under GPL-3.0 | see git history for contributors
  *
  * The idea — the cover itself carried between the mini player and the player — follows
- * BitChord's PlayerDock (github.com/kushagrasinghx/BitChord, GPL-3.0). The path, the lift, the
+ * the reference design's PlayerDock (github.com/kushagrasinghx/the reference design, GPL-3.0). The path, the lift, the
  * landing and the parallel motion around it are Exhale's.
  */
 

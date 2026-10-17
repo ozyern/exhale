@@ -4,7 +4,7 @@
  * Licensed Under GPL-3.0 | see git history for contributors
  *
  * Moving covers, as the Android app shows them (the :canvas module's Apple Music and Tidal lookups).
- * BitChord's desktop app decodes its motion artwork with a bundled FFmpeg; here the libmpv the player
+ * A bundled FFmpeg is the usual way to decode motion artwork; here the libmpv the player
  * already ships renders it, into memory, through mpv's software render API.
  */
 

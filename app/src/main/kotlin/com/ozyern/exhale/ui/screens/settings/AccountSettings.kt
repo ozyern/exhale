@@ -607,7 +607,7 @@ private fun AccountSheetTopBar(onClose: () -> Unit) {
 /**
  * The identity block: portrait, name, second line — centred, on the sheet itself.
  *
- * Apple Music's account sheet opens with the person, not with a row about them: a large circular
+ * the iOS music app's account sheet opens with the person, not with a row about them: a large circular
  * portrait centred under the title, the name under that, the address under that, and only then the
  * list. This was a left-aligned row inside a glass card with a chevron on the end, which is the
  * shape of a *setting* — "Account ›" — and it put a container around the one thing on the sheet
@@ -869,7 +869,7 @@ private fun AccountSignInOutRow(
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            // Apple's wording, on the sheet at least: you sign in to an account, you do not
+            // iOS's wording, on the sheet at least: you sign in to an account, you do not
             // "log in" to one.
             text = stringResource(
                 if (isLoggedIn) R.string.account_sign_out else R.string.account_sign_in,

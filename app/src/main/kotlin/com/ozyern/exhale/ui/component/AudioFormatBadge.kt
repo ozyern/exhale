@@ -29,7 +29,7 @@ import com.ozyern.exhale.db.entities.FormatEntity
  * These reflect the ACTUAL decoded stream ([FormatEntity]) — they are not decorative.
  * Note: YouTube Music streams are lossy (Opus/AAC), so these light up for genuinely
  * lossless / hi-res / spatial sources (e.g. local FLAC/ALAC files or any future
- * lossless provider), matching how Apple Music only tags real capabilities.
+ * lossless provider), matching how the iOS music app only tags real capabilities.
  */
 enum class AudioBadge(val label: String) {
     DOLBY_ATMOS("Dolby Atmos"),

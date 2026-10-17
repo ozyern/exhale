@@ -3,7 +3,7 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * iOS rubber-band overscroll adapted from Convx (github.com/cosmictaserdev-creator/Convx), GPL-3.0.
+ * iOS rubber-band overscroll adapted from the reference (github.com/cosmictaserdev-creator/the reference), GPL-3.0.
  */
 
 package com.ozyern.exhale.ui.utils
@@ -39,7 +39,7 @@ import kotlin.math.abs
 import kotlin.math.sign
 
 /**
- * UIKit's rubber band constant. Apple's own value; lower is stiffer.
+ * UIKit's rubber band constant. iOS's own value; lower is stiffer.
  */
 private const val RubberBandConstant = 0.55f
 

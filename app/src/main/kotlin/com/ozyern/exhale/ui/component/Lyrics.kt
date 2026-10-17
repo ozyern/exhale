@@ -930,7 +930,7 @@ fun Lyrics(
                         )
 
                         // Scale from the text's anchored edge so left-aligned lines grow
-                        // rightward (like Apple Music) instead of ballooning from center.
+                        // rightward (like the iOS music app) instead of ballooning from center.
                         val lineTransformOrigin = when (lyricsTextPosition) {
                             LyricsPosition.LEFT -> TransformOrigin(0f, 0.5f)
                             LyricsPosition.CENTER -> TransformOrigin(0.5f, 0.5f)

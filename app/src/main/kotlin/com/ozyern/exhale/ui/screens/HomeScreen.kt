@@ -277,7 +277,7 @@ fun HomeScreen(
     Box(
         modifier = Modifier.fillMaxSize()
     ) {
-        // No wash of colour behind Home: Apple's is plain black, and the artwork is on the cards.
+        // No wash of colour behind Home: iOS's is plain black, and the artwork is on the cards.
 
         BoxWithConstraints(
             modifier = Modifier
@@ -292,13 +292,13 @@ fun HomeScreen(
                 state = lazylistState,
                 contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
             ) {
-                // Apple Music's large title: the weekday as a quiet eyebrow over a heavy
+                // the iOS music app's large title: the weekday as a quiet eyebrow over a heavy
                 // display-size "Home". It lives *inside* the scroll content rather than in the app
                 // bar, which is the whole point of the pattern — it scrolls away under the bar as
                 // you move down, leaving the compact chrome behind.
                 item(key = "home_large_title", contentType = "large_title") {
                     HomeLargeTitle(
-                        // Apple's large title does not simply scroll off — it drifts slower than
+                        // iOS's large title does not simply scroll off — it drifts slower than
                         // the list under it and dissolves as it goes, which is what makes the
                         // compact bar feel like the same title rather than a replacement for it.
                         //
@@ -412,7 +412,7 @@ fun HomeScreen(
 
                 keepListening?.takeIf { it.isNotEmpty() }?.let { items ->
                     item(key = "home_shortcuts", contentType = "shortcuts") {
-                        // Apple Music's "Top Picks for You": tall cards coloured by their own artwork.
+                        // the iOS music app's "Top Picks for You": tall cards coloured by their own artwork.
                         HomeTopPicks(
                             items = items.take(10),
                             onItemClick = onShortcutClick,
@@ -576,7 +576,7 @@ fun HomeScreen(
 }
 
 /**
- * The Apple Music large title.
+ * The the iOS music app large title.
  *
  * Two lines: the weekday, quiet and small, over the section name at display weight. Apple leads
  * Home with the day rather than a greeting because it is the one piece of context that is always
@@ -585,7 +585,7 @@ fun HomeScreen(
  * Horizontal insets are applied the same way [com.ozyern.exhale.ui.component.NavigationTitle] does
  * them, so the title's left edge lands exactly on the section headers below it.
  *
- * No account button here. It briefly had one, on the reasoning that Apple Music puts the avatar
+ * No account button here. It briefly had one, on the reasoning that the iOS music app puts the avatar
  * level with the large title — but this app already has one in the app bar directly above, so the
  * result was two account circles stacked twenty pixels apart. The app bar's is the original and
  * the one that is present on every tab; this is a title, and titles do not carry controls.

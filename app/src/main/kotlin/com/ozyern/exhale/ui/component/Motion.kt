@@ -30,7 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 
 /**
- * "Apple Music" tap physics — scale down on press, spring back on release.
+ * "the iOS music app" tap physics — scale down on press, spring back on release.
  *
  * Everything runs inside [graphicsLayer], so the animation is GPU-only: it skips the
  * composition and layout phases (never animate size/padding for this).

@@ -2737,7 +2737,7 @@ fun PlayerBackground(
 
 
 // ============================================================
-// V8 - Apple Music Style Components
+// V8 - the iOS music app Style Components
 // ============================================================
 
 /**
@@ -2777,7 +2777,7 @@ fun V8PlayerBackdrop(
             bottomScrimAlpha = 0.62f,
             sharpArtwork = true,
         )
-        // The song's motion artwork, where it has one, edge to edge as Apple Music plays it:
+        // The song's motion artwork, where it has one, edge to edge as the iOS music app plays it:
         // over the still cover, under a scrim of its own so the controls stay on the same contrast.
         if (mediaMetadata != null) V8MotionArtwork(mediaMetadata, isPlaying)
     }
@@ -3030,7 +3030,7 @@ fun V8PlayerControlsContent(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Like
-                // Apple's discs: frosted, with a hairline rim, lit a little brighter when on.
+                // iOS's discs: frosted, with a hairline rim, lit a little brighter when on.
                 val likeFill by animateColorAsState(
                     textBackgroundColor.copy(alpha = if (currentSongLiked) 0.26f else 0.14f),
                     label = "v8LikeFill",
@@ -3096,7 +3096,7 @@ fun V8PlayerControlsContent(
 
         // The scrubber is a hairline until you touch it, and then it is a handle.
         //
-        // Apple's grows under the finger - the track roughly doubles while a drag is in progress
+        // iOS's grows under the finger - the track roughly doubles while a drag is in progress
         // and settles back when it ends - which is what makes a bar with no visible thumb feel
         // like something you are holding. A fixed 10dp bar is just a progress indicator you happen
         // to be allowed to drag.
@@ -3176,7 +3176,7 @@ fun V8PlayerControlsContent(
             }
         )
 
-        // === A CONTINUACIÓN: preview del siguiente track, rasgo clásico de Apple Music ===
+        // === A CONTINUACIÓN: preview del siguiente track, rasgo clásico de the iOS music app ===
         if (nextUpMetadata != null) {
             Spacer(Modifier.height(6.dp))
             Row(
@@ -3328,7 +3328,7 @@ fun V8PlaybackControls(
             )
         }
 
-        // Play/Pause - no container, like Apple Music
+        // Play/Pause - no container, like the iOS music app
         V8TransportButton(
             onClick = {
                 if (playbackState == Player.STATE_ENDED) {
@@ -3391,7 +3391,7 @@ fun V8PlaybackControls(
  * One transport control: no container, no ripple, and a glyph that gives under the finger.
  *
  * These were `Surface(onClick)` buttons with a transparent colour, which still draws Material's
- * ripple - an expanding grey disc over album art, on the three controls the eye is on most. Apple's
+ * ripple - an expanding grey disc over album art, on the three controls the eye is on most. iOS's
  * transport has no container at all; what acknowledges the press is the glyph itself dipping and
  * coming back. Underdamped on the way out so it overshoots slightly, which is what makes a flat
  * glyph feel like a physical button.
@@ -3489,7 +3489,7 @@ fun QueueCollapsedContentV8(
 
 
 /**
- * Track con efecto "glass" (vidrio esmerilado translúcido), estilo Apple Music.
+ * Track con efecto "glass" (vidrio esmerilado translúcido), estilo the iOS music app.
  * Capa base translúcida + blur sutil + borde tenue + relleno de progreso con highlight.
  */
 @Composable

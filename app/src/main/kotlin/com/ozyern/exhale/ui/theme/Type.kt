@@ -31,12 +31,12 @@ import com.ozyern.exhale.R
 // less letter space to read as one word). Leaving the app on the Material defaults is what made
 // the headers read as "Android" no matter what the surfaces around them did, so the weights and
 // tracking below follow the iOS convention instead. Body, label and the small title roles keep
-// the Material values: those are set for legibility at small sizes and Apple's are effectively
+// the Material values: those are set for legibility at small sizes and iOS's are effectively
 // the same there.
 // ---------------------------------------------------------------------------------------------
 private fun buildTypography(fontFamily: FontFamily, displayFamily: FontFamily = fontFamily) =
     Typography(
-        // Apple's scale, role for role: Large Title 34, Title 1 28, Title 2 22, Title 3 20,
+        // iOS's scale, role for role: Large Title 34, Title 1 28, Title 2 22, Title 3 20,
         // Headline 17 semibold, Body 17, Callout 16, Subheadline 15, Footnote 13, Caption 12/11.
         // Tracking follows SF's optical tables — tight at display sizes, near zero at captions.
         displayLarge = TextStyle(fontFamily = displayFamily, fontWeight = FontWeight.Bold, fontSize = 48.sp, lineHeight = 54.sp, letterSpacing = (-0.9).sp),
@@ -56,7 +56,7 @@ private fun buildTypography(fontFamily: FontFamily, displayFamily: FontFamily = 
         labelSmall = TextStyle(fontFamily = fontFamily, fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 0.06.sp),
     )
 
-// Linotte, Exhale's own face on every platform, set to Apple's sizes and weights. Its round,
+// Linotte, Exhale's own face on every platform, set to iOS's sizes and weights. Its round,
 // wide letterforms don't want SF's tight tracking, so the body sizes are left at neutral spacing.
 private val AppFontFamily = FontFamily(Font(R.font.linotte))
 val AppTypography = buildTypography(AppFontFamily).let { t ->

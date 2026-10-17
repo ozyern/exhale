@@ -48,7 +48,7 @@ media = "1.8.0"
 uiGraphics = "1.12.1"
 uiToolingPreview = "1.12.1"
 androidliquidglass = "1.0.0"
-backdrop = "2.0.0"
+backdrop = "2.0.1"
 liquidGlass = "1.0.6"
 backdropVersion = "0.0.1-alpha02"
 hazeVersion = "1.7.3"
@@ -153,6 +153,9 @@ ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics", version.ref
 ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview", version.ref = "uiToolingPreview" }
 androidliquidglass = { group = "com.github.Kyant0", name = "AndroidLiquidGlass", version.ref = "androidliquidglass" }
 backdrop = { group = "io.github.kyant0", name = "backdrop", version.ref = "backdrop" }
+capsule = { group = "zone.ien.capsule", name = "capsule", version = "2.1.4" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version = "1.9.0" }
+kotlinx-atomicfu = { module = "org.jetbrains.kotlinx:atomicfu", version = "0.33.0" }
 liquid-glass = { group = "om.kyant", name = "liquid-glass", version.ref = "liquidGlass" }
 kashif-mehmood-km-backdrop = { group = "io.github.kashif-mehmood-km", name = "backdrop", version.ref = "backdropVersion" }
 dev-haze = { group = "dev.chrisbanes.haze", name = "haze", version.ref = "hazeVersion" }

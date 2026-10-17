@@ -61,7 +61,6 @@ private const val HEAD_CUT_LIMIT = 30
 
 /**
  * KuGou Lyrics Library
- * Modified from [ViMusic](https://github.com/vfsfitvnm/ViMusic)
  */
 @OptIn(ExperimentalEncodingApi::class)
 object KuGou {

@@ -319,7 +319,7 @@ val AudioNormalizationKey = booleanPreferencesKey("audioNormalization")
 val EightDEnabledKey = booleanPreferencesKey("eightDEnabled")
 val EightDRotationHzKey = floatPreferencesKey("eightDRotationHz")
 val EightDDepthKey = floatPreferencesKey("eightDDepth")
-val SpatialAudioKey = booleanPreferencesKey("spatialAudio") // Cavern-style Atmos/spatial upscaling
+val SpatialAudioKey = booleanPreferencesKey("spatialAudio") // the spatial engine-style Atmos/spatial upscaling
 
 /**
  * How wide the spatial stage is.
@@ -702,11 +702,11 @@ val LyricsMotionKey = stringPreferencesKey("lyricsMotion")
 enum class LyricsMotion {
     EXHALE,
     APPLE_MUSIC,
-    /** BitChord's lyric panel, ported whole (ui/bitchord). The default. */
-    BITCHORD,
+    /** the reference design's lyric panel, ported whole (ui/reference). The default. */
+    FLOW,
 }
 
-/** Which full-screen lyrics view the player opens: the classic one, or the Apple Music glass one. */
+/** Which full-screen lyrics view the player opens: the classic one, or the the iOS music app glass one. */
 val LyricsLayoutKey = stringPreferencesKey("lyricsLayout")
 enum class LyricsLayout {
     CLASSIC,

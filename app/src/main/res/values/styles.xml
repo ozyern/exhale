@@ -13,11 +13,9 @@
         <item name="android:enforceNavigationBarContrast" tools:ignore="NewApi">false</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
-        <!-- Android 12+ SplashScreen API (minSdk 33): the mark itself, still, on black, from the
-             first frame of a cold start. BootSplash opens on exactly this picture - same size,
-             same place - and only then starts to move, so the hand-over is invisible and the
-             launch is one breath rather than an amber dot followed by a logo popping in. -->
+        <!-- Android 12+ SplashScreen API (minSdk 33): plain black. BootSplash's disc springs in
+             out of nothing, so the launch window shows nothing but the black it springs out of. -->
         <item name="android:windowSplashScreenBackground">@color/splash_background</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_logo_inset</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon_none</item>
     </style>
 </resources>

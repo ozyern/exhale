@@ -3,8 +3,8 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * The tone pad, faders and balance follow BitChord's equaliser screen
- * (github.com/kushagrasinghx/BitChord, GPL-3.0); the live response curve over them is Exhale's.
+ * The tone pad, faders and balance follow the reference design's equaliser screen
+ * (github.com/kushagrasinghx/the reference design, GPL-3.0); the live response curve over them is Exhale's.
  */
 
 package com.ozyern.exhale.ui.screens.settings

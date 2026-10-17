@@ -3,8 +3,8 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * The panning and interaural-delay core follows BeatWave's EightDAudioProcessor
- * (github.com/vortexapps67/BeatWave, GPL-3.0); the rear shadow, float path and continuous orbit
+ * The panning and interaural-delay core follows the reference dock's EightDAudioProcessor
+ * (github.com/vortexapps67/the reference dock, GPL-3.0); the rear shadow, float path and continuous orbit
  * are Exhale's.
  */
 

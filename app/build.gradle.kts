@@ -337,6 +337,7 @@ dependencies {
     ksp(libs.hilt.compiler)
 
     implementation(project(":innertube"))
+    implementation(project(":cupertino"))
     implementation(project(":spotify"))
     implementation(project(":kugou"))
     implementation(project(":lrclib"))

@@ -320,7 +320,7 @@ fun OnlineSearchResult(
                         }
                     }
                 }
-                // A link from Spotify, Apple Music, Deezer, Tidal…: the same song or album, here.
+                // A link from Spotify, the iOS music app, Deezer, Tidal…: the same song or album, here.
                 if (viewModel.linkLoading || viewModel.linkMatch != null) {
                     item(key = "link_header") {
                         SearchSectionHeader(title = "From your link", onSeeAll = null, modifier = Modifier.animateItem())
@@ -396,7 +396,7 @@ fun OnlineSearchResult(
                         items = rows,
                         key = { itemIndex, item -> "$title/${item.id}/$itemIndex" },
                     ) { itemIndex, item ->
-                        // Each section is one grouped card, as Apple Music lists results: the rows
+                        // Each section is one grouped card, as the iOS music app lists results: the rows
                         // share a plate, rounded at its ends, parted by hairlines inset to the text.
                         androidx.compose.foundation.layout.Column(
                             Modifier

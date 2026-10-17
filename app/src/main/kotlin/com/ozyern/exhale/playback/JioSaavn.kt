@@ -3,8 +3,8 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * The catalogue calls and the rendition rule are BitChord's JioSaavnService
- * (github.com/kushagrasinghx/BitChord, GPL-3.0); the matcher is Exhale's own, stricter one.
+ * The catalogue calls and the rendition rule are the reference design's JioSaavnService
+ * (github.com/kushagrasinghx/the reference design, GPL-3.0); the matcher is Exhale's own, stricter one.
  */
 
 package com.ozyern.exhale.playback

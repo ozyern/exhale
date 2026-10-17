@@ -3,8 +3,8 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * The player's layout, motion and controls follow BitChord's Now Playing screen
- * (github.com/kushagrasinghx/BitChord, GPL-3.0), rebuilt on Exhale's playback, lyrics and queue.
+ * The player's layout, motion and controls follow the reference design's Now Playing screen
+ * (github.com/kushagrasinghx/the reference design, GPL-3.0), rebuilt on Exhale's playback, lyrics and queue.
  */
 
 package com.ozyern.exhale.ui.player
@@ -95,7 +95,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalConfiguration
-import com.ozyern.exhale.ui.component.bitChordGlassEffects
+import com.ozyern.exhale.ui.component.slabGlassEffects
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -158,6 +158,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -318,10 +319,10 @@ internal fun Modifier.playerGlass(shape: Shape, lit: Boolean = false): Modifier 
     return this.drawBackdrop(
         backdrop = backdrop,
         shape = { shape },
-        // BitChord's glass strength, as the dock now has it: half again the saturation, an 8dp
+        // the reference design's glass strength, as the dock now has it: half again the saturation, an 8dp
         // blur and a 24dp lens with depth and colour fringing. The film stays light — these sit on
         // the artwork, not on a page.
-        effects = { bitChordGlassEffects() },
+        effects = { slabGlassEffects() },
         highlight = { Highlight.Default },
         shadow = { GlassShadow(radius = 10f.dp, color = Color.Black.copy(alpha = 0.22f)) },
         onDrawSurface = { drawRect(film) },
@@ -508,7 +509,7 @@ internal fun NowPlayingScreen(
             }
         }
     }
-    // ---- Apple Music's glass lyrics, when chosen: a screen of their own over the mesh ----
+    // ---- the iOS music app's glass lyrics, when chosen: a screen of their own over the mesh ----
     val lyricsLayout by rememberEnumPreference(LyricsLayoutKey, LyricsLayout.GLASS)
     val glassLayout = lyricsLayout == LyricsLayout.GLASS
     val glassLyrics = glassLayout && panel == NowPlayingPanel.Lyrics
@@ -555,7 +556,7 @@ internal fun NowPlayingScreen(
     val heroVisible: () -> Float = { if (g() >= 0.999f) 0f else heroT.value }
     // Where the sleeve sits once collapsed, relative to this screen: the banner's destination.
     var sleeveHome by remember { mutableStateOf(Offset.Zero) }
-    // In the glass lyrics the cover lands on the song's thumbnail at the foot, as Apple's does.
+    // In the glass lyrics the cover lands on the song's thumbnail at the foot, as iOS's does.
     var glassThumbHome by remember { mutableStateOf<Offset?>(null) }
     // Held through the return trip, so the cover flies back out of the thumbnail it went into
     // rather than jumping to the header's corner the moment the lyrics are dismissed.
@@ -725,6 +726,9 @@ internal fun NowPlayingScreen(
         }
     }
 
+    // The "…" button's centre, in root coordinates: where the pop-out menu grows from.
+    var moreButtonCenter by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    var popOutAt by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
     val openMenu: () -> Unit = {
         menuState.show {
             PlayerMenu(
@@ -1051,7 +1055,7 @@ internal fun NowPlayingScreen(
                             .graphicsLayer { alpha = 1f - g() },
                     )
                 }
-                // Song ⇄ Video, as Apple Music offers it: only while the cover is the screen, and
+                // Song ⇄ Video, as the iOS music app offers it: only while the cover is the screen, and
                 // gone for a song we already know has no video.
                 // Full screen, opposite the switch: the one place the video is a player, with its
                 // controls. In this strip because it takes touches; over the picture, the player's
@@ -1400,7 +1404,13 @@ internal fun NowPlayingScreen(
                             },
                         )
                         Spacer(Modifier.width(8.dp))
-                        CircleGlyph(icon = R.drawable.more_horiz, onClick = openMenu)
+                        Box(
+                            Modifier.onGloballyPositioned {
+                                moreButtonCenter = it.boundsInRoot().center
+                            },
+                        ) {
+                            CircleGlyph(icon = R.drawable.more_horiz, onClick = { popOutAt = moreButtonCenter })
+                        }
                     }
 
                     // ---- Lyrics ----
@@ -1680,6 +1690,80 @@ internal fun NowPlayingScreen(
             LyricsSourceSheet(mediaMetadata = mediaMetadata, onDismiss = { showLyricsSources = false })
         }
 
+        // The "…" menu, grown out of its button: the everyday actions, and More for the rest.
+        popOutAt?.let { anchor ->
+            val shareLink = "https://music.youtube.com/watch?v=${mediaMetadata.id}"
+            com.ozyern.exhale.ui.component.PopOutMenu(
+                anchor = anchor,
+                backdrop = glassBackdrop,
+                onDismiss = { popOutAt = null },
+                quickActions = listOf(
+                    com.ozyern.exhale.ui.component.PopOutItem(
+                        title = stringResource(R.string.like),
+                        icon = if (liked) R.drawable.favorite_filled else R.drawable.favorite_outline,
+                        onClick = { playerConnection.toggleLike() },
+                    ),
+                    com.ozyern.exhale.ui.component.PopOutItem(
+                        title = stringResource(R.string.start_radio),
+                        icon = R.drawable.radio,
+                        onClick = { playerConnection.startRadioSeamlessly() },
+                    ),
+                    com.ozyern.exhale.ui.component.PopOutItem(
+                        title = stringResource(R.string.share),
+                        icon = R.drawable.share,
+                        onClick = {
+                            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(android.content.Intent.EXTRA_TEXT, shareLink)
+                            }
+                            context.startActivity(android.content.Intent.createChooser(intent, null))
+                        },
+                    ),
+                ),
+                sections = listOf(
+                    listOfNotNull(
+                        mediaMetadata.album?.let { album ->
+                            com.ozyern.exhale.ui.component.PopOutItem(
+                                title = stringResource(R.string.view_album),
+                                description = album.title,
+                                icon = R.drawable.album,
+                                onClick = {
+                                    navController.navigate("album/${album.id}")
+                                    playerSheetState.collapseSoft()
+                                },
+                            )
+                        },
+                        mediaMetadata.artists.firstOrNull { !it.id.isNullOrBlank() }?.let { artist ->
+                            com.ozyern.exhale.ui.component.PopOutItem(
+                                title = stringResource(R.string.view_artist),
+                                description = artist.name,
+                                icon = R.drawable.artist,
+                                onClick = {
+                                    navController.navigate("artist/${artist.id}")
+                                    playerSheetState.collapseSoft()
+                                },
+                            )
+                        },
+                        com.ozyern.exhale.ui.component.PopOutItem(
+                            title = stringResource(R.string.copy_link),
+                            icon = R.drawable.link,
+                            onClick = {
+                                val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                                clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("link", shareLink))
+                            },
+                        ),
+                    ),
+                    listOf(
+                        com.ozyern.exhale.ui.component.PopOutItem(
+                            title = "More",
+                            icon = R.drawable.more_horiz,
+                            onClick = openMenu,
+                        ),
+                    ),
+                ),
+            )
+        }
+
         if (showOutputSheet) {
             val devices = rememberOutputDevices()
             DeviceSelectionBottomSheet(
@@ -1849,7 +1933,7 @@ private fun PlayerScrubber(
 }
 
 /**
- * Apple's scrubber: a capsule with no thumb, which thickens under the finger and settles back when
+ * iOS's scrubber: a capsule with no thumb, which thickens under the finger and settles back when
  * it lets go. One gesture loop for taps and drags, so a tap seeks as well.
  */
 @Composable
@@ -2287,7 +2371,7 @@ internal fun CircleGlyph(
 /** The small "E" for explicit tracks, kept outside the scrolling text. */
 @Composable
 private fun ExplicitBadge(color: Color) {
-    // Apple's mark: a small solid tile with the E cut out of it, after the title in the title's
+    // iOS's mark: a small solid tile with the E cut out of it, after the title in the title's
     // own grey — not an outlined letter in front of it.
     Icon(
         painter = painterResource(R.drawable.explicit),
@@ -2413,7 +2497,7 @@ private fun outputName(context: Context, device: AudioDeviceInfo?): String {
 private fun PlayerSoundLine(format: com.ozyern.exhale.db.entities.FormatEntity?) {
     val (spatial) = rememberPreference(SpatialAudioKey, com.ozyern.exhale.utils.DeviceAudio.defaultSpatialAudio)
     val badges = remember(format) { com.ozyern.exhale.ui.component.audioBadgesFor(format) }
-    // Apple Music's way of saying it: a glyph and a word in the scrubber's own grey, set in the
+    // the iOS music app's way of saying it: a glyph and a word in the scrubber's own grey, set in the
     // gap under the bar. No chip, no outline — a boxed label under a hairline scrubber is what
     // read as a sticker.
     Row(
@@ -3459,7 +3543,7 @@ private fun MarqueeText(
     enabled: Boolean = true,
     startDelayMillis: Long = 0L,
     leading: (@Composable () -> Unit)? = null,
-    /** Held just after the line and outside the scroll, as Apple Music sets its explicit mark. */
+    /** Held just after the line and outside the scroll, as the iOS music app sets its explicit mark. */
     trailing: (@Composable () -> Unit)? = null,
     onOverflowChange: (Boolean) -> Unit = {},
 ) {
@@ -3941,7 +4025,7 @@ internal fun LandscapeNowPlaying(
             }
 
             if (!compact) {
-                // ---- Tablet: Apple Music's iPad player ----
+                // ---- Tablet: the iOS music app's iPad player ----
                 //
                 // Everything about the song stacked in the left column — the sleeve, its name,
                 // the scrubber, the transport, the volume — and the right column always live:

@@ -1089,7 +1089,7 @@ class MusicService :
                 EightDAudioProcessor.depth = depth
             }
 
-        // Cavern spatial-audio upscaler toggle. The flag is a @Volatile static
+        // the spatial engine spatial-audio upscaler toggle. The flag is a @Volatile static
         // read once per audio buffer, so flipping it is instant and never
         // requires rebuilding the player/sink.
         dataStore.data
@@ -1098,7 +1098,7 @@ class MusicService :
             .map { it[SpatialAudioKey] ?: com.ozyern.exhale.utils.DeviceAudio.defaultSpatialAudio }
             .distinctUntilChanged()
             .collectLatest(scope) { enabled ->
-                CavernSpatialAudioProcessor.globalEnabled = enabled
+                SpatialAudioProcessor.globalEnabled = enabled
             }
 
         dataStore.data
@@ -1110,9 +1110,9 @@ class MusicService :
             .distinctUntilChanged()
             .collectLatest(scope) { profile ->
                 when (profile) {
-                    SpatialAudioProfile.NATURAL -> CavernSpatialAudioProcessor.applyProfile(1.15f, 0.30f, 0.06f)
-                    SpatialAudioProfile.WIDE -> CavernSpatialAudioProcessor.applyProfile(1.35f, 0.38f, 0.12f)
-                    SpatialAudioProfile.CINEMA -> CavernSpatialAudioProcessor.applyProfile(1.60f, 0.46f, 0.20f)
+                    SpatialAudioProfile.NATURAL -> SpatialAudioProcessor.applyProfile(1.15f, 0.30f, 0.06f)
+                    SpatialAudioProfile.WIDE -> SpatialAudioProcessor.applyProfile(1.35f, 0.38f, 0.12f)
+                    SpatialAudioProfile.CINEMA -> SpatialAudioProcessor.applyProfile(1.60f, 0.46f, 0.20f)
                 }
             }
 
@@ -4569,7 +4569,7 @@ class MusicService :
             // same stereo pair: the stage collapses toward the middle, the centre image goes
             // hollow and cymbals smear - the "weirdish" sound those devices get. The device's own
             // one wins, because it is the one the speakers and the tuning were designed around and
-            // the one the user can control from the system panel. This is the same rule the Cavern
+            // the one the user can control from the system panel. This is the same rule the the spatial engine
             // spatial stage follows in DeviceAudio.defaultSpatialAudio.
             val ours = settings.virtualizerEnabled && !com.ozyern.exhale.utils.DeviceAudio.isOplusDevice
             runCatching { v.enabled = ours }
@@ -6279,7 +6279,7 @@ class MusicService :
                         ToneEqualizerProcessor(),
                         // Automix's filter sweeps and bass swaps; a straight copy between transitions.
                         transitionFilter,
-                        CavernSpatialAudioProcessor(),
+                        SpatialAudioProcessor(),
                         // After the stage is built: 8D moves the whole of it round the head.
                         EightDAudioProcessor(),
                         // Last: it only measures what everything before it made.

@@ -56,7 +56,7 @@ import com.ozyern.exhale.R
 import com.ozyern.exhale.ui.component.LyricsV2
 
 /**
- * The lyrics held sideways, as Apple Music lays them out in landscape: the cover large on the left,
+ * The lyrics held sideways, as the iOS music app lays them out in landscape: the cover large on the left,
  * and on the right the song, its artist, the star and the menu above the lyrics running down the
  * rest of the page — all over the cover's own blurred wash.
  *
@@ -117,7 +117,7 @@ internal fun HorizontalLyrics(
                     )
                     Spacer(Modifier.width(36.dp))
                     Column(Modifier.weight(1f).fillMaxHeight()) {
-                        // A grabber across the top, as on Apple's sheet: tap it to put the lyrics back.
+                        // A grabber across the top, as on iOS's sheet: tap it to put the lyrics back.
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier

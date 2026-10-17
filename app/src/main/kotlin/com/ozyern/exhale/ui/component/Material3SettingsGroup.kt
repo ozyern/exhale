@@ -47,7 +47,7 @@ fun Material3SettingsGroup(
             )
         }
 
-        // Apple Music inset group: a plain Column clipped to 16dp over the solid group surface.
+        // the iOS music app inset group: a plain Column clipped to 16dp over the solid group surface.
         // NOT a Material Card — a Card brings tonal elevation and a shadow with it, and the
         // shadow is the single most obviously "Android" detail on a settings page.
         Column(

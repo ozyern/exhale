@@ -140,7 +140,7 @@ fun LiquidGlassSheet(
     /**
      * Where on screen a hold opened this, for a popup in place of a sheet: the panel opens out of
      * that point — scaled up from it, the page blurring behind — and sits beside the finger
-     * rather than at the bottom edge, the way Apple Music answers a long press. Null for a sheet.
+     * rather than at the bottom edge, the way the iOS music app answers a long press. Null for a sheet.
      */
     anchor: androidx.compose.ui.geometry.Offset? = null,
     content: @Composable ColumnScope.() -> Unit,

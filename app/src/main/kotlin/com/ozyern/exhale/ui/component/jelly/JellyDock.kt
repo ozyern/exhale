@@ -187,7 +187,7 @@ fun JellyDock(
     val density = LocalDensity.current
     val trackHeight = 48.dp + (if (compact) 8.dp else 16.dp) * labelFraction
     val shape = remember { RoundedCornerShape(percent = 50) }
-    // Apple Music's bar (iOS 26): the selected tab sits on a capsule *darker* than the track, not a
+    // the iOS music app's bar (iOS 26): the selected tab sits on a capsule *darker* than the track, not a
     // light tint on it.
     val selectedSurface = if (dark) JellyPillDark else JellyPillLight
     val glowColor = accent.copy(alpha = accent.alpha * glowStrength)
@@ -322,7 +322,7 @@ private val TrackFilmLight = Color(0xFFF2F2F7)
 private val JellyPillDark = Color(0xFF0B0B0C).copy(alpha = 0.9f)
 private val JellyPillLight = Color.White.copy(alpha = 0.95f)
 
-/** The selected tab's icon and label: Apple Music's red. */
+/** The selected tab's icon and label: the iOS music app's red. */
 internal val JellySelectedInk = Color(0xFFFA2D48)
 
 /**
@@ -333,7 +333,7 @@ internal val JellySelectedInk = Color(0xFFFA2D48)
  */
 @Composable
 private fun Modifier.jellyTrack(shape: Shape, dark: Boolean, strength: Float): Modifier {
-    // Nearly solid, as Apple Music's bar is: a slab of dark glass the page only tints, not a smoked
+    // Nearly solid, as the iOS music app's bar is: a slab of dark glass the page only tints, not a smoked
     // film it reads through.
     val film = if (dark) TrackFilmDark.copy(alpha = 0.92f) else TrackFilmLight.copy(alpha = 0.92f)
     val rim = remember {

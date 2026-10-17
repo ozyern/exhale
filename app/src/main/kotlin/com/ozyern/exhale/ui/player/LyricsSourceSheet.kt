@@ -3,8 +3,8 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * The source picker follows BitChord's lyrics provider sheet
- * (github.com/kushagrasinghx/BitChord, GPL-3.0).
+ * The source picker follows the reference design's lyrics provider sheet
+ * (github.com/kushagrasinghx/the reference design, GPL-3.0).
  */
 
 package com.ozyern.exhale.ui.player

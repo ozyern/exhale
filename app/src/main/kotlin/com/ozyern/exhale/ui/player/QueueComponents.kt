@@ -129,7 +129,7 @@ import kotlin.math.roundToInt
 
 
 /**
- * The top of the queue, as Apple Music's "Playing Next" lays it out: what is playing as one compact
+ * The top of the queue, as the iOS music app's "Playing Next" lays it out: what is playing as one compact
  * row, then the queue's switches as labelled capsules that fill with the accent when they are on.
  *
  * It used to be three stacked plates — a status pill holding a lock, a menu and a count, a row of
@@ -240,7 +240,7 @@ fun CurrentSongHeader(
         //
         // These were four full-width capsules spread across the sheet, each 36dp tall on its own
         // wash - a Material segmented control, and the loudest thing on a sheet whose subject is
-        // the list below it. Apple's queue puts the heading on the left and the switches on the
+        // the list below it. iOS's queue puts the heading on the left and the switches on the
         // right as bare glyphs, sized like bar buttons; the queue is what the sheet is for, so the
         // controls get the corner rather than a band across the top.
         Row(
@@ -340,7 +340,7 @@ private fun QueueSwitch(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Glass on the song's colour: faint when off, brighter when on — Apple's queue buttons, which never
+    // Glass on the song's colour: faint when off, brighter when on — iOS's queue buttons, which never
     // turn a solid accent because the row sits on artwork that already has a colour of its own.
     val fill by animateColorAsState(foreground.copy(alpha = if (on) 0.30f else 0.10f), tween(220), label = "queueSwitchFill")
     val ink by animateColorAsState(if (on) foreground else foreground.copy(alpha = 0.72f), tween(220), label = "queueSwitchInk")

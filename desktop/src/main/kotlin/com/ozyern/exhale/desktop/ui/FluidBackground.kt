@@ -45,7 +45,7 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * Apple Music's moving artwork: four slowly counter-rotating, domain-warped samplings of a 48px
+ * Moving artwork: four slowly counter-rotating, domain-warped samplings of a 48px
  * thumbnail, averaged, pushed in saturation and vignetted.
  *
  * It used to be a GPU shader evaluated for every pixel of the window, every frame — and because the

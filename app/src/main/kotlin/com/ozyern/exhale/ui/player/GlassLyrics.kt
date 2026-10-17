@@ -99,7 +99,7 @@ private val GLASS_LYRIC_SIZES = listOf(22f, 26f, 30f, 34f)
 private val Heart = Color(0xFFFF375F)
 
 /**
- * Apple Music's full-screen lyrics, in liquid glass.
+ * the iOS music app's full-screen lyrics, in liquid glass.
  *
  * Output on the left, a segmented pill in the middle that flips between the words and the cover,
  * the lyric settings on the right; the words themselves large and to the left, the sung line lit
@@ -206,10 +206,10 @@ internal fun GlassLyricsView(
         ) {
             val (motion) = com.ozyern.exhale.utils.rememberEnumPreference(
                 com.ozyern.exhale.constants.LyricsMotionKey,
-                com.ozyern.exhale.constants.LyricsMotion.BITCHORD,
+                com.ozyern.exhale.constants.LyricsMotion.FLOW,
             )
-            if (linesReady && motion == com.ozyern.exhale.constants.LyricsMotion.BITCHORD) {
-                com.ozyern.exhale.ui.bitchord.ExhaleBitChordLyrics(
+            if (linesReady && motion == com.ozyern.exhale.constants.LyricsMotion.FLOW) {
+                com.ozyern.exhale.ui.lyricsflow.ExhaleFlowLyrics(
                     sliderPositionProvider = sliderPositionProvider,
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -358,7 +358,7 @@ internal fun GlassLyricsView(
                     setTextSize(next)
                 },
             ) {
-                // Apple's "AA": a small A beside a large one.
+                // iOS's "AA": a small A beside a large one.
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text("A", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     Text("A", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)

@@ -3,8 +3,8 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * Adapted from BitChord's TransitionFilterProcessor
- * (github.com/kushagrasinghx/BitChord, GPL-3.0, Copyright (C) 2026 Kushagra Singh):
+ * Adapted from the reference design's TransitionFilterProcessor
+ * (github.com/kushagrasinghx/the reference design, GPL-3.0, Copyright (C) 2026 Kushagra Singh):
  * the same filter, reading and writing 16-bit or float PCM in Exhale's own chain.
  */
 

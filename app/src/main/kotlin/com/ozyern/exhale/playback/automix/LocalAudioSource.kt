@@ -3,7 +3,7 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * From BitChord (github.com/kushagrasinghx/BitChord), GPL-3.0,
+ * From the reference design (github.com/kushagrasinghx/the reference design), GPL-3.0,
  * Copyright (C) 2026 Kushagra Singh. Adapted for Exhale.
  */
 

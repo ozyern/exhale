@@ -185,7 +185,7 @@ private fun Modifier.reveal(start: Float, rise: Dp): Modifier {
 }
 
 /**
- * Apple Music's full-screen player: the cover's own colours moving slowly behind everything, a
+ * The full-screen player: the cover's own colours moving slowly behind everything, a
  * large cover that sits back when paused, the title, a hairline progress bar that thickens under
  * the pointer, bare white transport glyphs, and volume. Lyrics and Up Next open beside it.
  * Drag the top bar or the cover down to put it back in the dock.
@@ -777,7 +777,7 @@ private fun NowPlayingColumn(
     }
 }
 
-/** The cover. Apple's cue for a paused song: it sits back, and its shadow comes in close. */
+/** The cover. The cue for a paused song: it sits back, and its shadow comes in close. */
 @Composable
 private fun Artwork(song: SongItem, size: Dp, playing: Boolean, modifier: Modifier, onBounds: (Rect) -> Unit, alpha: () -> Float) {
     val thumbnail = song.thumbnail

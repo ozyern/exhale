@@ -73,7 +73,7 @@ import com.ozyern.exhale.utils.rememberPreference
 enum class PlayerStyleOption(val label: String, val detail: String, val design: PlayerDesignStyle?) {
     NOW_PLAYING("Now Playing", "The cover up top; lyrics and queue inside", null),
     LIQUID_GLASS("Liquid Glass", "Every control a piece of glass over the cover's colour", null),
-    APPLE_MUSIC("Apple Music", "A floating cover over its own colours", PlayerDesignStyle.V8),
+    APPLE_MUSIC("Floating", "A floating cover over its own colours", PlayerDesignStyle.V8),
     IMMERSIVE("Immersive", "The cover fills the screen", PlayerDesignStyle.V7),
     CLASSIC("Classic", "Centred cover, round play button", PlayerDesignStyle.V1),
     MODERN("Modern", "Wide pill controls", PlayerDesignStyle.V2),

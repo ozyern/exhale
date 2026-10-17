@@ -148,7 +148,7 @@ private class CollectionHeader(
     val description: String?,
 )
 
-/** How long a list of songs runs, the way Apple Music says it: "43 min", "1 hr 12 min". */
+/** How long a list of songs runs, said plainly: "43 min", "1 hr 12 min". */
 private fun runningTime(songs: List<SongItem>): String? {
     val seconds = songs.sumOf { it.duration ?: 0 }
     if (seconds <= 0) return null
@@ -310,7 +310,7 @@ fun PlaylistScreen(
 }
 
 /**
- * An album or a playlist, laid out for a wide window the way Apple Music does it on a Mac: the cover
+ * An album or a playlist, laid out for a wide window: the cover
  * and what it is on the left, standing still, and the songs scrolling beside it. Narrow windows stack
  * the two. The cover arrives from the card that was clicked (see sharedArtwork), the page is washed in
  * the cover's colour, and the songs cascade in once they've loaded.

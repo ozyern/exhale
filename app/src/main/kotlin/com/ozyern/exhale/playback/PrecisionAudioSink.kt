@@ -3,7 +3,7 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * The idea is BitChord's PrecisionAudioSink (github.com/kushagrasinghx/BitChord, GPL-3.0): run the
+ * The idea is the reference design's PrecisionAudioSink (github.com/kushagrasinghx/the reference design, GPL-3.0): run the
  * app's own DSP in front of Media3's sink, so float output stops costing the DSP. This is a
  * smaller take on it, built on Media3's own AudioProcessingPipeline and Exhale's processors.
  */

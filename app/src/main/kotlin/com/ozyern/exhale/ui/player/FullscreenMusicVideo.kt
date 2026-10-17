@@ -195,7 +195,7 @@ private fun FullscreenVideoBody(stream: YTPlayerUtils.VideoStream, onExit: () ->
         }
 
         // The video is recorded as the backdrop the controls are cut from, so every control is a
-        // piece of glass over the picture — it bends the video at its rim — as Apple's player is.
+        // piece of glass over the picture — it bends the video at its rim — as iOS's player is.
         val videoBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
         Box(
             Modifier
@@ -374,7 +374,7 @@ private fun VideoGlassButton(
     }
 }
 /**
- * Apple's scrubber: a thin line that thickens under the finger, the elapsed time under its left end
+ * iOS's scrubber: a thin line that thickens under the finger, the elapsed time under its left end
  * and what is left under its right. Tap anywhere on it to jump, or drag.
  */
 @Composable

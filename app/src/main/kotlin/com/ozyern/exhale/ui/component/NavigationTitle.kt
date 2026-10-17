@@ -55,7 +55,7 @@ fun NavigationTitle(
             // a little below before its row content starts.
             .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp)
     ) {
-        // Apple's shelf headers carry no artwork: the title and its chevron are the whole header.
+        // iOS's shelf headers carry no artwork: the title and its chevron are the whole header.
 
         Column(
             verticalArrangement = Arrangement.Center,
@@ -75,7 +75,7 @@ fun NavigationTitle(
             //
             // The chevron used to sit at the far trailing edge of the row, which is the Material
             // list idiom: label on the left, affordance on the right, the gap between them
-            // meaning "this whole row is tappable". Apple Music does the opposite and it is the
+            // meaning "this whole row is tappable". the iOS music app does the opposite and it is the
             // single most recognisable thing about its section headers — the disclosure mark
             // follows the last letter of the title, so "Made For You ›" reads as one phrase you
             // press rather than as a heading with a button parked across the screen from it.
@@ -87,7 +87,7 @@ fun NavigationTitle(
                     text = title,
                     // Apple-Music header: LARGE, heavy, high-contrast ink with generous air above
                     // each section — the whitespace does the separating, not dividers.
-                    // Apple Music's shelf title: Title 2, 22pt bold.
+                    // the iOS music app's shelf title: Title 2, 22pt bold.
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,

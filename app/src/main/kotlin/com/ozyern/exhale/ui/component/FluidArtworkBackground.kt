@@ -47,7 +47,7 @@ private const val Side = 48
 private const val FRAME_STEP_MS = 30L
 
 /**
- * Apple Music's moving artwork: four slowly counter-rotating, domain-warped samplings of the cover,
+ * the iOS music app's moving artwork: four slowly counter-rotating, domain-warped samplings of the cover,
  * averaged, pushed in saturation and vignetted — evaluated on the GPU in one pass.
  *
  * The Windows app works the same field out on the CPU because a desktop window is enormous; on a phone a

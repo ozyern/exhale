@@ -65,11 +65,11 @@ import com.ozyern.exhale.ui.component.liquidGlassSurface
  *
  * This is Spotify's, and it is borrowed on purpose: a two-column block of squat tiles, artwork
  * flush against the left edge of each, no section header above them. It is the one piece of
- * Spotify's home that Apple Music has no equivalent for, and it does something the horizontal
+ * Spotify's home that the iOS music app has no equivalent for, and it does something the horizontal
  * shelves below cannot — it puts six destinations on screen at once, in a shape you can hit
  * without aiming, at the exact moment you have opened the app to resume something.
  *
- * Everything below it stays Apple Music: bold section headers, chevrons, wide horizontal rows.
+ * Everything below it stays the iOS music app: bold section headers, chevrons, wide horizontal rows.
  *
  * @param items already trimmed by the caller. Six is the number that fits above the fold on a
  *   phone; more and the shelves get pushed off screen, which defeats the point.

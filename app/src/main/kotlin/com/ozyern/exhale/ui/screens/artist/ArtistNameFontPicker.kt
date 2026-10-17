@@ -45,7 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Apple Music 7's per-artist lettering, as a setting: every face shown set in itself on a little
+ * the iOS music app 7's per-artist lettering, as a setting: every face shown set in itself on a little
  * artist-page header, so the choice is made by looking rather than by reading names. The one picked
  * is the default for every artist page; holding a name on an artist's page still gives just that
  * artist a face of their own, and those can all be reset from here.

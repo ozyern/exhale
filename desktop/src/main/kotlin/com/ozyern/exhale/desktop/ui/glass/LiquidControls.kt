@@ -98,7 +98,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
-/** The track's colour off, as Apple's dark switches have it. */
+/** The track's colour off, as dark iOS switches have it. */
 private val TrackOff = Color(0xFF787880).copy(alpha = 0.36f)
 
 /** What the controls refract: the page's own ground when it publishes one, nothing otherwise. */
@@ -559,7 +559,7 @@ fun LiquidSlider(
 /**
  * A segmented control whose selection is a pill you can click to or drag along: held, it becomes a
  * drop of glass that magnifies the labels under it as it slides, and settles on the nearest option
- * when let go. Segments share one width — the widest label's — as Apple's do. At rest it is a plain
+ * when let go. Segments share one width — the widest label's — as iOS's do. At rest it is a plain
  * coloured pill under the labels; the glass is only drawn while it is held or hovered.
  */
 @Composable

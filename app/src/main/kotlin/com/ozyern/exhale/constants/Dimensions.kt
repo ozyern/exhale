@@ -27,7 +27,7 @@ val FloatingToolbarBottomPadding = 12.dp
 val NavigationBarHeight = FloatingToolbarHeight
 val SlimNavBarHeight = SlimFloatingToolbarHeight
 val MiniPlayerHeight = 64.dp
-val MiniPlayerBottomSpacing = 2.dp // Space between MiniPlayer and NavigationBar; with the slim pill's inset it reads as ~9dp, Apple Music's gap
+val MiniPlayerBottomSpacing = 2.dp // Space between MiniPlayer and NavigationBar; with the slim pill's inset it reads as ~9dp, the iOS music app's gap
 
 /**
  * Geometry of the collapsed mini-player *pill*. These three values are the morph target for the
@@ -156,10 +156,10 @@ const val AquamorphicStiffness = 330f
  * only ever appears on the way *down*, which is the direction the transition is about.
  */
 val BottomSheetAnimationSpec = spring<Dp>(
-	// Critically damped, as Apple Music's sheet moves: a fling leaves with the finger's own speed
+	// Critically damped, as the iOS music app's sheet moves: a fling leaves with the finger's own speed
 	// and then settles into place without ever going past it and back. The old 0.84 bounced the
 	// player — and the cover flying with it — off the dock on every close.
-	// BitChord's one spring (PlayerSheetMotion.SLIDE_STIFFNESS): the same 195 for a fling, a tap
+	// the reference design's one spring (PlayerSheetMotion.SLIDE_STIFFNESS): the same 195 for a fling, a tap
 	// open and a close, with the finger's speed handed in. 300 here and 240 for a close made the
 	// way down a different, quicker motion from the way up.
 	dampingRatio = 1f,
@@ -189,7 +189,7 @@ val BottomSheetSoftAnimationSpec = spring<Dp>(
 /**
  * Tapping the mini player open. No bounce, and slow enough to watch: it leaves briskly and spends
  * most of its time settling, slower and slower, which is where the eye is following the cover up
- * from the dock to its place. (About 0.45 s of response — Apple Music's own sheet.)
+ * from the dock to its place. (About 0.45 s of response — the iOS music app's own sheet.)
  */
 val BottomSheetOpenAnimationSpec = spring<Dp>(
 	dampingRatio = 1f,

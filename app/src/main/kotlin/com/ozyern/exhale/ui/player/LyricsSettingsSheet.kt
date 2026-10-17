@@ -64,7 +64,7 @@ internal fun LyricsSettingsSheet(
     val (layout, setLayout) = rememberEnumPreference(LyricsLayoutKey, LyricsLayout.GLASS)
     val (motion, setMotion) = rememberEnumPreference(
         com.ozyern.exhale.constants.LyricsMotionKey,
-        com.ozyern.exhale.constants.LyricsMotion.BITCHORD,
+        com.ozyern.exhale.constants.LyricsMotion.FLOW,
     )
     val (textSize, setTextSize) = rememberPreference(LyricsTextSizeKey, 26f)
     val (lineSpacing, setLineSpacing) = rememberPreference(LyricsLineSpacingKey, 1.3f)
@@ -92,7 +92,7 @@ internal fun LyricsSettingsSheet(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                StyleCard("Liquid glass", "Apple Music, full screen", layout == LyricsLayout.GLASS, Modifier.weight(1f)) {
+                StyleCard("Liquid glass", "Full screen, over the artwork", layout == LyricsLayout.GLASS, Modifier.weight(1f)) {
                     setLayout(LyricsLayout.GLASS)
                 }
                 StyleCard("Classic", "Under the player's header", layout == LyricsLayout.CLASSIC, Modifier.weight(1f)) {
@@ -106,11 +106,11 @@ internal fun LyricsSettingsSheet(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 StyleCard(
-                    "BitChord",
+                    "Flow",
                     "Held notes swell letter by letter",
-                    motion == com.ozyern.exhale.constants.LyricsMotion.BITCHORD,
+                    motion == com.ozyern.exhale.constants.LyricsMotion.FLOW,
                     Modifier.weight(1f),
-                ) { setMotion(com.ozyern.exhale.constants.LyricsMotion.BITCHORD) }
+                ) { setMotion(com.ozyern.exhale.constants.LyricsMotion.FLOW) }
                 StyleCard(
                     "Exhale",
                     "Line by line, every word swells",
@@ -118,7 +118,7 @@ internal fun LyricsSettingsSheet(
                     Modifier.weight(1f),
                 ) { setMotion(com.ozyern.exhale.constants.LyricsMotion.EXHALE) }
                 StyleCard(
-                    "Apple Music",
+                    "Karaoke",
                     "Sung lines stay lit, held notes glow",
                     motion == com.ozyern.exhale.constants.LyricsMotion.APPLE_MUSIC,
                     Modifier.weight(1f),
@@ -257,7 +257,7 @@ private fun SwitchRow(title: String, subtitle: String?, checked: Boolean, onChan
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        Switch(checked = checked, onCheckedChange = onChange)
+        com.ozyern.exhale.ui.component.liquid.LiquidToggle(checked = checked, onCheckedChange = onChange)
     }
 }
 

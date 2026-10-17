@@ -81,7 +81,7 @@ import javax.inject.Singleton
  * ### What goes in the file
  *
  * Title, artists, album artist, album, year, the cover at 1200px and the lyrics — time-synced LRC
- * when there are synced lyrics — in the atoms Poweramp, Musicolet, Samsung Music, Apple Music and
+ * when there are synced lyrics — in the atoms Poweramp, Samsung Music, the iOS music app and
  * foobar all read. Synced lyrics are normalised to plain line-level LRC, because word-level TTML
  * shows as markup in every other player.
  *

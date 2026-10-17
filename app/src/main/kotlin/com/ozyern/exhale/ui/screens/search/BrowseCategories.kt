@@ -80,7 +80,7 @@ data class BrowseCategory(
 )
 
 /**
- * Curated genre/category buckets shown on the Search landing. Colours echo Apple Music's own
+ * Curated genre/category buckets shown on the Search landing. Colours echo the iOS music app's own
  * category palette and double as the instant placeholder while the artwork streams in.
  * `query` is what gets run as a YouTube Music search when the card is tapped.
  */
@@ -144,7 +144,7 @@ object BrowseCategoryImages {
 }
 
 /**
- * The 2-column category card grid, mirroring Apple Music's Search landing exactly: photo-backed
+ * The 2-column category card grid, mirroring the iOS music app's Search landing exactly: photo-backed
  * rounded cards (~1.85:1, the reference's aspect), a dark scrim gradient for text legibility and
  * a bold white bottom-left label. Cards paint their gradient immediately and crossfade the real
  * artwork in as [BrowseCategoryImages] resolves it.
@@ -168,7 +168,7 @@ fun BrowseCategoriesGrid(
         }
     }
 
-    // Two across on a phone, as Apple Music sets them; a tablet gets more cards of the same size
+    // Two across on a phone, as the iOS music app sets them; a tablet gets more cards of the same size
     // rather than two banners half a screen wide each.
     val windowWidth = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
     val columns = when {
@@ -258,7 +258,7 @@ private fun BrowseCategoryCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            // Apple Music reference card geometry: just under 2:1.
+            // the iOS music app reference card geometry: just under 2:1.
             .aspectRatio(1.62f)
             .scale(scale)
             .clip(RoundedCornerShape(14.dp))
@@ -288,7 +288,7 @@ private fun BrowseCategoryCard(
                 },
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                // Apple's duotone: the photo's light and shade redrawn in the card's own colour,
+                // iOS's duotone: the photo's light and shade redrawn in the card's own colour,
                 // so every tile is one colour with a picture in it rather than a photo under a scrim.
                 colorFilter = remember(category) { duotone(category.end, category.start) },
                 modifier = Modifier.matchParentSize(),

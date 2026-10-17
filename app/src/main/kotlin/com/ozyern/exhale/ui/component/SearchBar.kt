@@ -136,7 +136,7 @@ fun TopSearch(
     leftFocusRequester: FocusRequester? = null,
     // When true the input field is docked at the BOTTOM of the (full-screen) search
     // surface as a floating frosted pill, with the result/browse content filling the
-    // space above it — mirroring Apple Music's Search layout. When false the classic
+    // space above it — mirroring the iOS music app's Search layout. When false the classic
     // top-anchored search bar layout is used.
     inputAtBottom: Boolean = false,
     // Space reserved below the docked pill so it floats above the system nav bar and
@@ -308,7 +308,7 @@ fun TopSearch(
                         // measured once at its final height and the growing surface simply
                         // clips it. Anchoring to the bottom means the window opens upward
                         // from the field — the list is revealed rather than stretched, which
-                        // also happens to be the motion Apple Music uses.
+                        // also happens to be the motion the iOS music app uses.
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -413,7 +413,7 @@ fun TopSearch(
                 }
             } else {
                 Column {
-                    // The field at the top is the dock's glass — BitChord's — so the bar at the
+                    // The field at the top is the dock's glass — the reference design's — so the bar at the
                     // top and the bar at the bottom are one material.
                     Box(
                         Modifier
@@ -580,7 +580,7 @@ private fun SearchBarInputField(
 }
 
 // Measurement specs
-// 44dp: a slim, sleek pill matching Apple Music's search-field proportions —
+// 44dp: a slim, sleek pill matching the iOS music app's search-field proportions —
 // noticeably thinner than the stock M3 48dp input row.
 val InputFieldHeight = 44.dp
 private val SearchBarCornerRadius: Dp = InputFieldHeight / 2

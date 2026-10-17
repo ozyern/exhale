@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- the reference design's dock Home (github.com/kushagrasinghx/the reference design, its icon set.Home): a solid house,
+     the door cut up out of its base, filled and outlined in one 1.7 round-jointed pen so every
+     corner is soft. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FF000000"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M12,4.05L19.75,11.35L19.75,19.65L14.95,19.65L14.95,15.6L9.05,15.6L9.05,19.65L4.25,19.65L4.25,11.35Z" />
+</vector>

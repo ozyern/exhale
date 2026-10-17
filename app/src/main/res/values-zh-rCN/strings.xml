@@ -587,7 +587,7 @@
     <plurals name="minute">
         <item quantity="other">%d 分钟</item>
     </plurals>
-    <string name="apple_music_style">Apple Music</string>
+    <string name="apple_music_style">Floating</string>
     <string name="eq_import_success">已导入%1$d个配置文件</string>
     <string name="size_used">%s已使用</string>
     <string name="change_playlist_cover">更改播放列表封面</string>

@@ -3,7 +3,7 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * Automix's analysis, after BitChord's TrackAnalyzer (github.com/kushagrasinghx/BitChord,
+ * Automix's analysis, after the reference design's TrackAnalyzer (github.com/kushagrasinghx/the reference design,
  * GPL-3.0), which is itself modeled on Orchard's (github.com/SFG5453/Orchard): the same
  * measurements, fed from Exhale's own player caches.
  */

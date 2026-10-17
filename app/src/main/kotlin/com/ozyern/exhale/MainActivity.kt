@@ -1589,7 +1589,7 @@ class MainActivity : ComponentActivity() {
                     // with the page recording laid over it. The page alone is transparent wherever a
                     // page paints no background of its own, and over those stretches the glass had
                     // nothing to blur, so the dock and the mini player showed the page's text sharp
-                    // through their film. BitChord hit the same bug and fixed it the same way.
+                    // through their film. the reference design hit the same bug and fixed it the same way.
                     val chromeBackdrop = com.kyant.backdrop.backdrops.rememberCombinedBackdrop(rootBackdrop, appBackdrop)
                     val iosOverscrollFactory = com.ozyern.exhale.ui.utils.rememberIosOverscrollFactory()
                     // Drives the State-B mini-player pill in the bottom bar.
@@ -1656,7 +1656,7 @@ class MainActivity : ComponentActivity() {
                                         // disc peeked out from behind the field's end and the 70%
                                         // scrim behind the logo turned the field's glass into a
                                         // dark bar.
-                                        // And never on the Search tab itself: it draws Apple Music's
+                                        // And never on the Search tab itself: it draws the iOS music app's
                                         // header — the title with the avatar beside it — on its own.
                                         if (!(onSearchTabRoute || (searchFieldAtTop && isSearchResultsRoute))) Box(
                                             modifier = Modifier.offset {
@@ -1741,7 +1741,7 @@ class MainActivity : ComponentActivity() {
                                                         // in white (black in light theme) on a 44dp
                                                         // disc of clear glass, matched by the account
                                                         // disc opposite. Taps home to the top.
-                                                        // The mark on its own, as BitChord shows it:
+                                                        // The mark on its own, as the reference design shows it:
                                                         // no disc, no glass, no bounce — the logo
                                                         // sits still in the bar and lets the page
                                                         // move under it. Still taps home to the top.
@@ -2009,7 +2009,7 @@ class MainActivity : ComponentActivity() {
                                                         }
                                                     } else {
                                                         // Idle (docked) state: a mic affordance on the trailing
-                                                        // edge, mirroring Apple Music's search pill. Tapping it
+                                                        // edge, mirroring the iOS music app's search pill. Tapping it
                                                         // just opens the field for now.
                                                         IconButton(
                                                             onClick = { onActiveChange(true) },
@@ -2235,7 +2235,7 @@ class MainActivity : ComponentActivity() {
                                         ) {
                                             derivedStateOf {
                                                 // Off the tabs the dock now arrives open, as State A, and folds
-                                                // when the page is scrolled, the way BitChord's does. Settings keeps
+                                                // when the page is scrolled, the way the reference design's does. Settings keeps
                                                 // it folded: its own search capsule sits at the foot of the page.
                                                 (dockOnPage && onSettingsRoute) ||
                                                 shouldShowNavigationBar &&
@@ -2656,6 +2656,13 @@ class MainActivity : ComponentActivity() {
                                             // fade is halved and the scale is a hair off 1, so
                                             // there is a breath of motion and nothing to wait for.
                                             TabEnter
+                                        } else if (com.ozyern.exhale.ui.utils.ArtworkMotion.isArtworkPage(targetState.destination.route)) {
+                                            // A release, playlist or artist page lands on the artwork
+                                            // curve: quick off the mark, then settling.
+                                            slideInHorizontally(
+                                                initialOffsetX = { it },
+                                                animationSpec = com.ozyern.exhale.ui.utils.ArtworkMotion.spec(),
+                                            )
                                         } else {
                                         // Push, don't dissolve.
                                         //
@@ -2688,6 +2695,10 @@ class MainActivity : ComponentActivity() {
                                             // tab is gone before the new one has finished arriving,
                                             // so the two are never both legible at once.
                                             TabExit
+                                        } else if (com.ozyern.exhale.ui.utils.ArtworkMotion.isArtworkPage(targetState.destination.route)) {
+                                            // The page the artwork came from holds still and dims: the
+                                            // new page is coming out of it, not pushing it away.
+                                            fadeOut(com.ozyern.exhale.ui.utils.ArtworkMotion.spec(), targetAlpha = 0.7f)
                                         } else {
                                         // The page being covered. It falls away from the viewer rather than
                                         // sliding, so the incoming screen is the only thing in motion.
@@ -2713,6 +2724,9 @@ class MainActivity : ComponentActivity() {
                                             // Same brief pair as the forward tab switch: going
                                             // back to a tab is still just a change of subject.
                                             TabEnter
+                                        } else if (com.ozyern.exhale.ui.utils.ArtworkMotion.isArtworkPage(initialState.destination.route)) {
+                                            // It never moved: it only brightens back from its dim.
+                                            fadeIn(com.ozyern.exhale.ui.utils.ArtworkMotion.spec(), initialAlpha = 0.7f)
                                         } else {
                                         // Coming back: the screen underneath rises out of depth, from exactly
                                         // the 0.94 it receded to. The mirror of the exit above, which is what
@@ -2732,6 +2746,11 @@ class MainActivity : ComponentActivity() {
                                             targetState.destination.route in topLevelScreens
                                         ) {
                                             TabExit
+                                        } else if (com.ozyern.exhale.ui.utils.ArtworkMotion.isArtworkPage(initialState.destination.route)) {
+                                            slideOutHorizontally(
+                                                targetOffsetX = { it },
+                                                animationSpec = com.ozyern.exhale.ui.utils.ArtworkMotion.spec(),
+                                            )
                                         } else {
                                         // The screen you backed out of leaves along the axis it came in on, and
                                         // a little further than it arrived from so it clears the frame cleanly.

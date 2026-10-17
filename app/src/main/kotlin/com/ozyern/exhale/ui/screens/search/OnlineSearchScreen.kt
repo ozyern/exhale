@@ -419,7 +419,7 @@ fun groupPosition(index: Int, count: Int): GroupPosition = when {
 /**
  * One row of the iOS-style inset-grouped "Recent Searches" card: rows share a single
  * rounded translucent surface (corners only on the group's first/last row), separated by
- * hairline dividers inset past the leading icon — exactly Apple's Settings/Music list
+ * hairline dividers inset past the leading icon — exactly iOS's Settings/Music list
  * grammar, replacing the old flat full-bleed text rows.
  */
 @Composable
@@ -456,7 +456,7 @@ fun SuggestionItem(
     // legible.
     val trailingTint = if (pureBlack) Color.White.copy(alpha = 0.4f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
 
-    // Rows on the page itself, as Apple Music lists them: no card, no slab per row — a line of
+    // Rows on the page itself, as the iOS music app lists them: no card, no slab per row — a line of
     // text, a quiet glyph, and a hairline between rows.
     Column(
         modifier = modifier.fillMaxWidth()

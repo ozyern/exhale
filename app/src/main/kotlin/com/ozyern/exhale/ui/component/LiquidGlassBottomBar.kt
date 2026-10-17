@@ -237,7 +237,7 @@ fun LiquidGlassBottomBar(
     // The jelly dock folds the way the original does: with nothing playing it stays one bar, just
     // minimised — icons only, shorter, narrower. Only with a song playing does it become state B.
     val jellyStyle = dockStyle == DockStyle.JELLY
-    // The liquid dock folds the way BeatWave's does - see FluidDock. The jelly dock keeps its own.
+    // The liquid dock folds the way the reference dock's does - see FluidDock. The jelly dock keeps its own.
     if (!jellyStyle) {
         FluidDock(
             tabs = tabs,
@@ -430,7 +430,7 @@ fun LiquidGlassBottomBar(
                             scaleX = folded + (1f - folded) * stripFold
                         }
                     if (dockStyle == DockStyle.JELLY) {
-                        // Search last, at the trailing end, as Apple Music's bar orders it.
+                        // Search last, at the trailing end, as the iOS music app's bar orders it.
                         val jellyTabs = items.sortedBy { it == searchScreen }
                         val labels = jellyTabs.map { stringResource(it.dockTitleId) }
                         JellyDock(
@@ -649,8 +649,8 @@ private fun FrostedPill(
     blurRadius: Dp = DockGlassBlurRadius,
     // The jelly dock's smoked glass instead of the clear one, so state B matches the jelly bar.
     jelly: Boolean = false,
-    // BeatWave's clearer glass, for the folded fluid dock.
-    beatWave: Boolean = false,
+    // the reference dock's clearer glass, for the folded fluid dock.
+    foldedDock: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val shape = RoundedCornerShape(percent = 50)
@@ -661,7 +661,7 @@ private fun FrostedPill(
             .then(
                 when {
                     jelly -> Modifier.jellyGlass(shape)
-                    beatWave -> Modifier.beatWaveGlass(shape)
+                    foldedDock -> Modifier.foldedGlass(shape)
                     else -> Modifier.clearGlass(shape)
                 },
             ),
@@ -683,8 +683,8 @@ private fun FrostedCircle(
     // Jelly glass, and a jelly press: it squashes wide and short under the finger and wobbles back,
     // the way the jelly dock's pill does, instead of sinking.
     jelly: Boolean = false,
-    // BeatWave's clearer glass, for the folded fluid dock.
-    beatWave: Boolean = false,
+    // the reference dock's clearer glass, for the folded fluid dock.
+    foldedDock: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     var pressed by remember { mutableStateOf(false) }
@@ -719,7 +719,7 @@ private fun FrostedCircle(
             .then(
                 when {
                     jelly -> Modifier.jellyGlass(CircleShape)
-                    beatWave -> Modifier.beatWaveGlass(CircleShape)
+                    foldedDock -> Modifier.foldedGlass(CircleShape)
                     openDockGlass -> Modifier.dockGlass(CircleShape)
                     else -> Modifier.clearGlass(CircleShape)
                 },
@@ -1489,7 +1489,7 @@ private fun MiniPlayerPill(
                     // The title alone, at reading size. Two stacked lines at label size turned the
                     // collapsed pill into a miniature of the full mini-player; the bar has room for
                     // one thing and the song's name is the thing.
-                    // Apple Music's folded bar: the title, bold, and nothing under it.
+                    // the iOS music app's folded bar: the title, bold, and nothing under it.
                     Text(
                         text = metadata?.title.orEmpty(),
                         fontSize = 16.sp,
@@ -1703,12 +1703,12 @@ fun SearchBottomBar(
         ) {
             Icon(
                 painter = painterResource(
-                    if (leadingIsBack) R.drawable.chevron_back else R.drawable.home_bitchord,
+                    if (leadingIsBack) R.drawable.chevron_back else R.drawable.home_solid,
                 ),
                 contentDescription = stringResource(
                     if (leadingIsBack) R.string.back else R.string.home,
                 ),
-                // Full ink, as Apple Music's Home beside its field: the grey made it read disabled.
+                // Full ink, as the iOS music app's Home beside its field: the grey made it read disabled.
                 tint = clearGlassContentColor(),
                 modifier = Modifier.size(24.dp),
             )
@@ -1717,7 +1717,7 @@ fun SearchBottomBar(
         Spacer(Modifier.width(10.dp))
 
         // Search input capsule — a SEPARATE frosted pill. Tapping anywhere on it expands
-        // the real type-in field (host-owned overlay). Apple Music's field is a slim
+        // the real type-in field (host-owned overlay). the iOS music app's field is a slim
         // ~48dp capsule, noticeably thinner than the 64dp nav-bar pills.
         FrostedPill(
             modifier = Modifier.weight(1f),
@@ -1793,7 +1793,7 @@ private fun JellySearchRow(
             modifier = Modifier.size(SearchRowHeight),
         ) {
             Icon(
-                painter = painterResource(if (leadingIsBack) R.drawable.chevron_back else R.drawable.home_bitchord),
+                painter = painterResource(if (leadingIsBack) R.drawable.chevron_back else R.drawable.home_solid),
                 contentDescription = stringResource(if (leadingIsBack) R.string.back else R.string.home),
                 tint = jellyInk(active = true),
                 modifier = Modifier.size(24.dp),
@@ -1899,11 +1899,11 @@ private fun selectedItemContainerColor(pureBlack: Boolean): Color =
     }
 
 /* ----------------------------------------------------------------------- */
-/* The fluid dock: BeatWave's fold                                          */
+/* The fluid dock: the reference dock's fold                                          */
 /* ----------------------------------------------------------------------- */
 
 /*
- * BeatWave's floating tab bar fold (their vendored FloatingTabBar), on this dock's pieces.
+ * the reference dock's floating tab bar fold (their vendored FloatingTabBar), on this dock's pieces.
  *
  * The two states are not two layouts trading places; they are the same three objects in two
  * shapes, tied together as shared elements. Folding, the tab pill *is* the circle on the left:
@@ -1916,7 +1916,7 @@ private fun selectedItemContainerColor(pureBlack: Boolean): Color =
  * song, the mini player pill sits between them, the full width of the row.
  */
 
-/** The folded dock's pieces: BeatWave's inline row, 48dp, 8dp apart. */
+/** The folded dock's pieces: the reference dock's inline row, 48dp, 8dp apart. */
 private val FluidInlineSize = 48.dp
 private val FluidInlineGap = 8.dp
 
@@ -1941,7 +1941,7 @@ private class FluidMorph(
 }
 
 /**
- * A tab that is not travelling: it arrives late and leaves early, through a 50dp blur. BeatWave's
+ * A tab that is not travelling: it arrives late and leaves early, through a 50dp blur. the reference dock's
  * animateEnterExitTab - in over 150ms, starting halfway and done at 80%, so the glass has already
  * stretched most of the way before anything appears on it.
  */
@@ -1983,7 +1983,7 @@ private fun Modifier.fluidTabFade(visibility: AnimatedVisibilityScope): Modifier
 /**
  * The liquid dock, open (State A) and folded (State B), as one piece of glass in motion.
  *
- * Apple Music's fold, frame for frame: the tab bar's plate contracts from its right end into the
+ * the iOS music app's fold, frame for frame: the tab bar's plate contracts from its right end into the
  * circle at the left while its labels fade, the search circle steps down in place at the right, and
  * the mini player — the shared accessory, flown here from the player sheet — settles into the gap
  * between them. Unfolding runs the same motion backwards.
@@ -2009,21 +2009,23 @@ private fun FluidDock(
     songPillReveal: () -> Float = { 1f },
 ) {
     val ink = clearGlassContentColor()
-    // Near-critically damped: it lands, it doesn't bounce. The reference fold is ~420ms end to end.
+    // the iOS music app's tab bar minimising: about half a second of response with a soft settle at the
+    // end. At 320 the spring did nearly all its travel in the first 150ms, and the fold read as
+    // the dock simply arriving in its other shape.
     val fold by animateFloatAsState(
         targetValue = if (collapsed) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.9f, stiffness = 320f),
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = 160f),
         label = "fluidFold",
     )
     // The tab labels are gone in the first third; the folded glass and its glyph arrive in the
-    // second half — so mid-fold the plate is empty glass, as it is in Apple's.
+    // second half — so mid-fold the plate is empty glass, as it is in iOS's.
     val tabsAlpha = 1f - fluidRamp(fold, 0.05f, 0.4f)
     val foldedAlpha = fluidRamp(fold, 0.35f, 0.8f)
     // The folded circles part for a song and close up without one. That was a cut: a song starting
     // or the player being swiped away while folded jumped both circles to their new places.
     val songSpan by animateFloatAsState(
         targetValue = if (hasNowPlaying) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.9f, stiffness = 320f),
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = 160f),
         label = "fluidSongSpan",
     )
 
@@ -2081,7 +2083,7 @@ private fun FluidDock(
                     var fanOpen by remember { mutableStateOf(false) }
                     FrostedCircle(
                         size = size,
-                        beatWave = true,
+                        foldedDock = true,
                         onClick = { onItemClick(leftTab, here) },
                         onLongClick = { fanOpen = true },
                     ) {
@@ -2151,7 +2153,7 @@ private fun FluidDock(
             ) {
                 FrostedPill(
                     height = FluidInlineSize,
-                    beatWave = true,
+                    foldedDock = true,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     MiniPlayerPill(pureBlack = pureBlack, onExpand = onMiniPlayerClick)
@@ -2252,7 +2254,7 @@ private fun FluidSearchCircle(
     FrostedCircle(
         size = size,
         openDockGlass = !folded,
-        beatWave = folded,
+        foldedDock = folded,
         onClick = { onItemClick(screen, active) },
         modifier = modifier,
     ) {

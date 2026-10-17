@@ -3,7 +3,7 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * Follows BitChord's lrc.red client (github.com/kushagrasinghx/BitChord, GPL-3.0).
+ * Follows the reference design's lrc.red client (github.com/kushagrasinghx/the reference design, GPL-3.0).
  */
 
 package com.ozyern.exhale.lyrics
@@ -20,7 +20,7 @@ import java.util.Locale
 import kotlin.math.abs
 
 /**
- * lrc.red — Apple Music TTML, per-syllable, filed by ISRC.
+ * lrc.red — the iOS music app TTML, per-syllable, filed by ISRC.
  *
  * Every document lives at `https://lrc.red/s/{ISRC}.ttml`, so a song whose recording is already
  * known costs one request and can't come back as the wrong edit — the clean cut's words on the

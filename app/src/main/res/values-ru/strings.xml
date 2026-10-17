@@ -372,7 +372,7 @@
     <string name="fade">Затухание</string>
     <string name="slide">Скольжение</string>
     <string name="karaoke">Караоке</string>
-    <string name="apple_music_style">Apple Music</string>
+    <string name="apple_music_style">Floating</string>
     <string name="lyrics_line_spacing">Интервал между строк</string>
     <string name="content">Контент</string>
     <string name="action_logout">Выйти</string>

@@ -245,7 +245,7 @@ fun BottomSheetPlayer(
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val coverFlight = LocalCoverFlight.current
     // A tablet or an unfolded foldable opens the player as a card growing out of the dock, as
-    // iPad's Apple Music does, rather than by flying the cover: there the flight is a 48dp
+    // iPad's the iOS music app does, rather than by flying the cover: there the flight is a 48dp
     // thumbnail thrown up to a banner the width of the screen, a thirteen-fold jump that read as
     // the cover lurching into place.
     val tabletWindow = LocalConfiguration.current.smallestScreenWidthDp >= 600
@@ -761,12 +761,12 @@ fun BottomSheetPlayer(
                 enter = androidx.compose.animation.fadeIn(
                     androidx.compose.animation.core.tween(220, delayMillis = 120),
                 ) + androidx.compose.animation.slideInVertically(
-                    androidx.compose.animation.core.spring(dampingRatio = 0.9f, stiffness = 320f),
+                    androidx.compose.animation.core.spring(dampingRatio = 0.82f, stiffness = 160f),
                 ) { it / 3 },
                 exit = androidx.compose.animation.fadeOut(
                     androidx.compose.animation.core.tween(160),
                 ) + androidx.compose.animation.slideOutVertically(
-                    androidx.compose.animation.core.spring(dampingRatio = 0.9f, stiffness = 320f),
+                    androidx.compose.animation.core.spring(dampingRatio = 0.82f, stiffness = 160f),
                 ) { it / 3 },
             ) {
                 MiniPlayer(
@@ -1252,7 +1252,7 @@ fun BottomSheetPlayer(
                         }
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.V8) {
-                    // V8 - Apple Music Style (Portrait)
+                    // V8 - the iOS music app Style (Portrait)
                     Box(
                         modifier = Modifier.fillMaxSize()
                     ) {

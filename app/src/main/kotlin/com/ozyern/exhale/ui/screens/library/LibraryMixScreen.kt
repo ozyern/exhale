@@ -106,7 +106,7 @@ import java.util.Locale
 
 /*
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * The Library home, rebuilt on Apple Music's shape.
+ * The Library home, rebuilt on the iOS music app's shape.
  *
  * What was here: a display title, a row of five filter chips on a glass plate, a sort card, a
  * hero tile plus a 2-up grid of pinned collections, the full vertical list of every playlist you
@@ -136,7 +136,7 @@ import java.util.Locale
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  */
 
-/** Apple's library gutter. Wider than the app's usual 16dp, and the reason the page reads calm. */
+/** iOS's library gutter. Wider than the app's usual 16dp, and the reason the page reads calm. */
 private val LibraryGutter = 20.dp
 
 /** Leading inset of the hairline between list rows — aligned to the label, not the screen edge. */
@@ -521,7 +521,7 @@ fun LibraryMixScreen(
 }
 
 /**
- * Horizontal insets for everything on the page: the display cutout, then Apple's gutter.
+ * Horizontal insets for everything on the page: the display cutout, then iOS's gutter.
  *
  * One modifier rather than a `padding(horizontal = …)` per call site, because the whole design
  * rests on a single unbroken left edge — title, row labels, section header and grid all landing
@@ -630,7 +630,7 @@ private fun LibraryCategoryRow(
  * One artwork tile in the Recently Added grid.
  *
  * Artwork square and near-flush with the column, title and subtitle left-aligned underneath, no
- * card behind it. Apple's grid is artwork on the page — a container around each item competes
+ * card behind it. iOS's grid is artwork on the page — a container around each item competes
  * with the covers, which are the only thing on this screen anyone is actually scanning.
  */
 @OptIn(ExperimentalFoundationApi::class)

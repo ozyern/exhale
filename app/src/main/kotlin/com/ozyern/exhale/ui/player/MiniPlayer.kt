@@ -140,12 +140,12 @@ private fun NewMiniPlayer(
             // the re-entrant layer draw that in-content glass would be.
             Box(
                 modifier = barModifier
-                    // Clear liquid glass, as Apple's mini player is: a light blur, the page's
+                    // Clear liquid glass, as iOS's mini player is: a light blur, the page's
                     // colour lifted through it and bent hard at the rim, under a 40% film. It was
                     // the frosted chrome glass with a 76% black film on top — a dark slab with the
                     // glass buried under it. The film still keeps the title legible over a page.
                     // With the jelly dock under it, the same dark slab as the bar, so the two read
-                    // as one set as Apple Music's do.
+                    // as one set as the iOS music app's do.
                     .then(
                         if (jellyDock) Modifier.jellyGlass(shape)
                         else Modifier.miniPlayerGlass(shape = shape),

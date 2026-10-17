@@ -72,9 +72,9 @@ import com.ozyern.exhale.db.entities.Song
 import com.ozyern.exhale.ui.component.NavigationTitle
 
 /**
- * Apple Music's "Top Picks for You": a row of tall cards, the artwork above and a caption panel below
+ * the iOS music app's "Top Picks for You": a row of tall cards, the artwork above and a caption panel below
  * washed in that artwork's own colour — the panel *is* the artwork, stretched and blurred, which is
- * how Apple's cards come to match their covers without anything being guessed at.
+ * how iOS's cards come to match their covers without anything being guessed at.
  *
  * It replaces a Spotify-style six-tile shortcut grid, which was the one thing at the top of Home that
  * belonged to another app.
@@ -158,7 +158,7 @@ fun HomeTopPicks(
                     }
                 }
             } else {
-                // Apple Music's Recently Played: square tiles a little under half a phone wide,
+                // the iOS music app's Recently Played: square tiles a little under half a phone wide,
                 // so two and a bit show and the shelf reads as a shelf, not a carousel of posters.
                 // A tablet shows more of them rather than bigger ones.
                 BoxWithConstraints {
@@ -285,7 +285,7 @@ private fun subtitleFor(item: LocalItem): String? = when (item) {
 }
 
 /**
- * One recent, as Apple Music shows it: the artwork is the card — square, an artist round — and the
+ * One recent, as the iOS music app shows it: the artwork is the card — square, an artist round — and the
  * caption sits under it, title in 14 medium and what it is and who made it in 13 grey. The one
  * playing wears its bars on the artwork; a press dips the tile, nothing more.
  */

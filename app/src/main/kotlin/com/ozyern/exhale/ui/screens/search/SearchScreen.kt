@@ -67,7 +67,7 @@ fun SearchScreen(
     val basePadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
 
     val chrome = LocalSearchChrome.current
-    // The page draws its own header, as Apple Music's does: the app's logo bar is not shown here, so
+    // The page draws its own header, as the iOS music app's does: the app's logo bar is not shown here, so
     // the title starts just under the status bar instead of under an empty bar's worth of space.
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
@@ -94,7 +94,7 @@ fun SearchScreen(
 }
 
 /**
- * Apple Music's field under the title: a capsule with the glass, the prompt and a microphone at the
+ * the iOS music app's field under the title: a capsule with the glass, the prompt and a microphone at the
  * end. Tapping anywhere on it starts typing in the app's search field.
  */
 @Composable

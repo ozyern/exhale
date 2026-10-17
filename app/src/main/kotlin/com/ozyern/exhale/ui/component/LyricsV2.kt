@@ -199,7 +199,7 @@ private const val VISUAL_TUNING_OFFSET_MS = 60L
  *
  * Display-size text set at a body-text default reads loose — letter fitting that is right at 14sp
  * is visibly airy at 28sp, because the tracking a face needs falls as the size rises. Every
- * typographic system that cares (Apple's included) tightens large sizes, and lyrics are the one
+ * typographic system that cares (iOS's included) tightens large sizes, and lyrics are the one
  * place in this app running genuinely large type. -2.2% is enough to pull a line together into a
  * single object the eye reads at once, and not so much that the letters start to touch at the
  * largest user size.
@@ -225,7 +225,7 @@ private const val SCROLL_LEAD_MS = 220L
 
 private val V2Easing = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1.0f)
 
-/** Liquid fill easing: fast attack, very smooth deceleration (Apple Music-like). */
+/** Liquid fill easing: fast attack, very smooth deceleration (the iOS music app-like). */
 private val LiquidFillEasing = CubicBezierEasing(0.0f, 0.0f, 0.15f, 1.0f)
 
 /** Sentinel entry prepended so auto-scroll has headroom above the first line. */
@@ -284,7 +284,7 @@ fun LyricsV2(
     val inactiveAlpha = 0.35f
     val lyricsMotion by com.ozyern.exhale.utils.rememberEnumPreference(
         com.ozyern.exhale.constants.LyricsMotionKey,
-        com.ozyern.exhale.constants.LyricsMotion.BITCHORD,
+        com.ozyern.exhale.constants.LyricsMotion.FLOW,
     )
     val appleMotion = lyricsMotion == com.ozyern.exhale.constants.LyricsMotion.APPLE_MUSIC
 
@@ -485,7 +485,7 @@ fun LyricsV2(
     var currentLineIndex by remember { mutableIntStateOf(0) }
     // The line the *scroll* is chasing. Usually the same as the highlighted one, briefly the next.
     var scrollLineIndex by remember { mutableIntStateOf(0) }
-    // Apple Music motion: the first line of the group being held lit. The column scrolls to it,
+    // the iOS music app motion: the first line of the group being held lit. The column scrolls to it,
     // and every line from it to the one being sung stays lit.
     var blockStart by remember { mutableIntStateOf(0) }
 
@@ -583,18 +583,18 @@ fun LyricsV2(
     // row below the fold also fails.
     var lastTrackedIndex by remember { mutableIntStateOf(-1) }
 
-    // The Apple Music follow, as the Windows app does it.
+    // The the iOS music app follow, as the Windows app does it.
     //
     // A line change used to scroll the column as one rigid sheet. Now the list jumps to where it is
     // going in one frame and publishes how far it went; every line on screen takes that distance
     // back as its own offset and springs home, each starting ~34ms after the line above it. The
     // sung line moves first and the verse below arrives in a wave behind it, which is the motion
-    // that makes Apple's lyrics feel like they flow rather than scroll.
+    // that makes iOS's lyrics feel like they flow rather than scroll.
     // ── Auto-scroll ──
     //
     // Driven by `scrollLineIndex`, which runs SCROLL_LEAD_MS ahead of the highlight, so the
     // column is already moving when the line lights rather than starting then.
-    // Apple Music motion: a new group starts after AppleGroupLines lines, at a pause in the
+    // the iOS music app motion: a new group starts after AppleGroupLines lines, at a pause in the
     // singing, or when the song jumps (a seek). Within a group the column stays still.
     LaunchedEffect(currentLineIndex, appleMotion, entriesWithWords) {
         val i = currentLineIndex
@@ -620,7 +620,7 @@ fun LyricsV2(
 
         val layoutInfo = listState.layoutInfo
         val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
-        // Apple Music keeps the active line pinned slightly above true center (~42%),
+        // the iOS music app keeps the active line pinned slightly above true center (~42%),
         // leaving more room below for the upcoming lines.
         val anchorY = layoutInfo.viewportStartOffset + (viewportHeight * 0.42f)
 
@@ -827,7 +827,7 @@ fun LyricsV2(
 
                 val isActive = isSynced && index == currentLineIndex
                 val isPast = isSynced && index < currentLineIndex
-                // Apple Music motion: sung, but still part of the group on screen, so still lit.
+                // the iOS music app motion: sung, but still part of the group on screen, so still lit.
                 val heldLit = appleMotion && isPast && index >= blockStart
                 val lit = isActive || heldLit
                 val isFuture = isSynced && index > currentLineIndex
@@ -905,7 +905,7 @@ fun LyricsV2(
                 // Blur used to be symmetric around the active line, because it keyed off
                 // `distanceFromActive`, which is an absolute value. That is wrong for the thing
                 // it is imitating: a lens racks focus onto what you are about to read. Words you
-                // have already sung are not out of focus, they are *behind* you — Apple Music
+                // have already sung are not out of focus, they are *behind* you — the iOS music app
                 // leaves them sharp and simply dims them, and so does a karaoke prompter. Blurring
                 // them makes the whole column feel like it is being read through frosted glass
                 // with a hole punched in it, and it fights the scroll: the line leaving the top of
@@ -930,7 +930,7 @@ fun LyricsV2(
                     animationSpec = lineSpring,
                     label = "lineBlur",
                 )
-                // Grow/shrink around the line's leading edge like Apple Music (lines
+                // Grow/shrink around the line's leading edge like the iOS music app (lines
                 // anchored to their alignment edge, not ballooning from dead center).
                 val lineTransformOrigin = when (horizontalAlignment) {
                     Alignment.End -> TransformOrigin(1f, 0.5f)
@@ -1122,7 +1122,7 @@ fun LyricsV2(
             }
         }
 
-        // ── Pronunciation and translation, as Apple Music puts them: a disc at each corner ──
+        // ── Pronunciation and translation, as the iOS music app puts them: a disc at each corner ──
         if (cornerButtons && entriesWithWords.isNotEmpty() && !isSelectionModeActive) {
             if (hasPronunciation) {
                 LyricsCornerButton(
@@ -1813,7 +1813,7 @@ private fun AnimatedWordV2(
 
     // Big enough to actually see. The old 1.5% scale was below the threshold at which a glyph
     // reads as having moved at all, so the "bounce" was costing a layer and buying nothing.
-    // Apple Music motion keeps the swell for held notes only: a short word just lights and rises,
+    // the iOS music app motion keeps the swell for held notes only: a short word just lights and rises,
     // and a long one grows into its glow, which is what marks it out as the note being held.
     val held = wordDuration >= AppleHeldNoteMs
     val emphasis = if (!appleMotion) swell else if (held) swell else 0f
@@ -1822,7 +1822,7 @@ private fun AnimatedWordV2(
     // Float is only applied when the word is actively sung, making it pop from the line.
     // The animatable is kept for the tail: when the word ends the target drops to 0 and this
     // eases it home over 350ms instead of snapping, so the word sets down rather than dropping.
-    // Apple Music motion: every word rises about 2dp as it is sung and stays up with its line, the
+    // the iOS music app motion: every word rises about 2dp as it is sung and stays up with its line, the
     // sung part of the line sitting a hair above the rest; a held note lifts further.
     val targetFloat = when {
         !appleMotion -> if (isWordActive) -5.5f * swell else 0f
@@ -1968,7 +1968,7 @@ private fun AnimatedWordV2(
                     // Three stops rather than two: black → half → transparent gives the edge a
                     // shoulder, so the highlight trails off into the unlit text instead of ending
                     // on a visible boundary.
-                    // Apple's edge is softer: a wider shoulder, so the light arrives rather than wipes.
+                    // iOS's edge is softer: a wider shoulder, so the light arrives rather than wipes.
                     val edgeWidth = if (appleMotion) {
                         (size.width * 0.38f).coerceIn(10.dp.toPx(), 34.dp.toPx())
                     } else {
@@ -1991,13 +1991,13 @@ private fun AnimatedWordV2(
 }
 
 
-/** Apple Music motion: the most lines held lit together before the column moves on. */
+/** the iOS music app motion: the most lines held lit together before the column moves on. */
 private const val AppleGroupLines = 3
 
-/** Apple Music motion: a silence longer than this between two lines starts a new group. */
+/** the iOS music app motion: a silence longer than this between two lines starts a new group. */
 private const val AppleGroupPauseMs = 1_500L
 
-/** Apple Music motion: a word sung for at least this long is a held note, and swells and glows. */
+/** the iOS music app motion: a word sung for at least this long is a held note, and swells and glows. */
 private const val AppleHeldNoteMs = 900L
 
 /** Below this, a gap is a breath between lines and wants no indicator. */

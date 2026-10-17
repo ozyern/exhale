@@ -475,7 +475,7 @@ fun AlbumScreen(
     // State for LazyColumn to track scroll
     val lazyListState = rememberLazyListState()
 
-    // The album's motion artwork: Apple's editorial loop for this album,
+    // The album's motion artwork: iOS's editorial loop for this album,
     // playing where the cover is. Looked up once per album, and only with animated covers on.
     val (animatedCovers) = rememberPreference(com.ozyern.exhale.constants.ExhaleCanvasKey, true)
     var albumMotion by remember(albumWithSongs?.album?.id) { mutableStateOf<String?>(null) }

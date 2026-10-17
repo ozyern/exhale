@@ -298,7 +298,7 @@ fun ColumnScope.PlayerMenu(
     // Sleep timer.
     //
     // It lives here rather than in Player.kt because the collapsed queue bars that used to be its
-    // only way in do not all have one — the Apple Music player, which is the default, has no such
+    // only way in do not all have one — the the iOS music app player, which is the default, has no such
     // bar at all — so on a stock install the feature was unreachable. Every player design can open
     // this menu.
     var showSleepTimerDialog by rememberSaveable { mutableStateOf(false) }

@@ -681,7 +681,7 @@ fun SettingsGroupCard(
     Column(modifier = modifier) {
         SettingsSectionHeader(group.title)
 
-        // Apple Music-style grouped inset list: a Column clipped to 16dp over a frosted
+        // the iOS music app-style grouped inset list: a Column clipped to 16dp over a frosted
         // translucent surface — NO Material Card. Dividers appear only BETWEEN rows
         // (never top/bottom).
         Column(
@@ -700,7 +700,7 @@ fun SettingsGroupCard(
 }
 
 /**
- * Reusable Apple Music-style grouped inset section: a large bold header above a Column
+ * Reusable the iOS music app-style grouped inset section: a large bold header above a Column
  * clipped to 16dp over a distinct surface. Dividers are drawn only BETWEEN the supplied
  * rows — never at the very top or bottom of the group.
  */

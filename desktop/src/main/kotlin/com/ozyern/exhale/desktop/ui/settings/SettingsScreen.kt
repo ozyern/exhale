@@ -374,7 +374,7 @@ private fun categories(
             Group(
                 "Lossless",
                 listOf(
-                    CustomItem("Lossless sources", keywords = "lossless hires hi-res flac alac wav subsonic navidrome jellyfin airsonic addon library folder bitchord") { LosslessSourcesCard() },
+                    CustomItem("Lossless sources", keywords = "lossless hires hi-res flac alac wav subsonic navidrome jellyfin airsonic addon library folder") { LosslessSourcesCard() },
                     SwitchItem(
                         "Prefer lossless",
                         "When one of your sources has the song, play its copy instead of YouTube's stream.",

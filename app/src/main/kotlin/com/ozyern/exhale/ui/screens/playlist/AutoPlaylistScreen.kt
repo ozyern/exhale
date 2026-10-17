@@ -303,10 +303,13 @@ fun AutoPlaylistScreen(
 
     // Capture fallback color in composable context
     // Tinted from the cover.
-    val releasePalette = com.ozyern.exhale.ui.component.rememberReleasePalette(
-        if (playlistType == PlaylistType.LIKE) listOf(Color(0xFFFF2D55), Color(0xFFB0124A))
-        else listOf(Color(0xFF1E3C72), Color(0xFF2A5298)),
-    )
+    // The collection's own colours: liked songs pink into violet, offline deep blue.
+    val collectionColors = if (playlistType == PlaylistType.LIKE) {
+        listOf(Color(0xFFEC5FC8), Color(0xFF8B4FE3))
+    } else {
+        listOf(Color(0xFF2A5298), Color(0xFF1E3C72))
+    }
+    val releasePalette = com.ozyern.exhale.ui.component.rememberReleasePalette(collectionColors)
     val surfaceColor = releasePalette.background
 
 
@@ -336,7 +339,16 @@ fun AutoPlaylistScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(surfaceColor),
+            .background(surfaceColor)
+            // The page washed in the collection's colours from the top, fading into its ground by
+            // the time the list starts: the colour belongs to the page, not only to its tile.
+            .background(
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    0f to collectionColors[0].copy(alpha = 0.75f),
+                    0.28f to collectionColors[1].copy(alpha = 0.45f),
+                    0.62f to Color.Transparent,
+                ),
+            ),
     ) {
 
         LazyColumn(
@@ -373,9 +385,9 @@ fun AutoPlaylistScreen(
                                 // The app's own collections wear their own colours, as on the Library page.
                                 artwork = {
                                     if (playlistType == PlaylistType.LIKE) {
-                                        GradientArtwork(listOf(Color(0xFFFF2D55), Color(0xFFB0124A)), R.drawable.favorite)
+                                        GradientArtwork(collectionColors, R.drawable.favorite)
                                     } else {
-                                        GradientArtwork(listOf(Color(0xFF1E3C72), Color(0xFF2A5298)), R.drawable.offline)
+                                        GradientArtwork(collectionColors, R.drawable.offline)
                                     }
                                 },
                                 actions = {

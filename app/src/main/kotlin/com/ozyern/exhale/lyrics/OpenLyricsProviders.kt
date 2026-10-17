@@ -3,8 +3,8 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * The LyricsPlus, BiniLyrics, Unison, Megalobiz and Genius clients follow BitChord's
- * (github.com/kushagrasinghx/BitChord, GPL-3.0), adapted to hand Exhale the formats it already
+ * The LyricsPlus, BiniLyrics, Unison, Megalobiz and Genius clients follow the reference design's
+ * (github.com/kushagrasinghx/the reference design, GPL-3.0), adapted to hand Exhale the formats it already
  * stores: word-timed results become TTML, line-timed ones stay LRC, and plain text stays plain.
  */
 
@@ -313,7 +313,7 @@ object LyricsPlusProvider : LyricsProvider {
             val start = line.time ?: return@mapNotNull null
             val words = mergeSyllables(line.syllabus.orEmpty())
             val singer = singerOf(line.element)
-            // Apple's own voice ids (v1, v2, v1000) pass straight through; anything else is looked
+            // iOS's own voice ids (v1, v2, v1000) pass straight through; anything else is looked
             // up by alias. The lyric view lays v1 left, v2 right and groups in the middle.
             val agent = singer?.takeIf { it.matches(Regex("v\\d+")) }
                 ?: singer?.let { name -> agents.entries.firstOrNull { it.value.alias == name }?.key }

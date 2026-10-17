@@ -111,7 +111,6 @@ private const val CONTENT_FADE_SPAN = 0.30f
 
 /**
  * Bottom Sheet
- * Modified from [ViMusic](https://github.com/vfsfitvnm/ViMusic)
  */
 @Composable
 fun BottomSheet(

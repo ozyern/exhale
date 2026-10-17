@@ -30,10 +30,10 @@ sealed class Screens(
 ) {
     object Home : Screens(
         titleId = R.string.home,
-        // BitChord's Home, one solid glyph in both states, as their dock draws it: the capsule
+        // the reference design's Home, one solid glyph in both states, as their dock draws it: the capsule
         // behind it, not an outline/fill swap, says which tab is open.
-        iconIdInactive = R.drawable.home_bitchord,
-        iconIdActive = R.drawable.home_bitchord,
+        iconIdInactive = R.drawable.home_solid,
+        iconIdActive = R.drawable.home_solid,
         route = "home"
     )
 

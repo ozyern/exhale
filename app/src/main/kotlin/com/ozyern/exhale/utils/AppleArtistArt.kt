@@ -3,7 +3,7 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * From BitChord's AppleArtistArt (github.com/kushagrasinghx/BitChord, GPL-3.0): the artist's
+ * From the reference design's AppleArtistArt (github.com/kushagrasinghx/the reference design, GPL-3.0): the artist's
  * hero photograph, title logo and colours, read from their music.apple.com page.
  */
 
@@ -23,8 +23,8 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
- * What Apple Music's artist page shows at the top: a hero photograph, usually the artist's title
- * logo drawn over it as a separate image, and Apple's own colours for the photograph.
+ * What the iOS music app's artist page shows at the top: a hero photograph, usually the artist's title
+ * logo drawn over it as a separate image, and iOS's own colours for the photograph.
  *
  * [logoUrl] is a transparent PNG, null for the many artists without one; [logoAspect] is its width
  * over its height, so it can be sized before the image decodes. [background], [accent] and
@@ -43,7 +43,7 @@ data class AppleArtistArt(
 /**
  * Finds [AppleArtistArt] from nothing but an artist's name.
  *
- * Two public, unauthenticated requests: the iTunes search API turns the name into an Apple Music
+ * Two public, unauthenticated requests: the iTunes search API turns the name into an the iOS music app
  * artist page, and that page carries its header art in the JSON it embeds for hydration. That JSON
  * is not an API Apple publishes, so every surprise is "no art" — YouTube's photo is always the
  * fallback. A search will happily return somebody else, so an answer is only taken when the name
@@ -156,7 +156,7 @@ object AppleArtistArtRepository {
         return null
     }
 
-    /** Apple's colours are six hex digits with no prefix. */
+    /** iOS's colours are six hex digits with no prefix. */
     private fun String.toArgb(): Int? =
         takeIf { it.length == 6 }?.toIntOrNull(16)?.let { 0xFF000000.toInt() or it }
 

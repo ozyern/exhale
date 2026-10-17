@@ -742,7 +742,7 @@ fun GridItem(
 ) = GridItem(
     modifier = modifier,
     title = {
-        // Apple Music's shelf captions: a quiet 14pt title under the artwork, not a bold headline.
+        // the iOS music app's shelf captions: a quiet 14pt title under the artwork, not a bold headline.
         Text(
             text = title,
             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 18.sp),
@@ -885,7 +885,7 @@ fun SongGridItem(
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            // Still, ending in an ellipsis, as Apple's grids do. Scrolling, a page of tiles had every title
+            // Still, ending in an ellipsis, as iOS's grids do. Scrolling, a page of tiles had every title
             // sliding at once, and mid-loop they drew past their own tile into the next.
             modifier = Modifier.fillMaxWidth()
         )
@@ -1115,7 +1115,7 @@ fun AlbumGridItem(
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            // Still, ending in an ellipsis, as Apple's grids do. Scrolling, a page of tiles had every title
+            // Still, ending in an ellipsis, as iOS's grids do. Scrolling, a page of tiles had every title
             // sliding at once, and mid-loop they drew past their own tile into the next.
             modifier = Modifier.fillMaxWidth()
         )
@@ -1354,7 +1354,7 @@ fun PlaylistGridItem(
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            // Still, ending in an ellipsis, as Apple's grids do. Scrolling, a page of tiles had every title
+            // Still, ending in an ellipsis, as iOS's grids do. Scrolling, a page of tiles had every title
             // sliding at once, and mid-loop they drew past their own tile into the next.
             modifier = Modifier.fillMaxWidth()
         )
@@ -1581,7 +1581,7 @@ fun YouTubeGridItem(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = if (item is ArtistItem) TextAlign.Center else TextAlign.Start,
-            // Still, ending in an ellipsis, as Apple's grids do. Scrolling, a page of tiles had every title
+            // Still, ending in an ellipsis, as iOS's grids do. Scrolling, a page of tiles had every title
             // sliding at once, and mid-loop they drew past their own tile into the next.
             modifier = Modifier.fillMaxWidth()
         )
@@ -1752,7 +1752,7 @@ fun ItemThumbnail(
     /**
      * Soft drop shadow under the artwork. Off by default — a shadow behind a 48dp list-row
      * thumbnail is noise. Grid cards opt in, because a shelf of covers floating a millimetre
-     * off the page is the difference between Apple Music's Home and a wall of flat squares,
+     * off the page is the difference between the iOS music app's Home and a wall of flat squares,
      * and it is a shadow, not a border, that does it.
      */
     shadowElevation: Dp = 0.dp,

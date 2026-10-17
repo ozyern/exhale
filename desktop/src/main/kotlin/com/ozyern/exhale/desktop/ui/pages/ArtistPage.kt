@@ -103,7 +103,7 @@ import kotlinx.coroutines.withContext
 private val Overshoot = CubicBezierEasing(0.34f, 1.3f, 0.64f, 1f)
 
 /**
- * An artist's page, the way Apple Music lays one out on a Mac: their banner across the top with the
+ * An artist's page, laid out for a Mac-sized window: their banner across the top with the
  * name set big over it, their newest release beside their top songs, then albums, singles, videos
  * and the artists fans also listen to — each in the form that suits it — and an About card at the end.
  * Once the banner has scrolled away a slim bar keeps the name and a play button in reach.

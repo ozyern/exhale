@@ -26,6 +26,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "Exhale"
 include(":app")
+include(":cupertino")
 include(":innertube")
 include(":spotify")
 include(":kugou")
