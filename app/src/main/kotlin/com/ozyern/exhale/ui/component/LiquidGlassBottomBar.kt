@@ -199,6 +199,8 @@ fun LiquidGlassBottomBar(
     isSelected: (Screens) -> Boolean,
     onItemClick: (Screens, Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    /** How much of the folded dock's song pill shows, read in the draw phase. See MainActivity. */
+    songPillReveal: () -> Float = { 1f },
 ) {
     // Tabs shown in the nav pill (Search stays its own circle, never a tab).
     val tabs = remember(items) { items.filter { it.route != Screens.Search.route } }
@@ -248,6 +250,7 @@ fun LiquidGlassBottomBar(
             onItemClick = onItemClickHaptic,
             onMiniPlayerClick = onMiniPlayerClickHaptic,
             modifier = modifier,
+            songPillReveal = songPillReveal,
         )
         return
     }
@@ -2003,6 +2006,7 @@ private fun FluidDock(
     onItemClick: (Screens, Boolean) -> Unit,
     onMiniPlayerClick: () -> Unit,
     modifier: Modifier = Modifier,
+    songPillReveal: () -> Float = { 1f },
 ) {
     val ink = clearGlassContentColor()
     // Near-critically damped: it lands, it doesn't bounce. The reference fold is ~420ms end to end.
@@ -2138,7 +2142,7 @@ private fun FluidDock(
                     .width((width - (FluidInlineSize + FluidInlineGap) * 2).coerceAtLeast(0.dp))
                     .height(FluidInlineSize)
                     .graphicsLayer {
-                        alpha = songIn
+                        alpha = songIn * songPillReveal().coerceIn(0f, 1f)
                         translationY = -(1f - fold) * 22.dp.toPx()
                         val scale = lerp(0.94f, 1f, fold)
                         scaleX = scale

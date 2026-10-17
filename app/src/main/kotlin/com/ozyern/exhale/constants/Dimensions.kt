@@ -89,11 +89,14 @@ val CompactMiniPlayerTopInset = (MiniPlayerHeight - CompactMiniPlayerHeight) / 2
  * They must stay in lockstep with `LiquidGlassBottomBar` — if they drift, the player shrinks into
  * a rectangle that is not the bar and the hand-off visibly jumps.
  */
-val NavBarPillHeight = 50.dp
+// The folded fluid dock's song pill (FluidDock in LiquidGlassBottomBar): 48dp, at the bottom of the
+// 64dp row, between two 48dp circles 8dp away. These were the old dock's 50dp pill centred in the
+// row with 10dp gaps, and the player shrank onto a rectangle that was not the pill.
+val NavBarPillHeight = 48.dp
 
-/** The dock row the State B pill is centred in: taller than the pill, so the pill sits inset in it. */
+/** The dock row the State B pill sits in, at its foot. */
 val NavBarRowHeight = 64.dp
-private val NavBarPillGap = 10.dp
+private val NavBarPillGap = 8.dp
 val NavBarPillSideSlot = FloatingToolbarHorizontalPadding + NavBarPillHeight + NavBarPillGap
 val NavBarPillCornerRadius = NavBarPillHeight / 2
 val QueuePeekHeight = 64.dp
@@ -156,8 +159,11 @@ val BottomSheetAnimationSpec = spring<Dp>(
 	// Critically damped, as Apple Music's sheet moves: a fling leaves with the finger's own speed
 	// and then settles into place without ever going past it and back. The old 0.84 bounced the
 	// player — and the cover flying with it — off the dock on every close.
+	// BitChord's one spring (PlayerSheetMotion.SLIDE_STIFFNESS): the same 195 for a fling, a tap
+	// open and a close, with the finger's speed handed in. 300 here and 240 for a close made the
+	// way down a different, quicker motion from the way up.
 	dampingRatio = 1f,
-	stiffness = 300f,
+	stiffness = 195f,
 	// Stops on the last visible pixel rather than easing through sub-pixel motion for another
 	// hundred milliseconds, which is what made a fling feel like it never quite landed.
 	visibilityThreshold = 0.5.dp,
@@ -194,6 +200,6 @@ val BottomSheetOpenAnimationSpec = spring<Dp>(
 /** Closing into the dock: the same no-bounce settle, a touch quicker, landing in the pill and staying. */
 val BottomSheetCloseAnimationSpec = spring<Dp>(
 	dampingRatio = 1f,
-	stiffness = 240f,
+	stiffness = 195f,
 	visibilityThreshold = 0.5.dp,
 )

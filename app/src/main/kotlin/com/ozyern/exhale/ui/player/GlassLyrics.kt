@@ -204,7 +204,16 @@ internal fun GlassLyricsView(
                     )
                 },
         ) {
-            if (linesReady) {
+            val (motion) = com.ozyern.exhale.utils.rememberEnumPreference(
+                com.ozyern.exhale.constants.LyricsMotionKey,
+                com.ozyern.exhale.constants.LyricsMotion.BITCHORD,
+            )
+            if (linesReady && motion == com.ozyern.exhale.constants.LyricsMotion.BITCHORD) {
+                com.ozyern.exhale.ui.bitchord.ExhaleBitChordLyrics(
+                    sliderPositionProvider = sliderPositionProvider,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else if (linesReady) {
                 LyricsV2(
                     sliderPositionProvider = sliderPositionProvider,
                     cornerButtons = false,
@@ -506,7 +515,9 @@ private fun GlassSegmented(onShowArtwork: () -> Unit) {
         if (glassy && capsuleBackdrop != null) {
             // The twin the lens reads: a live sample of the player with the glyphs on it. Never
             // seen; held, the capsule magnifies this, so it clears to glass rather than darkening.
-            Row(
+            // Only while it is held: at rest nothing reads it, and it would be one more copy of
+            // the player sampled on every frame of the lyrics.
+            if (drag.pressProgress > 0.001f) Row(
                 modifier = Modifier
                     .clearAndSetSemantics {}
                     .alpha(0f)

@@ -214,7 +214,6 @@ import com.ozyern.exhale.constants.CompactMiniPlayerTopInset
 import com.ozyern.exhale.constants.MiniPlayerPillHorizontalInset
 import com.ozyern.exhale.constants.NavBarPillCornerRadius
 import com.ozyern.exhale.constants.NavBarPillHeight
-import com.ozyern.exhale.constants.NavBarRowHeight
 import com.ozyern.exhale.constants.NavBarPillSideSlot
 import com.ozyern.exhale.constants.NavigationBarAnimationSpec
 import com.ozyern.exhale.constants.PauseSearchHistoryKey
@@ -2178,19 +2177,48 @@ class MainActivity : ComponentActivity() {
                                         // tells the scroll state how far there is to go — and without
                                         // that limit `collapsedFraction` stayed at zero and the dock
                                         // never folded into its home | song | search form. Given here.
-                                        val appBarTravelPx = with(LocalDensity.current) { AppBarHeight.toPx() }
-                                        LaunchedEffect(searchBarScrollBehavior, appBarTravelPx) {
-                                            searchBarScrollBehavior.state.heightOffsetLimit = -appBarTravelPx
+                                        //
+                                        // Measured as travel since the last turn, not as a position in
+                                        // a 64dp band. In the band, 15dp of thumb drift either way
+                                        // crossed a threshold, so a page held and nudged up and down
+                                        // flipped the dock several times a second, each flip cutting
+                                        // the last one off half-folded. Now it folds after a real
+                                        // scroll down and unfolds after a real scroll up, and never
+                                        // turns again until the last turn has had time to finish.
+                                        val dockDensity = LocalDensity.current
+                                        val foldTravelPx = with(dockDensity) { DockFoldTravel.toPx() }
+                                        val unfoldTravelPx = with(dockDensity) { DockUnfoldTravel.toPx() }
+                                        val offsetRoomPx = with(dockDensity) { DockScrollRoom.toPx() }
+                                        LaunchedEffect(searchBarScrollBehavior, offsetRoomPx) {
+                                            searchBarScrollBehavior.state.heightOffsetLimit = -offsetRoomPx
                                         }
                                         var collapsedLatch by remember { mutableStateOf(false) }
-                                        LaunchedEffect(searchBarScrollBehavior) {
+                                        LaunchedEffect(searchBarScrollBehavior, foldTravelPx, unfoldTravelPx) {
+                                            // The furthest the offset has gone in the direction the
+                                            // dock last turned: the point a turn back is measured from.
+                                            var turnPoint = 0f
+                                            var lastTurn = 0L
                                             snapshotFlow {
-                                                searchBarScrollBehavior.state.collapsedFraction
-                                            }.collect { fraction ->
-                                                if (!collapsedLatch && fraction > 0.62f) {
-                                                    collapsedLatch = true
-                                                } else if (collapsedLatch && fraction < 0.38f) {
-                                                    collapsedLatch = false
+                                                searchBarScrollBehavior.state.heightOffset
+                                            }.collect { offset ->
+                                                // A route change resets the offset to 0: start fresh.
+                                                if (offset == 0f && !collapsedLatch) turnPoint = 0f
+                                                val now = android.os.SystemClock.uptimeMillis()
+                                                val settled = now - lastTurn > DockTurnDwellMs
+                                                if (!collapsedLatch) {
+                                                    turnPoint = maxOf(turnPoint, offset)
+                                                    if (settled && turnPoint - offset > foldTravelPx) {
+                                                        collapsedLatch = true
+                                                        turnPoint = offset
+                                                        lastTurn = now
+                                                    }
+                                                } else {
+                                                    turnPoint = minOf(turnPoint, offset)
+                                                    if (settled && offset - turnPoint > unfoldTravelPx) {
+                                                        collapsedLatch = false
+                                                        turnPoint = offset
+                                                        lastTurn = now
+                                                    }
                                                 }
                                             }
                                         }
@@ -2259,9 +2287,10 @@ class MainActivity : ComponentActivity() {
                                         val useCompactPill = useCompactPlayer && !mergeIntoNavBar
                                         val morphPillTopOffset =
                                             if (mergeIntoNavBar) {
+                                                // The pill sits at the foot of the dock row.
                                                 (playerBottomSheetState.collapsedBound -
                                                     bottomInset - floatingBarsBottomPadding -
-                                                    (NavBarRowHeight + NavBarPillHeight) / 2).coerceAtLeast(0.dp)
+                                                    NavBarPillHeight).coerceAtLeast(0.dp)
                                             } else {
                                                 0.dp
                                             }
@@ -2530,6 +2559,16 @@ class MainActivity : ComponentActivity() {
                                                 pureBlack = pureBlack,
                                                 collapsed = bottomBarCollapsed,
                                                 hasNowPlaying = dockHasSong,
+                                                // Hidden while the player is open and shown as it lands:
+                                                // the closing player becomes this pill, rather than
+                                                // shrinking above a pill that was there all along.
+                                                // Only where the player shrinks into the pill (a tablet).
+                                                // On a phone the cover flies into this pill, which has
+                                                // to be there to be landed on.
+                                                songPillReveal = {
+                                                    if (coverFlight.enabled) 1f
+                                                    else 1f - ((playerBottomSheetState.progress - 0.04f) / 0.18f).coerceIn(0f, 1f)
+                                                },
                                                 onMiniPlayerClick = {
                                                     coroutineScope.launch { playerBottomSheetState.expandSoft() }
                                                 },
@@ -3112,3 +3151,15 @@ private const val PushMillis = 460
 private val PushEasing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f)
 private const val PushParallax = 0.30f
 private const val PushDimAlpha = 0.85f
+
+/** How far a page is scrolled down, from where the dock last opened, before it folds. */
+private val DockFoldTravel = 40.dp
+
+/** How far a page is scrolled back up, from where the dock last folded, before it opens. */
+private val DockUnfoldTravel = 100.dp
+
+/** The scroll offset's range: room for both travels to be measured inside it. */
+private val DockScrollRoom = 2000.dp
+
+/** The least time between two turns of the dock, so each fold or unfold finishes before the next. */
+private const val DockTurnDwellMs = 480L

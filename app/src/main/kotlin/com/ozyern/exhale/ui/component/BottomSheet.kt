@@ -100,6 +100,9 @@ private const val MORPH_HANDOFF_FRACTION = 0.28f
  */
 private const val CONTENT_GONE_BELOW = 0.12f
 
+/** Below this progress the morph window's ground hands over to the pill it has landed on. */
+private const val GROUND_GONE_BELOW = 0.22f
+
 /** Over how much progress above [CONTENT_GONE_BELOW] the content fades in or out. */
 private const val CONTENT_FADE_SPAN = 0.30f
 
@@ -245,9 +248,15 @@ fun BottomSheet(
                             // while the content only came in from 38%, and the pill was gone by 26%:
                             // through that stretch the window was nothing but this ground — the black
                             // slab between the dock and the player.
+                            //
+                            // Solid until the window has all but reached the pill. Faded with the
+                            // content, the window was an empty, see-through card for most of a close,
+                            // gone before it reached the dock, over a dock pill that had been there
+                            // the whole time: two things that never met. Now a solid card lands on
+                            // the pill and only then gives way to it.
                             val p = state.progress.coerceIn(0f, 1f)
-                            val handoff = ((p - CONTENT_GONE_BELOW) / CONTENT_FADE_SPAN).coerceIn(0f, 1f)
-                            val alpha = backgroundColor.alpha * handoff
+                            val landed = (p / GROUND_GONE_BELOW).coerceIn(0f, 1f)
+                            val alpha = backgroundColor.alpha * landed * landed * (3f - 2f * landed)
                             if (alpha > 0f) drawRect(backgroundColor.copy(alpha = alpha))
                         }
                 },

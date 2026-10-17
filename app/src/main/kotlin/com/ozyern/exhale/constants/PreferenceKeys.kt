@@ -702,6 +702,8 @@ val LyricsMotionKey = stringPreferencesKey("lyricsMotion")
 enum class LyricsMotion {
     EXHALE,
     APPLE_MUSIC,
+    /** BitChord's lyric panel, ported whole (ui/bitchord). The default. */
+    BITCHORD,
 }
 
 /** Which full-screen lyrics view the player opens: the classic one, or the Apple Music glass one. */

@@ -284,7 +284,7 @@ fun LyricsV2(
     val inactiveAlpha = 0.35f
     val lyricsMotion by com.ozyern.exhale.utils.rememberEnumPreference(
         com.ozyern.exhale.constants.LyricsMotionKey,
-        com.ozyern.exhale.constants.LyricsMotion.EXHALE,
+        com.ozyern.exhale.constants.LyricsMotion.BITCHORD,
     )
     val appleMotion = lyricsMotion == com.ozyern.exhale.constants.LyricsMotion.APPLE_MUSIC
 
