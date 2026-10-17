@@ -62,6 +62,10 @@ internal fun LyricsSettingsSheet(
     onDismiss: () -> Unit,
 ) {
     val (layout, setLayout) = rememberEnumPreference(LyricsLayoutKey, LyricsLayout.GLASS)
+    val (motion, setMotion) = rememberEnumPreference(
+        com.ozyern.exhale.constants.LyricsMotionKey,
+        com.ozyern.exhale.constants.LyricsMotion.EXHALE,
+    )
     val (textSize, setTextSize) = rememberPreference(LyricsTextSizeKey, 26f)
     val (lineSpacing, setLineSpacing) = rememberPreference(LyricsLineSpacingKey, 1.3f)
     val (translate, setTranslate) = rememberPreference(LyricsShowTranslationKey, false)
@@ -94,6 +98,25 @@ internal fun LyricsSettingsSheet(
                 StyleCard("Classic", "Under the player's header", layout == LyricsLayout.CLASSIC, Modifier.weight(1f)) {
                     setLayout(LyricsLayout.CLASSIC)
                 }
+            }
+
+            SectionLabel("Animation")
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                StyleCard(
+                    "Exhale",
+                    "Line by line, every word swells",
+                    motion == com.ozyern.exhale.constants.LyricsMotion.EXHALE,
+                    Modifier.weight(1f),
+                ) { setMotion(com.ozyern.exhale.constants.LyricsMotion.EXHALE) }
+                StyleCard(
+                    "Apple Music",
+                    "Sung lines stay lit, held notes glow",
+                    motion == com.ozyern.exhale.constants.LyricsMotion.APPLE_MUSIC,
+                    Modifier.weight(1f),
+                ) { setMotion(com.ozyern.exhale.constants.LyricsMotion.APPLE_MUSIC) }
             }
 
             SectionLabel("Text")

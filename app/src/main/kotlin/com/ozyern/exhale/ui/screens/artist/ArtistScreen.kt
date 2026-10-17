@@ -802,7 +802,16 @@ fun ArtistScreen(
                                 }
                                 val rowState = rememberLazyListState()
                                 BoxWithConstraints(Modifier.fillMaxWidth()) {
-                                    val columnWidth = minOf(maxWidth * 0.86f, 420.dp)
+                                    // A phone shows one column and the edge of the next. A tablet fits whole
+                                    // columns across: at a fixed 420dp the third one was cut through its
+                                    // titles at the window's edge, which read as a layout fault, not a hint.
+                                    val columnWidth = if (maxWidth < 600.dp) {
+                                        minOf(maxWidth * 0.86f, 420.dp)
+                                    } else {
+                                        val usable = maxWidth - 20.dp
+                                        val count = ((usable + 12.dp) / (340.dp + 12.dp)).toInt().coerceAtLeast(2)
+                                        (usable - 12.dp * (count - 1)) / count
+                                    }
                                     LazyRow(
                                         state = rowState,
                                         contentPadding = PaddingValues(horizontal = 10.dp),
@@ -1058,8 +1067,9 @@ private fun LatestReleaseCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            // A card, not a banner: on a tablet it keeps a phone's width at the start of the page.
-            .wrapContentWidth(Alignment.Start)
+            // A card, not a banner: on a tablet it keeps a phone's width, centred under the
+            // centred name and Play rather than stranded at the left with the half beside it empty.
+            .wrapContentWidth(Alignment.CenterHorizontally)
             .widthIn(max = 520.dp)
             .clip(shape)
             .background(Color.White.copy(alpha = 0.10f), shape)

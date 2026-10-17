@@ -2015,6 +2015,13 @@ private fun FluidDock(
     // second half — so mid-fold the plate is empty glass, as it is in Apple's.
     val tabsAlpha = 1f - fluidRamp(fold, 0.05f, 0.4f)
     val foldedAlpha = fluidRamp(fold, 0.35f, 0.8f)
+    // The folded circles part for a song and close up without one. That was a cut: a song starting
+    // or the player being swiped away while folded jumped both circles to their new places.
+    val songSpan by animateFloatAsState(
+        targetValue = if (hasNowPlaying) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 320f),
+        label = "fluidSongSpan",
+    )
 
     BoxWithConstraints(
         modifier = modifier
@@ -2028,8 +2035,12 @@ private fun FluidDock(
         // State B: the two circles at the ends with the song between them, or — nothing playing —
         // the two circles side by side in the middle.
         val pairWidth = FluidInlineSize * 2 + FluidInlineGap
-        val leftFoldedX = if (hasNowPlaying || !withSearch) 0.dp else (width - pairWidth) / 2
-        val searchFoldedX = if (hasNowPlaying) width - FluidInlineSize else leftFoldedX + FluidInlineSize + FluidInlineGap
+        val leftFoldedX = if (withSearch) lerp((width - pairWidth) / 2, 0.dp, songSpan) else 0.dp
+        val searchFoldedX = lerp(
+            leftFoldedX + FluidInlineSize + FluidInlineGap,
+            width - FluidInlineSize,
+            if (withSearch) songSpan else 1f,
+        )
 
         val size = lerp(DockCircleSize, FluidInlineSize, fold)
         val plateWidth = lerp(tabsWidth, FluidInlineSize, fold)
@@ -2114,25 +2125,33 @@ private fun FluidDock(
             )
         }
 
-        // ---- The song, flown down from above the dock into the gap ----
-        // Its own visibility, so the accessory has a scope to fly in: the sheet's mini player fades
-        // out as this one appears, and the shared bounds carry the pill between the two places.
-        androidx.compose.animation.AnimatedVisibility(
-            visible = collapsed && hasNowPlaying,
-            enter = fadeIn(tween(200, delayMillis = 60)),
-            exit = fadeOut(tween(120)),
-            modifier = Modifier
-                .offset(x = FluidInlineSize + FluidInlineGap, y = DockCircleSize - FluidInlineSize)
-                .width((width - (FluidInlineSize + FluidInlineGap) * 2).coerceAtLeast(0.dp))
-                .height(FluidInlineSize),
-        ) {
-            FrostedPill(
-                height = FluidInlineSize,
-                beatWave = true,
-                sharedAccessoryScope = this,
-                modifier = Modifier.fillMaxWidth(),
+        // ---- The song, settling into the gap as the plate closes ----
+        // Driven by the fold itself, not by a shared-element flight with a spring of its own. The
+        // flight and the fold ran on two clocks: unfolding, the pill was caught mid-air twice over,
+        // once rising and once still in the dock, beside a plate that had not opened yet. Now it
+        // drops in from where the mini player was as the plate closes, and lifts out the same way.
+        val songIn = foldedAlpha * songSpan
+        if (songIn > 0.001f) {
+            Box(
+                modifier = Modifier
+                    .offset(x = FluidInlineSize + FluidInlineGap, y = DockCircleSize - FluidInlineSize)
+                    .width((width - (FluidInlineSize + FluidInlineGap) * 2).coerceAtLeast(0.dp))
+                    .height(FluidInlineSize)
+                    .graphicsLayer {
+                        alpha = songIn
+                        translationY = -(1f - fold) * 22.dp.toPx()
+                        val scale = lerp(0.94f, 1f, fold)
+                        scaleX = scale
+                        scaleY = scale
+                    },
             ) {
-                MiniPlayerPill(pureBlack = pureBlack, onExpand = onMiniPlayerClick)
+                FrostedPill(
+                    height = FluidInlineSize,
+                    beatWave = true,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    MiniPlayerPill(pureBlack = pureBlack, onExpand = onMiniPlayerClick)
+                }
             }
         }
     }

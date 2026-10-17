@@ -89,7 +89,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -283,6 +282,11 @@ fun LyricsV2(
     val textColor = Color.White
 
     val inactiveAlpha = 0.35f
+    val lyricsMotion by com.ozyern.exhale.utils.rememberEnumPreference(
+        com.ozyern.exhale.constants.LyricsMotionKey,
+        com.ozyern.exhale.constants.LyricsMotion.EXHALE,
+    )
+    val appleMotion = lyricsMotion == com.ozyern.exhale.constants.LyricsMotion.APPLE_MUSIC
 
     // ── Selection mode state ──
     var isSelectionModeActive by rememberSaveable { mutableStateOf(false) }
@@ -481,6 +485,9 @@ fun LyricsV2(
     var currentLineIndex by remember { mutableIntStateOf(0) }
     // The line the *scroll* is chasing. Usually the same as the highlighted one, briefly the next.
     var scrollLineIndex by remember { mutableIntStateOf(0) }
+    // Apple Music motion: the first line of the group being held lit. The column scrolls to it,
+    // and every line from it to the one being sung stays lit.
+    var blockStart by remember { mutableIntStateOf(0) }
 
     // ── Position loop ──
     //
@@ -538,10 +545,9 @@ fun LyricsV2(
             )
 
             val live = sliderPos != null || player.isPlaying
-            // One read per displayed frame while it moves. A flat `delay(16)` drifts against the
-            // display: some frames got two updates and some none, which is the lyric sweep
-            // stuttering and the highlight landing a frame late.
-            if (live) withFrameNanos { } else delay(200L)
+            // 16ms, as in 1.0.405. A read on every displayed frame (withFrameNanos) recomposed the
+            // whole lyric column every frame, and that, not the clock, was the stutter people saw.
+            delay(if (live) 16L else 200L)
         }
     }
 
@@ -588,11 +594,27 @@ fun LyricsV2(
     //
     // Driven by `scrollLineIndex`, which runs SCROLL_LEAD_MS ahead of the highlight, so the
     // column is already moving when the line lights rather than starting then.
-    LaunchedEffect(scrollLineIndex, isManualScrolling, lyricsScroll) {
-        if (!lyricsScroll || isManualScrolling || !isSynced) return@LaunchedEffect
-        if (scrollLineIndex < 0 || scrollLineIndex >= entriesWithWords.size) return@LaunchedEffect
+    // Apple Music motion: a new group starts after AppleGroupLines lines, at a pause in the
+    // singing, or when the song jumps (a seek). Within a group the column stays still.
+    LaunchedEffect(currentLineIndex, appleMotion, entriesWithWords) {
+        val i = currentLineIndex
+        if (!appleMotion || i < blockStart || i - blockStart >= AppleGroupLines) {
+            blockStart = i
+            return@LaunchedEffect
+        }
+        val prev = entriesWithWords.getOrNull(i - 1) ?: return@LaunchedEffect
+        val cur = entriesWithWords.getOrNull(i) ?: return@LaunchedEffect
+        val prevEnd = prev.words?.lastOrNull { it.text.isNotBlank() }?.endTime?.times(1000)?.toLong()
+        val pause = prev.text.isBlank() || (prevEnd != null && cur.time - prevEnd > AppleGroupPauseMs)
+        if (pause) blockStart = i
+    }
+    val scrollTarget = if (appleMotion) blockStart else scrollLineIndex
 
-        val target = scrollLineIndex
+    LaunchedEffect(scrollTarget, isManualScrolling, lyricsScroll) {
+        if (!lyricsScroll || isManualScrolling || !isSynced) return@LaunchedEffect
+        if (scrollTarget < 0 || scrollTarget >= entriesWithWords.size) return@LaunchedEffect
+
+        val target = scrollTarget
         val step = if (lastTrackedIndex < 0) Int.MAX_VALUE else abs(target - lastTrackedIndex)
         lastTrackedIndex = target
 
@@ -805,6 +827,9 @@ fun LyricsV2(
 
                 val isActive = isSynced && index == currentLineIndex
                 val isPast = isSynced && index < currentLineIndex
+                // Apple Music motion: sung, but still part of the group on screen, so still lit.
+                val heldLit = appleMotion && isPast && index >= blockStart
+                val lit = isActive || heldLit
                 val isFuture = isSynced && index > currentLineIndex
 
                 // Distance-based alpha for non-active lines
@@ -813,7 +838,7 @@ fun LyricsV2(
                 // so we use 1f for active lines to not double-dim
                 val lineAlpha = when {
                     !isSynced -> 0.9f
-                    isActive -> 1f
+                    lit -> 1f
                     else -> (inactiveAlpha - (distanceFromActive - 1) * 0.03f)
                         .coerceIn(0.15f, inactiveAlpha)
                 }
@@ -823,7 +848,7 @@ fun LyricsV2(
                 // every word filled, so it stayed fully lit for as long as it was on screen — the
                 // sung lines above the singer read as the lyrics lagging two or three lines behind.
                 // Done, it drops back into the column like any other line.
-                val wordLineAlpha = if (item.words != null && isSynced && isActive) 1f else lineAlpha
+                val wordLineAlpha = if (item.words != null && isSynced && lit) 1f else lineAlpha
 
                 // ── Apple-Music line transition physics ──
                 // The active line pops to full size; inactive lines settle at 85% scale and
@@ -856,7 +881,7 @@ fun LyricsV2(
                 // that the sung line is the nearest object without the rest becoming small print,
                 // which is also how Apple does it (dimmer, barely smaller).
                 val animatedLineScale by animateFloatAsState(
-                    targetValue = if (!isSynced || isActive) 1f else 0.965f,
+                    targetValue = if (!isSynced || lit) 1f else 0.965f,
                     animationSpec = lineSpring,
                     label = "lineScale",
                 )
@@ -1028,6 +1053,7 @@ fun LyricsV2(
                             isLineAllBackground = isAllBackground,
                             textAlign = textAlign,
                             lyricsFontFamily = lyricsFontFamily,
+                            appleMotion = appleMotion,
                         )
                     } else {
                         // ── Plain text rendering ──
@@ -1043,7 +1069,7 @@ fun LyricsV2(
                                 fontFamily = lyricsFontFamily ?: MaterialTheme.typography.headlineMedium.fontFamily,
                                 letterSpacing = LyricTracking,
                             ),
-                            color = textColor.copy(alpha = if (isActive) 1f else inactiveAlpha),
+                            color = textColor.copy(alpha = if (lit) 1f else inactiveAlpha),
                             textAlign = textAlign,
                             modifier = Modifier.fillMaxWidth(),
                         )
@@ -1639,6 +1665,7 @@ private fun LyricsLineV2(
     isLineAllBackground: Boolean,
     textAlign: TextAlign,
     lyricsFontFamily: FontFamily?,
+    appleMotion: Boolean = false,
 ) {
     val arrangement = when (textAlign) {
         TextAlign.Center -> Arrangement.Center
@@ -1685,6 +1712,7 @@ private fun LyricsLineV2(
                     fontSize = if (isLineAllBackground) baseFontSize * 0.82f else baseFontSize,
                     isBackground = isLineAllBackground,
                     lyricsFontFamily = lyricsFontFamily,
+                    appleMotion = appleMotion,
                 )
             }
         }
@@ -1724,6 +1752,7 @@ private fun LyricsLineV2(
                     fontSize = baseFontSize * 0.65f, // ~65% size of main text
                     isBackground = true, // Force dimmer styling inside AnimatedWordV2
                     lyricsFontFamily = lyricsFontFamily,
+                    appleMotion = appleMotion,
                 )
             }
         }
@@ -1747,6 +1776,7 @@ private fun AnimatedWordV2(
     fontSize: Float,
     isBackground: Boolean,
     lyricsFontFamily: FontFamily?,
+    appleMotion: Boolean = false,
 ) {
     val wordStartMs = (word.startTime * 1000).toLong()
     val wordEndMs = (word.endTime * 1000).toLong()
@@ -1783,25 +1813,32 @@ private fun AnimatedWordV2(
 
     // Big enough to actually see. The old 1.5% scale was below the threshold at which a glyph
     // reads as having moved at all, so the "bounce" was costing a layer and buying nothing.
-    val wordScale = 1f + (if (isBackground) 0.018f else 0.032f) * swell
+    // Apple Music motion keeps the swell for held notes only: a short word just lights and rises,
+    // and a long one grows into its glow, which is what marks it out as the note being held.
+    val held = wordDuration >= AppleHeldNoteMs
+    val emphasis = if (!appleMotion) swell else if (held) swell else 0f
+    val wordScale = 1f + (if (isBackground) 0.018f else if (appleMotion) 0.06f else 0.032f) * emphasis
 
     // Float is only applied when the word is actively sung, making it pop from the line.
     // The animatable is kept for the tail: when the word ends the target drops to 0 and this
     // eases it home over 350ms instead of snapping, so the word sets down rather than dropping.
-    val targetFloat = if (isWordActive) -5.5f * swell else 0f
-    // While the word is sung the target moves every frame, and a tween restarted every frame never
-    // arrives — the lift trailed the voice. So it follows exactly while active, and only the
-    // release is eased.
+    // Apple Music motion: every word rises about 2dp as it is sung and stays up with its line, the
+    // sung part of the line sitting a hair above the rest; a held note lifts further.
+    val targetFloat = when {
+        !appleMotion -> if (isWordActive) -5.5f * swell else 0f
+        !isLineActive -> 0f
+        isWordActive -> -2f * progress - 3f * emphasis
+        isWordComplete -> -2f
+        else -> 0f
+    }
+    // Eased both ways, as in 1.0.405: snapping to the target while active made the lift step with
+    // every position update instead of gliding.
     val floatOffset by androidx.compose.animation.core.animateFloatAsState(
         targetValue = targetFloat,
-        animationSpec = if (isWordActive) {
-            androidx.compose.animation.core.snap()
-        } else {
-            androidx.compose.animation.core.tween(
-                durationMillis = 350,
-                easing = androidx.compose.animation.core.FastOutSlowInEasing
-            )
-        },
+        animationSpec = androidx.compose.animation.core.tween(
+            durationMillis = if (isWordActive) 50 else 350,
+            easing = androidx.compose.animation.core.FastOutSlowInEasing
+        ),
         label = "wordFloat",
     )
 
@@ -1810,17 +1847,13 @@ private fun AnimatedWordV2(
     // hard 0 the moment the word ends. It is animated rather than assigned so the glow *fades*
     // over ~200ms as the next word lights up; two words briefly overlapping in light is what
     // makes the line read as one moving highlight instead of a row of bulbs switching.
-    val targetGlow = if (isWordActive) swell else 0f
+    val targetGlow = if (isWordActive) emphasis else 0f
     val glow by androidx.compose.animation.core.animateFloatAsState(
         targetValue = targetGlow,
-        animationSpec = if (isWordActive) {
-            androidx.compose.animation.core.snap()
-        } else {
-            androidx.compose.animation.core.tween(
-                durationMillis = 200,
-                easing = androidx.compose.animation.core.FastOutSlowInEasing
-            )
-        },
+        animationSpec = androidx.compose.animation.core.tween(
+            durationMillis = if (isWordActive) 60 else 200,
+            easing = androidx.compose.animation.core.FastOutSlowInEasing
+        ),
         label = "wordGlow",
     )
     val glowTint = LocalLyricsGlowColor.current
@@ -1935,7 +1968,12 @@ private fun AnimatedWordV2(
                     // Three stops rather than two: black → half → transparent gives the edge a
                     // shoulder, so the highlight trails off into the unlit text instead of ending
                     // on a visible boundary.
-                    val edgeWidth = (size.width * 0.22f).coerceIn(6.dp.toPx(), 22.dp.toPx())
+                    // Apple's edge is softer: a wider shoulder, so the light arrives rather than wipes.
+                    val edgeWidth = if (appleMotion) {
+                        (size.width * 0.38f).coerceIn(10.dp.toPx(), 34.dp.toPx())
+                    } else {
+                        (size.width * 0.22f).coerceIn(6.dp.toPx(), 22.dp.toPx())
+                    }
                     val center = (size.width + edgeWidth * 2) * fill - edgeWidth
                     drawRect(
                         brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
@@ -1952,6 +1990,15 @@ private fun AnimatedWordV2(
     }
 }
 
+
+/** Apple Music motion: the most lines held lit together before the column moves on. */
+private const val AppleGroupLines = 3
+
+/** Apple Music motion: a silence longer than this between two lines starts a new group. */
+private const val AppleGroupPauseMs = 1_500L
+
+/** Apple Music motion: a word sung for at least this long is a held note, and swells and glows. */
+private const val AppleHeldNoteMs = 900L
 
 /** Below this, a gap is a breath between lines and wants no indicator. */
 private const val LyricInterludeMinMs = 5_000L

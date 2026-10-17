@@ -679,12 +679,18 @@ internal fun NowPlayingScreen(
     // to have none, was a promise the player kept breaking.
     var videoFound by remember(mediaMetadata.id) { mutableStateOf(com.ozyern.exhale.playback.MusicVideo.knownPresent(mediaMetadata.id)) }
     LaunchedEffect(mediaMetadata.id) {
-        if (videoFound || videoMissing) return@LaunchedEffect
-        // After the song has its stream: this is one search, and it can wait a moment.
-        kotlinx.coroutines.delay(1_200)
-        val has = com.ozyern.exhale.playback.MusicVideo.has(mediaMetadata)
-        videoFound = has
-        videoMissing = !has
+        if (videoMissing) return@LaunchedEffect
+        if (!videoFound) {
+            // After the song has its stream: this is one search, and it can wait a moment.
+            kotlinx.coroutines.delay(1_200)
+            val has = com.ozyern.exhale.playback.MusicVideo.has(mediaMetadata)
+            videoFound = has
+            videoMissing = !has
+            if (!has) return@LaunchedEffect
+        }
+        // Its stream too, while the player is open: fetched only on the tap, it was most of the wait
+        // between pressing Video and seeing a picture. Kept for hours, so a second tap is instant.
+        if (!videoMode) runCatching { com.ozyern.exhale.playback.MusicVideo.find(mediaMetadata) }
     }
     var videoFullscreen by remember { mutableStateOf(false) }
     // Issue #6: a video playing over the cover, and the device turns on its side — the video goes

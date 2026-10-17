@@ -692,6 +692,18 @@ enum class LyricsAnimationStyle {
     APPLE,
 }
 
+/**
+ * How the lyrics move. [EXHALE] is the original: every line scrolls up as it is reached and
+ * dims as soon as it is sung, and every word swells as it lights. [APPLE_MUSIC] holds a group of up
+ * to three sung lines lit and scrolls a group at a time, words rise a touch as they are sung,
+ * and only held notes swell and glow.
+ */
+val LyricsMotionKey = stringPreferencesKey("lyricsMotion")
+enum class LyricsMotion {
+    EXHALE,
+    APPLE_MUSIC,
+}
+
 /** Which full-screen lyrics view the player opens: the classic one, or the Apple Music glass one. */
 val LyricsLayoutKey = stringPreferencesKey("lyricsLayout")
 enum class LyricsLayout {

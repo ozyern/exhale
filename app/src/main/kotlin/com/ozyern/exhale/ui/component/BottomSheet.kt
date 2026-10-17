@@ -522,9 +522,16 @@ class BottomSheetState(
         // separately animated, and it is the difference the eye reads as "weight".
         val initialVelocity = with(density) { velocity.toDp() }
 
+        // Closing an open player takes more than opening one. At 250 px/s a sideways swipe across
+        // the lyrics page's top bar, drifting a few pixels down, was enough to throw the whole
+        // player away. Down from open it now takes a real flick that has also moved the sheet.
+        val open = value > collapsedBound
+        val travelled = (expandedBound - value) / (expandedBound - collapsedBound).coerceAtLeast(1.dp)
+        val closeFling = if (open) velocity < -1100 && travelled > 0.06f else velocity < -250
+
         if (velocity > 250) {
             expand(initialVelocity)
-        } else if (velocity < -250) {
+        } else if (closeFling) {
             if (value < collapsedBound && onDismiss != null) {
                 dismiss()
                 onDismiss.invoke()

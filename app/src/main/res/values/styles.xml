@@ -13,13 +13,11 @@
         <item name="android:enforceNavigationBarContrast" tools:ignore="NewApi">false</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
-        <!-- Android 12+ SplashScreen API (minSdk 33): black, with the boot sequence's first
-             light already in it. Not the mark - showing the logo here and again in BootSplash
-             read as the app starting twice - but the amber ember the bloom grows from, swelling
-             while the process starts, so a cold start never opens on a second of dead black.
-             BootSplash picks the ember up where it is and widens it into the bloom. -->
+        <!-- Android 12+ SplashScreen API (minSdk 33): the mark itself, still, on black, from the
+             first frame of a cold start. BootSplash opens on exactly this picture - same size,
+             same place - and only then starts to move, so the hand-over is invisible and the
+             launch is one breath rather than an amber dot followed by a logo popping in. -->
         <item name="android:windowSplashScreenBackground">@color/splash_background</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_ember_animated</item>
-        <item name="android:windowSplashScreenAnimationDuration">1000</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_logo_inset</item>
     </style>
 </resources>

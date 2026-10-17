@@ -1597,6 +1597,12 @@ class MainActivity : ComponentActivity() {
                     val nowPlayingMetadata by remember(playerConnection) {
                         playerConnection?.mediaMetadata ?: MutableStateFlow(null)
                     }.collectAsState()
+                    // A song the folded dock may show. Swiping the mini player away dismisses the sheet
+                    // but leaves the queue, and the metadata with it; the folded dock used to read only
+                    // the metadata and brought the dismissed song back the moment the page scrolled.
+                    val dockHasSong by remember(playerBottomSheetState) {
+                        derivedStateOf { nowPlayingMetadata != null && !playerBottomSheetState.isDismissed }
+                    }
 
                     CompositionLocalProvider(
                         LocalAppBackdrop provides chromeBackdrop,
@@ -2242,7 +2248,7 @@ class MainActivity : ComponentActivity() {
                                         // which can only happen while the sheet is collapsed, when
                                         // the morph layer is not even composed.
                                         val mergeIntoNavBar =
-                                            bottomBarCollapsed && nowPlayingMetadata != null
+                                            bottomBarCollapsed && dockHasSong
 
                                         // The slim pill is drawn inside the standard slot with
                                         // `CompactMiniPlayerTopInset` of air above it, so the
@@ -2523,7 +2529,7 @@ class MainActivity : ComponentActivity() {
                                                 items = navigationItems,
                                                 pureBlack = pureBlack,
                                                 collapsed = bottomBarCollapsed,
-                                                hasNowPlaying = nowPlayingMetadata != null,
+                                                hasNowPlaying = dockHasSong,
                                                 onMiniPlayerClick = {
                                                     coroutineScope.launch { playerBottomSheetState.expandSoft() }
                                                 },

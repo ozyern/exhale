@@ -41,6 +41,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
@@ -929,13 +930,15 @@ object YTPlayerUtils {
         // URLs come ready to play. WEB_REMIX's are scrambled and hang on YouTube's player script
         // parsing cleanly, and the Android clients' picture streams are withheld without a proof
         // token — which is why taking the first client that answered so often meant no video.
-        val clients = (listOf(VISIONOS, IPADOS, IOS) + STREAM_FALLBACK_CLIENTS.toList() + MAIN_CLIENT).distinct()
-        var muxedFallback: VideoStream? = null
-        for (client in clients) {
-            if (client.loginRequired && !isLoggedIn) continue
-            val response = YouTube.player(videoId, null, client, signatureTimestamp).getOrNull() ?: continue
-            if (response.playabilityStatus.status != "OK") continue
-            val streaming = response.streamingData ?: continue
+        val usable = (listOf(VISIONOS, IPADOS, IOS) + STREAM_FALLBACK_CLIENTS.toList() + MAIN_CLIENT).distinct()
+            .filter { !it.loginRequired || isLoggedIn }
+
+        /** A client's best picture-only stream, and its single-file rendition kept back as a fallback. */
+        suspend fun ask(client: YouTubeClient): Pair<VideoStream?, VideoStream?> {
+            val response = YouTube.player(videoId, null, client, signatureTimestamp).getOrNull()
+                ?: return null to null
+            if (response.playabilityStatus.status != "OK") return null to null
+            val streaming = response.streamingData ?: return null to null
             val candidates = streaming.adaptiveFormats
                 .filter { !it.isAudio && (it.height ?: 0) in 1..maxHeight }
                 .filter { it.url != null || it.signatureCipher != null || it.cipher != null }
@@ -952,21 +955,48 @@ object YTPlayerUtils {
                 // Asked before it is handed over, as the Windows app does: a URL that is refused
                 // now would only become a black box and a "couldn't play" a second later.
                 if (!validateStatus(url, client.userAgent)) continue
-                return@runCatching VideoStream(url, client.userAgent, candidate.width ?: 0, candidate.height ?: 0, candidate.contentLength)
+                return VideoStream(url, client.userAgent, candidate.width ?: 0, candidate.height ?: 0, candidate.contentLength) to null
             }
             // This client's one single-file rendition (360p, picture and sound) is kept back rather
             // than played: a client further down may still have the real picture.
-            if (muxedFallback == null) {
-                val muxed = streaming.formats.orEmpty()
-                    .filter { (it.height ?: 0) in 1..maxHeight }
-                    .maxByOrNull { it.height ?: 0 }
-                if (muxed != null) {
-                    val url = synchronized(decipherLock) { findUrlOrNull(muxed, videoId, client) }
-                    if (url != null && validateStatus(url, client.userAgent)) {
-                        muxedFallback = VideoStream(url, client.userAgent, muxed.width ?: 0, muxed.height ?: 0, muxed.contentLength)
+            val muxed = streaming.formats.orEmpty()
+                .filter { (it.height ?: 0) in 1..maxHeight }
+                .maxByOrNull { it.height ?: 0 }
+                ?: return null to null
+            val url = synchronized(decipherLock) { findUrlOrNull(muxed, videoId, client) }
+            return null to if (url != null && validateStatus(url, client.userAgent)) {
+                VideoStream(url, client.userAgent, muxed.width ?: 0, muxed.height ?: 0, muxed.contentLength)
+            } else {
+                null
+            }
+        }
+
+        var muxedFallback: VideoStream? = null
+        // The three that usually answer are asked at once, and their answers are taken in the order
+        // above, not in the order they arrive. One after another, each a player request and a status
+        // check, was most of the wait after tapping Video; but the fastest answer is not always one
+        // that plays (an iOS stream that came back first failed to parse and cost a full retry).
+        val raced = withContext(Dispatchers.IO) {
+            coroutineScope {
+                val asked = usable.take(3).map { client -> async { ask(client) } }
+                var picture: VideoStream? = null
+                for ((index, answer) in asked.withIndex()) {
+                    val (stream, muxed) = answer.await()
+                    if (muxedFallback == null) muxedFallback = muxed
+                    if (stream != null) {
+                        picture = stream
+                        asked.drop(index + 1).forEach { it.cancel() }
+                        break
                     }
                 }
+                picture
             }
+        }
+        if (raced != null) return@runCatching raced
+        for (client in usable.drop(3)) {
+            val (picture, muxed) = withContext(Dispatchers.IO) { ask(client) }
+            if (picture != null) return@runCatching picture
+            if (muxedFallback == null) muxedFallback = muxed
         }
         muxedFallback ?: error("No video stream for $videoId")
     }

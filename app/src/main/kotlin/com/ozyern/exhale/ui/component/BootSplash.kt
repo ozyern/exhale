@@ -64,19 +64,14 @@ import kotlin.math.sin
  *
  * The beats, in order — it is called Exhale, so the whole thing is one breath:
  *
- *  1. **Bloom.** A warm amber glow swells out of pure black behind the mark, and drifts: two
- *     light sources circling slowly, so the black is lit rather than printed. It starts on
- *     frame one — before the logo is even decoded — so the screen is never a dead black slab.
- *  2. **Focus.** The mark comes into focus: it fades up out of a soft blur and settles from
- *     0.92x on a near-critically-damped spring. (Two inhale rings and three sound-wave arcs used
- *     to run over this beat as well; with the glint they were five things moving at once in
- *     under a second, so they went, and the hold is 600ms instead of 760.)
- *  3. **Glint.** Once, a band of warm light crosses the mark's glossy black body — the light it
- *     just took in, crossing it.
- *  4. **Exhale.** The mark draws back a few percent, and a single gold ring leaves it and runs
- *     out across the screen. The app opens behind that ring — the aperture's edge *is* the ring —
- *     while the mark flies to its own place in Home's top bar and lands on the glass disc the
- *     logo lives in there. The light goes *out*, and takes the splash with it.
+ *  1. **Still.** The launch window shows the mark itself, on black, from the first frame of a cold
+ *     start, and this layer opens on exactly that picture. There used to be an amber dot alone on
+ *     black for most of a slow start, and then the logo arriving in front of it as a second event.
+ *  2. **Inhale.** The mark grows by about half again as a warm glow gathers behind it, and once, a
+ *     band of light crosses its glossy body.
+ *  3. **Exhale.** It draws back a few percent, and a single gold ring leaves it and runs out across
+ *     the screen. The app opens behind that ring while the mark flies to its own place in Home's
+ *     top bar and lands on the glass disc the logo lives in there.
  *
  * No text. The mark is the name.
  *
@@ -116,8 +111,6 @@ import kotlin.math.sin
  */
 
 // ---- Timeline (ms) -------------------------------------------------------------------------
-/** How long the mark is on screen before the aperture opens. Short: it is a flourish, not a wait. */
-private const val ENTRANCE_MS = 600L
 /**
  * The aperture opening. Also the fade, the zoom and the hand-off — one motion on one easing,
  * because two eases running at once is how a single gesture stops reading as single.
@@ -131,8 +124,18 @@ private const val IRIS_MS = 520
 /** Apple's emphasized curve: leaves quickly and takes its time arriving. */
 private val EmphasizedEasing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
-/** Fraction of the shorter viewport edge the square splash artwork occupies. */
-private const val SPLASH_ARTWORK_FRACTION = 0.56f
+/**
+ * The artwork's size at rest: what the launch window draws it at. The system gives the splash icon
+ * a 240dp canvas and splash_logo_inset insets the logo 22% a side, so it lands at 134.4dp, and the
+ * splash has to start from that exact picture for the hand-over to be invisible.
+ */
+private val LaunchArtworkSize = 134.4.dp
+
+/** How far the mark grows as it breathes in. */
+private const val INHALE_SCALE = 1.42f
+
+/** The breath in: the mark growing into the glow gathering behind it. */
+private const val INHALE_MS = 720
 
 // Brand palette, sampled from the artwork itself rather than guessed. The default mark
 // (splash_logo.png) is a black glyph wearing a gold rim light: 72% of the mark is near-black body, its rim averages #DEB41A,
@@ -163,10 +166,7 @@ fun BootSplash(
     // Sized off the SHORTER viewport edge so the square artwork is generous on a tablet, fully
     // un-cropped on a small phone, and safe in landscape — with margin left over for the spring's
     // overshoot and the exit zoom.
-    val configuration = LocalConfiguration.current
-    val artworkSize = remember(configuration.screenWidthDp, configuration.screenHeightDp) {
-        (minOf(configuration.screenWidthDp, configuration.screenHeightDp) * SPLASH_ARTWORK_FRACTION).dp
-    }
+    val artworkSize = LaunchArtworkSize
     var screenWidthPx by remember { mutableStateOf(0f) }
     var screenHeightPx by remember { mutableStateOf(0f) }
 
@@ -175,97 +175,57 @@ fun BootSplash(
     // PackageManager, so it is right on the first frame — a splash that opened on the wrong logo
     // and corrected itself would be worse than not following the setting at all.
     val markRes = rememberAppIconPack().splashLogoRes
-    var logo by remember { mutableStateOf<ImageBitmap?>(null) }
-    var decodeFailed by remember { mutableStateOf(false) }
+    // Decoded on the first frame, at half size: the launch window is already showing the mark,
+    // and a first frame without it would be a black flash between the two. Half of the 1024px
+    // artwork is still sharp at the size it grows to, and a quarter of the work of the full one.
+    val logo = remember(markRes) {
+        runCatching {
+            BitmapFactory.decodeResource(
+                context.resources,
+                markRes,
+                BitmapFactory.Options().apply { inSampleSize = 2 },
+            )?.asImageBitmap()
+        }.getOrNull()
+    }
+    val decodeFailed = logo == null
 
     val bloom = remember { Animatable(0f) }
     // 0.90, not 0.70. A mark arriving from two thirds of its size has visibly *travelled*, which
     // needs a bounce to land and then reads as a bounce. From 0.90 it simply settles.
-    val logoScale = remember { Animatable(0.92f) }
-    val logoAlpha = remember { Animatable(0f) }
-    // The focus pull: blur radius in dp, from soft to sharp.
-    val logoBlur = remember { Animatable(14f) }
+    // Starts as the launch window left it: full size, solid, sharp.
+    val logoScale = remember { Animatable(1f) }
+    val logoAlpha = remember { Animatable(1f) }
     // -0.3 to 1.3 across the mark, so the band enters and leaves entirely off it.
     val glint = remember { Animatable(-0.3f) }
     // The bloom's two light sources, circling. Runs from frame one to the last.
     val drift = remember { Animatable(0f) }
     val iris = remember { Animatable(0f) }
-    // The system splash window's ember (splash_ember), carried over: full on the first frame, so
-    // the hand-off from the launch window has no gap, and handed to the bloom as it widens.
-    val ember = remember { Animatable(1f) }
     // The mark's flight to the top bar.
     val flight = remember { Animatable(0f) }
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
     val statusBarTop = WindowInsets.statusBars.getTop(density)
 
-    // Frame one: the bloom is already breathing in while the artwork is still being decoded on a
-    // background thread. The user never sees an empty black hold.
     LaunchedEffect(markRes) {
-        launch {
-            bloom.animateTo(1f, tween(durationMillis = 380, easing = LinearOutSlowInEasing))
-        }
-        launch {
-            ember.animateTo(0f, tween(durationMillis = 520, easing = FastOutSlowInEasing))
-        }
-        launch {
-            drift.animateTo(1f, tween(durationMillis = 2_400, easing = LinearEasing))
-        }
-        val decoded = withContext(Dispatchers.IO) {
-            runCatching {
-                BitmapFactory.decodeResource(context.resources, markRes)
-                    ?.asImageBitmap()
-            }.getOrNull()
-        }
-        if (decoded != null) logo = decoded else decodeFailed = true
-    }
+        launch { drift.animateTo(1f, tween(durationMillis = 2_400, easing = LinearEasing)) }
 
-    val ready = logo != null || decodeFailed
-
-    LaunchedEffect(ready) {
-        if (!ready) return@LaunchedEffect
-
-        // --- Arrival, then the breath ---
-        launch { logoAlpha.animateTo(1f, tween(durationMillis = 300, easing = LinearOutSlowInEasing)) }
+        // --- The breath in: the mark grows into the light gathering behind it ---
+        launch { bloom.animateTo(1f, tween(durationMillis = INHALE_MS, easing = FastOutSlowInEasing)) }
         launch {
-            logoBlur.animateTo(0f, tween(durationMillis = 520, easing = FastOutSlowInEasing))
-            // The one tactile beat: the lens clicking into focus.
-            haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
+            delay(260)
+            glint.animateTo(1.3f, tween(durationMillis = 640, easing = FastOutSlowInEasing))
         }
-        launch {
-            delay(240)
-            glint.animateTo(1.3f, tween(durationMillis = 620, easing = FastOutSlowInEasing))
-        }
-        launch {
-            // Damping 0.88: it settles rather than bounces. The old 0.62 gave a visible rebound,
-            // which is a *toy* gesture — right for a game splash, wrong for the screen that opens
-            // in front of a music library every morning.
-            logoScale.animateTo(1f, spring(dampingRatio = 0.88f, stiffness = 300f))
-            // Linear on purpose. Any easing has an acceleration you can perceive, and a breath you
-            // can perceive is a zoom. You should only notice this one by comparing the first frame
-            // of the hold against the last.
-            logoScale.animateTo(
-                1.035f,
-                tween(durationMillis = ENTRANCE_MS.toInt(), easing = LinearEasing),
-            )
-        }
+        logoScale.animateTo(INHALE_SCALE, tween(durationMillis = INHALE_MS, easing = EmphasizedEasing))
+        haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
+        delay(140)
 
-        delay(ENTRANCE_MS)
+        // A small draw back before it leaves, so the flight reads as the mark pushing off.
+        logoScale.animateTo(INHALE_SCALE * 0.96f, tween(durationMillis = 120, easing = FastOutSlowInEasing))
 
-        // A breath in before it leaves: a few percent smaller for a beat, so the flight reads as
-        // the mark pushing off rather than being pulled away.
-        logoScale.animateTo(0.97f, tween(durationMillis = 110, easing = FastOutSlowInEasing))
-
-        // --- Exit: the aperture opens and the mark flies past the camera ---
-        // The breath is still running here; `animateTo` on the same Animatable cancels it and
-        // carries on from wherever it had reached, so the hand-off has no seam in it.
-        // The mark goes home: to the logo's disc in the top bar, on the aperture's own curve.
+        // --- The breath out: the app opens from the mark, and the mark flies to the top bar ---
         launch { flight.animateTo(1f, tween(durationMillis = IRIS_MS, easing = EmphasizedEasing)) }
-        // The breath out: felt as well as seen.
         haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
-        // The glow leaves with the mark. Left up, it is a warm haze lying over the first frames of
-        // a fully drawn app, which is the one thing that can make an otherwise clean hand-off look
-        // like a rendering fault.
+        // The glow leaves with the mark: left up, it is a warm haze over the first frames of the app.
         launch { bloom.animateTo(0f, tween(durationMillis = 340, easing = FastOutSlowInEasing)) }
         iris.animateTo(1f, tween(durationMillis = IRIS_MS, easing = EmphasizedEasing))
 
@@ -295,7 +255,7 @@ fun BootSplash(
                 if (progress > 0f) {
                     // Grows from the mark's own radius out past the far corners, so the last frame
                     // of the splash is genuinely empty and the hand-off has nothing left to hide.
-                    val start = artworkSize.toPx() * 0.30f
+                    val start = artworkSize.toPx() * 0.30f * INHALE_SCALE
                     val end = hypot(size.width, size.height) * 0.52f
                     val radius = lerp(start, end, progress)
                     drawCircle(
@@ -309,7 +269,7 @@ fun BootSplash(
                     // moved: a frame of the Home cards' colours caught inside the logo.
                     val plate = (1f - progress * 2.6f).coerceIn(0f, 1f)
                     if (plate > 0f) {
-                        val plateRadius = artworkSize.toPx() * 0.5f
+                        val plateRadius = artworkSize.toPx() * 0.5f * INHALE_SCALE
                         drawCircle(
                             brush = Brush.radialGradient(
                                 0f to Color.Black.copy(alpha = plate),
@@ -360,24 +320,6 @@ fun BootSplash(
                 }
                 .drawWithContent {
                     drawContent()
-                    // The launch window's ember, at the size it was drawn at there (96dp), fading
-                    // as the bloom it grows into comes up around it.
-                    val e = ember.value
-                    if (e > 0.01f) {
-                        val r = 96.dp.toPx()
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                0f to BloomDeep.copy(alpha = 0.78f * e),
-                                0.45f to Color(0xFF8A5A12).copy(alpha = 0.36f * e),
-                                0.75f to BloomDark.copy(alpha = 0.13f * e),
-                                1f to Color.Transparent,
-                                center = center,
-                                radius = r,
-                            ),
-                            radius = r,
-                            center = center,
-                        )
-                    }
                     val turn = drift.value * 1.2f
                     val reach = size.minDimension * 0.62f
                     listOf(0f to 0.62f, 2.4f to 0.36f).forEach { (phase, strength) ->
@@ -426,13 +368,13 @@ fun BootSplash(
                     )
                     translationX = (homeX - fromCentre.x) * f
                     translationY = (homeY - fromCentre.y) * f
-                    val scale = logoScale.value * (1f + (homeScale - 1f) * f)
+                    // From wherever the breath left it to the top bar's size, not the bar's size
+                    // multiplied by the breath: that landed the mark a size and a half too big.
+                    val scale = lerp(logoScale.value, homeScale, f)
                     scaleX = scale
                     scaleY = scale
                     // Solid for most of the flight, handing over to the real logo as it lands.
                     alpha = logoAlpha.value * (1f - ((f - 0.72f) / 0.28f).coerceIn(0f, 1f))
-                    val blurPx = logoBlur.value.dp.toPx()
-                    renderEffect = if (blurPx > 0.5f) BlurEffect(blurPx, blurPx, TileMode.Decal) else null
                     // The glint is masked to the mark's own pixels, which needs a layer of its own.
                     compositingStrategy = CompositingStrategy.Offscreen
                 }

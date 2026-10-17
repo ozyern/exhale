@@ -43,7 +43,18 @@ import kotlinx.coroutines.isActive
 import kotlin.math.abs
 
 /** Past this the picture is visibly ahead of or behind the singer, and it is pulled back. */
-private const val RESYNC_THRESHOLD_MS = 220L
+/** Drift the video is left with: below this it plays at normal speed. */
+private const val IN_STEP_MS = 60L
+
+/**
+ * Drift past which the video seeks instead of catching up. It was the only correction, at 220ms, and
+ * ordinary jitter between the two clocks crossed that: the video kept seeking, and every seek on a
+ * video stream is a stall back to a keyframe, which was the stutter.
+ */
+private const val RESEEK_MS = 1_500L
+
+/** The most the video is sped up or slowed down to close a drift, as a fraction of normal speed. */
+private const val MAX_NUDGE = 0.08f
 
 /**
  * The music video, silent, kept in step with the song.
@@ -77,7 +88,15 @@ internal fun MusicVideoSurface(
     val failed by rememberUpdatedState(onError)
 
     val player = remember(stream.url) {
-        ExoPlayer.Builder(context).build().apply {
+        ExoPlayer.Builder(context)
+            // Start on half a second of picture rather than the default two and a half: the song is
+            // already playing, and the video only has to join it.
+            .setLoadControl(
+                androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(8_000, 30_000, 500, 1_000)
+                    .build(),
+            )
+            .build().apply {
             volume = 0f
             repeatMode = Player.REPEAT_MODE_OFF
             val factory = DefaultHttpDataSource.Factory().setUserAgent(stream.userAgent)
@@ -115,10 +134,25 @@ internal fun MusicVideoSurface(
             }
             player.playWhenReady = playing
             val target = position()
-            if (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING) {
-                if (abs(player.currentPosition - target) > RESYNC_THRESHOLD_MS) player.seekTo(target)
+            // Only a playing picture is corrected; one still buffering is behind for a reason that a
+            // seek would only make worse.
+            if (player.playbackState == Player.STATE_READY && playing) {
+                val drift = target - player.currentPosition
+                val speed = when {
+                    abs(drift) > RESEEK_MS -> {
+                        player.seekTo(target)
+                        1f
+                    }
+                    abs(drift) < IN_STEP_MS -> 1f
+                    // Caught up gradually: about a second of video per twelve to close a big gap,
+                    // with no visible jump at any point.
+                    else -> 1f + (drift / 4_000f).coerceIn(-MAX_NUDGE, MAX_NUDGE)
+                }
+                if (abs(player.playbackParameters.speed - speed) > 0.005f) {
+                    player.playbackParameters = androidx.media3.common.PlaybackParameters(speed)
+                }
             }
-            delay(500)
+            delay(250)
         }
     }
 

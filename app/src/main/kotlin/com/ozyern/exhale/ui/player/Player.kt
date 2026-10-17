@@ -753,10 +753,21 @@ fun BottomSheetPlayer(
         collapsedContent = {
             // State B puts the player inside the bar instead. It is not removed and re-added: it
             // is the same accessory, and it flies from here into the bar's pill.
+            // It sinks toward the dock and fades as the dock's own pill settles in, and rises back
+            // out of it unfolding: timed to the dock's fold (see FluidDock), so the two never show
+            // at once at full strength.
             androidx.compose.animation.AnimatedVisibility(
                 visible = !hideMiniPlayer,
-                enter = androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.fadeOut(),
+                enter = androidx.compose.animation.fadeIn(
+                    androidx.compose.animation.core.tween(220, delayMillis = 120),
+                ) + androidx.compose.animation.slideInVertically(
+                    androidx.compose.animation.core.spring(dampingRatio = 0.9f, stiffness = 320f),
+                ) { it / 3 },
+                exit = androidx.compose.animation.fadeOut(
+                    androidx.compose.animation.core.tween(160),
+                ) + androidx.compose.animation.slideOutVertically(
+                    androidx.compose.animation.core.spring(dampingRatio = 0.9f, stiffness = 320f),
+                ) { it / 3 },
             ) {
                 MiniPlayer(
                     position = position,

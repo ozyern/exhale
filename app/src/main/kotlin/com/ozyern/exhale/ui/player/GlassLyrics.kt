@@ -6,6 +6,20 @@
 
 package com.ozyern.exhale.ui.player
 
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.Shadow
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -385,67 +399,210 @@ private fun GlassButton(
 }
 
 /**
- * The lyrics | cover switch: one pane of glass with a lit bubble resting under the lyrics glyph.
- * Pressing the cover half sends the bubble across before the screen hands back to the artwork.
+ * The lyrics | cover switch, in iOS 26's manner: the selected capsule rests as a lit pill, and the
+ * moment it is pressed it swells into a lens of clear glass that rides the finger, magnifying and
+ * bending the glyphs under it, then sets back down on whichever half it was let go over. Landing
+ * on the cover hands the screen back to the artwork.
+ *
+ * The motion is the dock's own (see LiquidTabBar): the same [DampedDragAnimation], the same lens
+ * over a hidden twin of the row, so the two pieces of glass behave as one material.
  */
 @Composable
 private fun GlassSegmented(onShowArtwork: () -> Unit) {
-    var leaving by remember { mutableStateOf(false) }
-    val bubble by animateFloatAsState(
-        targetValue = if (leaving) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.72f, stiffness = 520f),
-        label = "glassSegmentBubble",
-        finishedListener = { if (it >= 1f) onShowArtwork() },
-    )
+    val playerBackdrop = LocalPlayerBackdrop.current
+    val glassy = playerBackdrop != null && remember { com.kyant.backdrop.isRuntimeShaderSupported() }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val onShow by androidx.compose.runtime.rememberUpdatedState(onShowArtwork)
+
     val segment = 56.dp
+    val inset = 4.dp
+    val height = 46.dp
+    val capsuleHeight = height - inset * 2
+    val segmentPx = with(density) { segment.toPx() }
+    val insetPx = with(density) { inset.toPx() }
+    val glyphs = listOf(R.drawable.lyrics to "Lyrics", R.drawable.album to "Artwork")
+    var leaving by remember { mutableStateOf(false) }
+
+    val drag = remember(scope, segmentPx) {
+        com.ozyern.exhale.ui.component.liquid.DampedDragAnimation(
+            animationScope = scope,
+            initialValue = 0f,
+            valueRange = 0f..1f,
+            visibilityThreshold = 0.001f,
+            initialScale = 1f,
+            pressedScale = 1.32f,
+            onDragStarted = { position ->
+                // Pressed off the capsule: it flows across to the finger first.
+                val under = (position.x - insetPx) / segmentPx - 0.5f
+                if (kotlin.math.abs(under - value) >= 0.5f) followTo(under.coerceIn(0f, 1f))
+            },
+            onDrag = { _, dragAmount ->
+                val before = targetValue
+                val after = (before + dragAmount.x / segmentPx).coerceIn(0f, 1f)
+                if (kotlin.math.round(after) != kotlin.math.round(before)) {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                }
+                followTo(after)
+            },
+            onDragStopped = {
+                val landed = kotlin.math.round(targetValue).coerceIn(0f, 1f)
+                updateValue(landed)
+                if (landed >= 1f && !leaving) {
+                    leaving = true
+                    scope.launch {
+                        // Let the glass set down on the cover before the screen changes under it.
+                        androidx.compose.runtime.snapshotFlow { value to pressProgress }
+                            .first { (v, press) -> v > 0.98f && press < 0.05f }
+                        onShow()
+                    }
+                }
+            },
+            velocityDampingRatio = 1f,
+        )
+    }
+
+    val twinBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
+    val capsuleBackdrop = playerBackdrop?.let {
+        com.kyant.backdrop.backdrops.rememberCombinedBackdrop(it, twinBackdrop)
+    }
+
     Box(
         modifier = Modifier
-            .width(segment * 2 + 8.dp)
-            .height(46.dp)
-            .glassPane(CircleShape, lit = false)
-            .padding(4.dp),
+            .width(segment * 2 + inset * 2)
+            .height(height)
+            .then(drag.modifier),
+        contentAlignment = Alignment.CenterStart,
     ) {
+        // The pane and the glyphs you see on it.
         Box(
             Modifier
-                .offset(x = segment * bubble)
-                .width(segment)
-                .fillMaxHeight()
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.22f)),
+                .fillMaxSize()
+                .glassPane(CircleShape, lit = false),
         )
-        Row(Modifier.fillMaxSize()) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .width(segment)
-                    .fillMaxHeight()
-                    .clip(CircleShape),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.lyrics),
-                    contentDescription = "Lyrics",
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp),
-                )
+        Row(Modifier.fillMaxSize().padding(inset)) {
+            glyphs.forEachIndexed { index, (icon, label) ->
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .width(segment)
+                        .fillMaxHeight()
+                        .semantics {
+                            role = androidx.compose.ui.semantics.Role.Tab
+                            contentDescription = label
+                        },
+                ) {
+                    Icon(
+                        painter = painterResource(icon),
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = if (index == 0) 1f else 0.85f),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
+        }
+
+        if (glassy && capsuleBackdrop != null) {
+            // The twin the lens reads: a live sample of the player with the glyphs on it. Never
+            // seen; held, the capsule magnifies this, so it clears to glass rather than darkening.
+            Row(
+                modifier = Modifier
+                    .clearAndSetSemantics {}
+                    .alpha(0f)
+                    .layerBackdrop(twinBackdrop)
+                    .fillMaxWidth()
+                    .height(capsuleHeight)
+                    .padding(horizontal = inset)
+                    .drawBackdrop(
+                        backdrop = playerBackdrop!!,
+                        shape = { CircleShape },
+                        effects = {
+                            val press = drag.pressProgress
+                            vibrancy()
+                            blur(2f.dp.toPx())
+                            lens(12f.dp.toPx() * press, 14f.dp.toPx() * press)
+                        },
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                glyphs.forEach { (icon, _) ->
+                    Box(Modifier.width(segment).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        Icon(painterResource(icon), null, tint = Color.White, modifier = Modifier.size(20.dp))
+                    }
+                }
+            }
+
+            Box(
+                Modifier
+                    .padding(horizontal = inset)
+                    .graphicsLayer { translationX = drag.value * segmentPx }
+                    .drawBackdrop(
+                        backdrop = capsuleBackdrop,
+                        shape = { CircleShape },
+                        effects = {
+                            val press = drag.pressProgress
+                            blur(3f.dp.toPx() * (1f - press))
+                            lens(
+                                androidx.compose.ui.util.lerp(0f, 9f.dp.toPx(), press),
+                                androidx.compose.ui.util.lerp(0f, 11f.dp.toPx(), press),
+                                chromaticAberration = press > 0.01f,
+                            )
+                        },
+                        highlight = { Highlight.Default.copy(alpha = androidx.compose.ui.util.lerp(0.45f, 1f, drag.pressProgress)) },
+                        shadow = { Shadow(alpha = androidx.compose.ui.util.lerp(0.25f, 0.9f, drag.pressProgress)) },
+                        innerShadow = {
+                            val press = drag.pressProgress
+                            com.kyant.backdrop.shadow.InnerShadow(radius = 8f.dp * press, alpha = press)
+                        },
+                        layerBlock = {
+                            scaleX = drag.scaleX
+                            scaleY = drag.scaleY
+                            // Longer and flatter while it travels, round again as it stops.
+                            val v = drag.velocity / 10f
+                            scaleX /= 1f - (v * 0.75f).coerceIn(-0.2f, 0.2f)
+                            scaleY *= 1f - (v * 0.25f).coerceIn(-0.2f, 0.2f)
+                        },
+                        onDrawSurface = {
+                            drawRect(Color.White.copy(alpha = 0.22f * (1f - drag.pressProgress) + 0.08f * drag.pressProgress))
+                        },
+                    )
+                    .height(capsuleHeight)
+                    .width(segment),
+            )
+            // The glyph under the capsule, crisp on top at rest; it gives way to the lens on press.
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
+                    .padding(horizontal = inset)
+                    .graphicsLayer {
+                        translationX = drag.value * segmentPx
+                        scaleX = drag.scaleX
+                        scaleY = drag.scaleY
+                        alpha = (1f - drag.pressProgress * 3f).coerceIn(0f, 1f)
+                    }
+                    .clearAndSetSemantics {}
+                    .height(capsuleHeight)
+                    .width(segment),
+            ) {
+                val under = if (drag.value < 0.5f) 0 else 1
+                Icon(painterResource(glyphs[under].first), null, tint = Color.White, modifier = Modifier.size(20.dp))
+            }
+        } else {
+            // No lens on this device: the lit pill, sliding.
+            Box(
+                Modifier
+                    .padding(horizontal = inset)
+                    .graphicsLayer {
+                        translationX = drag.value * segmentPx
+                        scaleX = drag.scaleX
+                        scaleY = drag.scaleY
+                    }
+                    .height(capsuleHeight)
                     .width(segment)
-                    .fillMaxHeight()
                     .clip(CircleShape)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) { leaving = true },
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.album),
-                    contentDescription = "Artwork",
-                    tint = Color.White.copy(alpha = 0.85f),
-                    modifier = Modifier.size(20.dp),
-                )
-            }
+                    .background(Color.White.copy(alpha = 0.22f)),
+            )
         }
     }
 }

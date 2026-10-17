@@ -2508,11 +2508,15 @@ class MusicService :
             val item = player.getMediaItemAt(index)
             if (item.mediaId != mediaId) continue
             val names = metadata.artists.joinToString { it.name }
+            // On the playing song the artist field may be holding the lyric line for the lock
+            // screen. Writing the names back there put the artist up for the rest of that line, which
+            // is the lyric → artist → lyric flicker; the line stays, and the names go in the tag.
+            val shown = liveLyricCardLine.takeIf { index == player.currentMediaItemIndex } ?: names
             player.replaceMediaItem(
                 index,
                 item.buildUpon()
                     .setTag(metadata)
-                    .setMediaMetadata(item.mediaMetadata.buildUpon().setArtist(names).setSubtitle(names).build())
+                    .setMediaMetadata(item.mediaMetadata.buildUpon().setArtist(shown).setSubtitle(shown).build())
                     .build(),
             )
         }
