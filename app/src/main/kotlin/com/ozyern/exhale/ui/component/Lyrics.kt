@@ -565,11 +565,12 @@ fun Lyrics(
     val lyricsGlowColor = Color.White
     val textColor = lyricsBaseColor
 
+    // Word-synced lyrics still lead by what drawing and reading cost; at 0 they ran visibly late.
     val wordSyncLeadMs = remember(lyrics) {
-        if (lyrics != null && isTtml(lyrics)) 0L else LyricsWordSyncLeadMs
+        if (lyrics != null && isTtml(lyrics)) LyricsTtmlVisualLeadMs else LyricsWordSyncLeadMs
     }
     val lineSyncLeadMs = remember(lyrics) {
-        if (lyrics != null && isTtml(lyrics)) 0L else LyricsWordSyncLeadMs
+        if (lyrics != null && isTtml(lyrics)) LyricsTtmlVisualLeadMs else LyricsWordSyncLeadMs
     }
 
     var currentLineIndex by remember {
@@ -2332,6 +2333,7 @@ private const val Exhale_SEEK_DURATION = 800L
 private const val Exhale_FAST_SEEK_DURATION = 600L
 
 private const val LyricsWordSyncLeadMs = 300L
+private const val LyricsTtmlVisualLeadMs = 120L
 
 val LyricsPreviewTime = 2.seconds
 

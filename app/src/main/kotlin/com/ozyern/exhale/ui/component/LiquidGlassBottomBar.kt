@@ -201,6 +201,8 @@ fun LiquidGlassBottomBar(
     modifier: Modifier = Modifier,
     /** How much of the folded dock's song pill shows, read in the draw phase. See MainActivity. */
     songPillReveal: () -> Float = { 1f },
+    /** On the search pages, the jelly dock turns into the search row itself. */
+    search: DockSearch? = null,
 ) {
     // Tabs shown in the nav pill (Search stays its own circle, never a tab).
     val tabs = remember(items) { items.filter { it.route != Screens.Search.route } }
@@ -237,298 +239,38 @@ fun LiquidGlassBottomBar(
     // The jelly dock folds the way the original does: with nothing playing it stays one bar, just
     // minimised — icons only, shorter, narrower. Only with a song playing does it become state B.
     val jellyStyle = dockStyle == DockStyle.JELLY
-    // The liquid dock folds the way the reference dock's does - see FluidDock. The jelly dock keeps its own.
-    if (!jellyStyle) {
-        FluidDock(
-            tabs = tabs,
+    // The jelly dock is now the reference's folding tab bar: see FoldingDock.
+    if (jellyStyle) {
+        JellyFoldingDock(
+            items = items,
             searchScreen = searchScreen,
-            leftTab = activeTab ?: homeTab,
             collapsed = collapsed,
             hasNowPlaying = hasNowPlaying,
             pureBlack = pureBlack,
+            showLabels = dockLabels,
             isSelected = isSelected,
             onItemClick = onItemClickHaptic,
             onMiniPlayerClick = onMiniPlayerClickHaptic,
+            search = search,
             modifier = modifier,
             songPillReveal = songPillReveal,
         )
         return
     }
-    val stateB = collapsed && !(jellyStyle && !hasNowPlaying)
-    val idleFold = collapsed && !hasNowPlaying && !jellyStyle
-    // One bar narrowing into the two circles rather than two layouts trading places: the row's
-    // width springs from the full dock down to exactly two circles and their gap, the empty middle
-    // closing between them as they slide together.
-    val idle by animateFloatAsState(
-        targetValue = if (idleFold) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 360f),
-        label = "dockIdleFold",
+    // The liquid dock folds the way the reference dock's does - see FluidDock.
+    FluidDock(
+        tabs = tabs,
+        searchScreen = searchScreen,
+        leftTab = activeTab ?: homeTab,
+        collapsed = collapsed,
+        hasNowPlaying = hasNowPlaying,
+        pureBlack = pureBlack,
+        isSelected = isSelected,
+        onItemClick = onItemClickHaptic,
+        onMiniPlayerClick = onMiniPlayerClickHaptic,
+        modifier = modifier,
+        songPillReveal = songPillReveal,
     )
-    // How big the round chrome is in each state, as one continuous value rather than two
-    // composables of different sizes taking turns. Collapsed, the row belongs to the song: the
-    // circles step down and their glyphs step down with them, which is what gives the pill the
-    // width.
-    val chromeCircleSize by animateDpAsState(
-        targetValue = if (collapsed) CollapsedCircleSize else DockCircleSize,
-        animationSpec = spring(dampingRatio = 0.9f, stiffness = 420f),
-        label = "chromeCircleSize",
-    )
-
-    // The home circle is not a thing that appears; it is a thing that grows.
-    //
-    // It used to live inside State B, which meant it came into being at the moment the morph
-    // swapped states and had to cover that with a fade and a scale-up - two frames of nothing,
-    // then a circle popping in, which is what made it read as coarse next to the search circle
-    // beside it. Out here it exists in both states with a width of zero in the expanded one, so
-    // collapsing is one continuous spring: the strip folds left, the circle opens out of the fold,
-    // and the pill takes the rest. The gap follows it, so the expanded row has no hole where the
-    // circle will be.
-    val homeCircleSize by animateDpAsState(
-        targetValue = if (stateB) CollapsedCircleSize else 0.dp,
-        animationSpec = spring(dampingRatio = 0.9f, stiffness = 420f),
-        label = "homeCircleSize",
-    )
-    val homeGap = 10.dp * (homeCircleSize / CollapsedCircleSize).coerceIn(0f, 1f)
-    val chromeInk = clearGlassContentColor()
-    // The jelly dock greys what isn't selected further than the clear glass does.
-    val chromeInactiveAlpha = if (jellyStyle) 0.55f else 0.8f
-
-    // The jelly dock carries Search as one of its tabs, so while it is open the search circle
-    // shrinks away into it, and grows back out when the dock folds.
-    val jellyOpen = jellyStyle && !stateB
-    val searchCircleSize by animateDpAsState(
-        targetValue = if (jellyOpen) 0.dp else chromeCircleSize,
-        animationSpec = spring(dampingRatio = 0.9f, stiffness = 420f),
-        label = "searchCircleSize",
-    )
-
-    androidx.compose.foundation.layout.BoxWithConstraints(
-        modifier = modifier.fillMaxWidth(),
-        contentAlignment = Alignment.Center,
-    ) {
-    val compactWidth = homeCircleSize + chromeCircleSize + 20.dp
-    val rowWidth = androidx.compose.ui.unit.lerp(maxWidth, compactWidth.coerceAtMost(maxWidth), idle)
-    run {
-    Row(
-        // Fixed height (the tallest child is 64dp) instead of IntrinsicSize.Min — this drops the
-        // intrinsic-measurement pass the morph used to trigger on every animation frame.
-        modifier = Modifier.width(rowWidth).height(64.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // The folded dock's first circle is the page you are on — the tab strip
-        // folds into its own selected tab — falling back to Home off the tabs. Tapping it there
-        // scrolls the page to its top, which unfolds the dock.
-        // Holding it fans the other tabs out above it, so you can change page without unfolding.
-        val leftTab = activeTab ?: homeTab
-        if (leftTab != null && homeCircleSize > 1.dp) {
-            val here = isSelected(leftTab)
-            var fanOpen by remember { mutableStateOf(false) }
-            FrostedCircle(
-                size = homeCircleSize,
-                jelly = jellyStyle,
-                onClick = { onItemClickHaptic(leftTab, here) },
-                onLongClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    fanOpen = true
-                },
-            ) {
-                androidx.compose.animation.Crossfade(
-                    targetState = leftTab,
-                    animationSpec = tween(180),
-                    label = "dockLeftTab",
-                ) { tab ->
-                    NavGlyph(
-                        iconRes = if (isSelected(tab)) tab.iconIdActive else tab.iconIdInactive,
-                        contentDescription = stringResource(tab.titleId),
-                        tint = if (isSelected(tab)) chromeInk else chromeInk.copy(alpha = chromeInactiveAlpha),
-                        scale = (homeCircleSize / DockCircleSize).coerceAtMost(1f),
-                    )
-                }
-                if (fanOpen) {
-                    DockTabFan(
-                        tabs = tabs.filter { it != leftTab },
-                        pureBlack = pureBlack,
-                        anchorHeight = homeCircleSize,
-                        onPick = { tab ->
-                            fanOpen = false
-                            onItemClickHaptic(tab, isSelected(tab))
-                        },
-                        onDismiss = { fanOpen = false },
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.width(homeGap))
-
-        AnimatedContent(
-            targetState = stateB,
-            transitionSpec = {
-                // Nothing on the container. Every piece of the dock animates itself.
-                //
-                // The old spec faded, slid and scaled the *whole row* in both directions, which
-                // costs two things. The obvious one is that it reads as a slide show: two complete
-                // docks crossing over, each of them a ghost for the length of the transition. The
-                // subtle one is that the search circle is at the same place and the same size in
-                // both states — and cross-fading it against itself made the one element that
-                // should have been nailed down flicker through half opacity every single time the
-                // bar collapsed.
-                //
-                // With `None` here, a child that does not animate is simply opaque for the whole
-                // transition, so that circle is now a shared element for free. The pieces that
-                // really do change carry their own motion instead, and all of them tell the same
-                // story: the strip folds along its length into the 64dp the home circle occupies,
-                // the circle grows in place at that spot, and the pill slides out from behind it
-                // into the room the strip gave up. Nothing arrives from off-screen, because
-                // nothing was ever off-screen. See MorphFadeOut for how the glass hands over.
-                //
-                // `SizeTransform` still snaps — animating the container's width would remeasure
-                // the frosted backdrops every frame, which is what the morph used to cost — and
-                // `clip = false` keeps the springs' overshoot from being sheared off at the bounds.
-                (EnterTransition.None togetherWith ExitTransition.None)
-                    .using(SizeTransform(clip = false) { _, _ -> snap() })
-            },
-            label = "bottomBarState",
-            modifier = Modifier.weight(1f),
-        ) { isCollapsed ->
-            if (!isCollapsed) {
-                // ---- STATE A: wide tab pill + trailing search circle ----
-                val stripInk by morphInk("stripInk")
-                val stripFold by morphShape("stripFold")
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    val stripModifier = Modifier
-                        // Fills the space it is given, rather than wrapping its content.
-                        //
-                        // With `fill = false` the strip was measured wrap-content, so its
-                        // weighted tabs fell back to their intrinsic widths - one tab as wide
-                        // as its label, the next as narrow as its own - while the selected
-                        // capsule is drawn on an even pitch of total/tabs. The two disagreed,
-                        // and the widest label ("Mood & Genres") ran straight out of the
-                        // capsule and across its neighbours. Filling makes the pitch real, so
-                        // every tab is the same width the capsule assumes and a long label
-                        // ellipsises inside its own slot instead of escaping it.
-                        .weight(1f)
-                        .widthIn(max = LiquidTabBarMaxWidth)
-                        // Folds along its length into the footprint the home circle is about
-                        // to occupy, and unfolds back out of it.
-                        //
-                        // The fold is on X alone, and the target is measured rather than
-                        // guessed: whatever the strip is this frame, it collapses to exactly
-                        // 64dp of it. A uniform `scaleOut` squashed the height too, which
-                        // turns a bar folding away into a lozenge shrinking to a point — a
-                        // different object leaving rather than this one.
-                        .graphicsLayer {
-                            alpha = stripInk
-                            transformOrigin = TransformOrigin(0f, 0.5f)
-                            val folded =
-                                (DockCircleSize.toPx() / size.width.coerceAtLeast(1f))
-                                    .fastCoerceIn(0.05f, 1f)
-                            scaleX = folded + (1f - folded) * stripFold
-                        }
-                    if (dockStyle == DockStyle.JELLY) {
-                        // Search last, at the trailing end, as the iOS music app's bar orders it.
-                        val jellyTabs = items.sortedBy { it == searchScreen }
-                        val labels = jellyTabs.map { stringResource(it.dockTitleId) }
-                        JellyDock(
-                            items = jellyTabs.mapIndexed { i, tab ->
-                                val here = isSelected(tab)
-                                JellyDockItem(
-                                    label = labels[i],
-                                    iconActive = tab.iconIdActive,
-                                    iconInactive = tab.iconIdInactive,
-                                    selected = here,
-                                    onClick = { onItemClickHaptic(tab, here) },
-                                )
-                            },
-                            showLabels = dockLabels,
-                            compact = dockCompact,
-                            glow = dockGlow,
-                            minimized = collapsed,
-                            modifier = stripModifier,
-                        )
-                    } else {
-                        LiquidTabBar(
-                            tabs = tabs,
-                            pureBlack = pureBlack,
-                            isSelected = isSelected,
-                            onItemClick = onItemClickHaptic,
-                            modifier = stripModifier,
-                        )
-                    }
-                }
-            } else {
-                // ---- STATE B: home circle | center pill | search circle ----
-                val pillInk by morphInk("pillInk")
-                val pillShape by morphShape("pillShape")
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    FrostedPill(
-                        jelly = jellyStyle,
-                        // Level with the circles either side: one
-                        // band of three pieces of glass, not a tall pill between two buttons.
-                        height = CollapsedCircleSize,
-                        // The same accessory that was above the bar a moment ago, flown down into it.
-                        sharedAccessoryScope = if (hasNowPlaying) this@AnimatedContent else null,
-                        // Frostier than the rest of the dock when it carries the now-playing row:
-                        // a page heading sliding under the song title at 13dp of blur stays
-                        // legible and the two lines of type read as one collision.
-                        extraTint = if (hasNowPlaying) MiniPlayerGlassExtraTint else DockGlassExtraTint,
-                        blurRadius = if (hasNowPlaying) MiniPlayerGlassBlurRadius else DockGlassBlurRadius,
-                        modifier = Modifier
-                            .weight(1f)
-                            // Out from behind the home circle, and back in behind it.
-                            //
-                            // It used to swell from its own middle, which is the one story that
-                            // is not true in either direction: collapsing, the pill has to take
-                            // the territory the strip is folding out of, and that vacancy opens
-                            // left to right. Anchoring it to its left edge makes both directions
-                            // the same reversible motion — the pill lives behind the circle.
-                            .graphicsLayer {
-                                alpha = pillInk * (1f - idle)
-                                transformOrigin = TransformOrigin(0f, 0.5f)
-                                scaleX = 0.14f + 0.86f * pillShape
-                                scaleY = 0.88f + 0.12f * pillShape
-                            },
-                    ) {
-                        if (hasNowPlaying) {
-                            MiniPlayerPill(pureBlack = pureBlack, onExpand = onMiniPlayerClickHaptic)
-                        }
-                    }
-
-                }
-            }
-        }
-
-        Spacer(Modifier.width(10.dp * (searchCircleSize / DockCircleSize).coerceIn(0f, 1f)))
-
-        // Outside the morph on purpose: see the note where the strip's copy used to be.
-        if (searchScreen != null && searchCircleSize > 1.dp) {
-            val searchActive = isSelected(searchScreen)
-            FrostedCircle(
-                size = searchCircleSize,
-                openDockGlass = !collapsed,
-                jelly = jellyStyle,
-                onClick = { onItemClickHaptic(searchScreen, searchActive) },
-            ) {
-                NavGlyph(
-                    iconRes = if (searchActive) searchScreen.iconIdActive else searchScreen.iconIdInactive,
-                    contentDescription = stringResource(searchScreen.titleId),
-                    tint = if (searchActive) chromeInk else chromeInk.copy(alpha = chromeInactiveAlpha),
-                    scale = searchCircleSize / DockCircleSize,
-                )
-            }
-        }
-    }
-    }
-    }
 }
 
 /* ----------------------------------------------------------------------- */
@@ -1703,7 +1445,7 @@ fun SearchBottomBar(
         ) {
             Icon(
                 painter = painterResource(
-                    if (leadingIsBack) R.drawable.chevron_back else R.drawable.home_solid,
+                    if (leadingIsBack) R.drawable.chevron_back else R.drawable.home_house_fill,
                 ),
                 contentDescription = stringResource(
                     if (leadingIsBack) R.string.back else R.string.home,
@@ -1793,7 +1535,7 @@ private fun JellySearchRow(
             modifier = Modifier.size(SearchRowHeight),
         ) {
             Icon(
-                painter = painterResource(if (leadingIsBack) R.drawable.chevron_back else R.drawable.home_solid),
+                painter = painterResource(if (leadingIsBack) R.drawable.chevron_back else R.drawable.home_house_fill),
                 contentDescription = stringResource(if (leadingIsBack) R.string.back else R.string.home),
                 tint = jellyInk(active = true),
                 modifier = Modifier.size(24.dp),
@@ -2263,5 +2005,141 @@ private fun FluidSearchCircle(
             contentDescription = stringResource(screen.titleId),
             tint = if (active) ink else ink.copy(alpha = 0.8f),
         )
+    }
+}
+/* ----------------------------------------------------------------------- */
+/* The jelly dock: the reference's folding tab bar                          */
+/* ----------------------------------------------------------------------- */
+
+/**
+ * What the jelly dock needs to become the search row on the search pages: the tab group
+ * shrinks to the page you came from and the search circle widens into this field.
+ */
+class DockSearch(
+    val placeholder: String,
+    /** The committed query on a results page, shown in place of the placeholder. */
+    val committedQuery: String?,
+    /** On a results page the leading arrow goes back a level rather than home. */
+    val leadingIsBack: Boolean,
+    val onExit: () -> Unit,
+    val onTapBar: () -> Unit,
+)
+
+@Composable
+private fun JellyFoldingDock(
+    items: List<Screens>,
+    searchScreen: Screens?,
+    collapsed: Boolean,
+    hasNowPlaying: Boolean,
+    pureBlack: Boolean,
+    showLabels: Boolean,
+    isSelected: (Screens) -> Boolean,
+    onItemClick: (Screens, Boolean) -> Unit,
+    onMiniPlayerClick: () -> Unit,
+    search: DockSearch?,
+    modifier: Modifier = Modifier,
+    songPillReveal: () -> Float = { 1f },
+) {
+    // Search last, at the trailing end, where the folded bar detaches it into its own circle.
+    val ordered = remember(items, searchScreen) { items.sortedBy { it == searchScreen } }
+    val titles = ordered.map { stringResource(it.dockTitleId) }
+    val selected = ordered.firstOrNull { isSelected(it) }
+    val tabs = ordered.mapIndexed { i, screen ->
+        val here = screen == selected
+        com.ozyern.exhale.ui.component.foldingdock.FoldingDockTab(
+            key = screen.route,
+            title = titles[i],
+            icon = if (here) screen.iconIdActive else screen.iconIdInactive,
+            glyphSize = if (screen == searchScreen) 28.dp else 32.dp,
+            onClick = {
+                when {
+                    screen == searchScreen && search != null -> search.onTapBar()
+                    // The circle on the left of the search row takes you back to that page.
+                    search != null && !here -> onItemClick(screen, false)
+                    else -> onItemClick(screen, here)
+                }
+            },
+        )
+    }
+    com.ozyern.exhale.ui.component.foldingdock.FoldingDock(
+        tabs = tabs,
+        selectedKey = selected?.route,
+        folded = collapsed,
+        // Tapping the folded page circle unfolds the bar by taking the page back to its top.
+        onUnfold = { selected?.let { onItemClick(it, true) } },
+        hasSearchTab = searchScreen != null,
+        showLabels = showLabels,
+        accessory = if (hasNowPlaying) {
+            { accessoryModifier, _ ->
+                Box(accessoryModifier, contentAlignment = Alignment.Center) {
+                    MiniPlayerPill(pureBlack = pureBlack, onExpand = onMiniPlayerClick)
+                }
+            }
+        } else {
+            null
+        },
+        accessoryReveal = songPillReveal,
+        searchMode = search != null,
+        searchBarContent = search?.let { s -> { fieldModifier -> DockSearchField(s, fieldModifier) } },
+        modifier = modifier,
+    )
+}
+
+/**
+ * The search field the search circle widens into, before the keyboard: back arrow, then the
+ * placeholder or the query that was searched. A tap anywhere but the arrow opens the keyboard.
+ */
+@Composable
+private fun DockSearchField(state: DockSearch, modifier: Modifier) {
+    val ink = clearGlassContentColor()
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = state.onTapBar,
+            )
+            .padding(horizontal = 4.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .clickable(onClick = state.onExit)
+                .padding(8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.arrow_back),
+                contentDescription = stringResource(if (state.leadingIsBack) R.string.back else R.string.home),
+                tint = ink,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Box(Modifier.weight(1f)) {
+            Text(
+                text = state.committedQuery ?: state.placeholder,
+                style = androidx.compose.ui.text.TextStyle(
+                    color = if (state.committedQuery != null) ink else ink.copy(alpha = 0.6f),
+                    fontSize = 17.sp,
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .padding(9.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.search),
+                contentDescription = null,
+                tint = ink.copy(alpha = 0.6f),
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }

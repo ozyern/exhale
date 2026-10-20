@@ -8,6 +8,7 @@ package com.ozyern.exhale.ui.screens
 import com.ozyern.exhale.ui.screens.DownloadQueueScreen
 
 import android.net.Uri
+import com.ozyern.exhale.ui.utils.CollectionMorphFrame
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.tween
@@ -234,8 +235,8 @@ fun NavGraphBuilder.navigationBuilder(
                     type = NavType.StringType
                 },
             ),
-    ) {
-        AlbumScreen(navController, scrollBehavior)
+    ) { entry ->
+        CollectionMorphFrame(entry) { AlbumScreen(navController, scrollBehavior) }
     }
     composable(
         route = "artist/{artistId}",
@@ -245,8 +246,8 @@ fun NavGraphBuilder.navigationBuilder(
                     type = NavType.StringType
                 },
             ),
-    ) {
-        ArtistScreen(navController, scrollBehavior)
+    ) { entry ->
+        CollectionMorphFrame(entry) { ArtistScreen(navController, scrollBehavior) }
     }
     composable(
         route = "artist/{artistId}/songs",
@@ -296,8 +297,8 @@ fun NavGraphBuilder.navigationBuilder(
                     type = NavType.StringType
                 },
             ),
-    ) {
-        OnlinePlaylistScreen(navController, scrollBehavior)
+    ) { entry ->
+        CollectionMorphFrame(entry) { OnlinePlaylistScreen(navController, scrollBehavior) }
     }
     composable(
         route = "local_playlist/{playlistId}",
@@ -307,8 +308,8 @@ fun NavGraphBuilder.navigationBuilder(
                     type = NavType.StringType
                 },
             ),
-    ) {
-        LocalPlaylistScreen(navController, scrollBehavior)
+    ) { entry ->
+        CollectionMorphFrame(entry) { LocalPlaylistScreen(navController, scrollBehavior) }
     }
     composable(
         route = "auto_playlist/{playlist}",
@@ -318,8 +319,8 @@ fun NavGraphBuilder.navigationBuilder(
                     type = NavType.StringType
                 },
             ),
-    ) {
-        AutoPlaylistScreen(navController, scrollBehavior)
+    ) { entry ->
+        CollectionMorphFrame(entry) { AutoPlaylistScreen(navController, scrollBehavior) }
     }
     composable(
         route = "cache_playlist/{playlist}",
@@ -356,8 +357,8 @@ fun NavGraphBuilder.navigationBuilder(
                     nullable = true
                 },
             ),
-    ) {
-        YouTubeBrowseScreen(navController)
+    ) { entry ->
+        CollectionMorphFrame(entry) { YouTubeBrowseScreen(navController) }
     }
     composable("settings") {
         val width = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp

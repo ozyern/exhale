@@ -403,6 +403,27 @@ private val LYRIC_EASING = CubicBezierEasing(0.41f, 0f, 0.12f, 0.99f)
 private const val LYRIC_SETTLE_MS = 400
 
 /**
+ * A line coming *on* is answered at once: short, and quick off the mark. The settle curve above
+ * barely moves for its first hundred milliseconds, which is right for a line receding and read
+ * as the lyrics running late on the one being sung — the word was already out before its line
+ * had brightened, grown or sharpened. Lines going off keep the long settle.
+ */
+private val LYRIC_ACTIVATE_EASING = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+private const val LYRIC_ACTIVATE_MS = 200
+
+private fun <T> lyricChange(active: Boolean) =
+    if (active) tween<T>(LYRIC_ACTIVATE_MS, easing = LYRIC_ACTIVATE_EASING)
+    else tween<T>(LYRIC_SETTLE_MS, easing = LYRIC_EASING)
+
+/**
+ * How far ahead of the player's reading the lyrics are drawn. The reading is when the sample
+ * left the decoder's clock; what you see trails it by the frame being drawn and composited
+ * (two to three vsyncs) and by the moment it takes the eye to land on the change. Without it
+ * every sweep and every line started visibly after the voice did.
+ */
+private const val LYRIC_VISUAL_LEAD_MS = 120L
+
+/**
  * How the rows fan out as the panel moves between lines.
  *
  * They do not travel as a block. Each row after the one being scrolled to sets
@@ -633,7 +654,7 @@ internal class LyricPlayhead(
     private val position: PlaybackPosition,
     private val offsetMs: State<Int>,
 ) {
-    val positionMs: Long get() = adjustedLyricsPosition(position.positionMs, offsetMs.value)
+    val positionMs: Long get() = adjustedLyricsPosition(position.positionMs, offsetMs.value) + LYRIC_VISUAL_LEAD_MS
 
     val sampledAtNanos: Long get() = position.sampledAtNanos
 
@@ -2032,7 +2053,7 @@ internal fun LyricsPanel(
                     !isSynced || reduceDynamicBlur || !lyricsBlur || browsing || isActive -> 0.dp
                     else -> LINE_FALLOFF_BLUR[step]
                 },
-                animationSpec = tween(LYRIC_SETTLE_MS, easing = LYRIC_EASING),
+                animationSpec = lyricChange(isActive),
                 label = "lyricBlur",
             )
             val lineAlpha by animateFloatAsState(
@@ -2044,7 +2065,7 @@ internal fun LyricsPanel(
                     browsing -> BROWSING_ALPHA
                     else -> LINE_FALLOFF_ALPHA[step]
                 },
-                animationSpec = tween(LYRIC_SETTLE_MS, easing = LYRIC_EASING),
+                animationSpec = lyricChange(isActive),
                 label = "lyricAlpha",
             )
             if (line.isGap) {
@@ -2174,10 +2195,7 @@ internal fun LyricsPanel(
                         isActive -> 1f
                         else -> INACTIVE_SCALE
                     },
-                    animationSpec = tween(
-                        durationMillis = if (pressed) 120 else LYRIC_SETTLE_MS,
-                        easing = LYRIC_EASING,
-                    ),
+                    animationSpec = if (pressed) tween(120, easing = LYRIC_EASING) else lyricChange(isActive),
                     label = "lyricScale",
                 )
                 // iOS's bloom on the line being sung. Fades in and out with
@@ -2185,7 +2203,7 @@ internal fun LyricsPanel(
                 // light going down as the next one's comes up.
                 val glow by animateFloatAsState(
                     targetValue = if (isActive && glowing) GLOW_ALPHA else 0f,
-                    animationSpec = tween(durationMillis = 420),
+                    animationSpec = if (isActive) tween(LYRIC_ACTIVATE_MS, easing = LYRIC_ACTIVATE_EASING) else tween(durationMillis = 420),
                     label = "lyricGlow",
                 )
                 // No width held back for the swell any more: nothing draws past
@@ -2556,6 +2574,7 @@ private fun PanelVoice(
         // the words. Lyrics with no timing at all are all "now", and stay lit.
         val lit by animateFloatAsState(
             targetValue = if (!synced || sung || isActive) 1f else UNSUNG_ALPHA,
+            animationSpec = lyricChange(isActive),
             label = "lyricLit",
         )
         var layout by remember(line.text) { mutableStateOf<TextLayoutResult?>(null) }

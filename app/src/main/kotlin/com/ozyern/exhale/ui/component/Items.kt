@@ -8,6 +8,7 @@
 
 package com.ozyern.exhale.ui.component
 
+import com.ozyern.exhale.ui.utils.collectionMorphSource
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
 import androidx.annotation.DrawableRes
@@ -231,6 +232,8 @@ fun GridItem(
                 Modifier.height(GridThumbnailHeight)
             }
                 .aspectRatio(thumbnailRatio)
+                // A release or playlist opened from here grows out of this artwork.
+                .collectionMorphSource()
         ) {
             thumbnailContent()
         }

@@ -9,7 +9,10 @@ It includes or adapts work from these open-source projects, under their licenses
 
 - Convx (https://github.com/cosmictaserdev-creator/Convx), GPL-3.0:
   the launch intro, the pop-out menu motion, the artwork motion curve and page treatment,
-  and the iOS rubber-band overscroll.
+  the iOS rubber-band overscroll, the folding tab bar behind the jelly dock (app/.../ui/component/
+  foldingdock) with its fold, search morph, gooey merge and glass levels, and the card morph that
+  opens a release or playlist out of its tile. The dock's Home glyph is the SF Symbols house.fill
+  shape from the Jetpack SF Symbols set Convx uses.
 
 - compose-hig (https://github.com/ienground/compose-hig), Apache License 2.0, Copyright (c)
   IENGROUND of IENLAB and prior contributors (Compose Cupertino project, Scott Lanoue):

@@ -201,6 +201,8 @@ fun BottomSheetPlayer(
     // When true (State B / scrolled), the standalone collapsed mini-player is hidden
     // because the floating bottom bar shows the mini-player pill instead.
     hideMiniPlayer: Boolean = false,
+    /** Swap the mini player in and out on the spot: the folding dock flies its own copy over it. */
+    instantMiniPlayerSwap: Boolean = false,
     // Dynamic-Island morph target. The host measures where the player is actually collapsing to
     // — the floating pill above the nav bar (State A) or the nav bar's own centre capsule
     // (State B) — and hands the bounds down, so this sheet never has to guess.
@@ -758,12 +760,12 @@ fun BottomSheetPlayer(
             // at once at full strength.
             androidx.compose.animation.AnimatedVisibility(
                 visible = !hideMiniPlayer,
-                enter = androidx.compose.animation.fadeIn(
+                enter = if (instantMiniPlayerSwap) androidx.compose.animation.EnterTransition.None else androidx.compose.animation.fadeIn(
                     androidx.compose.animation.core.tween(220, delayMillis = 120),
                 ) + androidx.compose.animation.slideInVertically(
                     androidx.compose.animation.core.spring(dampingRatio = 0.82f, stiffness = 160f),
                 ) { it / 3 },
-                exit = androidx.compose.animation.fadeOut(
+                exit = if (instantMiniPlayerSwap) androidx.compose.animation.ExitTransition.None else androidx.compose.animation.fadeOut(
                     androidx.compose.animation.core.tween(160),
                 ) + androidx.compose.animation.slideOutVertically(
                     androidx.compose.animation.core.spring(dampingRatio = 0.82f, stiffness = 160f),

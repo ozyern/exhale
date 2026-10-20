@@ -32,8 +32,9 @@ sealed class Screens(
         titleId = R.string.home,
         // the reference design's Home, one solid glyph in both states, as their dock draws it: the capsule
         // behind it, not an outline/fill swap, says which tab is open.
-        iconIdInactive = R.drawable.home_solid,
-        iconIdActive = R.drawable.home_solid,
+        // The reference 2.0.4 dock's house.fill.
+        iconIdInactive = R.drawable.home_house_fill,
+        iconIdActive = R.drawable.home_house_fill,
         route = "home"
     )
 

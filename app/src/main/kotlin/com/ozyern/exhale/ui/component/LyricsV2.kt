@@ -178,8 +178,12 @@ import kotlin.math.abs
 /** Lead time offset for LRC-style line-synced lyrics (ms). */
 private const val LRC_LEAD_MS = 140L
 
-/** Lead time offset for TTML word-synced lyrics (ms). */
-private const val TTML_LEAD_MS = 0L
+/**
+ * Lead time offset for TTML word-synced lyrics (ms). Word timings are exact, but what you see
+ * trails the reading by the frame being drawn and the eye landing on it: at 0 every sweep started
+ * after the voice. With the visual tuning below this comes to 120ms, the same as the flow panel.
+ */
+private const val TTML_LEAD_MS = 60L
 
 /** Seconds to wait before auto-scroll resumes after manual scroll. */
 private const val MANUAL_SCROLL_TIMEOUT_MS = 3000L

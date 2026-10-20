@@ -1148,6 +1148,16 @@ class MainActivity : ComponentActivity() {
                         com.ozyern.exhale.constants.SettingsSearchPosition.BOTTOM,
                     )
                     val searchFieldAtTop = searchFieldPosition == com.ozyern.exhale.constants.SettingsSearchPosition.TOP
+                    // The jelly dock is the folding tab bar: it carries the mini player through its own
+                    // fold and turns into the search row on the search pages.
+                    val jellyDock = rememberEnumPreference(
+                        com.ozyern.exhale.constants.DockStyleKey,
+                        com.ozyern.exhale.constants.DockStyle.LIQUID,
+                    ).value == com.ozyern.exhale.constants.DockStyle.JELLY
+                    // True while the folding dock is anywhere but open, when it draws the player pill itself.
+                    val foldingDockAway by remember {
+                        derivedStateOf { com.ozyern.exhale.ui.component.foldingdock.FoldingDockMotion.fold > 0.001f }
+                    }
                     val onSearchTabRoute = navBackStackEntry?.destination?.route == Screens.Search.route
 
                     // Everywhere except Home, the collapsed player is the *slim* pill rather
@@ -2301,7 +2311,8 @@ class MainActivity : ComponentActivity() {
                                                 navController = navController,
                                                 pureBlack = pureBlack,
                                                 lyricsSyncOffset = lyricsSyncOffset,
-                                                hideMiniPlayer = mergeIntoNavBar,
+                                                hideMiniPlayer = mergeIntoNavBar || (jellyDock && dockHasSong && foldingDockAway),
+                                                instantMiniPlayerSwap = jellyDock,
                                                 // The drawn pill keeps its slim layout through the fold:
                                                 // switching it off with the merge made it swell to the
                                                 // tall layout (heart and all) for the frames it fades out.
@@ -2410,7 +2421,7 @@ class MainActivity : ComponentActivity() {
                                                         // most expensive thing drawn in the transition; it is fading out anyway.
                                                     },
                                         ) {
-                                            if ((isSearchScreen || isSearchResultsRoute) && !active && !searchFieldAtTop) {
+                                            if ((isSearchScreen || isSearchResultsRoute) && !active && !searchFieldAtTop && !jellyDock) {
                                                 // ---- SEARCH LAYOUT: fixed frosted bar row ----
                                                 // Leading circle in its OWN round pill + search
                                                 // input in its own capsule; NO A/B morphing. The
@@ -2554,8 +2565,50 @@ class MainActivity : ComponentActivity() {
                                                 val here = entry.destination.hierarchy.any { it.route == waiting.route }
                                                 dockNavigate(waiting, here)
                                             }
+                                            // The jelly dock is the search row itself on the search pages: the
+                                            // tabs fold onto the page you came from and search widens into the field.
+                                            val dockSearch = if (
+                                                jellyDock && (isSearchScreen || isSearchResultsRoute) && !active && !searchFieldAtTop
+                                            ) {
+                                                // Decoded: the route argument encodes a space as `+`.
+                                                val committed = if (isSearchResultsRoute) {
+                                                    navBackStackEntry?.arguments
+                                                        ?.getString("query")
+                                                        ?.takeIf { it.isNotEmpty() }
+                                                        ?.let { runCatching { URLDecoder.decode(it, "UTF-8") }.getOrDefault(it) }
+                                                } else {
+                                                    null
+                                                }
+                                                com.ozyern.exhale.ui.component.DockSearch(
+                                                    placeholder = "Artists, Songs, Lyrics and More",
+                                                    committedQuery = committed,
+                                                    leadingIsBack = isSearchResultsRoute,
+                                                    onExit = {
+                                                        if (isSearchResultsRoute) {
+                                                            navController.navigateUp()
+                                                        } else {
+                                                            navController.navigate(Screens.Home.route) {
+                                                                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                                                launchSingleTop = true
+                                                                restoreState = true
+                                                            }
+                                                        }
+                                                    },
+                                                    onTapBar = {
+                                                        if (committed != null) {
+                                                            onQueryChange(
+                                                                TextFieldValue(text = committed, selection = TextRange(committed.length)),
+                                                            )
+                                                        }
+                                                        onActiveChange(true)
+                                                    },
+                                                )
+                                            } else {
+                                                null
+                                            }
                                             LiquidGlassBottomBar(
                                                 items = navigationItems,
+                                                search = dockSearch,
                                                 pureBlack = pureBlack,
                                                 collapsed = bottomBarCollapsed,
                                                 hasNowPlaying = dockHasSong,
@@ -2656,6 +2709,13 @@ class MainActivity : ComponentActivity() {
                                             // fade is halved and the scale is a hair off 1, so
                                             // there is a breath of motion and nothing to wait for.
                                             TabEnter
+                                        } else if (
+                                            com.ozyern.exhale.ui.utils.CollectionMorph.isMorphPage(targetState.destination.route) &&
+                                            com.ozyern.exhale.ui.utils.CollectionMorph.claim(targetState.id) != null
+                                        ) {
+                                            // Opened from a tile: the page grows out of it as a card.
+                                            // CollectionMorphFrame draws that; the page itself holds.
+                                            androidx.compose.animation.EnterTransition.None
                                         } else if (com.ozyern.exhale.ui.utils.ArtworkMotion.isArtworkPage(targetState.destination.route)) {
                                             // A release, playlist or artist page lands on the artwork
                                             // curve: quick off the mark, then settling.
@@ -2746,6 +2806,13 @@ class MainActivity : ComponentActivity() {
                                             targetState.destination.route in topLevelScreens
                                         ) {
                                             TabExit
+                                        } else if (
+                                            com.ozyern.exhale.ui.utils.CollectionMorph.isMorphPage(initialState.destination.route) &&
+                                            com.ozyern.exhale.ui.utils.CollectionMorph.shrink(initialState.id)
+                                        ) {
+                                            // Back into the tile it came out of: CollectionMorphFrame
+                                            // shrinks the card; the page just stays until it has.
+                                            androidx.compose.animation.ExitTransition.None
                                         } else if (com.ozyern.exhale.ui.utils.ArtworkMotion.isArtworkPage(initialState.destination.route)) {
                                             slideOutHorizontally(
                                                 targetOffsetX = { it },
