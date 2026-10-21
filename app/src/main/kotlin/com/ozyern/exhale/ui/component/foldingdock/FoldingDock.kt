@@ -235,6 +235,8 @@ fun FoldingDock(
     accessoryReveal: () -> Float = { 1f },
     openPlayerHeight: Dp = 64.dp,
     openPlayerGap: Dp = ComponentSpacing,
+    /** Extra air between the band the dock is given and the open player's bottom edge. */
+    openPlayerLift: Dp = 0.dp,
     searchMode: Boolean = false,
     searchBarContent: (@Composable (Modifier) -> Unit)? = null,
     typing: Boolean = false,
@@ -279,7 +281,7 @@ fun FoldingDock(
             val s = ComponentSpacing.toPx()
             val open = OpenRowHeight.toPx()
             val row = InlineRowHeight.toPx()
-            val gap = if (bandPx >= 0) (bandPx - open).coerceAtLeast(0f) else openPlayerGap.toPx()
+            val gap = (if (bandPx >= 0) (bandPx - open).coerceAtLeast(0f) else openPlayerGap.toPx()) + openPlayerLift.toPx()
             val playerH = openPlayerHeight.toPx()
             val icon = FoldingIconSize.toPx()
             val abovePlayer = Rect(0f, -open - gap - playerH, w, -open - gap)
@@ -473,6 +475,12 @@ fun FoldingDock(
                     .gooey { gooeyPx * goo.value }
                     .graphicsLayer { alpha = tabsAlpha.value }
                     .drawWithContent {
+                        // At rest and open the bar draws whole: its pressed capsule swells past its
+                        // own edges, and clipping it to the pill cut that swell off mid-swipe.
+                        if (expanded && !pillRect.isRunning) {
+                            drawContent()
+                            return@drawWithContent
+                        }
                         val r = pillRect.value
                         // The group's own coordinates: its bottom is the bar's bottom edge.
                         val top = size.height + r.top

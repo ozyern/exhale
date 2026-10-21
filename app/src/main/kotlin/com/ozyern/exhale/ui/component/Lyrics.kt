@@ -670,6 +670,7 @@ fun Lyrics(
         mutableStateOf(false)
     }
 
+    val smoothPosition = remember { com.ozyern.exhale.utils.SmoothPlaybackPosition() }
     LaunchedEffect(lyrics, lines, isAppMinimized) {
         if (lyrics.isNullOrEmpty() || (!lyrics.startsWith("[") && !isTtml(lyrics))) {
             currentLineIndex = -1
@@ -688,7 +689,13 @@ fun Lyrics(
             if (isSeeking != seekingNow) {
                 isSeeking = seekingNow
             }
-            val position = sliderPosition ?: playerConnection.player.currentPosition
+            // Carried forward between the player's once-a-second readings (Media3 1.11); see
+            // SmoothPlaybackPosition.
+            val position = sliderPosition ?: smoothPosition.read(
+                playerConnection.player.currentPosition,
+                playerConnection.player.isPlaying,
+                playerConnection.player.playbackParameters.speed.takeIf { it > 0.05f } ?: 1f,
+            )
             val syncedPosition =
                 (position + wordSyncLeadMs + lyricsSyncOffset.toLong()).coerceAtLeast(0L)
             if (currentPlaybackPosition != syncedPosition) {

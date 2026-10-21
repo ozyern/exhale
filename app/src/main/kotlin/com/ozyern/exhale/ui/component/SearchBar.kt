@@ -293,9 +293,10 @@ fun TopSearch(
             }
 
             if (inputAtBottom) {
-                // Apple-Music layout: browse/result content fills the top, the search
-                // field floats as a frosted pill docked at the bottom of the screen.
-                Column(Modifier.fillMaxSize()) {
+                // The results fill the whole screen and the field floats over their foot, as the
+                // reference's does: the page shows either side of the pill. Stacked under the
+                // results instead, the strip beside the pill was the overlay's own black.
+                Box(Modifier.fillMaxSize()) {
                     if (animationProgress > 0) {
                         // PERF: the surface's height animates from the collapsed bar to the
                         // full screen, and this used to be `weight(1f)` — so the entire
@@ -312,13 +313,14 @@ fun TopSearch(
                         // also happens to be the motion the iOS music app uses.
                         Box(
                             modifier = Modifier
-                                .weight(1f)
+                                .fillMaxSize()
+                                .imePadding()
                                 .clipToBounds(),
                             contentAlignment = Alignment.BottomCenter,
                         ) {
                             Column(
                                 modifier = Modifier
-                                    .requiredHeight(contentTargetHeight)
+                                    .requiredHeight(contentTargetHeight + InputFieldHeight + bottomBarPadding)
                                     .fillMaxWidth()
                                     // The docked layout bypasses the classic top-anchored inset
                                     // handling, so the safe-area inset must be applied here —
@@ -355,6 +357,7 @@ fun TopSearch(
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
+                            .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                             .imePadding()
                             .padding(

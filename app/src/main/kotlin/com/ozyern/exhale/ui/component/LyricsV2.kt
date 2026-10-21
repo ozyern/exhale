@@ -506,13 +506,17 @@ fun LyricsV2(
     // wall-clock latency (drawing the frame, the eye reaching the line), and at 1.5x a fixed
     // number of *milliseconds of track* covers only two thirds of the wall-clock time it did at
     // 1x, so the highlight would drift late exactly when the words are hardest to follow.
+    val smoothPosition = remember { com.ozyern.exhale.utils.SmoothPlaybackPosition() }
     LaunchedEffect(entriesWithWords, isSynced) {
         if (!isSynced || entriesWithWords.isEmpty()) return@LaunchedEffect
         while (isActive) {
             com.ozyern.exhale.utils.awaitAppVisible()
             val sliderPos = sliderPositionProvider()
-            val pos = sliderPos ?: player.currentPosition
             val speed = player.playbackParameters.speed.takeIf { it > 0.05f } ?: 1f
+            // Carried forward between the player's readings: on Media3 1.11 they arrive about
+            // once a second, and read raw the sweep stood still and then leapt. See
+            // SmoothPlaybackPosition.
+            val pos = sliderPos ?: smoothPosition.read(player.currentPosition, player.isPlaying, speed)
 
             currentPositionMs = pos + ((leadMs + VISUAL_TUNING_OFFSET_MS) * speed).toLong()
 

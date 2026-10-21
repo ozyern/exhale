@@ -102,6 +102,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
+import kotlin.math.roundToInt
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalConfiguration
@@ -1091,7 +1092,16 @@ private fun RowScope.LiquidTabItem(
 private fun MiniPlayerPill(
     pureBlack: Boolean,
     onExpand: () -> Unit,
+    /** Folded into the dock's row: the title alone. Open, the artist under it, as the sheet's pill. */
+    inline: Boolean = true,
 ) {
+    // Eased rather than switched, so the title does not jump when the artist line comes and goes
+    // on the way between the dock's row and the sheet's pill.
+    val artistShown by animateFloatAsState(
+        targetValue = if (inline) 0f else 1f,
+        animationSpec = tween(240, easing = FastOutSlowInEasing),
+        label = "pillArtist",
+    )
     val playerConnection = LocalPlayerConnection.current ?: return
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val isPlaying by playerConnection.isPlaying.collectAsState()
@@ -1238,7 +1248,7 @@ private fun MiniPlayerPill(
                     // the iOS music app's folded bar: the title, bold, and nothing under it.
                     Text(
                         text = metadata?.title.orEmpty(),
-                        fontSize = 16.sp,
+                        fontSize = androidx.compose.ui.unit.lerp(16.sp, 14.sp, artistShown),
                         lineHeight = 20.sp,
                         fontWeight = FontWeight.Bold,
                         color = clearGlassContentColor(),
@@ -1246,6 +1256,24 @@ private fun MiniPlayerPill(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.basicMarquee(),
                     )
+                    if (artistShown > 0.01f) {
+                        Text(
+                            text = metadata?.artists?.joinToString { it.name }.orEmpty(),
+                            fontSize = 12.sp,
+                            lineHeight = 15.sp,
+                            color = clearGlassContentColor().copy(alpha = 0.7f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .graphicsLayer { alpha = artistShown }
+                                // Its height grows with it, so the title glides up rather than jumps.
+                                .layout { measurable, constraints ->
+                                    val placeable = measurable.measure(constraints)
+                                    val h = (placeable.height * artistShown).roundToInt()
+                                    layout(placeable.width, h) { placeable.place(0, 0) }
+                                },
+                        )
+                    }
                 }
             }
         }
@@ -2077,15 +2105,20 @@ private fun JellyFoldingDock(
         hasSearchTab = searchScreen != null,
         showLabels = showLabels,
         accessory = if (hasNowPlaying) {
-            { accessoryModifier, _ ->
+            { accessoryModifier, isInline ->
                 Box(accessoryModifier, contentAlignment = Alignment.Center) {
-                    MiniPlayerPill(pureBlack = pureBlack, onExpand = onMiniPlayerClick)
+                    MiniPlayerPill(pureBlack = pureBlack, onExpand = onMiniPlayerClick, inline = isInline)
                 }
             }
         } else {
             null
         },
         accessoryReveal = songPillReveal,
+        // The open player lands exactly on the sheet's own slim pill — its height, and the air
+        // above the dock it sits in — so the hand-over at the end of an unfold is invisible.
+        openPlayerHeight = com.ozyern.exhale.constants.CompactMiniPlayerHeight,
+        openPlayerLift = com.ozyern.exhale.constants.MiniPlayerBottomSpacing +
+            com.ozyern.exhale.constants.CompactMiniPlayerTopInset,
         searchMode = search != null,
         typing = search?.typing == true,
         openBar = if (liquidBar) {
