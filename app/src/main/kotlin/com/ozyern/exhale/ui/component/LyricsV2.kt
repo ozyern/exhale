@@ -179,11 +179,10 @@ import kotlin.math.abs
 private const val LRC_LEAD_MS = 140L
 
 /**
- * Lead time offset for TTML word-synced lyrics (ms). Word timings are exact, but what you see
- * trails the reading by the frame being drawn and the eye landing on it: at 0 every sweep started
- * after the voice. With the visual tuning below this comes to 120ms, the same as the flow panel.
+ * Lead time offset for TTML word-synced lyrics (ms). 0, as in 1.0.405: word timings are exact and
+ * the visual tuning below already carries what drawing costs.
  */
-private const val TTML_LEAD_MS = 60L
+private const val TTML_LEAD_MS = 0L
 
 /** Seconds to wait before auto-scroll resumes after manual scroll. */
 private const val MANUAL_SCROLL_TIMEOUT_MS = 3000L
@@ -288,7 +287,7 @@ fun LyricsV2(
     val inactiveAlpha = 0.35f
     val lyricsMotion by com.ozyern.exhale.utils.rememberEnumPreference(
         com.ozyern.exhale.constants.LyricsMotionKey,
-        com.ozyern.exhale.constants.LyricsMotion.FLOW,
+        com.ozyern.exhale.constants.LyricsMotion.EXHALE,
     )
     val appleMotion = lyricsMotion == com.ozyern.exhale.constants.LyricsMotion.APPLE_MUSIC
 
@@ -852,7 +851,9 @@ fun LyricsV2(
                 // every word filled, so it stayed fully lit for as long as it was on screen — the
                 // sung lines above the singer read as the lyrics lagging two or three lines behind.
                 // Done, it drops back into the column like any other line.
-                val wordLineAlpha = if (item.words != null && isSynced && lit) 1f else lineAlpha
+                // 1.0.405's look for its own motion: a word-synced line keeps every word in charge of
+                // its own light, sung or not. Only the iOS motion drops finished lines back.
+                val wordLineAlpha = if (item.words != null && isSynced && (lit || !appleMotion)) 1f else lineAlpha
 
                 // ── Apple-Music line transition physics ──
                 // The active line pops to full size; inactive lines settle at 85% scale and

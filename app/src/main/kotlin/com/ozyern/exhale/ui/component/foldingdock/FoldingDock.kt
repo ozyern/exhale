@@ -238,6 +238,14 @@ fun FoldingDock(
     searchMode: Boolean = false,
     searchBarContent: (@Composable (Modifier) -> Unit)? = null,
     typing: Boolean = false,
+    /**
+     * The open tab bar to show in place of the dock's own tab group, with its own glass, puck and
+     * swipe — the liquid style's. At rest it is exactly that bar; folding, it is clipped into the
+     * retracting pill and fades as the dock's plate takes over under it.
+     */
+    openBar: (@Composable (Modifier) -> Unit)? = null,
+    /** The gap between the open tab bar and the search circle. */
+    openGap: Dp = ComponentSpacing,
 ) {
     val inSearch = searchMode && searchBarContent != null && hasSearchTab
     val searchTab = if (hasSearchTab) tabs.lastOrNull() else null
@@ -278,7 +286,7 @@ fun FoldingDock(
             fun glyphIn(r: Rect) = Rect(r.center.x - icon / 2f, r.center.y - icon / 2f, r.center.x + icon / 2f, r.center.y + icon / 2f)
             when (v) {
                 DockVisual.Expanded -> {
-                    val pillRight = if (searchTab != null) w - open - s else w
+                    val pillRight = if (searchTab != null) w - open - openGap.toPx() else w
                     val pill = Rect(0f, -open, pillRight, 0f)
                     val search = if (searchTab != null) Rect(w - open, -open, w, 0f) else Rect(w, -open, w, 0f)
                     val inset = 4.dp.toPx()
@@ -448,9 +456,11 @@ fun FoldingDock(
             .fillMaxWidth()
             .graphicsLayer { alpha = handOver.value },
         content = {
-            // 0: the tab pill's glass, which is also the folded page circle.
+            // 0: the tab pill's glass, which is also the folded page circle. Under a bar with glass
+            // of its own, it only shows as that bar fades.
             Box(
                 Modifier
+                    .graphicsLayer { if (openBar != null) alpha = 1f - tabsAlpha.value }
                     .graphicsLayer(elasticStretchLayerBlock(selectedGlow))
                     .layerBackdrop(surfaceBackdrop)
                     .clip(DockShape)
@@ -475,7 +485,7 @@ fun FoldingDock(
                     .then(if (!expanded) Modifier.clearAndSetSemantics {} else Modifier),
             ) {
                 val selectedState = rememberUpdatedState(selectedIndex)
-                FoldingTabGroup(
+                if (openBar != null) openBar(Modifier.fillMaxSize()) else FoldingTabGroup(
                     selectedTabIndex = { selectedState.value },
                     onTabSelected = { index -> contentTabs.getOrNull(index)?.onClick?.invoke() },
                     backdrop = appBackdrop,

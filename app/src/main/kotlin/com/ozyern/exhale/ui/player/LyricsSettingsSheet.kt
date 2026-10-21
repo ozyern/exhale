@@ -64,7 +64,7 @@ internal fun LyricsSettingsSheet(
     val (layout, setLayout) = rememberEnumPreference(LyricsLayoutKey, LyricsLayout.GLASS)
     val (motion, setMotion) = rememberEnumPreference(
         com.ozyern.exhale.constants.LyricsMotionKey,
-        com.ozyern.exhale.constants.LyricsMotion.FLOW,
+        com.ozyern.exhale.constants.LyricsMotion.EXHALE,
     )
     val (textSize, setTextSize) = rememberPreference(LyricsTextSizeKey, 26f)
     val (lineSpacing, setLineSpacing) = rememberPreference(LyricsLineSpacingKey, 1.3f)

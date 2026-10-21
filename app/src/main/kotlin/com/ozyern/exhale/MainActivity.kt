@@ -1933,7 +1933,13 @@ class MainActivity : ComponentActivity() {
                                                     // iOS-style field: the placeholder is a single
                                                     // plain "Search" — never the verbose
                                                     // "Search YouTube Music…" service string.
-                                                    text = stringResource(R.string.search),
+                                                    text = if (active && !searchFieldAtTop) {
+                                                        // Typing, it says where it searches, as the
+                                                        // reference's field does.
+                                                        if (searchSource == SearchSource.ONLINE) "Search YouTube Music…" else "Search your library…"
+                                                    } else {
+                                                        stringResource(R.string.search)
+                                                    },
                                                     // The frosted pill is a single thick line — never let the
                                                     // placeholder wrap onto two rows inside the capsule.
                                                     maxLines = 1,
@@ -1941,11 +1947,17 @@ class MainActivity : ComponentActivity() {
                                                 )
                                             },
                                             leadingIcon = {
-                                                if (active) {
-                                                    // Apple-Music active field: a plain magnifying
-                                                    // glass INSIDE the pill on the left — dismissal
-                                                    // is handled by the trailing "Cancel" button
-                                                    // (and the system back gesture), not a back arrow.
+                                                if (active && !searchFieldAtTop) {
+                                                    // The reference's typing field: the way out is
+                                                    // the arrow at its leading end, inside the pill.
+                                                    androidx.compose.material3.IconButton(onClick = { onActiveChange(false) }) {
+                                                        Icon(
+                                                            painterResource(R.drawable.arrow_back),
+                                                            contentDescription = stringResource(R.string.action_cancel),
+                                                            tint = MaterialTheme.colorScheme.onSurface,
+                                                        )
+                                                    }
+                                                } else if (active) {
                                                     Icon(
                                                         painterResource(R.drawable.search),
                                                         contentDescription = null,

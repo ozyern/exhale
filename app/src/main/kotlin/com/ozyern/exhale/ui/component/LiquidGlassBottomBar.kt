@@ -255,6 +255,9 @@ fun LiquidGlassBottomBar(
             search = search,
             modifier = modifier,
             songPillReveal = songPillReveal,
+            // The liquid style keeps its own open bar — its capsule, its swipe, its spacing — and
+            // only borrows the fold.
+            liquidBar = dockStyle == DockStyle.LIQUID,
         )
         return
     }
@@ -2042,6 +2045,7 @@ private fun JellyFoldingDock(
     search: DockSearch?,
     modifier: Modifier = Modifier,
     songPillReveal: () -> Float = { 1f },
+    liquidBar: Boolean = false,
 ) {
     // Search last, at the trailing end, where the folded bar detaches it into its own circle.
     val ordered = remember(items, searchScreen) { items.sortedBy { it == searchScreen } }
@@ -2084,6 +2088,21 @@ private fun JellyFoldingDock(
         accessoryReveal = songPillReveal,
         searchMode = search != null,
         typing = search?.typing == true,
+        openBar = if (liquidBar) {
+            { barModifier ->
+                LiquidTabBar(
+                    tabs = ordered.filter { it != searchScreen },
+                    pureBlack = pureBlack,
+                    isSelected = isSelected,
+                    onItemClick = onItemClick,
+                    modifier = barModifier,
+                )
+            }
+        } else {
+            null
+        },
+        // The liquid bar's own spacing: 10dp between the tab capsule and the search circle.
+        openGap = if (liquidBar) 10.dp else 8.dp,
         searchBarContent = search?.let { s -> { fieldModifier -> DockSearchField(s, fieldModifier) } },
         modifier = modifier,
     )

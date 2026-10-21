@@ -698,11 +698,13 @@ enum class LyricsAnimationStyle {
  * to three sung lines lit and scrolls a group at a time, words rise a touch as they are sung,
  * and only held notes swell and glow.
  */
-val LyricsMotionKey = stringPreferencesKey("lyricsMotion")
+// A new key, so everyone starts again on the 1.0.405 motion: the ported panel had been the
+// default and was saved as a choice nobody made.
+val LyricsMotionKey = stringPreferencesKey("lyricsMotion405")
 enum class LyricsMotion {
     EXHALE,
     APPLE_MUSIC,
-    /** the reference design's lyric panel, ported whole (ui/reference). The default. */
+    /** the reference design's lyric panel, ported whole (ui/lyricsflow). */
     FLOW,
 }
 

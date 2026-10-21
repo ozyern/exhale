@@ -206,7 +206,7 @@ internal fun GlassLyricsView(
         ) {
             val (motion) = com.ozyern.exhale.utils.rememberEnumPreference(
                 com.ozyern.exhale.constants.LyricsMotionKey,
-                com.ozyern.exhale.constants.LyricsMotion.FLOW,
+                com.ozyern.exhale.constants.LyricsMotion.EXHALE,
             )
             if (linesReady && motion == com.ozyern.exhale.constants.LyricsMotion.FLOW) {
                 com.ozyern.exhale.ui.lyricsflow.ExhaleFlowLyrics(

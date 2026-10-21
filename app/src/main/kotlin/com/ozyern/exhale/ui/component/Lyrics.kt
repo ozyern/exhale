@@ -2333,7 +2333,7 @@ private const val Exhale_SEEK_DURATION = 800L
 private const val Exhale_FAST_SEEK_DURATION = 600L
 
 private const val LyricsWordSyncLeadMs = 300L
-private const val LyricsTtmlVisualLeadMs = 120L
+private const val LyricsTtmlVisualLeadMs = 0L
 
 val LyricsPreviewTime = 2.seconds
 
