@@ -1792,9 +1792,11 @@ internal fun LyricsPanel(
             if (!isSynced) emptyList() else activeLyricRows(lines, clock.longValue)
         }
     }
-    // The uppermost unfinished vocal owns the scroll anchor until its end,
-    // even as later rows begin their own independent highlight animations.
-    val scrollLine = activeRows.firstOrNull() ?: -1
+    // The newest line to start owns the scroll anchor. Anchored on the uppermost
+    // unfinished one instead, a held last word kept the panel on the old line
+    // while the next was already being sung, dim and below the focus, and it
+    // only brightened once that held note let go — a beat late every time.
+    val scrollLine = activeRows.lastOrNull() ?: -1
     // Where the panel is heading, which is a beat ahead of where the singing
     // is. Movement that starts on the downbeat arrives after it — the line is
     // already being sung by the time it settles, and you read it late. Started
@@ -1808,7 +1810,7 @@ internal fun LyricsPanel(
                 -1
             } else {
                 val now = clock.longValue
-                activeLyricRows(lines, now + scrollLead(lines, now)).firstOrNull() ?: -1
+                activeLyricRows(lines, now + scrollLead(lines, now)).lastOrNull() ?: -1
             }
         }
     }

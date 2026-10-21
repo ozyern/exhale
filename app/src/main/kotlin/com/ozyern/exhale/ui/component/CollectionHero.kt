@@ -344,12 +344,27 @@ fun BoxScope.PlaylistArtwork(thumbnails: List<String>, placeholderIcon: Int) {
                 }
             }
         }
-        thumbnails.isNotEmpty() -> AsyncImage(
-            model = thumbnails.first(),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.matchParentSize(),
-        )
+        thumbnails.isNotEmpty() -> {
+            // Opened from a tile, the tile's own picture stays underneath until the page's larger
+            // one has loaded, so the hero never goes blank between the two.
+            val seedThumbnail = com.ozyern.exhale.ui.utils.LocalCollectionSeed.current?.thumbnail
+            if (seedThumbnail != null) {
+                AsyncImage(
+                    model = seedThumbnail,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
+            if (seedThumbnail != thumbnails.first()) {
+                AsyncImage(
+                    model = thumbnails.first(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
+        }
         else -> GradientArtwork(
             colors = listOf(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.surfaceContainer),
             icon = placeholderIcon,
@@ -375,4 +390,33 @@ fun BoxScope.GradientArtwork(colors: List<Color>, icon: Int, iconSize: Dp = 96.d
     ) {
         Icon(painterResource(icon), null, tint = Color.White.copy(alpha = 0.92f), modifier = Modifier.size(iconSize))
     }
+}
+
+/**
+ * The hero a page opened from a tile draws while its own data loads: the tile's title, credit and
+ * artwork in the page's real layout, with its actions in place and idle. The card then grows out
+ * of the tile already showing the page, and the loaded hero lands on exactly the same pixels.
+ */
+@Composable
+fun SeededCollectionHero(
+    seed: com.ozyern.exhale.ui.utils.CollectionSeed,
+    meta: String,
+    lazyListState: LazyListState,
+    palette: ArtworkPalette?,
+    placeholderIcon: Int = com.ozyern.exhale.R.drawable.queue_music,
+    artwork: @Composable BoxScope.() -> Unit = { PlaylistArtwork(listOfNotNull(seed.thumbnail), placeholderIcon) },
+) {
+    CollectionHero(
+        title = seed.title,
+        meta = meta,
+        lazyListState = lazyListState,
+        credit = seed.subtitle,
+        palette = palette,
+        artwork = artwork,
+        actions = {
+            CollectionAction(icon = com.ozyern.exhale.R.drawable.favorite_border, contentDescription = null, onClick = {})
+            CollectionPlay(onClick = {}, contentDescription = null)
+            CollectionAction(icon = com.ozyern.exhale.R.drawable.more_vert, contentDescription = null, onClick = {})
+        },
+    )
 }

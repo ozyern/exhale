@@ -238,8 +238,9 @@ fun LiquidGlassBottomBar(
     val dockGlow by rememberPreference(DockGlowKey, true)
     // The jelly dock folds the way the original does: with nothing playing it stays one bar, just
     // minimised — icons only, shorter, narrower. Only with a song playing does it become state B.
-    val jellyStyle = dockStyle == DockStyle.JELLY
-    // The jelly dock is now the reference's folding tab bar: see FoldingDock.
+    // Both styles are the reference's folding tab bar now (see FoldingDock): the liquid style's
+    // own A <-> B change crossfaded the two states through each other instead of morphing.
+    val jellyStyle = dockStyle == DockStyle.JELLY || dockStyle == DockStyle.LIQUID
     if (jellyStyle) {
         JellyFoldingDock(
             items = items,
@@ -2023,6 +2024,8 @@ class DockSearch(
     val leadingIsBack: Boolean,
     val onExit: () -> Unit,
     val onTapBar: () -> Unit,
+    /** The field is open for typing: the row widens into one full-width field and hands over. */
+    val typing: Boolean = false,
 )
 
 @Composable
@@ -2080,6 +2083,7 @@ private fun JellyFoldingDock(
         },
         accessoryReveal = songPillReveal,
         searchMode = search != null,
+        typing = search?.typing == true,
         searchBarContent = search?.let { s -> { fieldModifier -> DockSearchField(s, fieldModifier) } },
         modifier = modifier,
     )

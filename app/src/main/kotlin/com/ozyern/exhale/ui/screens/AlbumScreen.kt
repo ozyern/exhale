@@ -512,7 +512,8 @@ fun AlbumScreen(
 
     // The release page: the sleeve's colours for the whole page, the artwork behind the
     // list, a band of blur across the join, and the track list numbered underneath.
-    val palette = com.ozyern.exhale.ui.component.rememberReleasePalette(albumWithSongs?.album?.thumbnailUrl)
+    val seed = com.ozyern.exhale.ui.utils.LocalCollectionSeed.current
+    val palette = com.ozyern.exhale.ui.component.rememberReleasePalette(seed?.thumbnail ?: albumWithSongs?.album?.thumbnailUrl)
     val albumBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
     var searching by rememberSaveable(albumBrowseId) { mutableStateOf(false) }
     var query by rememberSaveable(albumBrowseId) { mutableStateOf("") }
@@ -808,7 +809,9 @@ fun AlbumScreen(
             } else {
                 when (val state = uiState) {
                     AlbumUiState.Loading,
-                    AlbumUiState.Content -> {
+                    AlbumUiState.Content -> if (seed != null) {
+                        // The tile's hero stands in above the list; see below.
+                    } else {
                         item(key = "shimmer") {
                             ShimmerHost {
                                 Column(
@@ -954,6 +957,34 @@ fun AlbumScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // Opened out of a tile: the tile's hero over the list until the page's own has loaded in
+        // underneath, then it lets go. Kept out of the list, so nothing in view is built twice.
+        if (seed != null) {
+            var seedShown by remember { mutableStateOf(uiState == AlbumUiState.Loading || albumWithSongs?.songs.isNullOrEmpty()) }
+            val seedAlpha by androidx.compose.animation.core.animateFloatAsState(
+                targetValue = if (seedShown) 1f else 0f,
+                animationSpec = androidx.compose.animation.core.tween(150),
+                label = "seedHero",
+            )
+            LaunchedEffect(uiState == AlbumUiState.Loading || albumWithSongs?.songs.isNullOrEmpty()) {
+                if (!(uiState == AlbumUiState.Loading || albumWithSongs?.songs.isNullOrEmpty())) {
+                    kotlinx.coroutines.delay(150)
+                    seedShown = false
+                }
+            }
+            if (seedAlpha > 0f) {
+                Box(Modifier.readableListWidth().alpha(seedAlpha)) {
+                    com.ozyern.exhale.ui.component.SeededCollectionHero(
+                        seed = seed,
+                        meta = "Album",
+                        lazyListState = rememberLazyListState(),
+                        palette = palette,
+                        placeholderIcon = R.drawable.album,
+                    )
                 }
             }
         }

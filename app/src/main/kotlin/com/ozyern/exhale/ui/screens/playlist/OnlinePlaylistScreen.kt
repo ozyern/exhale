@@ -74,6 +74,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import com.ozyern.exhale.ui.utils.readableListWidth
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -226,7 +227,10 @@ fun OnlinePlaylistScreen(
     val showTopBarTitle by remember { derivedStateOf { lazyListState.firstVisibleItemIndex > 0 } }
 
     // Tinted from the cover.
-    val releasePalette = com.ozyern.exhale.ui.component.rememberReleasePalette(playlist?.thumbnail)
+    // Opened from a tile, the tile's own picture tints the page from the first frame, and keeps
+    // tinting it once the playlist loads, so the colour never changes under the card.
+    val seed = com.ozyern.exhale.ui.utils.LocalCollectionSeed.current
+    val releasePalette = com.ozyern.exhale.ui.component.rememberReleasePalette(seed?.thumbnail ?: playlist?.thumbnail)
     val surfaceColor = releasePalette.background
 
 
@@ -277,7 +281,9 @@ fun OnlinePlaylistScreen(
             ),
         ) {
             playlist.let { playlist ->
-                if (isLoading) {
+                if (isLoading && seed != null) {
+                    // The tile's hero stands in above the list; see below.
+                } else if (isLoading) {
                     // Shimmer Loading State
                     item(key = "shimmer") {
                         ShimmerHost {
@@ -626,6 +632,33 @@ fun OnlinePlaylistScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // Opened out of a tile: the tile's hero over the list until the page's own has loaded in
+        // underneath, then it lets go. Kept out of the list, so nothing in view is built twice.
+        if (seed != null && !isSearching) {
+            var seedShown by remember { mutableStateOf(isLoading) }
+            val seedAlpha by androidx.compose.animation.core.animateFloatAsState(
+                targetValue = if (seedShown) 1f else 0f,
+                animationSpec = androidx.compose.animation.core.tween(150),
+                label = "seedHero",
+            )
+            LaunchedEffect(isLoading) {
+                if (!(isLoading)) {
+                    kotlinx.coroutines.delay(150)
+                    seedShown = false
+                }
+            }
+            if (seedAlpha > 0f) {
+                Box(Modifier.readableListWidth().then(Modifier.alpha(seedAlpha))) {
+                    com.ozyern.exhale.ui.component.SeededCollectionHero(
+                        seed = seed,
+                        meta = "Playlist",
+                        lazyListState = rememberLazyListState(),
+                        palette = releasePalette,
+                    )
                 }
             }
         }

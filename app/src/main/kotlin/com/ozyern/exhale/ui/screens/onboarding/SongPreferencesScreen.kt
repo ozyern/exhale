@@ -33,6 +33,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import com.ozyern.exhale.ui.component.settingsGlassGroup
+import com.ozyern.exhale.ui.screens.settings.SettingsDimensions
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -138,15 +143,7 @@ fun SongPreferencesScreen(
     Box(
         Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.surface,
-                        MaterialTheme.colorScheme.surfaceContainerLow,
-                        MaterialTheme.colorScheme.surface,
-                    )
-                )
-            )
+            .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current),
         // Centred at a phone's measure on a tablet or an unfolded foldable, so the chips wrap into
         // a block and Continue is a button rather than a 1000dp bar.
@@ -155,12 +152,18 @@ fun SongPreferencesScreen(
         AnimatedContent(
             targetState = step,
             transitionSpec = {
+                // A UIKit push: the new page comes in from the edge over the old one, which slides a
+                // third of the way under it and dims; going back runs it in reverse.
                 val forward = targetState > initialState
-                val enterOffset: (Int) -> Int = { if (forward) it else -it }
-                val exitOffset: (Int) -> Int = { if (forward) -it else it }
-                (slideInHorizontally(spring(dampingRatio = 0.8f, stiffness = 300f), enterOffset) +
-                    fadeIn(tween(220))) togetherWith
-                    (slideOutHorizontally(tween(220), exitOffset) + fadeOut(tween(160)))
+                val curve = tween<androidx.compose.ui.unit.IntOffset>(OnboardingPushMs, easing = OnboardingPushEasing)
+                val fade = tween<Float>(OnboardingPushMs, easing = OnboardingPushEasing)
+                if (forward) {
+                    slideInHorizontally(curve) { it } togetherWith
+                        (slideOutHorizontally(curve) { -it / 3 } + fadeOut(fade, targetAlpha = 0.6f))
+                } else {
+                    (slideInHorizontally(curve) { -it / 3 } + fadeIn(fade, initialAlpha = 0.6f)) togetherWith
+                        slideOutHorizontally(curve) { it }
+                }.apply { targetContentZIndex = if (forward) 1f else 0f }
             },
             label = "onboardingStep",
             modifier = Modifier.widthIn(max = 640.dp).fillMaxSize(),
@@ -221,6 +224,9 @@ fun SongPreferencesScreen(
     }
 }
 
+private const val OnboardingPushMs = 400
+private val OnboardingPushEasing = androidx.compose.animation.core.CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
+
 /* --------------------------------------------------------------------- */
 /* Step 1 — Language                                                     */
 /* --------------------------------------------------------------------- */
@@ -233,94 +239,120 @@ private fun LanguageStep(
     onSkip: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
-        OnboardingHeader(
-            step = 1,
-            title = "What do you like to listen to?",
-            subtitle = "Choose your preferred audio languages. You can change these anytime in Settings.",
-        )
-
-        // Scrolls: sixteen chips do not fit above the footer on a small phone, and a list that
-        // cannot scroll just hides its last row behind the button.
-        FlowRow(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+        OnboardingNavBar(trailingLabel = "Not Now", onTrailing = onSkip)
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
         ) {
-            OnboardingLanguages.forEach { lang ->
-                LanguageChip(
-                    language = lang,
-                    selected = lang.code in selected,
-                    onClick = { onToggle(lang.code) },
+            item(key = "title") {
+                OnboardingTitle(
+                    title = "Choose Languages",
+                    subtitle = "Pick the languages you listen to. Your recommendations follow them, and you can change them later in Settings.",
                 )
             }
+            item(key = "group") {
+                // One grouped inset list, as iOS picks a language: a row each, a checkmark on the
+                // ones chosen, hairlines inset to the label.
+                Column(
+                    Modifier
+                        .padding(horizontal = 16.dp)
+                        .fillMaxWidth()
+                        .settingsGlassGroup(RoundedCornerShape(SettingsDimensions.GroupCardCornerRadius)),
+                ) {
+                    OnboardingLanguages.forEachIndexed { index, lang ->
+                        LanguageRow(
+                            language = lang,
+                            selected = lang.code in selected,
+                            onClick = { onToggle(lang.code) },
+                            showDivider = index < OnboardingLanguages.lastIndex,
+                        )
+                    }
+                }
+            }
         }
-
         OnboardingFooter(
             primaryLabel = "Continue",
             primaryEnabled = selected.isNotEmpty(),
             onPrimary = onContinue,
-            hint = if (selected.isEmpty()) "Pick at least one language" else "${selected.size} selected",
-            secondaryLabel = "Not now",
-            onSecondary = onSkip,
+            hint = when (selected.size) {
+                0 -> "Choose at least one"
+                1 -> "1 language"
+                else -> "${selected.size} languages"
+            },
         )
     }
 }
 
 @Composable
-private fun LanguageChip(
+private fun LanguageRow(
     language: OnboardingLanguage,
     selected: Boolean,
     onClick: () -> Unit,
+    showDivider: Boolean,
 ) {
-    val scale by animateFloatAsState(
-        targetValue = if (selected) 1f else 0.98f,
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f),
-        label = "chipScale",
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    // A pressed row fills edge to edge with a neutral wash and does not move.
+    val wash by animateFloatAsState(if (pressed) 0.09f else 0f, tween(if (pressed) 0 else 220), label = "rowWash")
+    val check by animateFloatAsState(
+        targetValue = if (selected) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.55f, stiffness = 700f),
+        label = "rowCheck",
     )
-    val container = if (selected) MaterialTheme.colorScheme.primary
-    else MaterialTheme.colorScheme.surfaceContainerHigh
-    val content = if (selected) MaterialTheme.colorScheme.onPrimary
-    else MaterialTheme.colorScheme.onSurface
-
-    Row(
-        modifier = Modifier
-            .scale(scale)
-            .clip(RoundedCornerShape(percent = 50))
-            .background(container)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-            )
-            .padding(horizontal = 18.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(text = language.flag, fontSize = 18.sp)
-        Text(
-            text = language.displayName,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            color = content,
-        )
-        // The language in its own script, so it is recognisable to the person who reads it.
-        if (language.nativeName != language.displayName) {
-            Text(
-                text = language.nativeName,
-                style = MaterialTheme.typography.bodyMedium,
-                color = content.copy(alpha = 0.7f),
-            )
-        }
-        if (selected) {
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = wash))
+                .clickable(interactionSource = interaction, indication = null) {
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                    onClick()
+                }
+                .heightIn(min = 52.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) {
+                Text(text = language.flag, fontSize = 22.sp)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = language.displayName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                // The language in its own script, so the person who reads it finds it.
+                if (language.nativeName != language.displayName) {
+                    Text(
+                        text = language.nativeName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+            }
             Icon(
                 painter = androidx.compose.ui.res.painterResource(R.drawable.check),
-                contentDescription = null,
-                tint = content,
-                modifier = Modifier.size(18.dp),
+                contentDescription = if (selected) "Selected" else null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .size(22.dp)
+                    .graphicsLayer {
+                        alpha = check.coerceIn(0f, 1f)
+                        scaleX = 0.6f + 0.4f * check
+                        scaleY = 0.6f + 0.4f * check
+                    },
+            )
+        }
+        if (showDivider) {
+            androidx.compose.material3.HorizontalDivider(
+                modifier = Modifier.padding(start = 60.dp),
+                thickness = SettingsDimensions.DividerThickness,
+                color = SettingsDimensions.dividerColor(),
             )
         }
     }
@@ -340,8 +372,7 @@ private fun ArtistStep(
     onFinish: () -> Unit,
 ) {
     // Resolved artwork URLs keyed by artist name. Seeded from the process cache so returning to
-    // Step 2 (or backing in/out of a language) shows already-fetched art instantly without a
-    // network round-trip.
+    // Step 2 (or backing in/out of a language) shows already-fetched art instantly.
     val resolvedImages = remember {
         mutableStateMapOf<String, String?>().apply {
             artists.forEach { a ->
@@ -353,12 +384,8 @@ private fun ArtistStep(
         }
     }
 
-    // Fetch any still-unresolved artwork from InnerTube (artist search → first ArtistItem thumb).
-    // Keyed on the artist name-set so a changed language selection re-triggers only the new names.
-    //
-    // Six at a time, not one after another: each is a search round trip, and in sequence a grid
-    // of two dozen artists filled in one circle at a time for most of a minute. Results land on
-    // the main thread, which is the only thread that touches the cache.
+    // Six at a time, not one after another: each is a search round trip. Results land on the main
+    // thread, which is the only thread that touches the cache.
     LaunchedEffect(artists) {
         val gate = Semaphore(6)
         coroutineScope {
@@ -423,89 +450,52 @@ private fun ArtistStep(
         else searched.filter { it.name !in curatedNames } + artists
 
     Column(Modifier.fillMaxSize()) {
-        OnboardingHeader(
-            step = 2,
-            title = "Pick a few artists you love",
-            subtitle = "We'll tune your recommendations around them.",
-            onBack = onBack,
-        )
-
-        OutlinedTextField(
-            value = query,
-            onValueChange = { query = it },
-            singleLine = true,
-            placeholder = { Text("Search for an artist") },
-            leadingIcon = {
-                Icon(
-                    painter = androidx.compose.ui.res.painterResource(R.drawable.search),
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                )
-            },
-            trailingIcon = {
-                if (query.isNotEmpty()) {
-                    Icon(
-                        painter = androidx.compose.ui.res.painterResource(R.drawable.close),
-                        contentDescription = "Clear",
-                        modifier = Modifier
-                            .size(20.dp)
-                            .clickable { query = "" },
+        OnboardingNavBar(leadingLabel = "Back", onLeading = onBack)
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            item(key = "title", span = { GridItemSpan(maxLineSpan) }, contentType = "title") {
+                Column {
+                    OnboardingTitle(
+                        title = "Tell Us What You Like",
+                        subtitle = "Tap the artists you love. Tap again to undo.",
+                        horizontalPadding = 0.dp,
+                    )
+                    IosSearchField(
+                        value = query,
+                        onValueChange = { query = it },
+                        placeholder = "Artists",
+                        modifier = Modifier.padding(bottom = 4.dp),
                     )
                 }
-            },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            shape = RoundedCornerShape(percent = 50),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                unfocusedBorderColor = Color.Transparent,
-                focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 4.dp),
-        )
-
-        if (gridArtists.isEmpty()) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text(
-                    text = when {
-                        showingResults && searching -> "Searching…"
-                        showingResults -> "No artists found for “${query.trim()}”."
-                        else -> "No trending artists for that selection yet.\nSearch above, or tap Done to continue."
-                    },
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                if (showingResults) {
-                    item(span = { GridItemSpan(maxLineSpan) }, contentType = "label") {
-                        Text(
-                            text = if (searching) "Searching…" else "Results",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 4.dp),
-                        )
-                    }
-                }
-                items(gridArtists, key = { it.name }, contentType = { "artist_tile" }) { artist ->
-                    ArtistTile(
-                        artist = artist,
-                        imageUrl = artist.imageUrl ?: resolvedImages[artist.name],
-                        selected = artist.name in selected,
-                        onClick = { onToggle(artist) },
+            if (gridArtists.isEmpty()) {
+                item(key = "empty", span = { GridItemSpan(maxLineSpan) }, contentType = "empty") {
+                    Text(
+                        text = when {
+                            showingResults && searching -> "Searching…"
+                            showingResults -> "No Results for “${query.trim()}”"
+                            else -> "No suggestions for these languages yet. Search for an artist, or tap Done."
+                        },
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth().padding(top = 48.dp, start = 16.dp, end = 16.dp),
                     )
                 }
+            }
+            items(gridArtists, key = { it.name }, contentType = { "artist_tile" }) { artist ->
+                ArtistTile(
+                    artist = artist,
+                    imageUrl = artist.imageUrl ?: resolvedImages[artist.name],
+                    selected = artist.name in selected,
+                    onClick = { onToggle(artist) },
+                    modifier = Modifier.animateItem(),
+                )
             }
         }
 
@@ -513,134 +503,112 @@ private fun ArtistStep(
             primaryLabel = "Done",
             primaryEnabled = true,
             onPrimary = onFinish,
-            hint = if (selected.isEmpty()) "Optional — pick any you like" else "${selected.size} selected",
+            hint = when (selected.size) {
+                0 -> "Optional"
+                1 -> "1 artist"
+                else -> "${selected.size} artists"
+            },
         )
     }
 }
 
+/**
+ * One artist bubble, as Apple Music's picker draws it: the artwork in a circle, and picked, the
+ * circle fills with the accent and a white check, with a little bounce under the finger.
+ */
 @Composable
 private fun ArtistTile(
     artist: OnboardingArtist,
     imageUrl: String?,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    // Buttery spring physics shared across the app (dampingRatio 0.8, stiffness 300).
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    // Pressed it sinks a little; let go it springs back past full size and settles.
     val scale by animateFloatAsState(
-        targetValue = if (selected) 1.04f else 1f,
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f),
+        targetValue = if (pressed) 0.92f else 1f,
+        animationSpec = spring(dampingRatio = 0.45f, stiffness = 520f),
         label = "artistScale",
     )
-    // Selection ring fades + scales in as one crisp 3dp outline with a clean 3dp gap to
-    // the artwork (never a border painted OVER the image edge — no cropping artifacts).
-    val ringAlpha by animateFloatAsState(
+    val fill by animateFloatAsState(
         targetValue = if (selected) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f),
-        label = "artistRing",
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 520f),
+        label = "artistFill",
     )
+    val accent = MaterialTheme.colorScheme.primary
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-            )
-            .padding(4.dp),
+        modifier = modifier.clickable(interactionSource = interaction, indication = null) {
+            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+            onClick()
+        },
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .scale(scale),
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
             contentAlignment = Alignment.Center,
         ) {
-            // High-contrast selection outline — drawn on the OUTER box so it never
-            // overlaps (or crops into) the circular artwork.
-            if (ringAlpha > 0.01f) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = ringAlpha }
-                        .border(
-                            width = 3.dp,
-                            color = MaterialTheme.colorScheme.primary,
-                            shape = CircleShape,
-                        ),
-                )
-            }
-
-            // Artwork disc, inset from the ring by a constant gap so selection reads as
-            // a clean halo, exactly like the iOS music app's artist picker.
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(6.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                contentAlignment = Alignment.Center,
-            ) {
-                // Monogram sits underneath as the base layer, so a tile is never empty while
-                // artwork is still resolving; the circular AsyncImage crossfades in on top.
-                Text(
-                    text = artist.name.take(1).uppercase(),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (imageUrl != null) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(imageUrl)
-                            .crossfade(true)
-                            .diskCachePolicy(CachePolicy.ENABLED)
-                            .diskCacheKey(imageUrl)
-                            .memoryCacheKey(imageUrl)
-                            .build(),
-                        contentDescription = artist.name,
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape),
-                    )
-                }
-            }
-
-            // Selected check badge, bottom-end, springs in over the ring.
-            val badge by animateFloatAsState(
-                targetValue = if (selected) 1f else 0f,
-                animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f),
-                label = "badge",
+            // The initial underneath, so a bubble is never empty while its artwork loads.
+            Text(
+                text = artist.name.take(1).uppercase(),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (badge > 0.01f) {
+            if (imageUrl != null) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(imageUrl)
+                        .crossfade(true)
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .diskCacheKey(imageUrl)
+                        .memoryCacheKey(imageUrl)
+                        .build(),
+                    contentDescription = artist.name,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            if (fill > 0.01f) {
                 Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .scale(badge)
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary),
+                    Modifier
+                        .fillMaxSize()
+                        .background(accent.copy(alpha = 0.82f * fill.coerceIn(0f, 1f))),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         painter = androidx.compose.ui.res.painterResource(R.drawable.check),
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(16.dp),
+                        tint = Color.White,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .graphicsLayer {
+                                alpha = fill.coerceIn(0f, 1f)
+                                scaleX = 0.5f + 0.5f * fill
+                                scaleY = 0.5f + 0.5f * fill
+                            },
                     )
                 }
             }
         }
-
+        Spacer(Modifier.height(8.dp))
         Text(
             text = artist.name,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
@@ -652,104 +620,185 @@ private fun ArtistTile(
 /* Shared chrome                                                         */
 /* --------------------------------------------------------------------- */
 
+/** An iOS navigation bar: a plain text button either side, in the accent, and nothing else. */
 @Composable
-private fun OnboardingHeader(
-    step: Int,
+private fun OnboardingNavBar(
+    leadingLabel: String? = null,
+    onLeading: (() -> Unit)? = null,
+    trailingLabel: String? = null,
+    onTrailing: (() -> Unit)? = null,
+) {
+    Row(
+        Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (leadingLabel != null && onLeading != null) {
+            NavBarButton(onClick = onLeading) {
+                Icon(
+                    painter = androidx.compose.ui.res.painterResource(R.drawable.chevron_back),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp),
+                )
+                Text(leadingLabel, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        if (trailingLabel != null && onTrailing != null) {
+            NavBarButton(onClick = onTrailing) {
+                Text(trailingLabel, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun NavBarButton(onClick: () -> Unit, content: @Composable () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    // iOS bar buttons dim while held rather than showing a ripple.
+    Row(
+        modifier = Modifier
+            .heightIn(min = 44.dp)
+            .clip(RoundedCornerShape(percent = 50))
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .graphicsLayer { alpha = if (pressed) 0.35f else 1f }
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) { content() }
+}
+
+/** The page's large title and its explanation, at iOS's sizes: 34 bold over 15 grey. */
+@Composable
+private fun OnboardingTitle(
     title: String,
     subtitle: String,
-    onBack: (() -> Unit)? = null,
+    horizontalPadding: androidx.compose.ui.unit.Dp = 16.dp,
 ) {
-    Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (onBack != null) {
-                LiquidBackButton(
-                    onClick = onBack,
-                    contentDescription = "Back",
-                )
-                Spacer(Modifier.width(12.dp))
-            }
-            // Two segments, filled up to this step: where you are and how much is left, at a glance.
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                repeat(2) { i ->
-                    Box(
-                        Modifier
-                            .width(28.dp)
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(percent = 50))
-                            .background(
-                                if (i < step) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)
-                            ),
-                    )
-                }
-            }
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text = "Step $step of 2",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Spacer(Modifier.height(16.dp))
+    Column(Modifier.fillMaxWidth().padding(start = horizontalPadding, end = horizontalPadding, top = 4.dp, bottom = 20.dp)) {
         Text(
             text = title,
-            style = MaterialTheme.typography.headlineLarge,
+            fontSize = 34.sp,
+            lineHeight = 40.sp,
             fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.4).sp,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         Text(
             text = subtitle,
-            style = MaterialTheme.typography.bodyLarge,
+            fontSize = 15.sp,
+            lineHeight = 20.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
+/** iOS's search field: a grey rounded field 36dp tall, the glass inside it, and a clear button. */
+@Composable
+private fun IosSearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+) {
+    val ink = MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(36.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.09f))
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            painter = androidx.compose.ui.res.painterResource(R.drawable.search),
+            contentDescription = null,
+            tint = ink,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(6.dp))
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            if (value.isEmpty()) {
+                Text(placeholder, fontSize = 17.sp, color = ink, maxLines = 1)
+            }
+            androidx.compose.foundation.text.BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurface),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        if (value.isNotEmpty()) {
+            Box(
+                Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .clickable { onValueChange("") },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    Modifier.size(16.dp).clip(CircleShape).background(ink.copy(alpha = 0.6f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = androidx.compose.ui.res.painterResource(R.drawable.close),
+                        contentDescription = "Clear",
+                        tint = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier.size(11.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** The one filled control: a full-width 52dp capsule in the accent, with a quiet count above it. */
 @Composable
 private fun OnboardingFooter(
     primaryLabel: String,
     primaryEnabled: Boolean,
     onPrimary: () -> Unit,
     hint: String,
-    secondaryLabel: String? = null,
-    onSecondary: (() -> Unit)? = null,
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val press by animateFloatAsState(if (pressed) 0.97f else 1f, spring(dampingRatio = 0.75f, stiffness = 1220f), label = "primaryPress")
+    val enabledAlpha by animateFloatAsState(if (primaryEnabled) 1f else 0.4f, tween(200), label = "primaryEnabled")
     Column(
-        Modifier.fillMaxWidth().padding(24.dp),
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
             text = hint,
-            style = MaterialTheme.typography.bodySmall,
+            fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(12.dp))
-        Button(
-            onClick = onPrimary,
-            enabled = primaryEnabled,
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            shape = RoundedCornerShape(percent = 50),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-            ),
+        Spacer(Modifier.height(10.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .graphicsLayer {
+                    scaleX = press
+                    scaleY = press
+                    alpha = enabledAlpha
+                }
+                .clip(RoundedCornerShape(percent = 50))
+                .background(MaterialTheme.colorScheme.primary)
+                .clickable(interactionSource = interaction, indication = null, enabled = primaryEnabled, onClick = onPrimary),
+            contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = primaryLabel,
-                style = MaterialTheme.typography.titleMedium,
+                fontSize = 17.sp,
                 fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onPrimary,
             )
-        }
-        if (secondaryLabel != null && onSecondary != null) {
-            TextButton(onClick = onSecondary, modifier = Modifier.padding(top = 4.dp)) {
-                Text(
-                    text = secondaryLabel,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
         }
     }
 }

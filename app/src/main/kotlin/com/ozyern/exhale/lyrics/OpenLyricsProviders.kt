@@ -582,6 +582,13 @@ object MegalobizLyricsProvider : LyricsProvider {
             .firstOrNull { slug.isEmpty() || it.lowercase(Locale.ROOT).contains(slug.take(24)) }
             ?: return notFound(name)
         val page = OpenLyricsHttp.get(BASE + path.replace("&amp;", "&"), accept = "text/html") ?: return notFound(name)
+        // The slug only says the title: a page for somebody else's song of the same name has to be
+        // turned away by its heading, which names the artist.
+        val heading = Regex("""<title>(.*?)</title>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+            .find(page)?.groupValues?.get(1)?.let { simplify(Parser.unescapeEntities(it, false)) }
+        val artists = artist.split(Regex("""\s*(?:,|&|/|\bfeat\.?|\bft\.?|\bx\b|\band\b)\s*""", RegexOption.IGNORE_CASE))
+            .map(::simplify).filter { it.isNotEmpty() }
+        if (!heading.isNullOrEmpty() && artists.isNotEmpty() && artists.none { heading.contains(it) }) return notFound(name)
         val raw = lrcBody.find(page)?.groupValues?.get(1) ?: return notFound(name)
         val lrc = Parser.unescapeEntities(
             raw.replace(Regex("""(?i)<br\s*/?>"""), "\n").replace(Regex("""<[^>]+>"""), ""),
@@ -589,6 +596,9 @@ object MegalobizLyricsProvider : LyricsProvider {
         ).lines().map { it.trim() }.filter { LRC_LINE.matches(it) }.joinToString("\n")
         return if (lrc.isUsableLyrics()) Result.success(lrc) else notFound(name)
     }
+
+    private fun simplify(text: String): String =
+        text.lowercase(Locale.ROOT).replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
 }
 
 // ============================================================================================

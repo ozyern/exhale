@@ -212,6 +212,7 @@ fun GridItem(
     thumbnailContent: @Composable BoxWithConstraintsScope.() -> Unit,
     thumbnailRatio: Float = 1f,
     fillMaxWidth: Boolean = false,
+    morphSeed: com.ozyern.exhale.ui.utils.CollectionSeed? = null,
 ) {
     Column(
         modifier = (if (fillMaxWidth) {
@@ -233,7 +234,7 @@ fun GridItem(
             }
                 .aspectRatio(thumbnailRatio)
                 // A release or playlist opened from here grows out of this artwork.
-                .collectionMorphSource()
+                .collectionMorphSource(morphSeed)
         ) {
             thumbnailContent()
         }
@@ -742,8 +743,10 @@ fun GridItem(
     thumbnailContent: @Composable BoxWithConstraintsScope.() -> Unit,
     thumbnailRatio: Float = 1f,
     fillMaxWidth: Boolean = false,
+    morphSeed: com.ozyern.exhale.ui.utils.CollectionSeed? = null,
 ) = GridItem(
     modifier = modifier,
+    morphSeed = morphSeed,
     title = {
         // the iOS music app's shelf captions: a quiet 14pt title under the artwork, not a bold headline.
         Text(
@@ -976,6 +979,7 @@ fun ArtistGridItem(
     },
     fillMaxWidth: Boolean = false,
 ) = GridItem(
+    morphSeed = com.ozyern.exhale.ui.utils.CollectionSeed(artist.artist.name, artist.artist.thumbnailUrl),
     title = artist.artist.name,
     subtitle = pluralStringResource(R.plurals.n_song, artist.songCount, artist.songCount),
     badges = badges,
@@ -1111,6 +1115,7 @@ fun AlbumGridItem(
     isPlaying: Boolean = false,
     fillMaxWidth: Boolean = false,
 ) = GridItem(
+    morphSeed = com.ozyern.exhale.ui.utils.CollectionSeed(album.album.title, album.album.thumbnailUrl, album.artists.joinToString { it.name }),
     title = {
         Text(
             text = album.album.title,
@@ -1350,6 +1355,7 @@ fun PlaylistGridItem(
     },
     fillMaxWidth: Boolean = false,
 ) = GridItem(
+    morphSeed = com.ozyern.exhale.ui.utils.CollectionSeed(playlist.playlist.name, playlist.thumbnails.firstOrNull()),
     title = {
         Text(
             text = playlist.playlist.name,
@@ -1576,6 +1582,12 @@ fun YouTubeGridItem(
     isPlaying: Boolean = false,
     fillMaxWidth: Boolean = false,
 ) = GridItem(
+    morphSeed = when (item) {
+        is AlbumItem -> com.ozyern.exhale.ui.utils.CollectionSeed(item.title, item.thumbnail, item.artists?.joinToString { it.name })
+        is PlaylistItem -> com.ozyern.exhale.ui.utils.CollectionSeed(item.title, item.thumbnail, item.author?.name)
+        is ArtistItem -> com.ozyern.exhale.ui.utils.CollectionSeed(item.title, item.thumbnail)
+        else -> null
+    },
     title = {
         Text(
             text = item.title,

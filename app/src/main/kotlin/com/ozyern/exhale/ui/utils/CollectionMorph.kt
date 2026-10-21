@@ -20,6 +20,8 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,12 +69,15 @@ object CollectionMorph {
     private const val PressWindowMillis = 900L
 
     private var pending: Rect? = null
+    private var pendingSeed: CollectionSeed? = null
     private var pendingAt = 0L
     private val origins = LinkedHashMap<String, Rect>()
+    private val seeds = HashMap<String, CollectionSeed>()
     private var shrinking by mutableStateOf<String?>(null)
 
-    internal fun press(bounds: Rect) {
+    internal fun press(bounds: Rect, seed: CollectionSeed?) {
         pending = bounds
+        pendingSeed = seed
         pendingAt = SystemClock.uptimeMillis()
     }
 
@@ -83,11 +88,20 @@ object CollectionMorph {
         if (SystemClock.uptimeMillis() - pendingAt > PressWindowMillis) return null
         pending = null
         origins[entryId] = tile
-        while (origins.size > 32) origins.remove(origins.keys.first())
+        pendingSeed?.let { seeds[entryId] = it }
+        pendingSeed = null
+        while (origins.size > 32) {
+            val oldest = origins.keys.first()
+            origins.remove(oldest)
+            seeds.remove(oldest)
+        }
         return tile
     }
 
     fun originFor(entryId: String): Rect? = origins[entryId]
+
+    /** What the tile [entryId] opened out of showed: enough for the page to draw its hero at once. */
+    fun seedFor(entryId: String): CollectionSeed? = seeds[entryId]
 
     /** The destinations framed by [CollectionMorphFrame], by their route pattern. */
     fun isMorphPage(route: String?): Boolean = route in MorphRoutes
@@ -111,16 +125,28 @@ object CollectionMorph {
     internal fun isShrinking(entryId: String) = shrinking == entryId
 }
 
+/**
+ * What a tile shows of the page it opens: its title, its artwork and its credit. The page draws
+ * its hero from this while its own data loads, so the card grows out of the tile already looking
+ * like the page instead of an empty box that fills in a skeleton (Convx seeds its heroes the same
+ * way, from the route).
+ */
+data class CollectionSeed(val title: String, val thumbnail: String?, val subtitle: String? = null)
+
+/** The seed of the page being composed, when it was opened from a tile. */
+val LocalCollectionSeed = compositionLocalOf<CollectionSeed?> { null }
+
 /** Marks a tile as something a page can grow out of. */
 @Composable
-fun Modifier.collectionMorphSource(): Modifier {
+fun Modifier.collectionMorphSource(seed: CollectionSeed? = null): Modifier {
+    val currentSeed = androidx.compose.runtime.rememberUpdatedState(seed)
     val coordinates = remember { arrayOfNulls<LayoutCoordinates>(1) }
     return this
         .onPlaced { coordinates[0] = it }
         .pointerInput(Unit) {
             awaitEachGesture {
                 awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                coordinates[0]?.takeIf { it.isAttached }?.let { CollectionMorph.press(it.boundsInWindow()) }
+                coordinates[0]?.takeIf { it.isAttached }?.let { CollectionMorph.press(it.boundsInWindow(), currentSeed.value) }
             }
         }
 }
@@ -145,6 +171,7 @@ fun AnimatedContentScope.CollectionMorphFrame(
         content()
         return
     }
+    val seed = remember(entry.id) { CollectionMorph.seedFor(entry.id) }
     val progress by transition.animateFloat(
         transitionSpec = {
             if (targetState == EnterExitState.Visible) {
@@ -209,6 +236,6 @@ fun AnimatedContentScope.CollectionMorphFrame(
                 }
             },
     ) {
-        content()
+        CompositionLocalProvider(LocalCollectionSeed provides seed) { content() }
     }
 }

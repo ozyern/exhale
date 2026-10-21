@@ -16,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +55,9 @@ private const val GlowBandFraction = 0.42f
  * where the eye tracks it and leaves only the impression that the page is lit rather than painted.
  */
 private const val GlowDriftPeriodMs = 34_000f
+
+private fun glowPhaseNow(): Float =
+    (android.os.SystemClock.uptimeMillis() % GlowDriftPeriodMs.toLong()) / GlowDriftPeriodMs
 
 /** How far a blob wanders from where it sits, as a fraction of the width and of the band. */
 private const val GlowDriftX = 0.055f
@@ -193,12 +197,24 @@ fun AmbientArtworkGlow(
     // Written to a plain state that only `drawBehind` reads, so a frame of drift invalidates the
     // draw phase and nothing above it: no recomposition, no relayout, for a full-screen effect
     // that is running the whole time the app is open.
-    val phase = remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(Unit) {
+    //
+    // Still while nothing plays, and stepped at about 30 a second while something does. Run on
+    // every vsync for good, it redrew this — and, through the backdrop layer every piece of glass
+    // samples, the whole window — sixty to a hundred and twenty times a second on a page sitting
+    // still, for blobs that take most of a minute to go round once. Its phase is the uptime clock,
+    // so two copies still drift as one.
+    val phase = remember { mutableFloatStateOf(glowPhaseNow()) }
+    val playing by (com.ozyern.exhale.LocalPlayerConnection.current?.isPlaying
+        ?: remember { kotlinx.coroutines.flow.MutableStateFlow(false) }).collectAsState()
+    val drifting = playing && blobs.isNotEmpty()
+    LaunchedEffect(drifting) {
+        phase.floatValue = glowPhaseNow()
+        if (!drifting) return@LaunchedEffect
         while (true) {
-            withInfiniteAnimationFrameMillis { millis ->
-                phase.floatValue = (millis % GlowDriftPeriodMs.toLong()) / GlowDriftPeriodMs
-            }
+            if (!com.ozyern.exhale.utils.isAppVisible) com.ozyern.exhale.utils.awaitAppVisible()
+            androidx.compose.runtime.withFrameMillis { }
+            phase.floatValue = glowPhaseNow()
+            com.ozyern.exhale.utils.awaitAmbientStep()
         }
     }
 

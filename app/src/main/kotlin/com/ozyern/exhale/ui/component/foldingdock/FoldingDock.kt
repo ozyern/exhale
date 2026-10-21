@@ -15,6 +15,10 @@ import android.os.Build
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOut
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -44,6 +48,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -54,6 +60,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -86,6 +93,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -127,7 +135,7 @@ class FoldingDockTab(
 private val DockShape = RoundedCornerShape(percent = 50)
 
 // Open tab row: 32dp glyph, label and the selector's inset.
-private val OpenRowHeight = 68.dp
+private val OpenRowHeight = 64.dp
 // The folded row with a song in it, and the search row.
 private val InlineRowHeight = 48.dp
 private val SearchRowHeight = 48.dp
@@ -139,8 +147,8 @@ private val FoldingIconSize = 32.dp
 /* ------------------------------------------------------------------ */
 
 /**
- * The glass of the bar and of its player, at the strength the reference 1.5.2 ships: saturation
- * x1.6, a 2dp frost, a 19dp lens bending 29dp at the rim, an even grey film at half opacity and a
+ * The glass of the bar and of its player, at the strength the reference ships: saturation
+ * x2, a 3dp frost, a 19dp lens bending 29dp at the rim, an even grey film at half opacity and a
  * thin 0.8dp rim of light at 30%. Clearer than the rest of our chrome on purpose: the page reads
  * straight through and only the rim says glass.
  */
@@ -165,8 +173,10 @@ fun Modifier.foldingDockGlass(
 }
 
 internal fun BackdropEffectScope.dockGlassEffects() {
-    colorControls(saturation = 1.6f)
-    blur(2f.dp.toPx())
+    // The reference's current nav glass: vibrancy 2.0 and a 3dp frost, sampled live every frame
+    // (it never freezes on scroll here), on the search circle as much as on the pill.
+    colorControls(saturation = 2f)
+    blur(3f.dp.toPx())
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         lens(refractionHeight = 19.2f.dp.toPx(), refractionAmount = 28.8f.dp.toPx())
     }
@@ -176,28 +186,40 @@ internal fun BackdropEffectScope.dockGlassEffects() {
 /* Motion                                                              */
 /* ------------------------------------------------------------------ */
 
-// The reference 1.5.2 morph: every piece rides one critically damped spring at medium-low
-// stiffness (its shared-bounds default), with the gooey pulse peaking halfway through.
-private val FoldSpring = spring<Float>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
-private val SearchSpring = spring<Float>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
+// The three shapes of the bar, as the reference names them: the open tab bar with the player
+// above it, the folded row with the player inline, and the search row.
+private enum class DockVisual { Inline, Expanded, Search, Typing }
+
+// Peak blur of the gooey pulse while the shapes merge or split.
 private val GooeyPeakBlur = 12.dp
-private const val GooeyDurationMs = 300
+
+// What a tab's label adds under its glyph: 2dp of gap and one line of 10sp.
+private val TabLabelBlock = 16.dp
+
+/** Where every piece of the bar sits in one shape, y measured up from the bar's bottom edge. */
+private class DockRects(val pill: Rect, val search: Rect, val player: Rect, val glyph: Rect)
 
 /* ------------------------------------------------------------------ */
 /* The bar                                                             */
 /* ------------------------------------------------------------------ */
 
 /**
- * The bottom bar as one layout folded by one number: the tab group shrinks onto the selected
- * tab, search detaches into its own circle, and the mini player slides into the row between
- * them. Nothing changes parent mid-fold, so there is nothing to flash.
+ * The bottom bar in the reference's three shapes, and the morph between them.
  *
- * Search is the last of [tabs] when [hasSearchTab]; open it sits in the group, folded it becomes
- * the circle on the right, and in [searchMode] it widens into [searchBarContent].
+ * Open, the tab pill and the search circle sit side by side with the player above, full width.
+ * Folded, the pill retracts into a circle holding the page you are on, the player slides down
+ * into the row between it and search, and search stays a circle. On the search pages the search
+ * circle widens into the field and the pill retracts the same way, with the player above.
  *
- * The row is what this measures to. With a song, the open bar's player hangs above it, outside
- * its bounds, exactly where the player sheet's own pill sits — the dock only draws it while it is
- * moving or folded, see [FoldingDockMotion].
+ * Each piece is one rect, and a change of shape animates every rect from wherever it is to its
+ * place in the new shape on the reference's [BarMotion] clocks: the bodies swell past their size
+ * and settle, the player slides sideways first and drops a beat later (rises first and widens a
+ * beat later the other way), and the page glyph travels between its tab and the circle on a curve
+ * that never overshoots. A gooey pulse joins the pieces where they touch. Nothing crossfades.
+ *
+ * Search is the last of [tabs] when [hasSearchTab]. The bar measures to its row; the open player
+ * hangs above it, exactly where the player sheet's own pill sits, and the dock only draws it while
+ * it is folded or moving — see [FoldingDockMotion].
  */
 @Composable
 fun FoldingDock(
@@ -215,76 +237,188 @@ fun FoldingDock(
     openPlayerGap: Dp = ComponentSpacing,
     searchMode: Boolean = false,
     searchBarContent: (@Composable (Modifier) -> Unit)? = null,
+    typing: Boolean = false,
 ) {
     val inSearch = searchMode && searchBarContent != null && hasSearchTab
-    val groupTabs = tabs
     val searchTab = if (hasSearchTab) tabs.lastOrNull() else null
     val contentTabs = if (hasSearchTab) tabs.dropLast(1) else tabs
+    val hasPlayer = accessory != null
 
     // The page you are on; off the tabs (and on Search), the last one you were on.
     val sticky = remember { arrayOfNulls<String>(1) }
     val live = contentTabs.firstOrNull { it.key == selectedKey }
     if (live != null) sticky[0] = live.key
     val selected = live ?: contentTabs.firstOrNull { it.key == sticky[0] } ?: contentTabs.firstOrNull()
-    val selectedIndex = groupTabs.indexOf(selected).coerceAtLeast(0)
-    val tabsCount = groupTabs.size.coerceAtLeast(1)
+    val selectedIndex = contentTabs.indexOf(selected).coerceAtLeast(0)
+    val tabsCount = contentTabs.size.coerceAtLeast(1)
 
-    val fold = remember { Animatable(if (folded) 1f else 0f) }
-    LaunchedEffect(folded) { fold.animateTo(if (folded) 1f else 0f, FoldSpring) }
-    val search = remember { Animatable(if (inSearch) 1f else 0f) }
-    LaunchedEffect(inSearch) { search.animateTo(if (inSearch) 1f else 0f, SearchSpring) }
+    val visual = when {
+        inSearch && typing -> DockVisual.Typing
+        folded -> DockVisual.Inline
+        inSearch -> DockVisual.Search
+        else -> DockVisual.Expanded
+    }
 
-    // The gooey pulse, on every change of shape: up to its peak halfway, back to nothing at rest.
+    val density = LocalDensity.current
+    // Known only once measured: the bar's width and the band it is given to stand in.
+    var widthPx by remember { mutableIntStateOf(0) }
+    var bandPx by remember { mutableIntStateOf(-1) }
+
+    val labels = showLabels
+    val targets: (DockVisual) -> DockRects = { v ->
+        with(density) {
+            val w = widthPx.toFloat()
+            val s = ComponentSpacing.toPx()
+            val open = OpenRowHeight.toPx()
+            val row = InlineRowHeight.toPx()
+            val gap = if (bandPx >= 0) (bandPx - open).coerceAtLeast(0f) else openPlayerGap.toPx()
+            val playerH = openPlayerHeight.toPx()
+            val icon = FoldingIconSize.toPx()
+            val abovePlayer = Rect(0f, -open - gap - playerH, w, -open - gap)
+            fun glyphIn(r: Rect) = Rect(r.center.x - icon / 2f, r.center.y - icon / 2f, r.center.x + icon / 2f, r.center.y + icon / 2f)
+            when (v) {
+                DockVisual.Expanded -> {
+                    val pillRight = if (searchTab != null) w - open - s else w
+                    val pill = Rect(0f, -open, pillRight, 0f)
+                    val search = if (searchTab != null) Rect(w - open, -open, w, 0f) else Rect(w, -open, w, 0f)
+                    val inset = 4.dp.toPx()
+                    val cell = (pill.width - 2 * inset) / tabsCount
+                    val cx = inset + cell * (selectedIndex + 0.5f)
+                    val block = icon + if (labels) TabLabelBlock.toPx() else 0f
+                    val cy = -open + (open - block) / 2f + icon / 2f
+                    DockRects(pill, search, abovePlayer, Rect(cx - icon / 2f, cy - icon / 2f, cx + icon / 2f, cy + icon / 2f))
+                }
+                DockVisual.Inline -> {
+                    if (hasPlayer || searchTab == null) {
+                        val pill = Rect(0f, -row, row, 0f)
+                        val search = if (searchTab != null) Rect(w - row, -row, w, 0f) else Rect(w, -row, w, 0f)
+                        val playerRight = if (searchTab != null) w - row - s else w
+                        DockRects(pill, search, Rect(row + s, -row, playerRight, 0f), glyphIn(pill))
+                    } else {
+                        // Nothing playing: the two circles, side by side in the middle.
+                        val left = (w - (2 * row + s)) / 2f
+                        val pill = Rect(left, -row, left + row, 0f)
+                        DockRects(pill, Rect(left + row + s, -row, left + 2 * row + s, 0f), abovePlayer, glyphIn(pill))
+                    }
+                }
+                DockVisual.Search -> {
+                    val pill = Rect(0f, -row, row, 0f)
+                    DockRects(pill, Rect(row + s, -row, w, 0f), abovePlayer, glyphIn(pill))
+                }
+                // Typing: the field takes the whole row, over the page circle, as the reference's does.
+                DockVisual.Typing -> {
+                    val pill = Rect(0f, -row, row, 0f)
+                    DockRects(pill, Rect(0f, -row, w, 0f), abovePlayer, glyphIn(pill))
+                }
+            }
+        }
+    }
+
+    val pillRect = remember { Animatable(Rect.Zero, Rect.VectorConverter) }
+    val searchRect = remember { Animatable(Rect.Zero, Rect.VectorConverter) }
+    val playerRect = remember { Animatable(Rect.Zero, Rect.VectorConverter) }
+    val glyphRect = remember { Animatable(Rect.Zero, Rect.VectorConverter) }
+    var placed by remember { mutableStateOf(false) }
+    // The shape the player last came to rest in; while it differs from [visual] the player is moving.
+    var restVisual by remember { mutableStateOf(visual) }
+    val shownVisual = remember { arrayOf(visual) }
+
+    LaunchedEffect(visual, widthPx, bandPx, hasPlayer, selectedIndex, tabsCount, labels, searchTab != null) {
+        if (widthPx <= 0) return@LaunchedEffect
+        val t = targets(visual)
+        val switched = visual != shownVisual[0]
+        shownVisual[0] = visual
+        val running = pillRect.isRunning || searchRect.isRunning || playerRect.isRunning || glyphRect.isRunning
+        if (!placed || (!switched && !running)) {
+            // First frame, or at rest with the room changed (rotation, insets): follow, don't animate.
+            pillRect.snapTo(t.pill)
+            searchRect.snapTo(t.search)
+            playerRect.snapTo(t.player)
+            glyphRect.snapTo(t.glyph)
+            placed = true
+            restVisual = visual
+            return@LaunchedEffect
+        }
+        // A change of shape usually lands with a page change whose first frame is a long one. The
+        // clocks start after it, so the opening of the morph is drawn instead of skipped.
+        withFrameNanos { }
+        val collapsing = visual == DockVisual.Inline
+        launch { pillRect.animateTo(t.pill, if (collapsing) BarMotion.CollapseSurface else BarMotion.ExpandSurface) }
+        launch { searchRect.animateTo(t.search, if (collapsing) BarMotion.CollapseSurface else BarMotion.ExpandSurface) }
+        launch { glyphRect.animateTo(t.glyph, if (collapsing) BarMotion.CollapseItem else BarMotion.ExpandItem) }
+        launch {
+            playerRect.animateTo(t.player, if (collapsing) BarMotion.CollapseAccessory else BarMotion.ExpandAccessory)
+            restVisual = visual
+        }
+    }
+
+    // The contents of each shape: the outgoing ones clear quickly once the bodies start moving,
+    // the incoming ones arrive after a beat and overlap them, so there is never a blank midpoint.
+    val tabsAlpha = remember { Animatable(if (visual == DockVisual.Expanded) 1f else 0f) }
+    val fieldAlpha = remember { Animatable(if (visual == DockVisual.Search || visual == DockVisual.Typing) 1f else 0f) }
+    val handOver = remember { Animatable(if (visual == DockVisual.Typing) 0f else 1f) }
+    val typingGlyph = remember { Animatable(if (visual == DockVisual.Typing) 1f else 0f) }
     val goo = remember { Animatable(0f) }
     val firstShape = remember { booleanArrayOf(true) }
-    LaunchedEffect(folded, inSearch) {
+    LaunchedEffect(visual) {
         if (firstShape[0]) {
             firstShape[0] = false
             return@LaunchedEffect
         }
-        goo.snapTo(0f)
-        goo.animateTo(0f, keyframes {
-            durationMillis = GooeyDurationMs
-            0f at 0
-            1f at GooeyDurationMs / 2 using FastOutSlowInEasing
-            0f at GooeyDurationMs
-        })
+        withFrameNanos { }
+        val collapsing = visual == DockVisual.Inline
+        val ms = BarMotion.barMs(collapsing)
+        val enter = tween<Float>((ms * 0.62f).toInt(), delayMillis = (ms * 0.16f).toInt(), easing = LinearOutSlowInEasing)
+        val exit = tween<Float>((BarMotion.morphMs(collapsing) * 0.6f).toInt(), easing = FastOutLinearInEasing)
+        launch {
+            val on = visual == DockVisual.Expanded
+            tabsAlpha.animateTo(if (on) 1f else 0f, if (on) enter else exit)
+        }
+        launch {
+            val on = visual == DockVisual.Search || visual == DockVisual.Typing
+            fieldAlpha.animateTo(if (on) 1f else 0f, if (on) enter else exit)
+        }
+        launch {
+            // Typing, the field that rides the keyboard takes over once this one has widened.
+            if (visual == DockVisual.Typing) {
+                launch { typingGlyph.animateTo(1f, tween(120, easing = LinearEasing)) }
+                handOver.animateTo(0f, tween(180, delayMillis = 260, easing = LinearEasing))
+            } else {
+                launch { typingGlyph.animateTo(0f, tween(120, easing = LinearEasing)) }
+                handOver.animateTo(1f, tween(120, easing = LinearEasing))
+            }
+        }
+        launch {
+            goo.snapTo(0f)
+            goo.animateTo(0f, keyframes {
+                durationMillis = ms
+                0f at 0
+                1f at ms / 2 using FastOutSlowInEasing
+                0f at ms
+            })
+        }
     }
 
+    // The dock draws the player whenever it is not resting open: folded, or on its way.
+    // Typing, the player is away altogether.
+    val ownsPlayer = hasPlayer && visual != DockVisual.Typing && (visual == DockVisual.Inline || restVisual != visual || restVisual == DockVisual.Inline)
+    SideEffect { FoldingDockMotion.fold = if (ownsPlayer) 1f else 0f }
     DisposableEffect(Unit) { onDispose { FoldingDockMotion.fold = 0f } }
-    LaunchedEffect(fold) { snapshotFlow { fold.value }.collect { FoldingDockMotion.fold = it } }
+    val ownsPlayerState = rememberUpdatedState(ownsPlayer)
 
     val surfaceBackdrop = rememberLayerBackdrop()
-    val foldedOrSearching = folded || inSearch
     val noTap = remember { MutableInteractionSource() }
     val glowScope = rememberCoroutineScope()
     val selectedGlow = remember(glowScope) { InteractiveHighlight(animationScope = glowScope) }
     val searchGlow = remember(glowScope) { InteractiveHighlight(animationScope = glowScope) }
-    val density = LocalDensity.current
     val gooeyPx = with(density) { GooeyPeakBlur.toPx() }
     val appBackdrop = LocalAppBackdrop.current
 
     val ink = if (isSystemInDarkTheme()) Color.White else Color.Black
     val inactiveInk = ink.copy(alpha = 0.82f)
-    // The glyphs replay a small bounce as the bar folds or opens.
-    val bounce = remember { Animatable(1f) }
-    LaunchedEffect(folded) {
-        if (bounce.isRunning || fold.value != (if (folded) 1f else 0f)) {
-            bounce.snapTo(0.8f)
-            bounce.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = 420f))
-        }
-    }
 
     val icon: @Composable (FoldingDockTab, Boolean) -> Unit = { tab, isSelected ->
-        Box(
-            Modifier
-                .size(tab.glyphSize)
-                .graphicsLayer {
-                    scaleX = bounce.value
-                    scaleY = bounce.value
-                },
-            contentAlignment = Alignment.Center,
-        ) {
+        Box(Modifier.size(tab.glyphSize), contentAlignment = Alignment.Center) {
             Icon(
                 painter = painterResource(tab.icon),
                 contentDescription = tab.title,
@@ -306,12 +440,15 @@ fun FoldingDock(
         }
     }
 
+    val expanded = visual == DockVisual.Expanded
     Layout(
+        // The gooey pulse melts only the contents that fade (the open tabs, the field), as the
+        // reference's does: its surfaces and its player draw above that layer and stay crisp.
         modifier = modifier
             .fillMaxWidth()
-            .gooey { gooeyPx * goo.value },
+            .graphicsLayer { alpha = handOver.value },
         content = {
-            // 0: the navigation surface.
+            // 0: the tab pill's glass, which is also the folded page circle.
             Box(
                 Modifier
                     .graphicsLayer(elasticStretchLayerBlock(selectedGlow))
@@ -320,40 +457,35 @@ fun FoldingDock(
                     .foldingDockGlass(DockShape)
                     .then(selectedGlow.modifier),
             )
-            // 1: the full tab group at its resting width, clipped to the shrinking surface.
+            // 1: the open tabs, at the open pill's size, clipped to the pill as it retracts.
             Box(
                 Modifier
-                    .graphicsLayer {
-                        alpha = (1f - fold.value.coerceIn(0f, 1f) * 3f).coerceIn(0f, 1f) *
-                            (1f - search.value.coerceIn(0f, 1f))
-                    }
+                    .gooey { gooeyPx * goo.value }
+                    .graphicsLayer { alpha = tabsAlpha.value }
                     .drawWithContent {
-                        val p = fold.value.coerceIn(0f, 1f)
-                        val s = search.value.coerceIn(0f, 1f)
-                        if (p == 0f && s == 0f) {
-                            drawContent()
-                        } else {
-                            val width = lerp(lerp(size.width, size.height, s), size.height, p)
-                            val outline = Path().apply {
-                                addRoundRect(RoundRect(0f, 0f, width, size.height, CornerRadius(size.height / 2f)))
-                            }
-                            clipPath(outline) { this@drawWithContent.drawContent() }
+                        val r = pillRect.value
+                        // The group's own coordinates: its bottom is the bar's bottom edge.
+                        val top = size.height + r.top
+                        val bottom = size.height + r.bottom
+                        val outline = Path().apply {
+                            addRoundRect(RoundRect(r.left, top, r.right, bottom, CornerRadius(minOf(r.width, r.height) / 2f)))
                         }
+                        clipPath(outline) { this@drawWithContent.drawContent() }
                     }
-                    .then(if (foldedOrSearching) Modifier.clearAndSetSemantics {} else Modifier),
+                    .then(if (!expanded) Modifier.clearAndSetSemantics {} else Modifier),
             ) {
                 val selectedState = rememberUpdatedState(selectedIndex)
                 FoldingTabGroup(
                     selectedTabIndex = { selectedState.value },
-                    onTabSelected = { index -> groupTabs.getOrNull(index)?.onClick?.invoke() },
+                    onTabSelected = { index -> contentTabs.getOrNull(index)?.onClick?.invoke() },
                     backdrop = appBackdrop,
                     surfaceBackdrop = surfaceBackdrop,
-                    tabsCount = groupTabs.size,
+                    tabsCount = contentTabs.size,
                     accentColor = accentColor,
                     height = OpenRowHeight,
-                    indicatorVisible = groupTabs.any { it.key == selectedKey },
+                    indicatorVisible = contentTabs.any { it.key == selectedKey },
                 ) {
-                    groupTabs.forEach { tab ->
+                    contentTabs.forEach { tab ->
                         val isSelected = tab.key == selectedKey
                         FoldingTabCell(onClick = tab.onClick) {
                             icon(tab, isSelected)
@@ -362,78 +494,53 @@ fun FoldingDock(
                     }
                 }
             }
-            // 2: the selected tab alone, shown while folded or searching.
-            Box(
-                Modifier
-                    .graphicsLayer(elasticStretchLayerBlock(selectedGlow))
-                    .graphicsLayer { alpha = maxOf(fold.value, search.value).coerceIn(0f, 1f) }
-                    .then(
-                        if (foldedOrSearching) {
-                            Modifier.then(selectedGlow.gestureModifier).clickable(noTap, null) {
-                                if (folded) onUnfold() else selected?.onClick?.invoke()
-                            }
-                        } else {
-                            Modifier.clearAndSetSemantics {}
-                        },
-                    ),
-            ) {
-                FoldingTabContent(
-                    icon = { selected?.let { icon(it, true) } },
-                    title = { selected?.let { title(it, true) } },
-                    titleFraction = { (1f - fold.value.coerceIn(0f, 1f)) * (1f - search.value.coerceIn(0f, 1f)) },
-                )
-            }
-            // 3: search's own glass, only while detached from the group.
+            // 2: search's own glass, with its glyph; a circle open and folded, the field in search.
             Box(
                 Modifier
                     .graphicsLayer(elasticStretchLayerBlock(searchGlow))
-                    .graphicsLayer {
-                        alpha = if (searchTab == null) 0f else maxOf(fold.value, search.value).coerceIn(0f, 1f)
-                    }
+                    .graphicsLayer { alpha = if (searchTab == null) 0f else 1f }
                     .clip(DockShape)
                     .then(if (searchTab != null) Modifier.foldingDockGlass(DockShape) else Modifier)
-                    .then(searchGlow.modifier),
-            )
-            // 4: the detached search control.
-            Box(
-                Modifier
-                    .graphicsLayer(elasticStretchLayerBlock(searchGlow))
-                    .graphicsLayer {
-                        val p = fold.value.coerceIn(0f, 1f)
-                        val s = search.value.coerceIn(0f, 1f)
-                        alpha = if (searchTab == null) 0f else maxOf(p, s) * (1f - s * (1f - p))
-                    }
+                    .then(searchGlow.modifier)
                     .then(
-                        if (searchTab != null && foldedOrSearching && (!inSearch || folded)) {
+                        if (searchTab != null && visual != DockVisual.Search && visual != DockVisual.Typing) {
                             Modifier.then(searchGlow.gestureModifier).clickable(noTap, null) { searchTab.onClick() }
                         } else {
                             Modifier.clearAndSetSemantics {}
                         },
                     ),
+                contentAlignment = Alignment.Center,
             ) {
                 if (searchTab != null) {
-                    FoldingTabContent(
-                        icon = { icon(searchTab, selectedKey == searchTab.key) },
-                        title = { title(searchTab, selectedKey == searchTab.key) },
-                        titleFraction = { 1f - fold.value.coerceIn(0f, 1f) },
-                    )
+                    Box(Modifier.graphicsLayer { alpha = 1f - fieldAlpha.value }) {
+                        icon(searchTab, selectedKey == searchTab.key)
+                    }
                 }
             }
-            // 5: the search field, grown out of the circle.
+            // 3: the search field, grown out of the circle.
             Box(
                 Modifier
-                    .graphicsLayer { alpha = (search.value * (1f - fold.value)).coerceIn(0f, 1f) }
-                    .then(if (!inSearch || folded) Modifier.clearAndSetSemantics {} else Modifier),
+                    .gooey { gooeyPx * goo.value }
+                    .graphicsLayer { alpha = fieldAlpha.value }
+                    .then(if (visual != DockVisual.Search) Modifier.clearAndSetSemantics {} else Modifier),
             ) {
-                if (inSearch || search.value > 0f) {
+                if (visual == DockVisual.Search || visual == DockVisual.Typing || fieldAlpha.value > 0f) {
                     searchBarContent?.invoke(Modifier.fillMaxSize())
                 }
             }
-            // 6: the mini player, one node for every fold state.
+            // 4: the page glyph, travelling between its tab and the circle. It passes under the player.
+            Box(
+                // Typing, the field has grown over the circle and the glyph goes with it.
+                Modifier.graphicsLayer { alpha = (1f - tabsAlpha.value) * (1f - typingGlyph.value) },
+                contentAlignment = Alignment.Center,
+            ) {
+                selected?.let { icon(it, true) }
+            }
+            // 5: the mini player, one node for every shape.
             Box(
                 Modifier.graphicsLayer {
                     // Open and at rest it is the player sheet's pill that shows, not this one.
-                    alpha = if (fold.value > 0.001f) accessoryReveal().coerceIn(0f, 1f) else 0f
+                    alpha = if (ownsPlayerState.value) accessoryReveal().coerceIn(0f, 1f) else 0f
                 },
             ) {
                 accessory?.invoke(
@@ -441,129 +548,50 @@ fun FoldingDock(
                         .fillMaxSize()
                         .clip(DockShape)
                         .foldingDockGlass(DockShape),
-                    folded,
+                    visual == DockVisual.Inline,
                 )
             }
+            // 6: the folded or search-row page circle's touch target, over everything in it.
+            Box(
+                Modifier
+                    .then(selectedGlow.gestureModifier)
+                    .clickable(noTap, null) {
+                        if (folded) onUnfold() else selected?.onClick?.invoke()
+                    },
+            )
         },
     ) { children, constraints ->
         val width = constraints.maxWidth
-        val expandedHeight = OpenRowHeight.roundToPx().coerceAtMost(constraints.maxHeight)
-        val compactHeight = if (accessory != null) InlineRowHeight.roundToPx() else expandedHeight
-        val spacing = ComponentSpacing.roundToPx()
-        val p = fold.value
-        val openHeight = lerp(expandedHeight.toFloat(), SearchRowHeight.toPx(), search.value.coerceIn(0f, 1f))
-        val height = lerp(openHeight, compactHeight.toFloat(), p).roundToInt().coerceAtLeast(1)
-        val circle = height.coerceAtMost(width)
-        val playerWidth = lerp(width.toFloat(), (width - 2 * (compactHeight + spacing)).coerceAtLeast(0).toFloat(), p)
-            .roundToInt().coerceIn(0, width)
-        val playerHeight = lerp(openPlayerHeight.toPx(), compactHeight.toFloat(), p.coerceIn(0f, 1f))
-            .roundToInt().coerceAtLeast(1)
-        val player = children[6].measure(Constraints.fixed(playerWidth, playerHeight))
-        val geometry = foldGeometry(
-            width = width,
-            expandedRowHeight = openHeight.roundToInt(),
-            collapsedRowHeight = compactHeight,
-            spacing = spacing,
-            // The sheet's pill sits on top of the band the dock is given, so the open player hangs
-            // from there: whatever room the band has over the row, plus the pill itself.
-            playerGap = if (constraints.hasBoundedHeight) {
-                (constraints.maxHeight - expandedHeight).coerceAtLeast(0)
-            } else {
-                openPlayerGap.roundToPx()
-            },
-            playerHeight = player.height,
-            hasPlayer = accessory != null,
-            fold = p,
-            search = search.value,
-            tabsCount = tabsCount,
-            selectedIndex = selectedIndex,
-            inset = 4.dp.toPx(),
-        )
-        val surface = children[0].measure(Constraints.fixed(geometry.navWidth, height))
-        val tabsPlaceable = children[1].measure(Constraints.fixed(width, height))
-        val selectedButton = children[2].measure(Constraints.fixed(circle, height))
-        val searchSurface = children[3].measure(Constraints.fixed(geometry.searchWidth, height))
-        val searchControl = children[4].measure(Constraints.fixed(circle, height))
-        val field = children[5].measure(Constraints.fixed(geometry.searchWidth, height))
-        // The bar measures to its row; the open player hangs above it.
+        if (widthPx != width) widthPx = width
+        val band = if (constraints.hasBoundedHeight) constraints.maxHeight else -1
+        if (bandPx != band) bandPx = band
+        val settled = if (placed) null else targets(visual)
+        val pill = settled?.pill ?: pillRect.value
+        val search = settled?.search ?: searchRect.value
+        val player = settled?.player ?: playerRect.value
+        val glyph = settled?.glyph ?: glyphRect.value
+        val openPx = OpenRowHeight.roundToPx()
+        val height = maxOf(-pill.top, -search.top, 1f).roundToInt()
+
+        fun fixed(r: Rect) = Constraints.fixed(r.width.roundToInt().coerceAtLeast(0), r.height.roundToInt().coerceAtLeast(0))
+        val surface = children[0].measure(fixed(pill))
+        val openPillWidth = targets(DockVisual.Expanded).pill.width.roundToInt().coerceAtLeast(0)
+        val group = children[1].measure(Constraints.fixed(openPillWidth, openPx))
+        val searchSurface = children[2].measure(fixed(search))
+        val field = children[3].measure(fixed(search))
+        val glyphBox = children[4].measure(fixed(glyph))
+        val playerBox = children[5].measure(fixed(player))
+        val pillTap = children[6].measure(if (expanded) Constraints.fixed(0, 0) else fixed(pill))
         layout(width, height) {
-            surface.placeRelative(0, 0)
-            tabsPlaceable.placeRelative(0, 0)
-            selectedButton.placeRelative(geometry.selectedX, 0)
-            searchSurface.placeRelative(geometry.searchX, 0)
-            searchControl.placeRelative(geometry.searchX, 0)
-            field.placeRelative(geometry.searchX, 0)
-            player.placeRelative(geometry.playerX, geometry.playerY)
-        }
-    }
-}
-
-private class FoldGeometry(
-    val navWidth: Int,
-    val searchWidth: Int,
-    val searchX: Int,
-    val selectedX: Int,
-    val playerX: Int,
-    val playerY: Int,
-)
-
-/**
- * Every position of the folding bar from two progress values, so a reversed fold retraces the
- * same path. Positions are relative to the top of the row.
- */
-private fun foldGeometry(
-    width: Int,
-    expandedRowHeight: Int,
-    collapsedRowHeight: Int,
-    spacing: Int,
-    playerGap: Int,
-    playerHeight: Int,
-    hasPlayer: Boolean,
-    fold: Float,
-    search: Float,
-    tabsCount: Int,
-    selectedIndex: Int,
-    inset: Float,
-): FoldGeometry {
-    fun mix(a: Float, b: Float, t: Float) = a + (b - a) * t
-    val p = fold
-    val s = search.coerceIn(0f, 1f)
-    val rowHeight = mix(expandedRowHeight.toFloat(), collapsedRowHeight.toFloat(), p).roundToInt().coerceAtLeast(1)
-    val circle = rowHeight.coerceAtMost(width)
-    val tabWidth = (width - 2 * inset) / tabsCount.coerceAtLeast(1)
-    val searchCenter = inset + tabWidth * (tabsCount - 0.5f)
-    val searchWidth = mix(circle.toFloat(), (width - circle - spacing).coerceAtLeast(circle).toFloat(), s * (1f - p))
-        .roundToInt().coerceAtLeast(circle)
-    val detachedSearchX = mix(searchCenter - circle / 2f, (width - circle).toFloat(), p)
-    return FoldGeometry(
-        navWidth = mix(mix(width.toFloat(), circle.toFloat(), s), circle.toFloat(), p).roundToInt().coerceIn(circle, width),
-        searchWidth = searchWidth,
-        searchX = mix(detachedSearchX, (width - searchWidth).toFloat(), s).roundToInt(),
-        selectedX = mix(inset + tabWidth * (selectedIndex + 0.5f) - circle / 2f, 0f, maxOf(p, s)).roundToInt(),
-        playerX = mix(0f, (circle + spacing).toFloat(), p).roundToInt(),
-        playerY = if (hasPlayer) mix(-(playerHeight + playerGap).toFloat(), (rowHeight - playerHeight) / 2f, p).roundToInt() else 0,
-    )
-}
-
-@Composable
-private fun FoldingTabContent(
-    icon: @Composable () -> Unit,
-    title: @Composable () -> Unit,
-    titleFraction: () -> Float,
-) {
-    Layout(content = {
-        Box(Modifier.size(FoldingIconSize), contentAlignment = Alignment.Center) { icon() }
-        Box(Modifier.graphicsLayer { alpha = titleFraction() }) { title() }
-    }) { children, constraints ->
-        val iconSize = FoldingIconSize.roundToPx()
-        val iconPlaceable = children[0].measure(Constraints.fixed(iconSize, iconSize))
-        val titlePlaceable = children[1].measure(Constraints(maxWidth = constraints.maxWidth))
-        val gap = 2.dp.roundToPx()
-        val fullTop = (constraints.maxHeight - iconPlaceable.height - gap - titlePlaceable.height) / 2f
-        val top = lerp((constraints.maxHeight - iconPlaceable.height) / 2f, fullTop, titleFraction()).roundToInt()
-        layout(constraints.maxWidth, constraints.maxHeight) {
-            iconPlaceable.placeRelative((constraints.maxWidth - iconPlaceable.width) / 2, top)
-            titlePlaceable.placeRelative((constraints.maxWidth - titlePlaceable.width) / 2, top + iconPlaceable.height + gap)
+            fun at(r: Rect) = IntOffset(r.left.roundToInt(), (height + r.top).roundToInt())
+            surface.place(at(pill))
+            // Gone once faded, so the open tabs never catch a tap meant for the row.
+            if (expanded || tabsAlpha.value > 0f) group.place(0, height - openPx)
+            searchSurface.place(at(search))
+            if (visual == DockVisual.Search || visual == DockVisual.Typing || fieldAlpha.value > 0f) field.place(at(search))
+            glyphBox.place(at(glyph))
+            if (hasPlayer) playerBox.place(at(player))
+            if (!expanded) pillTap.place(at(pill))
         }
     }
 }

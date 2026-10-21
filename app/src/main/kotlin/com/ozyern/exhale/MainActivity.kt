@@ -1153,7 +1153,9 @@ class MainActivity : ComponentActivity() {
                     val jellyDock = rememberEnumPreference(
                         com.ozyern.exhale.constants.DockStyleKey,
                         com.ozyern.exhale.constants.DockStyle.LIQUID,
-                    ).value == com.ozyern.exhale.constants.DockStyle.JELLY
+                    ).value.let {
+                        it == com.ozyern.exhale.constants.DockStyle.JELLY || it == com.ozyern.exhale.constants.DockStyle.LIQUID
+                    }
                     // True while the folding dock is anywhere but open, when it draws the player pill itself.
                     val foldingDockAway by remember {
                         derivedStateOf { com.ozyern.exhale.ui.component.foldingdock.FoldingDockMotion.fold > 0.001f }
@@ -1190,8 +1192,11 @@ class MainActivity : ComponentActivity() {
                     }.collectAsState()
                     val onSettingsRoute =
                         navBackStackEntry?.destination?.route?.startsWith("settings") == true
+                    // Setting up languages and artists is a page of its own, as Apple Music's is:
+                    // no dock under it.
+                    val onOnboarding = navBackStackEntry?.destination?.route == "song_preferences"
                     val dockOnPage = !active && !isTabRoute && !isSearchResultsRoute &&
-                        !(onSettingsRoute && dockSong == null)
+                        !(onSettingsRoute && dockSong == null) && !onOnboarding
 
                     val shouldShowNavigationBar =
                         remember(navBackStackEntry, active, isSearchResultsRoute, dockOnPage) {
@@ -2351,6 +2356,8 @@ class MainActivity : ComponentActivity() {
 
                                         val navSlideDistance =
                                             bottomInset + floatingBarsBottomPadding + navVisibleHeight
+                                        val typingInDockSearch =
+                                            jellyDock && active && (isSearchScreen || isSearchResultsRoute) && !searchFieldAtTop
 
                                         Box(
                                             modifier =
@@ -2358,7 +2365,12 @@ class MainActivity : ComponentActivity() {
                                                     .align(Alignment.BottomCenter)
                                                     .height(navSlideDistance)
                                                     .offset {
-                                                        if (bottomNavigationBarHeight == 0.dp) {
+                                                        if (typingInDockSearch) {
+                                                            // Typing from the dock's search row: the field
+                                                            // widens in place and hands over to the one
+                                                            // riding the keyboard; the dock does not slide.
+                                                            IntOffset.Zero
+                                                        } else if (bottomNavigationBarHeight == 0.dp) {
                                                             IntOffset(
                                                                 x = 0,
                                                                 y = navSlideDistance.roundToPx(),
@@ -2568,7 +2580,7 @@ class MainActivity : ComponentActivity() {
                                             // The jelly dock is the search row itself on the search pages: the
                                             // tabs fold onto the page you came from and search widens into the field.
                                             val dockSearch = if (
-                                                jellyDock && (isSearchScreen || isSearchResultsRoute) && !active && !searchFieldAtTop
+                                                jellyDock && (isSearchScreen || isSearchResultsRoute) && !searchFieldAtTop
                                             ) {
                                                 // Decoded: the route argument encodes a space as `+`.
                                                 val committed = if (isSearchResultsRoute) {
@@ -2583,6 +2595,7 @@ class MainActivity : ComponentActivity() {
                                                     placeholder = "Artists, Songs, Lyrics and More",
                                                     committedQuery = committed,
                                                     leadingIsBack = isSearchResultsRoute,
+                                                    typing = active,
                                                     onExit = {
                                                         if (isSearchResultsRoute) {
                                                             navController.navigateUp()

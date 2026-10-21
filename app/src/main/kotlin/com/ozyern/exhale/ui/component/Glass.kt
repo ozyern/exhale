@@ -376,7 +376,7 @@ fun LiquidBackground(
                 if (last != 0L) clock.floatValue += ((now - last) / 1_000_000_000f).coerceAtMost(0.1f)
                 last = now
             }
-            kotlinx.coroutines.delay(30)
+            com.ozyern.exhale.utils.awaitAmbientStep()
         }
     }
 
