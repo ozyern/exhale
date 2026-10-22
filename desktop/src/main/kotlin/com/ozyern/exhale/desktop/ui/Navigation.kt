@@ -39,6 +39,8 @@ class AppNavigator(
     val openPlaylist: (playlistId: String, title: String?, thumbnail: String?) -> Unit,
     val openArtistItems: (endpoint: BrowseEndpoint, title: String) -> Unit,
     val openSoundChem: () -> Unit = {},
+    val openFlac: () -> Unit = {},
+    val openFlacRelease: (key: String) -> Unit = {},
 )
 
 val LocalNavigator = staticCompositionLocalOf<AppNavigator?> { null }

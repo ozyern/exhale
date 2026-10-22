@@ -84,7 +84,19 @@ object LockScreenLyrics {
     }
 
     private fun shouldShow(c: Context, player: Player): Boolean =
-        enabled && player.isPlaying && _lines.value.isNotEmpty() && (canShow(c) || canUseFullScreen(c))
+        enabled && !inCar(c) && player.isPlaying && _lines.value.isNotEmpty() && (canShow(c) || canUseFullScreen(c))
+
+    /** Android Auto's controllers on the session right now; see [MediaLibrarySessionCallback]. */
+    val carControllers: MutableSet<Any> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
+    /**
+     * Driving with Android Auto: the phone's screen goes dark in its mount as a matter of course,
+     * and putting the lyrics up over it then opened Exhale on the phone instead of the car.
+     */
+    private fun inCar(c: Context): Boolean =
+        carControllers.isNotEmpty() ||
+            c.getSystemService(android.app.UiModeManager::class.java)?.currentModeType ==
+            android.content.res.Configuration.UI_MODE_TYPE_CAR
 
     /** Opens the screen now, from Settings, so it can be seen without locking the phone. */
     fun preview(context: Context) {

@@ -346,6 +346,8 @@
             </intent-filter>
         </activity-alias>
 
+        <!-- Lets the platform profiler trace a release build from the shell (frame timing, Perfetto). -->
+        <profileable android:shell="true" tools:targetApi="29" />
     </application>
 
 </manifest>

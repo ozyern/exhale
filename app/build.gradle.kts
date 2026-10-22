@@ -108,6 +108,13 @@ android {
                 ?: ""
         buildConfigField("String", "TOGETHER_BEARER_TOKEN", "\"$togetherBearerToken\"")
 
+        // The FLAC page's Creative Commons shelf; without it that one shelf is simply left out.
+        val jamendoClientId =
+            localProperties.getProperty("JAMENDO_CLIENT_ID")
+                ?: System.getenv("JAMENDO_CLIENT_ID")
+                ?: ""
+        buildConfigField("String", "JAMENDO_CLIENT_ID", "\"$jamendoClientId\"")
+
         buildConfigField("String", "GIT_COMMIT", "\"$gitCommit\"")
     }
 
@@ -341,6 +348,7 @@ dependencies {
     implementation(project(":spotify"))
     implementation(project(":kugou"))
     implementation(project(":lrclib"))
+    implementation(project(":openflac"))
     implementation(project(":lastfm"))
     implementation(project(":betterlyrics"))
     implementation(project(":kizzy"))

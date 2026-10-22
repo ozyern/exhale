@@ -87,6 +87,7 @@ constructor(
         controller: MediaSession.ControllerInfo,
     ): MediaSession.ConnectionResult {
         val connectionResult = super.onConnect(session, controller)
+        if (controller.packageName == AndroidAutoPackage) LockScreenLyrics.carControllers.add(controller)
         val sessionCommands = connectionResult.availableSessionCommands
             .buildUpon()
             .add(MediaSessionConstants.CommandToggleLike)
@@ -111,6 +112,11 @@ constructor(
             .setAvailableSessionCommands(sessionCommands)
             .setAvailablePlayerCommands(playerCommands)
             .build()
+    }
+
+    override fun onDisconnected(session: MediaSession, controller: MediaSession.ControllerInfo) {
+        LockScreenLyrics.carControllers.remove(controller)
+        super.onDisconnected(session, controller)
     }
 
     override fun onCustomCommand(
@@ -839,3 +845,6 @@ constructor(
         private const val HISTORY = "history"
     }
 }
+
+/** Android Auto, as it connects to the session to drive the car display. */
+private const val AndroidAutoPackage = "com.google.android.projection.gearhead"

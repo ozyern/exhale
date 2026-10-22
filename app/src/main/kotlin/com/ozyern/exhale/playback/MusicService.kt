@@ -5488,6 +5488,29 @@ class MusicService :
         return track
     }
 
+    /** FLAC-page songs whose format row is written; every chunk of a stream asks, the first one writes. */
+    private val flacFormatsWritten = ConcurrentHashMap.newKeySet<String>()
+
+    /** Records a FLAC-page song as FLAC, so the player's badge says Lossless for it. */
+    private fun rememberFlacFormat(mediaId: String) {
+        if (!flacFormatsWritten.add(mediaId)) return
+        database.query {
+            upsert(
+                FormatEntity(
+                    id = mediaId,
+                    itag = -1,
+                    mimeType = "audio/flac",
+                    codecs = "flac",
+                    bitrate = 0,
+                    sampleRate = null,
+                    contentLength = 0L,
+                    loudnessDb = null,
+                    playbackUrl = null,
+                ),
+            )
+        }
+    }
+
     /**
      * The catalogue song a music video is a video of: searched by its title and artist, and
      * accepted only when the title and artist agree and the length is close — a video's intro and
@@ -5610,6 +5633,12 @@ class MusicService :
 
             // Music from this phone is the file itself: nothing to look up, cache or fetch.
             com.ozyern.exhale.utils.LocalMediaScanner.uriFor(mediaId)?.let { return@Factory dataSpec.withUri(it) }
+
+            // A song from the FLAC page streams its own file, cached under its id like any stream.
+            com.ozyern.exhale.utils.OpenFlacSongs.uriFor(mediaId)?.let { uri ->
+                rememberFlacFormat(mediaId)
+                return@Factory dataSpec.withUri(uri)
+            }
 
             // A lossless copy of this song on the phone beats YouTube's stream. Decided once per song,
             // so every later chunk of the same stream is a map lookup. Played under its own cache key:
@@ -5936,6 +5965,7 @@ class MusicService :
     /** Where [mediaId] is playing from this session, for the menu: "JioSaavn · 320 kbps", "YouTube". */
     fun streamSourceLabel(mediaId: String): String? {
         if (com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaId)) return "This phone"
+        if (com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId)) return "FLAC"
         val source = streamSource[mediaId] ?: return null
         if (source == YOUTUBE_SOURCE) {
             return "YouTube"
@@ -5963,6 +5993,7 @@ class MusicService :
     private fun saavnLookup(mediaId: String): kotlinx.coroutines.Deferred<JioSaavn.Stream?>? {
         if (!jioSaavnUpgrade || audioQuality == com.ozyern.exhale.constants.AudioQuality.LOW) return null
         if (com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaId)) return null
+        if (com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId)) return null
         saavnLookups[mediaId]?.let { return it }
         val song = queueMetadata[mediaId] ?: return null
         return saavnLookups.getOrPut(mediaId) {
@@ -5977,6 +6008,8 @@ class MusicService :
             .getOrNull()
             ?.takeIf { it.isNotBlank() }
             ?: return
+        // A FLAC-page song is its own address: there is no YouTube URL to fetch ahead.
+        if (com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId)) return
 
         rememberQueueMetadata()
         saavnLookup(mediaId)
@@ -6027,7 +6060,9 @@ class MusicService :
             val currentId = withContext(Dispatchers.Main) {
                 player.currentMediaItem?.mediaId?.trim()?.takeIf { it.isNotBlank() }
             }
-            val streamable = currentId?.takeUnless { com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(it) }
+            val streamable = currentId?.takeUnless {
+                com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(it) || com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(it)
+            }
 
             runCatching {
                 com.ozyern.exhale.innertube.NewPipeUtils.warmUp(streamable ?: WARM_UP_VIDEO_ID)
@@ -6081,6 +6116,10 @@ class MusicService :
             val scheme = item.localConfiguration?.uri?.scheme
             if (scheme == "content" || scheme == "file") return@withContext null
             val mediaId = item.mediaId
+            // A FLAC-page song is a public file the receiver can open itself.
+            com.ozyern.exhale.utils.OpenFlacSongs.uriFor(mediaId)?.let { uri ->
+                return@withContext com.ozyern.exhale.playback.cast.CastStream(uri.toString(), "audio/flac")
+            }
             val cached = playbackUrlCache[mediaId]
                 ?.takeIf { it.second > System.currentTimeMillis() + 60_000L }
                 ?.first
@@ -6364,6 +6403,8 @@ class MusicService :
     }
 
     private suspend fun registerRemoteListeningHistory(mediaId: String) {
+        // Not a YouTube video: there is no watch history to add it to.
+        if (com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId)) return
         if (!isRemoteHistorySyncAllowed()) return
 
         val attemptedUrls = LinkedHashSet<String>()

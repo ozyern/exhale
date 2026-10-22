@@ -755,8 +755,10 @@ private fun LiquidTabBar(
     val capsuleBackdrop = rememberCombinedBackdrop(appBackdrop, tabsBackdrop)
     // The capsule at rest is a dark (or, in light theme, pale) pill that clears to glass when held.
     val restWash = if (isDark) Color(0xFF1C1B1C) else Color(0xFFF2F2F2)
-    val selectedInk = clearGlassContentColor()
-    val restInk = selectedInk.copy(alpha = 0.6f)
+    // The page you are on takes the song's colour (the theme's primary follows the artwork), as
+    // the folded dock's page glyph already did; the others stay the glass's neutral ink.
+    val selectedInk = MaterialTheme.colorScheme.primary
+    val restInk = clearGlassContentColor().copy(alpha = 0.6f)
 
     Box(
         // The gesture belongs to the whole bar, as on iOS: press any tab and the glass comes to
@@ -2158,18 +2160,20 @@ private fun DockSearchField(state: DockSearch, modifier: Modifier) {
             )
             .padding(horizontal = 4.dp),
     ) {
+        // On a results page the arrow steps back to Search. On Search itself the page circle beside
+        // the field is the way home, and the field leads with the magnifier, as the reference's does.
         Box(
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .clickable(onClick = state.onExit)
-                .padding(8.dp),
+                .then(if (state.leadingIsBack) Modifier.clickable(onClick = state.onExit) else Modifier)
+                .padding(if (state.leadingIsBack) 8.dp else 9.dp),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                painter = painterResource(R.drawable.arrow_back),
-                contentDescription = stringResource(if (state.leadingIsBack) R.string.back else R.string.home),
-                tint = ink,
+                painter = painterResource(if (state.leadingIsBack) R.drawable.arrow_back else R.drawable.search),
+                contentDescription = if (state.leadingIsBack) stringResource(R.string.back) else null,
+                tint = if (state.leadingIsBack) ink else ink.copy(alpha = 0.6f),
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -2191,9 +2195,9 @@ private fun DockSearchField(state: DockSearch, modifier: Modifier) {
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                painter = painterResource(R.drawable.search),
+                painter = painterResource(R.drawable.mic),
                 contentDescription = null,
-                tint = ink.copy(alpha = 0.6f),
+                tint = ink,
                 modifier = Modifier.fillMaxSize(),
             )
         }

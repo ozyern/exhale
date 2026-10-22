@@ -140,6 +140,7 @@ class App : Application(), SingletonImageLoader.Factory {
             apiKey = BuildConfig.LASTFM_API_KEY,
             secret = BuildConfig.LASTFM_SECRET
         )
+        com.ozyern.exhale.openflac.OpenFlac.jamendoClientId = BuildConfig.JAMENDO_CLIENT_ID
     }
 
     /**

@@ -81,6 +81,8 @@ fun main() {
     // integrated chip, which can't keep refraction and blur at a 2560×1600 / 240 Hz panel's pace.
     // `-Dskiko.directx.gpu.priority=integrated` puts it back for battery life.
     if (System.getProperty("skiko.directx.gpu.priority") == null) System.setProperty("skiko.directx.gpu.priority", "discrete")
+    // The FLAC page's Creative Commons shelf, from the build's secrets like Last.fm's keys.
+    com.ozyern.exhale.openflac.OpenFlac.jamendoClientId = System.getProperty("exhale.jamendo.id").orEmpty()
 
     // The listener's languages (or Content overrides) decide hl/gl before any request leaves — not
     // the JVM default, which let YouTube localise purely by IP. Half a second of setup that has nothing

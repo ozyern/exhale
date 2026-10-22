@@ -148,6 +148,8 @@ constructor(
             ),
         ) { dataSpec ->
             val mediaId = dataSpec.key ?: error("No media id")
+            // A FLAC-page song downloads its own file, as it is.
+            com.ozyern.exhale.utils.OpenFlacSongs.uriFor(mediaId)?.let { return@Factory dataSpec.withUri(it) }
             songUrlCache[mediaId]?.takeIf { it.second > System.currentTimeMillis() }?.let {
                 // The length of *this* stream, never the shared format row, which playback rewrites.
                 return@Factory bounded(dataSpec.withUri(it.first.toUri()), mediaId, it.third, useStoredLength = false)

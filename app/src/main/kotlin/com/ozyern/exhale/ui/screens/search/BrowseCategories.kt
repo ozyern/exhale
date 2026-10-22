@@ -103,6 +103,9 @@ val BrowseCategories: List<BrowseCategory> = listOf(
     BrowseCategory("Focus", "Focus", Color(0xFF7E9CE0), Color(0xFF4B6BB0)),
 )
 
+/** The FLAC page's tile: lossless recordings, free to play. */
+private val FlacCategory = BrowseCategory("FLAC", "", Color(0xFF3DB8A8), Color(0xFF1E6F86))
+
 /**
  * Process-wide cache of dynamic category artwork, resolved once from YouTube Music (top featured
  * playlist thumbnail for each genre bucket) then held in memory for the app's lifetime — repeat
@@ -158,8 +161,17 @@ fun BrowseCategoriesGrid(
     showProfile: Boolean = true,
     /** Under the title, full width: the search field, when it sits at the top. */
     searchField: (@Composable () -> Unit)? = null,
+    /** Opens the FLAC page; given, a FLAC tile leads the grid. */
+    onFlacClick: (() -> Unit)? = null,
 ) {
     val categoryImages by BrowseCategoryImages.images.collectAsState()
+    var flacImage by remember { mutableStateOf<String?>(null) }
+    if (onFlacClick != null) {
+        LaunchedEffect(Unit) {
+            flacImage = com.ozyern.exhale.openflac.OpenFlac.shelves().getOrNull()
+                ?.firstNotNullOfOrNull { shelf -> shelf.releases.firstNotNullOfOrNull { it.artworkUrl } }
+        }
+    }
 
     // Resolve artwork off the main thread; no-op once cached.
     LaunchedEffect(Unit) {
@@ -227,6 +239,12 @@ fun BrowseCategoriesGrid(
         if (searchField != null) {
             item(span = { GridItemSpan(maxLineSpan) }, key = "browse_field", contentType = "field") {
                 Box(Modifier.padding(bottom = 4.dp)) { searchField() }
+            }
+        }
+
+        if (onFlacClick != null) {
+            item(key = "flac", contentType = "category") {
+                BrowseCategoryCard(category = FlacCategory, imageUrl = flacImage, onClick = onFlacClick)
             }
         }
 

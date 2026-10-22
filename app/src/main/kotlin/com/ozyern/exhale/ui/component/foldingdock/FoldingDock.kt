@@ -353,9 +353,19 @@ fun FoldingDock(
         // clocks start after it, so the opening of the morph is drawn instead of skipped.
         withFrameNanos { }
         val collapsing = visual == DockVisual.Inline
-        launch { pillRect.animateTo(t.pill, if (collapsing) BarMotion.CollapseSurface else BarMotion.ExpandSurface) }
-        launch { searchRect.animateTo(t.search, if (collapsing) BarMotion.CollapseSurface else BarMotion.ExpandSurface) }
-        launch { glyphRect.animateTo(t.glyph, if (collapsing) BarMotion.CollapseItem else BarMotion.ExpandItem) }
+        val surface = when {
+            collapsing && !hasPlayer -> BarMotion.CollapseEmptySurface
+            collapsing -> BarMotion.CollapseSurface
+            else -> BarMotion.ExpandSurface
+        }
+        val item = when {
+            collapsing && !hasPlayer -> BarMotion.CollapseEmptyItem
+            collapsing -> BarMotion.CollapseItem
+            else -> BarMotion.ExpandItem
+        }
+        launch { pillRect.animateTo(t.pill, surface) }
+        launch { searchRect.animateTo(t.search, surface) }
+        launch { glyphRect.animateTo(t.glyph, item) }
         launch {
             playerRect.animateTo(t.player, if (collapsing) BarMotion.CollapseAccessory else BarMotion.ExpandAccessory)
             restVisual = visual
@@ -379,7 +389,9 @@ fun FoldingDock(
         val collapsing = visual == DockVisual.Inline
         val ms = BarMotion.barMs(collapsing)
         val enter = tween<Float>((ms * 0.62f).toInt(), delayMillis = (ms * 0.16f).toInt(), easing = LinearOutSlowInEasing)
-        val exit = tween<Float>((BarMotion.morphMs(collapsing) * 0.6f).toInt(), easing = FastOutLinearInEasing)
+        // Folding with nothing playing the tabs fade over the longer fold, not ahead of it.
+        val exitMs = if (collapsing && !hasPlayer) BarMotion.CollapseEmptyMs else BarMotion.morphMs(collapsing)
+        val exit = tween<Float>((exitMs * 0.6f).toInt(), easing = FastOutLinearInEasing)
         launch {
             val on = visual == DockVisual.Expanded
             tabsAlpha.animateTo(if (on) 1f else 0f, if (on) enter else exit)
@@ -398,7 +410,9 @@ fun FoldingDock(
                 handOver.animateTo(1f, tween(120, easing = LinearEasing))
             }
         }
-        launch {
+        // Folding only: unfolding, the melt blurred the arriving tabs into an empty blob for the
+        // first frames of the bar, before their icons came through.
+        if (collapsing) launch {
             goo.snapTo(0f)
             goo.animateTo(0f, keyframes {
                 durationMillis = ms

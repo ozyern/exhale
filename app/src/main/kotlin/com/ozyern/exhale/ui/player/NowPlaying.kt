@@ -578,7 +578,8 @@ internal fun NowPlayingScreen(
         while (isActive) {
             // Paused and come to rest: wait for the music instead of redrawing a still cover on
             // every frame for as long as the player is open.
-            if (!driftPlaying && speed < 0.001f) {
+            // 0.02 of full speed is still: waiting for 0.001 kept every frame drawing ~8 s after a pause.
+            if (!driftPlaying && speed < 0.02f) {
                 speed = 0f
                 snapshotFlow { driftPlaying }.first { it }
                 last = System.nanoTime()
@@ -3725,14 +3726,35 @@ private fun LiveArtworkBackdrop(
 internal suspend fun prewarmPlayerBackdrop(context: android.content.Context, thumbnailUrl: String?) {
     val url = thumbnailUrl?.highRes() ?: return
     runCatching { context.imageLoader.execute(ImageRequest.Builder(context).data(url).build()) }
+    // The palette too, so the player opens in the cover's colours instead of fading into them.
+    if (synchronized(PaletteCache) { PaletteCache[url] } != null) return
+    val small = ImageRequest.Builder(context).data(url).size(128, 128).allowHardware(false).build()
+    val bitmap = runCatching { context.imageLoader.execute(small).image?.toBitmap() }.getOrNull() ?: return
+    val palette = withContext(Dispatchers.Default) { MeshPalette(paletteOf(bitmap), accentOf(bitmap)) }
+    synchronized(PaletteCache) { PaletteCache[url] = palette }
+}
+
+/**
+ * Palettes already worked out, by artwork address. The player is built afresh on every open, and
+ * starting each build from the fallback made the accent fade in over 900 ms every time — a fade
+ * that recomposed the whole screen and every glyph tinted by it on every frame of the opening.
+ */
+private val PaletteCache = object : LinkedHashMap<String, MeshPalette>(32, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, MeshPalette>?) = size > 48
 }
 
 @Composable
 internal fun rememberArtworkPalette(imageUrl: String?): MeshPalette {
     val context = LocalContext.current
-    var palette by remember { mutableStateOf(MeshPalette(FallbackMesh)) }
+    var palette by remember {
+        mutableStateOf(imageUrl?.let { synchronized(PaletteCache) { PaletteCache[it] } } ?: MeshPalette(FallbackMesh))
+    }
     LaunchedEffect(imageUrl) {
         if (imageUrl == null) return@LaunchedEffect
+        synchronized(PaletteCache) { PaletteCache[imageUrl] }?.let {
+            palette = it
+            return@LaunchedEffect
+        }
         val request = ImageRequest.Builder(context)
             .data(imageUrl)
             .size(128, 128)
@@ -3741,6 +3763,7 @@ internal fun rememberArtworkPalette(imageUrl: String?): MeshPalette {
         val bitmap = runCatching { context.imageLoader.execute(request).image?.toBitmap() }.getOrNull()
             ?: return@LaunchedEffect
         palette = withContext(Dispatchers.Default) { MeshPalette(paletteOf(bitmap), accentOf(bitmap)) }
+            .also { synchronized(PaletteCache) { PaletteCache[imageUrl] = it } }
     }
     return palette
 }

@@ -109,6 +109,8 @@ import com.ozyern.exhale.desktop.ui.onboarding.OnboardingScreen
 import com.ozyern.exhale.desktop.ui.pages.AlbumScreen
 import com.ozyern.exhale.desktop.ui.pages.ArtistItemsScreen
 import com.ozyern.exhale.desktop.ui.pages.ArtistScreen
+import com.ozyern.exhale.desktop.ui.pages.FlacReleaseScreen
+import com.ozyern.exhale.desktop.ui.pages.FlacScreen
 import com.ozyern.exhale.desktop.ui.pages.PlaylistScreen
 import com.ozyern.exhale.desktop.ui.pages.SoundChemScreen
 import com.ozyern.exhale.desktop.ui.player.FullPlayer
@@ -191,6 +193,8 @@ private sealed class Route(val key: String) {
     data class Playlist(val playlistId: String, val title: String?, val thumbnail: String?, val shared: String?) : Route("playlist:$playlistId")
     data class ArtistItems(val browseId: String, val params: String?, val title: String) : Route("artist-items:$browseId:$params")
     data object SoundChem : Route("sound-chem")
+    data object Flac : Route("flac")
+    data class FlacRelease(val releaseKey: String) : Route("flac:$releaseKey")
 }
 
 /** Which way the page stack moved, so the transition knows whether to fade through, push or pop. */
@@ -383,6 +387,14 @@ fun ExhaleApp(player: DesktopPlayer) {
                 playerOpen = false
                 push(Route.SoundChem)
             },
+            openFlac = {
+                playerOpen = false
+                push(Route.Flac)
+            },
+            openFlacRelease = { key ->
+                playerOpen = false
+                push(Route.FlacRelease(key))
+            },
         )
     }
 
@@ -563,6 +575,8 @@ fun ExhaleApp(player: DesktopPlayer) {
                             is Route.Playlist -> PlaylistScreen(current.playlistId, current.title, current.thumbnail, current.shared, player, state, insets, onBack = { pop() })
                             is Route.ArtistItems -> ArtistItemsScreen(current.browseId, current.params, current.title, player, state, insets, onBack = { pop() })
                             Route.SoundChem -> SoundChemScreen(player, state, insets, onBack = { pop() })
+                            Route.Flac -> FlacScreen(insets, onBack = { pop() })
+                            is Route.FlacRelease -> FlacReleaseScreen(current.releaseKey, player, state, insets, onBack = { pop() })
                         }
                     }
                     }

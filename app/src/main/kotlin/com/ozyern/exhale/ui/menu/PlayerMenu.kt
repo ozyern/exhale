@@ -731,7 +731,9 @@ fun ColumnScope.PlayerMenu(
                     )
 
                     // A tagged .m4a in Music/Exhale. Songs already on the phone have nothing to save.
-                    if (!com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaMetadata.id)) {
+                    if (!com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaMetadata.id) &&
+                        !com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaMetadata.id)
+                    ) {
                         Divider()
                         PlayerMenuRow(
                             icon = R.drawable.save_to_device,

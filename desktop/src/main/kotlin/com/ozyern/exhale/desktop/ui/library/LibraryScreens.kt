@@ -92,6 +92,7 @@ fun MoodAndGenresScreen(insets: ChromeInsets, onOpen: (browseId: String, params:
         modifier = Modifier.fillMaxSize(),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) { LargeTitle("Mood & Genres", Modifier.padding(bottom = 8.dp)) }
+        item(span = { GridItemSpan(maxLineSpan) }) { com.ozyern.exhale.desktop.ui.pages.FlacShelf() }
         val loaded = groups
         if (loaded == null) {
             items(12) { Box(Modifier.fillMaxWidth().height(88.dp).glassPlate(RoundedCornerShape(16.dp))) }

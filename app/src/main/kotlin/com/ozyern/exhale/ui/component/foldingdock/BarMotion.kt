@@ -152,16 +152,20 @@ internal object BarMotion {
     fun barMs(collapsing: Boolean) = if (collapsing) CollapseMs else ExpandMs
     fun morphMs(collapsing: Boolean) = if (collapsing) CollapseMorphMs else ExpandMorphMs
 
-    private val CollapseSpring = SpringEasing(zeta = 0.62f)
-    private val ExpandSpring = SpringEasing(zeta = 0.58f)
-    private val BarSurfaceCollapseSpring = CriticalEasing()
-    private val BarSurfaceExpandSpring = SpringEasing(zeta = 0.74f)
-    private val BarSurfaceExpandWidthSpring = SpringEasing(zeta = 0.40f)
-    private val AccessoryCollapseXSpring = SpringEasing(zeta = 0.56f, omegaT = 9f)
-    private val AccessoryExpandXSpring = SpringEasing(zeta = 0.34f, omegaT = 9f)
-
     /** Centre travel for everything: spring-shaped, never overshoots. */
     val Travel = CriticalEasing()
+
+    // Sizes ride the same curve as the centres. Bouncier size springs (zeta 0.34-0.62) grew each
+    // body to its new size, and 25-30% past it, while its centre had barely left, so the search
+    // circle and the player swelled fat in place before they moved. Grown on one clock, a body
+    // changes shape and place together and lands without a bulge.
+    private val CollapseSpring = Travel
+    private val ExpandSpring = Travel
+    private val BarSurfaceCollapseSpring = Travel
+    private val BarSurfaceExpandSpring = Travel
+    private val BarSurfaceExpandWidthSpring = Travel
+    private val AccessoryCollapseXSpring = Travel
+    private val AccessoryExpandXSpring = Travel
 
     val CollapseAccessory = AxisStaggerSpec(
         x = AxisCurve(0, 560, Travel, sizeEasing = AccessoryCollapseXSpring),
@@ -179,6 +183,19 @@ internal object BarMotion {
 
     val CollapseSurface = surface(CollapseMorphMs, BarSurfaceCollapseSpring)
     val ExpandSurface = surface(ExpandMorphMs, BarSurfaceExpandSpring, BarSurfaceExpandWidthSpring)
+
+    /**
+     * Folding with nothing playing: the whole bar gathers into two circles in the middle, a far
+     * bigger change of shape than stepping aside for the player, so it is given longer and a
+     * softer start — at the player fold's 560 ms it read as a snap.
+     */
+    const val CollapseEmptyMs = 760
+    private val EmptyTravel = CriticalEasing(omegaT = 6.2f)
+    val CollapseEmptySurface = AxisStaggerSpec(
+        x = AxisCurve(0, CollapseEmptyMs, EmptyTravel),
+        y = AxisCurve(0, CollapseEmptyMs, EmptyTravel),
+    )
+    val CollapseEmptyItem = tween<Rect>(CollapseEmptyMs, easing = EmptyTravel)
 
     /** Items riding the morph (the travelling page glyph): no overshoot at all. */
     val CollapseItem = tween<Rect>(CollapseMorphMs, easing = Travel)

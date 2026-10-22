@@ -2485,7 +2485,7 @@ class MainActivity : ComponentActivity() {
                                                     onHomeClick = {
                                                         if (isSearchResultsRoute) {
                                                             navController.navigateUp()
-                                                        } else {
+                                                        } else if (!navController.popBackStack(Screens.Home.route, inclusive = false)) {
                                                             navController.navigate(Screens.Home.route) {
                                                                 popUpTo(navController.graph.startDestinationId) {
                                                                     saveState = true
@@ -2612,11 +2612,10 @@ class MainActivity : ComponentActivity() {
                                                         if (isSearchResultsRoute) {
                                                             navController.navigateUp()
                                                         } else {
-                                                            navController.navigate(Screens.Home.route) {
-                                                                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                                                launchSingleTop = true
-                                                                restoreState = true
-                                                            }
+                                                            // The same step the dock's Home takes: down the stack to
+                                                            // Home. Switching to it as a tab restored the page last
+                                                            // opened from Home, so the arrow looked like it did nothing.
+                                                            dockNavigate(Screens.Home, false)
                                                         }
                                                     },
                                                     onTapBar = {

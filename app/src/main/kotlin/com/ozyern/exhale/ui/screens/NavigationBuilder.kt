@@ -163,6 +163,15 @@ fun NavGraphBuilder.navigationBuilder(
     composable("charts_screen") {
         ChartsScreen(navController)
     }
+    composable("flac") {
+        FlacScreen(navController)
+    }
+    composable(
+        route = "flac_release/{key}",
+        arguments = listOf(navArgument("key") { type = NavType.StringType }),
+    ) { entry ->
+        FlacReleaseScreen(navController, entry.arguments?.getString("key").orEmpty())
+    }
     composable(
         route = "browse/{browseId}",
         arguments = listOf(

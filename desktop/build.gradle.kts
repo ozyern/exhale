@@ -16,6 +16,8 @@ dependencies {
     implementation(project(":innertube"))
     // Same lyrics sources as the Android app.
     implementation(project(":lrclib"))
+    // The FLAC page's catalogue, shared with the Android app.
+    implementation(project(":openflac"))
     implementation(project(":betterlyrics"))
     implementation(project(":simpmusic"))
     implementation(project(":kugou"))
@@ -130,6 +132,7 @@ compose.desktop {
             "-Dfile.encoding=UTF-8",
             "-Dexhale.lastfm.key=${secret("LASTFM_API_KEY")}",
             "-Dexhale.lastfm.secret=${secret("LASTFM_SECRET")}",
+            "-Dexhale.jamendo.id=${secret("JAMENDO_CLIENT_ID")}",
         )
 
         nativeDistributions {
