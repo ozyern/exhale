@@ -6,6 +6,8 @@
 
 package com.ozyern.exhale.desktop.ui.pages
 
+import com.ozyern.exhale.desktop.ui.pressScale
+
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -93,7 +95,7 @@ fun FlacShelf() {
 
 /** Every FLAC shelf: concerts, independent labels, 78s, Creative Commons albums and classical. */
 @Composable
-fun FlacScreen(insets: ChromeInsets, onBack: () -> Unit) {
+fun FlacScreen(insets: ChromeInsets, onBack: (() -> Unit)?) {
     val nav = LocalNavigator.current
     val result by produceState<Result<List<OpenFlac.Shelf>>?>(null) { value = OpenFlac.shelves() }
     val listState = rememberLazyListState()
@@ -103,7 +105,7 @@ fun FlacScreen(insets: ChromeInsets, onBack: () -> Unit) {
             contentPadding = PaddingValues(start = insets.start + 20.dp, end = 40.dp, top = 16.dp, bottom = insets.bottom + 24.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            item(key = "back") { GlassIconButton(NavIcons.Back, "Back", onBack, Modifier.padding(bottom = 18.dp)) }
+            if (onBack != null) item(key = "back") { GlassIconButton(NavIcons.Back, "Back", onBack, Modifier.padding(bottom = 18.dp)) }
             item(key = "title") {
                 LargeTitle("FLAC")
                 Text(
@@ -218,15 +220,7 @@ private fun FlacCard(release: OpenFlac.Release, size: Dp, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val hovered by interaction.collectIsHoveredAsState()
-    val scale by animateFloatAsState(
-        when {
-            pressed -> 0.96f
-            hovered -> 1.02f
-            else -> 1f
-        },
-        spring(0.72f, 520f),
-        label = "flac_card",
-    )
+    val scale by pressScale(pressed, hovered, pressedScale = 0.96f, hoverScale = 1.02f)
     Column(
         modifier = Modifier
             .width(size)

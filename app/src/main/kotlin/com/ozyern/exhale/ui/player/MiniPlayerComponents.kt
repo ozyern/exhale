@@ -483,12 +483,44 @@ fun NewMiniPlayerContent(
         // inset gets clipped to a stub by the pill itself.
         // The progress is the ring around play and pause now; a hairline as well said it twice.
 
+        // In the wide layout the pill is the bottom bar's transport, as Apple Music's is on a large
+        // screen: back, play and forward lead, the song follows. The tabs are on the rail there,
+        // so the bar has the width for them.
+        val wideTransport = com.ozyern.exhale.ui.component.LocalWideChrome.current
+        val canSkipPrevious by playerConnection.canSkipPrevious.collectAsState()
+        val canSkipNext by playerConnection.canSkipNext.collectAsState()
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 8.dp),
         ) {
+            if (wideTransport) {
+                val transportLatestPosition by rememberUpdatedState(position)
+                val transportLatestDuration by rememberUpdatedState(duration)
+                MiniTransportGlyph(
+                    icon = R.drawable.skip_previous,
+                    label = stringResource(R.string.previous),
+                    enabled = canSkipPrevious,
+                    onClick = { playerConnection.seekToPrevious() },
+                )
+                com.ozyern.exhale.ui.component.RingPlayPauseButton(
+                    isPlaying = isPlaying,
+                    isLoading = isLoading,
+                    progress = {
+                        if (transportLatestDuration > 0) transportLatestPosition.toFloat() / transportLatestDuration else 0f
+                    },
+                    onClick = { playerConnection.player.togglePlayPause() },
+                    size = if (compact) 36.dp else 44.dp,
+                )
+                MiniTransportGlyph(
+                    icon = R.drawable.skip_next,
+                    label = stringResource(R.string.next),
+                    enabled = canSkipNext,
+                    onClick = { playerConnection.seekToNext() },
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+            }
             MiniPlayerArtwork(
                 mediaMetadata = mediaMetadata,
                 isLoading = isLoading,
@@ -570,17 +602,49 @@ fun NewMiniPlayerContent(
             // reaches past its own bounds, in a capsule with 4dp of room above and below it. That
             // is the button visibly hanging out of the pill on the settings page.
             // Play and pause in a ring that is the song's progress, as the reference has it.
-            val latestPosition by rememberUpdatedState(position)
-            val latestDuration by rememberUpdatedState(duration)
-            com.ozyern.exhale.ui.component.RingPlayPauseButton(
-                isPlaying = isPlaying,
-                isLoading = isLoading,
-                progress = { if (latestDuration > 0) latestPosition.toFloat() / latestDuration else 0f },
-                onClick = { playerConnection.player.togglePlayPause() },
-                size = if (compact) 36.dp else 44.dp,
-            )
+            // In the wide transport it already leads the bar.
+            if (!wideTransport) {
+                val latestPosition by rememberUpdatedState(position)
+                val latestDuration by rememberUpdatedState(duration)
+                com.ozyern.exhale.ui.component.RingPlayPauseButton(
+                    isPlaying = isPlaying,
+                    isLoading = isLoading,
+                    progress = { if (latestDuration > 0) latestPosition.toFloat() / latestDuration else 0f },
+                    onClick = { playerConnection.player.togglePlayPause() },
+                    size = if (compact) 36.dp else 44.dp,
+                )
+            }
         }
 
+    }
+}
+
+/** Back or forward in the wide transport: a quiet glyph with a full 44dp target. */
+@Composable
+private fun MiniTransportGlyph(
+    icon: Int,
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .clickable(
+                enabled = enabled,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+    ) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = label,
+            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.9f else 0.35f),
+            modifier = Modifier.size(24.dp),
+        )
     }
 }
 

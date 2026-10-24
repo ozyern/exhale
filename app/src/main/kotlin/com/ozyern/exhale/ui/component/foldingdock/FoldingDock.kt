@@ -15,14 +15,11 @@ import android.os.Build
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOut
-import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.VectorConverter
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
@@ -115,6 +112,7 @@ import com.kyant.backdrop.highlight.HighlightStyle
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
 import com.ozyern.exhale.ui.component.liquid.LocalAppBackdrop
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -190,9 +188,6 @@ internal fun BackdropEffectScope.dockGlassEffects() {
 // above it, the folded row with the player inline, and the search row.
 private enum class DockVisual { Inline, Expanded, Search, Typing }
 
-// Peak blur of the gooey pulse while the shapes merge or split.
-private val GooeyPeakBlur = 12.dp
-
 // What a tab's label adds under its glyph: 2dp of gap and one line of 10sp.
 private val TabLabelBlock = 16.dp
 
@@ -212,10 +207,10 @@ private class DockRects(val pill: Rect, val search: Rect, val player: Rect, val 
  * circle widens into the field and the pill retracts the same way, with the player above.
  *
  * Each piece is one rect, and a change of shape animates every rect from wherever it is to its
- * place in the new shape on the reference's [BarMotion] clocks: the bodies swell past their size
- * and settle, the player slides sideways first and drops a beat later (rises first and widens a
- * beat later the other way), and the page glyph travels between its tab and the circle on a curve
- * that never overshoots. A gooey pulse joins the pieces where they touch. Nothing crossfades.
+ * place in the new shape on [BarMotion]'s springs: the pill retracts first and the player drops a
+ * beat later into the room it left (rises first, and the pill widens a beat later, the other way),
+ * and the page glyph travels between its tab and the circle without overshooting. Springs keep
+ * their speed, so a fold caught by an unfold turns round instead of restarting.
  *
  * Search is the last of [tabs] when [hasSearchTab]. The bar measures to its row; the open player
  * hangs above it, exactly where the player sheet's own pill sits, and the dock only draws it while
@@ -324,10 +319,13 @@ fun FoldingDock(
         }
     }
 
-    val pillRect = remember { Animatable(Rect.Zero, Rect.VectorConverter) }
-    val searchRect = remember { Animatable(Rect.Zero, Rect.VectorConverter) }
-    val playerRect = remember { Animatable(Rect.Zero, Rect.VectorConverter) }
-    val glyphRect = remember { Animatable(Rect.Zero, Rect.VectorConverter) }
+    val pillRect = remember { Animatable(Rect.Zero, Rect.VectorConverter, Rect.VisibilityThreshold) }
+    val searchRect = remember { Animatable(Rect.Zero, Rect.VectorConverter, Rect.VisibilityThreshold) }
+    // The player's two axes ride separate springs, so one can start a beat after the other:
+    // left/right packed in one Offset, top/bottom in the other.
+    val playerX = remember { Animatable(Offset.Zero, Offset.VectorConverter, Offset.VisibilityThreshold) }
+    val playerY = remember { Animatable(Offset.Zero, Offset.VectorConverter, Offset.VisibilityThreshold) }
+    val glyphRect = remember { Animatable(Rect.Zero, Rect.VectorConverter, Rect.VisibilityThreshold) }
     var placed by remember { mutableStateOf(false) }
     // The shape the player last came to rest in; while it differs from [visual] the player is moving.
     var restVisual by remember { mutableStateOf(visual) }
@@ -338,47 +336,56 @@ fun FoldingDock(
         val t = targets(visual)
         val switched = visual != shownVisual[0]
         shownVisual[0] = visual
-        val running = pillRect.isRunning || searchRect.isRunning || playerRect.isRunning || glyphRect.isRunning
+        val running = pillRect.isRunning || searchRect.isRunning || playerX.isRunning ||
+            playerY.isRunning || glyphRect.isRunning
+        val px = Offset(t.player.left, t.player.right)
+        val py = Offset(t.player.top, t.player.bottom)
         if (!placed || (!switched && !running)) {
             // First frame, or at rest with the room changed (rotation, insets): follow, don't animate.
             pillRect.snapTo(t.pill)
             searchRect.snapTo(t.search)
-            playerRect.snapTo(t.player)
+            playerX.snapTo(px)
+            playerY.snapTo(py)
             glyphRect.snapTo(t.glyph)
             placed = true
             restVisual = visual
             return@LaunchedEffect
         }
         // A change of shape usually lands with a page change whose first frame is a long one. The
-        // clocks start after it, so the opening of the morph is drawn instead of skipped.
+        // springs start after it, so the opening of the morph is drawn instead of skipped.
         withFrameNanos { }
         val collapsing = visual == DockVisual.Inline
-        val surface = when {
-            collapsing && !hasPlayer -> BarMotion.CollapseEmptySurface
-            collapsing -> BarMotion.CollapseSurface
-            else -> BarMotion.ExpandSurface
-        }
-        val item = when {
-            collapsing && !hasPlayer -> BarMotion.CollapseEmptyItem
-            collapsing -> BarMotion.CollapseItem
-            else -> BarMotion.ExpandItem
-        }
-        launch { pillRect.animateTo(t.pill, surface) }
-        launch { searchRect.animateTo(t.search, surface) }
-        launch { glyphRect.animateTo(t.glyph, item) }
+        val surface = BarMotion.surface(collapsing, hasPlayer)
+        // Only a fold or unfold from rest is staggered. Caught mid-motion, every piece turns round
+        // at once and keeps its speed: a delay there would freeze it for a beat.
+        val stagger = switched && !running
         launch {
-            playerRect.animateTo(t.player, if (collapsing) BarMotion.CollapseAccessory else BarMotion.ExpandAccessory)
+            if (stagger && !collapsing) delay(BarMotion.ExpandBarDelayMs)
+            pillRect.animateTo(t.pill, surface)
+        }
+        launch {
+            if (stagger && !collapsing) delay(BarMotion.ExpandBarDelayMs)
+            searchRect.animateTo(t.search, surface)
+        }
+        launch { glyphRect.animateTo(t.glyph, BarMotion.item(collapsing, hasPlayer)) }
+        launch {
+            val x = launch {
+                if (stagger && !collapsing) delay(BarMotion.ExpandPlayerWidenDelayMs)
+                playerX.animateTo(px, BarMotion.player)
+            }
+            if (stagger && collapsing) delay(BarMotion.CollapsePlayerDropDelayMs)
+            playerY.animateTo(py, BarMotion.player)
+            x.join()
             restVisual = visual
         }
     }
 
-    // The contents of each shape: the outgoing ones clear quickly once the bodies start moving,
-    // the incoming ones arrive after a beat and overlap them, so there is never a blank midpoint.
+    // The contents of each shape: the outgoing ones clear while their plate is still wide, the
+    // incoming ones arrive once it has opened far enough to hold them.
     val tabsAlpha = remember { Animatable(if (visual == DockVisual.Expanded) 1f else 0f) }
     val fieldAlpha = remember { Animatable(if (visual == DockVisual.Search || visual == DockVisual.Typing) 1f else 0f) }
     val handOver = remember { Animatable(if (visual == DockVisual.Typing) 0f else 1f) }
     val typingGlyph = remember { Animatable(if (visual == DockVisual.Typing) 1f else 0f) }
-    val goo = remember { Animatable(0f) }
     val firstShape = remember { booleanArrayOf(true) }
     LaunchedEffect(visual) {
         if (firstShape[0]) {
@@ -386,19 +393,13 @@ fun FoldingDock(
             return@LaunchedEffect
         }
         withFrameNanos { }
-        val collapsing = visual == DockVisual.Inline
-        val ms = BarMotion.barMs(collapsing)
-        val enter = tween<Float>((ms * 0.62f).toInt(), delayMillis = (ms * 0.16f).toInt(), easing = LinearOutSlowInEasing)
-        // Folding with nothing playing the tabs fade over the longer fold, not ahead of it.
-        val exitMs = if (collapsing && !hasPlayer) BarMotion.CollapseEmptyMs else BarMotion.morphMs(collapsing)
-        val exit = tween<Float>((exitMs * 0.6f).toInt(), easing = FastOutLinearInEasing)
         launch {
             val on = visual == DockVisual.Expanded
-            tabsAlpha.animateTo(if (on) 1f else 0f, if (on) enter else exit)
+            tabsAlpha.animateTo(if (on) 1f else 0f, if (on) BarMotion.contentIn else BarMotion.contentOut)
         }
         launch {
             val on = visual == DockVisual.Search || visual == DockVisual.Typing
-            fieldAlpha.animateTo(if (on) 1f else 0f, if (on) enter else exit)
+            fieldAlpha.animateTo(if (on) 1f else 0f, if (on) BarMotion.contentIn else BarMotion.contentOut)
         }
         launch {
             // Typing, the field that rides the keyboard takes over once this one has widened.
@@ -410,17 +411,9 @@ fun FoldingDock(
                 handOver.animateTo(1f, tween(120, easing = LinearEasing))
             }
         }
-        // Folding only: unfolding, the melt blurred the arriving tabs into an empty blob for the
-        // first frames of the bar, before their icons came through.
-        if (collapsing) launch {
-            goo.snapTo(0f)
-            goo.animateTo(0f, keyframes {
-                durationMillis = ms
-                0f at 0
-                1f at ms / 2 using FastOutSlowInEasing
-                0f at ms
-            })
-        }
+        // No gooey melt any more. Its blur ran over the fading tabs, glass and all, and the
+        // threshold that was meant to snap them back to a crisp edge could not with semi-clear
+        // glass in the layer: the open bar folded as a smeared ghost of itself.
     }
 
     // The dock draws the player whenever it is not resting open: folded, or on its way.
@@ -435,7 +428,6 @@ fun FoldingDock(
     val glowScope = rememberCoroutineScope()
     val selectedGlow = remember(glowScope) { InteractiveHighlight(animationScope = glowScope) }
     val searchGlow = remember(glowScope) { InteractiveHighlight(animationScope = glowScope) }
-    val gooeyPx = with(density) { GooeyPeakBlur.toPx() }
     val appBackdrop = LocalAppBackdrop.current
 
     val ink = if (isSystemInDarkTheme()) Color.White else Color.Black
@@ -466,8 +458,6 @@ fun FoldingDock(
 
     val expanded = visual == DockVisual.Expanded
     Layout(
-        // The gooey pulse melts only the contents that fade (the open tabs, the field), as the
-        // reference's does: its surfaces and its player draw above that layer and stay crisp.
         modifier = modifier
             .fillMaxWidth()
             .graphicsLayer { alpha = handOver.value },
@@ -486,7 +476,6 @@ fun FoldingDock(
             // 1: the open tabs, at the open pill's size, clipped to the pill as it retracts.
             Box(
                 Modifier
-                    .gooey { gooeyPx * goo.value }
                     .graphicsLayer { alpha = tabsAlpha.value }
                     .drawWithContent {
                         // At rest and open the bar draws whole: its pressed capsule swells past its
@@ -552,7 +541,6 @@ fun FoldingDock(
             // 3: the search field, grown out of the circle.
             Box(
                 Modifier
-                    .gooey { gooeyPx * goo.value }
                     .graphicsLayer { alpha = fieldAlpha.value }
                     .then(if (visual != DockVisual.Search) Modifier.clearAndSetSemantics {} else Modifier),
             ) {
@@ -600,7 +588,7 @@ fun FoldingDock(
         val settled = if (placed) null else targets(visual)
         val pill = settled?.pill ?: pillRect.value
         val search = settled?.search ?: searchRect.value
-        val player = settled?.player ?: playerRect.value
+        val player = settled?.player ?: Rect(playerX.value.x, playerY.value.x, playerX.value.y, playerY.value.y)
         val glyph = settled?.glyph ?: glyphRect.value
         val openPx = OpenRowHeight.roundToPx()
         val height = maxOf(-pill.top, -search.top, 1f).roundToInt()

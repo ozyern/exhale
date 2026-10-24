@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.Font as FontFace
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.unit.Density
@@ -133,10 +134,22 @@ private fun animate(target: ColorScheme): ColorScheme {
     )
 }
 
-/** The Android app's font. */
-private val Linotte: FontFamily by lazy {
-    val bytes = object {}.javaClass.getResourceAsStream("/font/linotte.ttf")!!.use { it.readAllBytes() }
-    FontFamily(Font(identity = "linotte", data = bytes))
+/**
+ * Inter, in four real weights: the open face drawn after Apple's SF, which the Music app is set in
+ * (SF itself is only licensed for Apple's platforms). Real weights, so a regular label is regular —
+ * the Linotte file this replaced came in Bold only, and every line of the app was set bold with it.
+ */
+private val Inter: FontFamily by lazy {
+    fun face(file: String, weight: FontWeight): FontFace {
+        val bytes = object {}.javaClass.getResourceAsStream("/font/$file.ttf")!!.use { it.readAllBytes() }
+        return Font(identity = file, data = bytes, weight = weight)
+    }
+    FontFamily(
+        face("inter_regular", FontWeight.Normal),
+        face("inter_medium", FontWeight.Medium),
+        face("inter_semibold", FontWeight.SemiBold),
+        face("inter_bold", FontWeight.Bold),
+    )
 }
 
 /**
@@ -145,7 +158,8 @@ private val Linotte: FontFamily by lazy {
  */
 private fun exhaleTypography(font: FontFamily): Typography {
     val base = Typography()
-    fun TextStyle.f() = copy(fontFamily = font)
+    // Material spaces its small text out (up to 0.5sp); SF sits slightly tight at these sizes.
+    fun TextStyle.f() = copy(fontFamily = font, letterSpacing = (-0.08).sp)
     return Typography(
         displayLarge = TextStyle(fontFamily = font, fontWeight = FontWeight.Bold, fontSize = 57.sp, lineHeight = 64.sp, letterSpacing = (-1.0).sp),
         displayMedium = TextStyle(fontFamily = font, fontWeight = FontWeight.Bold, fontSize = 45.sp, lineHeight = 52.sp, letterSpacing = (-0.8).sp),
@@ -185,7 +199,7 @@ fun ExhaleTheme(settings: Settings, artworkSeed: Color?, content: @Composable ()
     }
     val target = remember(palette, settings.pureBlack) { exhaleColorScheme(palette, settings.pureBlack) }
     val scheme = animate(target)
-    val typography = remember { exhaleTypography(Linotte) }
+    val typography = remember { exhaleTypography(Inter) }
     val density = LocalDensity.current
 
     CompositionLocalProvider(

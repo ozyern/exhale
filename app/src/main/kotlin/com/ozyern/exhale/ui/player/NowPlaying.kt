@@ -9,6 +9,7 @@
 
 package com.ozyern.exhale.ui.player
 
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import android.content.Context
@@ -3911,6 +3912,7 @@ internal fun LandscapeNowPlaying(
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
     val liked = currentSong?.song?.liked == true
     var panel by rememberSaveable { mutableStateOf(NowPlayingPanel.None) }
+    val tabletopHinge = com.ozyern.exhale.ui.utils.rememberTabletopHinge()
     BackHandler(enabled = panel != NowPlayingPanel.None) { panel = NowPlayingPanel.None }
     val artUrl = mediaMetadata.thumbnailUrl?.highRes()
     val palette = rememberArtworkPalette(artUrl)
@@ -4047,7 +4049,87 @@ internal fun LandscapeNowPlaying(
                 }
             }
 
-            if (!compact) {
+            if (tabletopHinge != null) {
+                // ---- Tabletop: a foldable standing half open on its side ----
+                //
+                // Split on the fold, as Apple Music is: the words (or the queue) on the half that
+                // stands up, where they can be read, and the song and its controls on the half
+                // lying on the table, where a thumb reaches them. Nothing is laid across the hinge.
+                val upperPane = if (panel == NowPlayingPanel.Queue) NowPlayingPanel.Queue else NowPlayingPanel.Lyrics
+                val density = androidx.compose.ui.platform.LocalDensity.current
+                var columnTop by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+                val upperHeight = with(density) { (tabletopHinge.top - columnTop).toDp() }
+                    .coerceIn(120.dp, (maxHeight - 180.dp).coerceAtLeast(120.dp))
+                val hingeHeight = with(density) { tabletopHinge.height.toDp() }
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 1100.dp)
+                        .fillMaxSize()
+                        .onGloballyPositioned { columnTop = it.positionInWindow().y },
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(upperHeight)
+                            .padding(horizontal = GUTTER, vertical = 8.dp),
+                    ) {
+                        AnimatedContent(
+                            targetState = upperPane,
+                            transitionSpec = { fadeIn(tween(220, delayMillis = 90)) togetherWith fadeOut(tween(140)) },
+                            label = "tabletopPane",
+                            modifier = Modifier.fillMaxSize(),
+                        ) { pane ->
+                            when (pane) {
+                                NowPlayingPanel.Queue -> NowPlayingQueue(
+                                    navController = navController,
+                                    playerSheetState = playerSheetState,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                else -> LyricsV2(
+                                    sliderPositionProvider = sliderPositionProvider,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(hingeHeight + 12.dp))
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(horizontal = GUTTER),
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        songControls()
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            LandscapeToggle(
+                                icon = R.drawable.lyrics,
+                                active = upperPane == NowPlayingPanel.Lyrics,
+                                onClick = { panel = NowPlayingPanel.None },
+                            )
+                            Box(Modifier.weight(1f)) {
+                                VolumeRow(
+                                    value = playerVolume,
+                                    onValueChange = { playerConnection.service.playerVolume.value = it },
+                                    onDraggingChange = {},
+                                )
+                            }
+                            LandscapeToggle(
+                                icon = R.drawable.queue_music,
+                                active = upperPane == NowPlayingPanel.Queue,
+                                onClick = {
+                                    panel = if (panel == NowPlayingPanel.Queue) NowPlayingPanel.None else NowPlayingPanel.Queue
+                                },
+                            )
+                        }
+                    }
+                }
+            } else if (!compact) {
                 // ---- Tablet: the iOS music app's iPad player ----
                 //
                 // Everything about the song stacked in the left column — the sleeve, its name,

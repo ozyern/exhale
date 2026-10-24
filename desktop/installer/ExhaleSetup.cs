@@ -53,6 +53,7 @@ namespace ExhaleSetup
         public const string Tagline = "YouTube Music, exhaled.";
         public const string Url = "https://github.com/ozyern/Exhale";
         public const string LicenceUrl = "https://www.gnu.org/licenses/gpl-3.0.html";
+        public const string PrivacyUrl = "https://github.com/ozyern/Exhale/blob/master/PRIVACY.md";
         // The jpackage MSI's upgrade code. Earlier versions were installed with it; setup removes them.
         public const string LegacyUpgradeCode = "{7B3F2C1E-5A4D-4E8B-9C6F-2D1A0E9B8C47}";
         public const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Exhale";
@@ -190,6 +191,42 @@ namespace ExhaleSetup
                 if (key == null) return null;
                 return key.GetValue("InstallLocation") as string;
             }
+        }
+
+        /** Where the installed copy lives: our own entry, else the folder the old MSI used. */
+        public static string InstalledDir()
+        {
+            string dir = ExistingInstallDir();
+            if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir)) return dir;
+            string legacy = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Exhale");
+            return Directory.Exists(legacy) ? legacy : null;
+        }
+
+        /** The Java runtime version of the copy in [dir], from the runtime's own release file. */
+        public static string RuntimeVersionIn(string dir)
+        {
+            try
+            {
+                foreach (var line in File.ReadAllLines(System.IO.Path.Combine(dir, "runtime", "release")))
+                {
+                    if (line.StartsWith("JAVA_VERSION=")) return line.Substring("JAVA_VERSION=".Length).Trim('"');
+                }
+            }
+            catch (Exception) { }
+            return null;
+        }
+
+        /** libmpv's version in [dir], from the DLL's version resource ("v0.41.0-1023-g69e63f425" reads 0.41.0). */
+        public static string MpvVersionIn(string dir)
+        {
+            try
+            {
+                var dll = Directory.GetFiles(dir, "libmpv-2.dll", SearchOption.AllDirectories).FirstOrDefault();
+                if (dll == null) return null;
+                var match = System.Text.RegularExpressions.Regex.Match(FileVersionInfo.GetVersionInfo(dll).FileVersion ?? "", @"\d+\.\d+(\.\d+)?");
+                return match.Success ? match.Value : null;
+            }
+            catch (Exception) { return null; }
         }
 
         public static long PayloadSize()
@@ -761,12 +798,13 @@ namespace ExhaleSetup
 
         public StepRail(string[] steps)
         {
-            Margin = new Thickness(0, 150, 0, 0);
+            Margin = new Thickness(0, steps.Length > 4 ? 136 : 150, 0, 0);
             HorizontalAlignment = HorizontalAlignment.Left;
             VerticalAlignment = VerticalAlignment.Top;
             foreach (var step in steps)
             {
-                var row = new Grid { Height = 84 };
+                // Five steps still clear the bottom edge.
+                var row = new Grid { Height = steps.Length > 4 ? 72 : 84 };
                 var line = new Rectangle { Height = 2.5, Width = 26, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, RadiusX = 1.2, RadiusY = 1.2, Fill = new SolidColorBrush(Theme.Faint) };
                 var label = Theme.Text(step, 17, FontWeights.SemiBold, Theme.Faint, true);
                 label.Foreground = new SolidColorBrush(Theme.Faint);
@@ -862,7 +900,7 @@ namespace ExhaleSetup
 
             frame.Children.Add(CloseButton());
 
-            rail = new StepRail(uninstall ? new[] { "Confirm", "Remove", "Done!" } : new[] { "Welcome", "Setup", "Install", "Done!" });
+            rail = new StepRail(uninstall ? new[] { "Confirm", "Remove", "Done!" } : new[] { "Welcome", "Privacy", "Setup", "Install", "Done!" });
             frame.Children.Add(rail);
 
             page = new Grid { Margin = new Thickness(232, 142, 52, 104) };
@@ -896,9 +934,9 @@ namespace ExhaleSetup
                     Show(0);
                     return;
                 }
-                if (preview >= 3) finished = true;
-                Show(Math.Min(preview, 3));
-                if (preview == 2)
+                if (preview >= DoneStep) finished = true;
+                Show(Math.Min(preview, DoneStep));
+                if (preview == ProgressStep)
                 {
                     var later = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(900) };
                     later.Tick += delegate { later.Stop(); Report(0.62, "Unpacking the audio engine", "libmpv-2.dll"); };
@@ -923,6 +961,9 @@ namespace ExhaleSetup
             button.MouseLeftButtonDown += delegate(object s, MouseButtonEventArgs e) { e.Handled = true; };
             return button;
         }
+
+        int ProgressStep { get { return uninstall ? 1 : 3; } }
+        int DoneStep { get { return uninstall ? 2 : 4; } }
 
         void Cancel()
         {
@@ -954,7 +995,8 @@ namespace ExhaleSetup
             else
             {
                 if (step == 0) Show(1);
-                else if (step == 1 && ValidatePath()) { Show(2); RunInstall(); }
+                else if (step == 1) Show(2);
+                else if (step == 2 && ValidatePath()) { Show(3); RunInstall(); }
             }
         }
 
@@ -969,7 +1011,7 @@ namespace ExhaleSetup
             }
             else
             {
-                next = index == 0 ? WelcomePage() : index == 1 ? OptionsPage() : index == 2 ? ProgressPage("Installing Exhale") : DonePage();
+                next = index == 0 ? WelcomePage() : index == 1 ? PrivacyPage() : index == 2 ? OptionsPage() : index == 3 ? ProgressPage("Installing Exhale") : DonePage();
             }
 
             if (currentPage != null)
@@ -1004,11 +1046,11 @@ namespace ExhaleSetup
 
             primary.Label = uninstall
                 ? (index == 0 ? "Uninstall" : "Finish")
-                : (index == 0 ? "Next  ›" : index == 1 ? "Install  ›" : "Finish");
-            bool working = uninstall ? index == 1 : index == 2;
+                : (index <= 1 ? "Next  ›" : index == 2 ? "Install  ›" : "Finish");
+            bool working = index == ProgressStep;
             primary.Enabled = !working;
             secondary.Enabled = !working;
-            secondary.Visibility = (uninstall ? index == 2 : index == 3) ? Visibility.Collapsed : Visibility.Visible;
+            secondary.Visibility = index == DoneStep ? Visibility.Collapsed : Visibility.Visible;
         }
 
         StackPanel Heading(string title, string body)
@@ -1034,12 +1076,13 @@ namespace ExhaleSetup
             table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
             table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
             string existing = Installer.ExistingVersion();
+            string installed = existing != null ? Installer.InstalledDir() : null;
             var rows = new[]
             {
                 new[] { "What's included", "Version", "Installed" },
                 new[] { "Exhale", Product.Version, existing ?? "—" },
-                new[] { "JetBrains Runtime", "21.0.11", existing != null ? "21" : "—" },
-                new[] { "libmpv audio engine", "0.40", existing != null ? "0.40" : "—" },
+                new[] { "JetBrains Runtime", Product.RuntimeVersion, (installed != null ? Installer.RuntimeVersionIn(installed) : null) ?? "—" },
+                new[] { "libmpv audio engine", Product.MpvVersion, (installed != null ? Installer.MpvVersionIn(installed) : null) ?? "—" },
             };
             for (int r = 0; r < rows.Length; r++)
             {
@@ -1073,6 +1116,40 @@ namespace ExhaleSetup
             licence.Inlines.Add(".");
             panel.Children.Add(licence);
             return panel;
+        }
+
+        /** What Exhale talks to, shown before anything is installed: no account of its own, nothing collected. */
+        FrameworkElement PrivacyPage()
+        {
+            var panel = Heading("Your privacy", "Exhale has no account of its own, no ads and no analytics. It only connects to the services that play and describe your music.");
+            panel.Children[1].SetValue(MarginProperty, new Thickness(0, 10, 0, 18));
+            panel.Children.Add(PrivacyRow("YouTube Music", "Search, streaming, and your library and playlists if you sign in."));
+            panel.Children.Add(PrivacyRow("Lyrics, artwork and FLAC", "Lyric sites, Apple Music and Tidal (moving covers) and archive.org get a song's title and artist."));
+            panel.Children.Add(PrivacyRow("Updates", "GitHub is asked for new releases. You can turn this off in Settings."));
+            panel.Children.Add(PrivacyRow("Last.fm, ListenBrainz, Discord", "Off until you turn them on in Settings."));
+
+            var more = new TextBlock { FontFamily = Theme.BodyFont, FontSize = 13, Foreground = Theme.Brush(Theme.Faint), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) };
+            more.Inlines.Add("Your settings and library stay on this PC. ");
+            var link = new System.Windows.Documents.Hyperlink(new System.Windows.Documents.Run("Read the privacy policy")) { Foreground = Theme.Brush(Theme.Accent), TextDecorations = null, Cursor = Cursors.Hand };
+            link.Click += delegate { try { Process.Start(new ProcessStartInfo(Product.PrivacyUrl) { UseShellExecute = true }); } catch (Exception) { } };
+            more.Inlines.Add(link);
+            more.Inlines.Add(".");
+            panel.Children.Add(more);
+            return panel;
+        }
+
+        static FrameworkElement PrivacyRow(string title, string detail)
+        {
+            var row = new Grid { Margin = new Thickness(0, 0, 0, 12) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.Children.Add(new Ellipse { Width = 7, Height = 7, Fill = Theme.Brush(Theme.Accent), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 7, 0, 0) });
+            var text = new TextBlock { FontFamily = Theme.BodyFont, FontSize = 14, TextWrapping = TextWrapping.Wrap, LineHeight = 20 };
+            text.Inlines.Add(new System.Windows.Documents.Run(title) { FontWeight = FontWeights.SemiBold, Foreground = Theme.Brush(Theme.Ink) });
+            text.Inlines.Add(new System.Windows.Documents.Run("  " + detail) { Foreground = Theme.Brush(Theme.Dim) });
+            Grid.SetColumn(text, 1);
+            row.Children.Add(text);
+            return row;
         }
 
         FrameworkElement Note(string text)
@@ -1317,7 +1394,7 @@ namespace ExhaleSetup
             {
                 hold.Stop();
                 finished = true;
-                Show(uninstall ? 2 : 3);
+                Show(DoneStep);
             };
             hold.Start();
         }

@@ -15,7 +15,13 @@ import java.util.Locale
  * and the spatial upmix. What Android does with AudioEffect and ExoPlayer, done by the decoder here.
  */
 object AudioEffects {
-    fun filterChain(settings: Settings): String {
+    /**
+     * [outputChannels] is what the device really opened, once known. The surround bed is laid out only
+     * for a device that took one: laid out for a stereo device, mpv folds the six or eight channels back
+     * into two, the delayed copies landing on top of the originals — a hollow, phasey sound — and the
+     * sum running past full scale.
+     */
+    fun filterChain(settings: Settings, outputChannels: Int? = null): String {
         val filters = buildList {
             if (settings.equalizerEnabled) {
                 val gains = EqualizerPresets.frequencies.indices.map { settings.equalizerBands.getOrElse(it) { 0 } }
@@ -51,17 +57,23 @@ object AudioEffects {
             //
             // LFE is left silent on purpose: a full-range copy of the music in a channel the
             // receiver expects to be low-passed is how an upmix ends up boomy.
-            when (settings.spatialAudio) {
-                "SURROUND_71" -> {
+            val opened = outputChannels ?: 0
+            val layout = when {
+                settings.spatialAudio == "SURROUND_71" && opened >= 8 -> "7.1"
+                settings.spatialAudio != "OFF" && opened >= 6 -> "5.1"
+                else -> null
+            }
+            when (layout) {
+                "7.1" -> {
                     add(
-                        "pan=7.1|FL=FL|FR=FR|FC=0.4*FL+0.4*FR|LFE=0" +
-                            "|BL=0.38*FL|BR=0.38*FR|SL=0.30*FL|SR=0.30*FR"
+                        "pan=7.1|FL=FL|FR=FR|FC=0.3*FL+0.3*FR|LFE=0" +
+                            "|BL=0.28*FL|BR=0.28*FR|SL=0.22*FL|SR=0.22*FR"
                     )
                     add("adelay=0|0|0|0|16|16|10|10")
                 }
 
-                "SURROUND_51" -> {
-                    add("pan=5.1|FL=FL|FR=FR|FC=0.4*FL+0.4*FR|LFE=0|BL=0.40*FL|BR=0.40*FR")
+                "5.1" -> {
+                    add("pan=5.1|FL=FL|FR=FR|FC=0.3*FL+0.3*FR|LFE=0|BL=0.30*FL|BR=0.30*FR")
                     add("adelay=0|0|0|0|14|14")
                 }
             }
@@ -136,10 +148,14 @@ object AudioEffects {
     fun pitchCorrection(settings: Settings): Boolean =
         SoundPresets.none { it.first == settings.soundPreset && it.first != "NORMAL" }
 
-    /** What mpv asks Windows for — a list, so a device that can't take surround falls back to stereo. */
+    /**
+     * What mpv asks Windows for. One layout, not a list: given a list, mpv opens whichever best fits the
+     * audio it is handed — stereo, until the upmix is in, and the upmix waits on the device. A device that
+     * can't open it gets its own mix format instead, and [filterChain] then leaves the music in stereo.
+     */
     fun outputChannels(settings: Settings): String = when (settings.spatialAudio) {
-        "SURROUND_71" -> "7.1,5.1,stereo"
-        "SURROUND_51" -> "5.1,stereo"
+        "SURROUND_71" -> "7.1"
+        "SURROUND_51" -> "5.1"
         else -> "auto-safe"
     }
 

@@ -114,6 +114,30 @@ constructor(
             .build()
     }
 
+    /**
+     * The shade's "resume" card after a restart or once the app has been closed. Without this the
+     * system's media-resumption connection was refused ("Cannot resume with ...MusicService") and
+     * the card did nothing. The service restores the last queue itself as it starts, so this waits
+     * a moment for that and hands the same queue back.
+     */
+    override fun onPlaybackResumption(
+        mediaSession: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        isForPlayback: Boolean,
+    ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> =
+        scope.future {
+            val player = mediaSession.player
+            kotlinx.coroutines.withTimeoutOrNull(3_000) {
+                while (player.mediaItemCount == 0) kotlinx.coroutines.delay(100)
+            }
+            if (player.mediaItemCount == 0) throw UnsupportedOperationException("Nothing to resume")
+            MediaSession.MediaItemsWithStartPosition(
+                (0 until player.mediaItemCount).map { player.getMediaItemAt(it) },
+                player.currentMediaItemIndex,
+                player.currentPosition,
+            )
+        }
+
     override fun onDisconnected(session: MediaSession, controller: MediaSession.ControllerInfo) {
         LockScreenLyrics.carControllers.remove(controller)
         super.onDisconnected(session, controller)

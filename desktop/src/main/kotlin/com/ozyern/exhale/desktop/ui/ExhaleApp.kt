@@ -6,12 +6,15 @@
 
 package com.ozyern.exhale.desktop.ui
 
+import com.ozyern.exhale.desktop.ui.library.LibrarySectionScreen
+import com.ozyern.exhale.desktop.ui.library.LibrarySection
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -29,8 +32,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -46,6 +51,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -82,6 +88,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import androidx.compose.ui.window.WindowPlacement
@@ -121,8 +128,11 @@ import com.ozyern.exhale.desktop.ui.search.SearchModel
 import com.ozyern.exhale.desktop.ui.search.SearchScreen
 import com.ozyern.exhale.desktop.ui.settings.SettingsScreen
 import com.ozyern.exhale.desktop.ui.shell.ChromeNav
-import com.ozyern.exhale.desktop.ui.shell.DesktopDock
-import com.ozyern.exhale.desktop.ui.shell.DesktopDockHeight
+import com.ozyern.exhale.desktop.ui.shell.AppSidebar
+import com.ozyern.exhale.desktop.ui.shell.PlayerBar
+import com.ozyern.exhale.desktop.ui.shell.PlayerBarHeight
+import com.ozyern.exhale.desktop.ui.shell.SidebarItem
+import com.ozyern.exhale.desktop.ui.shell.SidebarWidth
 import com.ozyern.exhale.desktop.ui.shell.DockHeight
 import com.ozyern.exhale.desktop.ui.shell.DockMaxWidth
 import com.ozyern.exhale.desktop.ui.shell.DockTab
@@ -131,6 +141,7 @@ import com.ozyern.exhale.desktop.ui.shell.LocalTitleBarHeight
 import com.ozyern.exhale.desktop.ui.shell.MiniPlayerPill
 import com.ozyern.exhale.innertube.YouTube
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.PI
@@ -193,6 +204,8 @@ private sealed class Route(val key: String) {
     data class Playlist(val playlistId: String, val title: String?, val thumbnail: String?, val shared: String?) : Route("playlist:$playlistId")
     data class ArtistItems(val browseId: String, val params: String?, val title: String) : Route("artist-items:$browseId:$params")
     data object SoundChem : Route("sound-chem")
+    /** A page behind one of the sidebar's library rows: New, Radio, Songs, Albums, All Playlists… */
+    data class Collection(val section: LibrarySection) : Route("collection:${section.name}")
     data object Flac : Route("flac")
     data class FlacRelease(val releaseKey: String) : Route("flac:$releaseKey")
 }
@@ -204,6 +217,10 @@ private val TabRoots = listOf(Route.Home, Route.Mood, Route.Library)
 
 /** Windows at least this wide get the desktop dock; narrower ones keep the Android dock. */
 private val WideDockMinWidth = 1040.dp
+
+/** ColorOS 17's page springs: a hair under critical, so a page lands soft with no visible bounce. */
+private val ColorOsPageSpring = spring<Float>(dampingRatio = 0.92f, stiffness = 340f)
+private val ColorOsSlideSpring = spring<IntOffset>(dampingRatio = 0.92f, stiffness = 340f, visibilityThreshold = IntOffset(1, 1))
 
 private fun initialRoute(): Route = when (AppSettings.current.defaultTab.uppercase()) {
     "MOOD", "NEW", "RADIO" -> Route.Mood
@@ -232,6 +249,8 @@ fun ExhaleApp(player: DesktopPlayer) {
     val searchFocus = remember { FocusRequester() }
 
     var stack by remember { mutableStateOf(listOf(initialRoute())) }
+    // The Library section the sidebar last opened: Recently Played, Artists or Stations.
+    var libraryTab by remember { mutableIntStateOf(0) }
     var navKind by remember { mutableStateOf(NavKind.Tab) }
     var onboarding by remember { mutableStateOf(!DesktopPrefs.onboardingCompleted) }
     var editingTaste by remember { mutableStateOf(false) }
@@ -239,6 +258,7 @@ fun ExhaleApp(player: DesktopPlayer) {
     var discordLogin by remember { mutableStateOf(false) }
 
     fun selectRoot(root: Route) {
+        UiMotion.poke(700)
         if (stack.size == 1 && stack[0] == root) return
         // Tapping the tab you're already under goes back to its top, like Android.
         navKind = if (stack.first() == root) NavKind.Pop else NavKind.Tab
@@ -246,12 +266,14 @@ fun ExhaleApp(player: DesktopPlayer) {
     }
 
     fun push(route: Route) {
+        UiMotion.poke(700)
         if (stack.last().key == route.key) return
         navKind = NavKind.Push
         stack = stack + route
     }
 
     fun pop() {
+        UiMotion.poke(700)
         if (stack.size <= 1) return
         navKind = NavKind.Pop
         stack = stack.dropLast(1)
@@ -325,6 +347,8 @@ fun ExhaleApp(player: DesktopPlayer) {
             private var travel = 0f
 
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                // Shelves scrolling sideways count as much as the page scrolling down.
+                if (consumed != Offset.Zero) UiMotion.poke()
                 if (available.y > 0f) dockCollapsed = false
                 val dy = consumed.y
                 if (dy == 0f) return Offset.Zero
@@ -395,6 +419,10 @@ fun ExhaleApp(player: DesktopPlayer) {
                 playerOpen = false
                 push(Route.FlacRelease(key))
             },
+            openBrowse = { browseId, params, title ->
+                playerOpen = false
+                push(Route.Browse(browseId, params, title))
+            },
         )
     }
 
@@ -420,6 +448,17 @@ fun ExhaleApp(player: DesktopPlayer) {
         back = { pop() },
         openPlayer = { openPlayer(PlayerPanel.None) },
         closePlayer = { playerOpen = false },
+        // The sidebar's pages, in its order, for EXHALE_BENCH_MODE=pages.
+        pages = listOf(
+            "Home" to { selectRoot(Route.Home) },
+            "New" to { selectRoot(Route.Collection(LibrarySection.New)) },
+            "Radio" to { selectRoot(Route.Collection(LibrarySection.Radio)) },
+            "Artists" to { selectRoot(Route.Collection(LibrarySection.Artists)) },
+            "Songs" to { selectRoot(Route.Collection(LibrarySection.Songs)) },
+            "FLAC" to { selectRoot(Route.Flac) },
+            "Settings" to { selectRoot(Route.Settings) },
+            "Search" to { selectRoot(Route.Search) },
+        ),
     )
 
     val tabs = remember { listOf(DockTab("Home", DockIcons.Home, DockIcons.HomeSelected), DockTab("Mood & Genres", DockIcons.Explore, DockIcons.ExploreSelected), DockTab("Library", DockIcons.Library, DockIcons.LibrarySelected)) }
@@ -490,9 +529,46 @@ fun ExhaleApp(player: DesktopPlayer) {
 
         // Content clears the dock — and on narrow windows the mini player stacked above it too.
         val insets = if (wide) {
-            ChromeInsets(start = 20.dp, bottom = DesktopDockHeight + 40.dp)
+            ChromeInsets(start = SidebarWidth + 8.dp, bottom = PlayerBarHeight + 40.dp)
         } else {
             ChromeInsets(start = 20.dp, bottom = DockHeight + 28.dp + if (hasSong) DockHeight + 10.dp else 0.dp)
+        }
+
+        // The heavier pages, each drawn once in the first half-minute after launch, underneath the page
+        // where nothing of them shows and no click reaches them. A page's first draw — its code compiled,
+        // its icons parsed and rasterised, its text shaped for the first time — cost a 100–400 ms freeze
+        // on its first open; this pays it while nobody is waiting, one page at a time, and only while
+        // nothing is scrolling or changing page.
+        var warming by remember { mutableStateOf<Route?>(null) }
+        LaunchedEffect(Unit) {
+            delay(6_000)
+            val pages = listOf(
+                Route.Settings,
+                Route.Collection(LibrarySection.New),
+                Route.Search,
+                Route.Collection(LibrarySection.Radio),
+                Route.Flac,
+                Route.Collection(LibrarySection.Songs),
+                Route.Collection(LibrarySection.Artists),
+            )
+            for (page in pages) {
+                while (UiMotion.busy) delay(400)
+                warming = page
+                delay(700)
+                warming = null
+                delay(1_500)
+            }
+        }
+        warming?.takeIf { it != route }?.let { page ->
+            Box(Modifier.fillMaxSize()) {
+                when (page) {
+                    Route.Settings -> SettingsScreen(insets = insets, onBack = {}, onSignIn = {}, onEditTaste = {}, onHomeInputsChanged = {}, onDiscordLogin = {})
+                    Route.Search -> SearchScreen(remember { SearchModel(scope) }, player, state, insets, showField = false)
+                    Route.Flac -> FlacScreen(insets, onBack = null)
+                    is Route.Collection -> LibrarySectionScreen(page.section, home, player, state, insets)
+                    else -> Unit
+                }
+            }
         }
 
         // Everything the chrome floats over is recorded here, so the dock and the pill bend real
@@ -528,18 +604,21 @@ fun ExhaleApp(player: DesktopPlayer) {
                         if (AppSettings.current.reducedMotion) {
                             fadeIn(tween(150)) togetherWith fadeOut(tween(100))
                         } else {
-                            // Tuned for a pointer, not a thumb: short, critically damped, small distances. The
-                            // old phone-sized travel and 92% scale read as sluggish on a desktop.
+                            // ColorOS 17's page motion, sized for a pointer: both pages move at once and from the
+                            // first frame — nothing waits for the old page to leave — on springs that land soft,
+                            // with the page behind receding a little and dimming rather than just vanishing.
                             when (navKind) {
-                                // Fade-through: the old tab lets go first, the new one settles up out of 97.5%.
-                                NavKind.Tab -> (fadeIn(tween(220, delayMillis = 60)) + scaleIn(spring(dampingRatio = 1f, stiffness = 520f), initialScale = 0.975f)) togetherWith
-                                    (fadeOut(tween(110)) + scaleOut(tween(160), targetScale = 0.99f))
-                                // Push: the page slides in a short way from the right over the one it covers.
-                                NavKind.Push -> ((slideInHorizontally(spring(dampingRatio = 1f, stiffness = 460f)) { (it * 0.07f).toInt() } + fadeIn(tween(200))) togetherWith
-                                    (fadeOut(tween(140)) + scaleOut(tween(200), targetScale = 0.98f))).apply { targetContentZIndex = 1f }
-                                // Pop: the page underneath comes back up; the one leaving slides away on top.
-                                NavKind.Pop -> ((fadeIn(tween(200, delayMillis = 40)) + scaleIn(spring(dampingRatio = 1f, stiffness = 460f), initialScale = 0.98f)) togetherWith
-                                    (slideOutHorizontally(tween(180)) { (it * 0.07f).toInt() } + fadeOut(tween(140)))).apply { targetContentZIndex = -1f }
+                                // Switching sections: the new one grows up out of 94% as it fades in, the old one
+                                // sinks back to 96% and fades under it.
+                                NavKind.Tab -> (fadeIn(tween(180, easing = LinearOutSlowInEasing)) + scaleIn(ColorOsPageSpring, initialScale = 0.94f)) togetherWith
+                                    (fadeOut(tween(140)) + scaleOut(ColorOsPageSpring, targetScale = 0.96f))
+                                // Opening a page: it comes in from the right with a little growth, the page under it
+                                // drifts left a third as far and recedes — the parallax that makes it read as depth.
+                                NavKind.Push -> ((slideInHorizontally(ColorOsSlideSpring) { (it * 0.16f).toInt() } + scaleIn(ColorOsPageSpring, initialScale = 0.97f) + fadeIn(tween(160))) togetherWith
+                                    (slideOutHorizontally(ColorOsSlideSpring) { -(it * 0.05f).toInt() } + scaleOut(ColorOsPageSpring, targetScale = 0.95f) + fadeOut(tween(220)))).apply { targetContentZIndex = 1f }
+                                // Going back: the same, reversed — the page underneath comes forward out of its depth.
+                                NavKind.Pop -> ((slideInHorizontally(ColorOsSlideSpring) { -(it * 0.05f).toInt() } + scaleIn(ColorOsPageSpring, initialScale = 0.95f) + fadeIn(tween(200))) togetherWith
+                                    (slideOutHorizontally(ColorOsSlideSpring) { (it * 0.16f).toInt() } + scaleOut(ColorOsPageSpring, targetScale = 0.97f) + fadeOut(tween(160)))).apply { targetContentZIndex = -1f }
                             }
                         }
                     },
@@ -557,10 +636,17 @@ fun ExhaleApp(player: DesktopPlayer) {
                                 onRetry = { reloadHome(force = true) },
                                 onOpenSettings = { push(Route.Settings) },
                                 onSignIn = { signingIn = true },
+                                sidebar = wide,
                             )
                             Route.Mood -> MoodAndGenresScreen(insets) { browseId, params, title -> push(Route.Browse(browseId, params, title)) }
-                            Route.Library -> LibraryScreen(home, player, state, insets, onOpenSettings = { push(Route.Settings) })
-                            Route.Search -> SearchScreen(search, player, state, insets, showField = !wide)
+                            Route.Library -> LibraryScreen(
+                                home, player, state, insets,
+                                onOpenSettings = { push(Route.Settings) },
+                                initialTab = libraryTab,
+                                onTabChange = { libraryTab = it },
+                            )
+                            // The sidebar has no field of its own: on a wide window the page's field is the one you type in.
+                            Route.Search -> SearchScreen(search, player, state, insets, showField = true)
                             Route.Settings -> SettingsScreen(
                                 insets = insets,
                                 onBack = { pop() },
@@ -574,8 +660,9 @@ fun ExhaleApp(player: DesktopPlayer) {
                             is Route.Album -> AlbumScreen(current.browseId, current.title, current.thumbnail, current.shared, player, state, insets, onBack = { pop() })
                             is Route.Playlist -> PlaylistScreen(current.playlistId, current.title, current.thumbnail, current.shared, player, state, insets, onBack = { pop() })
                             is Route.ArtistItems -> ArtistItemsScreen(current.browseId, current.params, current.title, player, state, insets, onBack = { pop() })
-                            Route.SoundChem -> SoundChemScreen(player, state, insets, onBack = { pop() })
-                            Route.Flac -> FlacScreen(insets, onBack = { pop() })
+                            is Route.Collection -> LibrarySectionScreen(current.section, home, player, state, insets)
+                            Route.SoundChem -> SoundChemScreen(player, state, insets, onBack = if (stack.size > 1) ({ pop() }) else null)
+                            Route.Flac -> FlacScreen(insets, onBack = if (stack.size > 1) ({ pop() }) else null)
                             is Route.FlacRelease -> FlacReleaseScreen(current.releaseKey, player, state, insets, onBack = { pop() })
                         }
                     }
@@ -587,38 +674,54 @@ fun ExhaleApp(player: DesktopPlayer) {
 
         CompositionLocalProvider(LocalAppBackdrop provides appBackdrop) {
             if (wide) {
-                DesktopDock(
-                    tabs = tabs,
-                    selected = TabRoots.indexOf(stack.first()),
-                    searchSelected = stack.first() == Route.Search,
-                    compact = dockCollapsed,
-                    state = state,
-                    player = player,
-                    searchQuery = search.query,
-                    searchFocus = searchFocus,
-                    onSearchQueryChange = search::updateQuery,
-                    onSearchSubmit = { search.search() },
-                    onSearchFocused = { selectRoot(Route.Search) },
-                    onTab = {
+                fun itemFor(r: Route): SidebarItem? = when (r) {
+                    Route.Search -> SidebarItem.Search
+                    Route.Home -> SidebarItem.Home
+                    Route.Settings -> SidebarItem.Settings
+                    Route.Flac, is Route.FlacRelease -> SidebarItem.Flac
+                    is Route.Collection -> SidebarItem.entries.firstOrNull { it.section == r.section }
+                    else -> null
+                }
+                val sidebarItem = itemFor(route) ?: itemFor(stack.first())
+                AppSidebar(
+                    selected = sidebarItem,
+                    selectedPlaylist = (route as? Route.Playlist)?.playlistId,
+                    onSelect = { item ->
                         focusManager.clearFocus()
-                        selectRoot(TabRoots[it])
+                        playerOpen = false
+                        val section = item.section
+                        when {
+                            section != null -> selectRoot(Route.Collection(section))
+                            item == SidebarItem.Search -> selectRoot(Route.Search)
+                            item == SidebarItem.Home -> selectRoot(Route.Home)
+                            item == SidebarItem.Flac -> selectRoot(Route.Flac)
+                            item == SidebarItem.Settings -> selectRoot(Route.Settings)
+                        }
                     },
-                    onExpandPlayer = ::openPlayer,
-                    onIslandBounds = { islandBounds = it },
-                    onArtBounds = { dockArtBounds = it },
-                    artAlpha = { if (morph.value > 0.001f) 0f else 1f },
-                    onOpenSettings = {
-                        focusManager.clearFocus()
-                        push(Route.Settings)
-                    },
-                    // Fades as the player grows out of it, and returns as the player folds away.
                     modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .fillMaxHeight(),
+                )
+                Box(
+                    Modifier
                         .align(Alignment.BottomCenter)
-                        // Faded out by a third of the way open; past that its glass isn't worth rendering.
+                        .fillMaxWidth()
+                        // Fades as the player grows out of it, and returns as the player folds away.
                         .drawWithContent { if (morph.value < 0.3f) drawContent() }
                         .graphicsLayer { alpha = 1f - (morph.value / 0.3f).coerceIn(0f, 1f) }
-                        .padding(start = 24.dp, end = 24.dp, bottom = 18.dp),
-                )
+                        .padding(start = SidebarWidth + 24.dp, end = 24.dp, bottom = 16.dp),
+                    contentAlignment = Alignment.BottomCenter,
+                ) {
+                    PlayerBar(
+                        state = state,
+                        player = player,
+                        onExpandPlayer = { panel -> if (hasSong) openPlayer(panel) },
+                        onBarBounds = { islandBounds = it },
+                        onArtBounds = { dockArtBounds = it },
+                        artAlpha = { if (morph.value > 0.001f) 0f else 1f },
+                        modifier = Modifier.widthIn(max = 720.dp).fillMaxWidth(),
+                    )
+                }
             } else {
                 val handoff: () -> Float = { 1f - (morph.value / MorphHandoff).coerceIn(0f, 1f) }
                 Column(
@@ -665,9 +768,18 @@ fun ExhaleApp(player: DesktopPlayer) {
             }
         }
 
-        if (playerShown && hasSong) {
+        if (hasSong) {
             // The page recedes behind the player as it opens.
-            Box(Modifier.fillMaxSize().graphicsLayer { alpha = morph.value.coerceIn(0f, 1f) }.background(Color.Black.copy(alpha = 0.5f)))
+            if (playerShown) Box(Modifier.fillMaxSize().graphicsLayer { alpha = morph.value.coerceIn(0f, 1f) }.background(Color.Black.copy(alpha = 0.5f)))
+            // The player stays composed for as long as there's a song: building it at the start of the
+            // morph, and tearing it down at the end of the fold, were the hitches either side of every
+            // open. Closed, it isn't drawn and sits off the window, where no click can reach it.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .offset { if (playerShown) IntOffset.Zero else IntOffset(0, rootHeight.toInt() * 4) }
+                    .drawWithContent { if (playerShown) drawContent() },
+            ) {
             PlayerMorph(progress = { morph.value }, origin = { if (latestWide) islandBounds else pillBounds }) {
                 FullPlayer(
                     state = state,
@@ -686,9 +798,11 @@ fun ExhaleApp(player: DesktopPlayer) {
                     initialPanel = requestedPanel,
                     onArtworkBounds = { playerArtBounds = it },
                     artworkAlpha = { if (latestWide && dockArtBounds != null && morph.value < 0.999f) 0f else 1f },
+                    active = playerShown,
                 )
             }
-            if (wide) {
+            }
+            if (wide && playerShown) {
                 FlyingArtwork(
                     url = state.current!!.thumbnail,
                     from = { dockArtBounds },

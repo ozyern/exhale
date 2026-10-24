@@ -26,7 +26,8 @@ import java.io.File
 import java.net.URI
 
 object AppInfo {
-    const val VERSION = "1.0.20"
+    /** The same version as the Android app (versionName in app/build.gradle.kts), written by the build. */
+    val VERSION: String by lazy { buildInfo.getProperty("version")?.takeIf { it.isNotBlank() } ?: "0.0.0" }
     const val TAGLINE = "Music, exhaled."
     const val GITHUB_URL = "https://github.com/ozyern/exhale"
     const val RELEASES_URL = "$GITHUB_URL/releases"
@@ -34,12 +35,12 @@ object AppInfo {
     const val LICENSE_URL = "$GITHUB_URL/blob/master/LICENSE"
 
     /** The short commit this build was made from, written into the jar by the build (writeBuildInfo). */
-    val commit: String by lazy {
-        runCatching {
-            AppInfo::class.java.getResourceAsStream("/exhale-build.properties")?.use { stream ->
-                java.util.Properties().apply { load(stream) }.getProperty("commit")
-            }
-        }.getOrNull()?.takeIf { it.isNotBlank() } ?: "—"
+    val commit: String by lazy { buildInfo.getProperty("commit")?.takeIf { it.isNotBlank() } ?: "—" }
+
+    private val buildInfo: java.util.Properties by lazy {
+        java.util.Properties().apply {
+            runCatching { AppInfo::class.java.getResourceAsStream("/exhale-build.properties")?.use { load(it) } }
+        }
     }
 }
 
@@ -78,7 +79,7 @@ object AppLifecycle {
  */
 object UpdateChecker {
     private val http = OkHttpClient()
-    private const val UserAgent = "Exhale-Windows/${AppInfo.VERSION}"
+    private val UserAgent = "Exhale-Windows/${AppInfo.VERSION}"
 
     /** Set when a check finds a newer Windows release. */
     val available = MutableStateFlow<ReleaseInfo?>(null)

@@ -5,6 +5,7 @@
  */
 
 package com.ozyern.exhale.ui.screens
+import com.ozyern.exhale.ui.component.CollectionPanes
 import com.ozyern.exhale.ui.screens.DownloadQueueScreen
 
 import android.net.Uri
@@ -245,7 +246,7 @@ fun NavGraphBuilder.navigationBuilder(
                 },
             ),
     ) { entry ->
-        CollectionMorphFrame(entry) { AlbumScreen(navController, scrollBehavior) }
+        CollectionMorphFrame(entry) { CollectionPanes { AlbumScreen(navController, scrollBehavior) } }
     }
     composable(
         route = "artist/{artistId}",
@@ -307,7 +308,7 @@ fun NavGraphBuilder.navigationBuilder(
                 },
             ),
     ) { entry ->
-        CollectionMorphFrame(entry) { OnlinePlaylistScreen(navController, scrollBehavior) }
+        CollectionMorphFrame(entry) { CollectionPanes { OnlinePlaylistScreen(navController, scrollBehavior) } }
     }
     composable(
         route = "local_playlist/{playlistId}",
@@ -318,7 +319,7 @@ fun NavGraphBuilder.navigationBuilder(
                 },
             ),
     ) { entry ->
-        CollectionMorphFrame(entry) { LocalPlaylistScreen(navController, scrollBehavior) }
+        CollectionMorphFrame(entry) { CollectionPanes { LocalPlaylistScreen(navController, scrollBehavior) } }
     }
     composable(
         route = "auto_playlist/{playlist}",
@@ -329,7 +330,7 @@ fun NavGraphBuilder.navigationBuilder(
                 },
             ),
     ) { entry ->
-        CollectionMorphFrame(entry) { AutoPlaylistScreen(navController, scrollBehavior) }
+        CollectionMorphFrame(entry) { CollectionPanes { AutoPlaylistScreen(navController, scrollBehavior) } }
     }
     composable(
         route = "cache_playlist/{playlist}",
@@ -340,7 +341,7 @@ fun NavGraphBuilder.navigationBuilder(
                 },
             ),
     ) {
-        CachePlaylistScreen(navController, scrollBehavior)
+        CollectionPanes { CachePlaylistScreen(navController, scrollBehavior) }
     }
     composable(
         route = "top_playlist/{top}",
@@ -351,7 +352,7 @@ fun NavGraphBuilder.navigationBuilder(
                 },
             ),
     ) {
-        TopPlaylistScreen(navController, scrollBehavior)
+        CollectionPanes { TopPlaylistScreen(navController, scrollBehavior) }
     }
     composable(
         route = "youtube_browse/{browseId}?params={params}",

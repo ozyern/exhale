@@ -94,6 +94,9 @@ fun main() {
         AccountSession.applySaved()
     }
 
+    // First opens of pages and the player hitched on classes loading mid-frame; load them early, off it.
+    ClassWarmup.start()
+
     // Artwork cache on disk, sized by Storage → Image cache.
     SingletonImageLoader.setSafe { context ->
         ImageLoader.Builder(context)

@@ -548,7 +548,7 @@ fun TopPlaylistScreen(
                                 .focusRequester(focusRequester)
                         )
                     }
-                    showTopBarTitle -> {
+                    showTopBarTitle && com.ozyern.exhale.ui.component.LocalCollectionPane.current == null -> {
                         Text(
                             text = name,
                             style = MaterialTheme.typography.titleLarge

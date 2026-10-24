@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -179,13 +180,27 @@ private fun renderField(current: FluidTexture, previous: FluidTexture, blend: Fl
     return Image.makeFromBitmap(bitmap).toComposeImageBitmap()
 }
 
+/** Field time between rendered frames; the GPU blends across each one. */
+private const val FieldStep = 0.05f
+
 /**
  * The artwork at [url] as a slowly moving field of its own colours. A new cover cross-fades in over
  * 1.4 s rather than cutting. Only drawing is invalidated as it moves, never composition.
+ *
+ * Frames are worked out off the UI thread on a fixed timeline — one every [FieldStep] of field time,
+ * kept a couple of steps ahead of what's shown — and the window blends the two either side of "now"
+ * at its own refresh rate. A frame that takes longer than usual to work out is already done before
+ * it's needed, so the drift never stalls; it used to wait on each frame, and every late one showed
+ * as a hitch in the motion.
+ *
+ * The clock only runs while the field can be seen moving: not [paused], not with reduced motion, and
+ * — behind the pages ([holdWhileBusy]) — not while the interface itself is moving ([UiMotion]). Every
+ * frame of drift re-records the page for the glass over it, so a scroll or a page change gets the
+ * whole frame to itself and the field picks up again where it stopped.
  */
 @Composable
-fun FluidArtwork(url: String?, modifier: Modifier = Modifier, brightness: Float = 0.9f, paused: Boolean = false) {
-    val isPaused by rememberUpdatedState(paused)
+fun FluidArtwork(url: String?, modifier: Modifier = Modifier, brightness: Float = 0.9f, paused: Boolean = false, smooth: Boolean = false) {
+    val holdWhileBusy = !smooth
     var current by remember { mutableStateOf<FluidTexture?>(null) }
     var previous by remember { mutableStateOf<FluidTexture?>(null) }
     val blend = remember { Animatable(1f) }
@@ -203,55 +218,75 @@ fun FluidArtwork(url: String?, modifier: Modifier = Modifier, brightness: Float 
         blend.animateTo(1f, tween(1_400, easing = LinearOutSlowInEasing))
     }
 
-    var frame by remember { mutableStateOf<ImageBitmap?>(null) }
-    val aspect = remember { mutableFloatStateOf(16f / 10f) }
     val animate = !LocalSettings.current.reducedMotion
-    // Behind another window the field keeps drifting, just at a fraction of the work.
     val focused by rememberUpdatedState(LocalWindowInfo.current.isWindowFocused)
+    val running by rememberUpdatedState(animate && !paused)
 
-    LaunchedEffect(animate, brightness) {
-        val start = System.nanoTime()
-        var renderedFor: FluidTexture? = null
-        // How long the last field took to work out, so the next one can wait its turn.
-        var spent = 0L
+    // Field time, in seconds. Advanced once per displayed frame while running; read while drawing.
+    val clock = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        var last = 0L
         while (true) {
-            // Covered or hidden: don't work out frames nobody will see — except one for a new cover, so
-            // it's already there the moment the field is shown again.
-            if (isPaused && current === renderedFor) {
-                delay(250L)
+            if (!running || (holdWhileBusy && UiMotion.busy)) {
+                last = 0L
+                delay(50L)
                 continue
             }
-            val texture = current
-            if (texture != null) {
-                val time = if (animate) (System.nanoTime() - start) / 1_000_000_000f else 0f
-                val ratio = aspect.floatValue.coerceIn(0.4f, 4f)
-                var width = FieldWidth
-                var height = (FieldWidth / ratio).roundToInt().coerceIn(40, 400)
-                // A very tall or very wide cover would otherwise make the field several times the work
-                // of a square one; hold the pixel count to about what a square 240 costs.
-                val budget = FieldWidth * FieldWidth
-                if (width * height > budget) {
-                    val scale = sqrt(budget.toFloat() / (width * height))
-                    width = (width * scale).roundToInt().coerceAtLeast(120)
-                    height = (height * scale).roundToInt().coerceAtLeast(60)
-                }
-                val mix = if (isPaused) 1f else blend.value
-                val before = previous ?: texture
-                val startedAt = System.nanoTime()
-                frame = withContext(Dispatchers.Default) { renderField(texture, before, mix, time, width, height, ratio, brightness) }
-                // However long a frame took, leave twice that idle before the next one. A cover that's
-                // expensive to draw slows its own drift instead of stealing the app's frames.
-                spent = ((System.nanoTime() - startedAt) / 1_000_000L).coerceAtMost(400L)
-                renderedFor = texture
+            if (!focused) {
+                // Behind another window: still drifting, at a fraction of the redraws.
+                delay(UnfocusedTickMs)
+                val now = System.nanoTime()
+                if (last != 0L) clock.floatValue += (now - last) / 1_000_000_000f
+                last = now
+                continue
             }
-            // Still (reduced motion) only needs redrawing for a cover change.
-            delay(
-                when {
-                    !animate && !blend.isRunning -> 250L
-                    focused -> maxOf(BackgroundTickMs, spent * 2)
-                    else -> maxOf(UnfocusedTickMs, spent * 3)
-                },
-            )
+            withFrameNanos { now ->
+                if (last != 0L) clock.floatValue += ((now - last) / 1_000_000_000f).coerceAtMost(0.1f)
+                last = now
+            }
+        }
+    }
+
+    // The frames worked out so far, oldest first, each with the field time it shows.
+    class Frame(val time: Float, val image: ImageBitmap, val texture: FluidTexture)
+    val frames = remember { mutableStateOf<List<Frame>>(emptyList()) }
+    val aspect = remember { mutableFloatStateOf(16f / 10f) }
+
+    LaunchedEffect(brightness) {
+        while (true) {
+            val texture = current
+            if (texture == null) {
+                delay(100L)
+                continue
+            }
+            val now = clock.floatValue
+            val have = frames.value
+            // A new cover (or none yet): start again from the frame for now.
+            val fresh = have.isEmpty() || have.last().texture !== texture
+            val nextTime = if (fresh) (now / FieldStep).toInt() * FieldStep else have.last().time + FieldStep
+            // Far enough ahead already; a cover crossfade still needs fresh frames while it runs.
+            if (!fresh && nextTime > now + FieldStep * 2.5f && !blend.isRunning) {
+                delay(8L)
+                continue
+            }
+            val ratio = aspect.floatValue.coerceIn(0.4f, 4f)
+            var width = FieldWidth
+            var height = (FieldWidth / ratio).roundToInt().coerceIn(40, 400)
+            // A very tall or very wide cover would otherwise make the field several times the work
+            // of a square one; hold the pixel count to about what a square 240 costs.
+            val budget = FieldWidth * FieldWidth
+            if (width * height > budget) {
+                val scale = sqrt(budget.toFloat() / (width * height))
+                width = (width * scale).roundToInt().coerceAtLeast(120)
+                height = (height * scale).roundToInt().coerceAtLeast(60)
+            }
+            val mix = blend.value
+            val before = previous ?: texture
+            val time = if (animate) nextTime else 0f
+            val image = withContext(Dispatchers.Default) { renderField(texture, before, mix, time, width, height, ratio, brightness) }
+            val kept = if (fresh) emptyList() else frames.value.filter { it.time >= clock.floatValue - FieldStep * 1.5f }
+            frames.value = kept + Frame(nextTime, image, texture)
+            if (!animate && !blend.isRunning) delay(250L)
         }
     }
 
@@ -259,9 +294,20 @@ fun FluidArtwork(url: String?, modifier: Modifier = Modifier, brightness: Float 
         modifier
             .onSizeChanged { if (it.height > 0) aspect.floatValue = it.width.toFloat() / it.height }
             .drawBehind {
-                val image = frame ?: return@drawBehind
+                val list = frames.value
+                if (list.isEmpty()) return@drawBehind
+                val now = clock.floatValue
+                val dst = IntSize(size.width.roundToInt(), size.height.roundToInt())
+                // The two frames either side of now, the later one faded over the earlier by how far
+                // between them now is.
+                val after = list.firstOrNull { it.time > now }
+                val before = list.lastOrNull { it.time <= now } ?: list.first()
                 // Bicubic, so stretching the field keeps its swirls crisp-edged rather than smeared.
-                drawImage(image, dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()), filterQuality = FilterQuality.High)
+                drawImage(before.image, dstSize = dst, filterQuality = FilterQuality.High)
+                if (after != null && after !== before) {
+                    val t = ((now - before.time) / (after.time - before.time)).coerceIn(0f, 1f)
+                    if (t > 0.001f) drawImage(after.image, dstSize = dst, alpha = t, filterQuality = FilterQuality.High)
+                }
             },
     )
 }

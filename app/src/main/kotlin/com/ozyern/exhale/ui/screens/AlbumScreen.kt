@@ -591,6 +591,7 @@ fun AlbumScreen(
                         meta = meta,
                         palette = palette,
                         artHeight = artHeight,
+                        artworkUrl = albumWithSongs.album.thumbnailUrl,
                         onCreditClick = albumWithSongs.artists.firstOrNull()?.let { artist ->
                             { navController.navigate("artist/${artist.id}") }
                         },
@@ -1019,7 +1020,7 @@ fun AlbumScreen(
                         text = pluralStringResource(R.plurals.n_song, count, count),
                         style = MaterialTheme.typography.titleLarge
                     )
-                } else if (showTopBarTitle) {
+                } else if (showTopBarTitle && com.ozyern.exhale.ui.component.LocalCollectionPane.current == null) {
                     Text(
                         text = albumWithSongs?.album?.title.orEmpty(),
                         style = MaterialTheme.typography.titleLarge,

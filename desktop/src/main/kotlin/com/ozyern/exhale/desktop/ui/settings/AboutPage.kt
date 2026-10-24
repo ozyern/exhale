@@ -6,6 +6,8 @@
 
 package com.ozyern.exhale.desktop.ui.settings
 
+import com.ozyern.exhale.desktop.ui.pressScale
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -309,7 +311,7 @@ private fun BannerButton(label: String, filled: Boolean, modifier: Modifier = Mo
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.96f else if (hovered) 1.02f else 1f, spring(dampingRatio = 0.6f, stiffness = 600f), label = "banner_button")
+    val scale by pressScale(pressed, hovered, pressedScale = 0.96f, hoverScale = 1.02f)
     val accent = MaterialTheme.colorScheme.primary
     val background by animateColorAsState(
         when {

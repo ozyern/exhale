@@ -6,6 +6,25 @@
 
 package com.ozyern.exhale.desktop.ui.search
 
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.foundation.Canvas
+import com.ozyern.exhale.desktop.ui.pressScale
+
+import com.ozyern.exhale.desktop.ui.library.isAudioTrack
+import com.ozyern.exhale.desktop.ui.SongActionsMenu
+import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.ExperimentalComposeUiApi
+import com.ozyern.exhale.innertube.pages.MoodAndGenres
+import com.ozyern.exhale.desktop.ui.LocalNavigator
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.runtime.produceState
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -97,6 +116,7 @@ import com.ozyern.exhale.desktop.ui.NavIcons
 import com.ozyern.exhale.desktop.ui.SongRow
 import com.ozyern.exhale.desktop.ui.TransportIcons
 import com.ozyern.exhale.desktop.ui.feedIntro
+import com.ozyern.exhale.desktop.ui.formatTime
 import com.ozyern.exhale.desktop.ui.playNow
 import com.ozyern.exhale.desktop.ui.rememberItemOpener
 import com.ozyern.exhale.desktop.ui.glass.LocalPageBackdrop
@@ -161,8 +181,13 @@ class SearchModel(private val scope: CoroutineScope) {
     private val summaries = HashMap<String, SearchSummaryPage>()
     private val filtered = HashMap<String, List<YTItem>>()
 
+    /** Results stay up while the field changes, until the next ones replace them. */
     val showingResults: Boolean
-        get() = searchedQuery != null && searchedQuery == query.trim()
+        get() = searchedQuery != null && query.isNotBlank()
+
+    /** Still typing past what the results show: suggestions ride above them. */
+    val typingAhead: Boolean
+        get() = query.isNotBlank() && searchedQuery != query.trim()
 
     fun updateQuery(value: String) {
         query = value
@@ -176,6 +201,12 @@ class SearchModel(private val scope: CoroutineScope) {
             delay(220)
             withContext(Dispatchers.IO) { YouTube.searchSuggestions(q) }
                 .onSuccess { suggestions = it.queries.take(12) }
+            // Results as you type, once the typing pauses (Apple's "start search immediately").
+            delay(260)
+            if (q.length >= 2 && query.trim() == q && searchedQuery != q) {
+                searchedQuery = q
+                run(q)
+            }
         }
     }
 
@@ -322,14 +353,14 @@ fun SearchScreen(model: SearchModel, player: DesktopPlayer, state: PlayerState, 
     Column(Modifier.fillMaxSize().padding(start = start, end = 28.dp, top = 30.dp)) {
         LargeTitle(if (showField || model.query.isBlank()) "Search" else "“${model.query.trim()}”")
         if (showField) {
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(18.dp))
             SearchField(
                 query = model.query,
                 onChange = model::updateQuery,
                 onSearch = { model.search() },
                 onClear = model::clear,
                 focus = focus,
-                modifier = Modifier.widthIn(max = 900.dp).fillMaxWidth(),
+                modifier = Modifier.widthIn(max = 680.dp).fillMaxWidth(),
             )
         }
 
@@ -339,8 +370,18 @@ fun SearchScreen(model: SearchModel, player: DesktopPlayer, state: PlayerState, 
             else -> SearchMode.Recent
         }
         if (mode == SearchMode.Results) {
-            Spacer(Modifier.height(14.dp))
-            TabChips(model.tab, model::selectTab)
+            Spacer(Modifier.height(16.dp))
+            com.ozyern.exhale.desktop.ui.glass.LiquidSegmented(
+                labels = SearchTab.entries.map { it.label },
+                selected = model.tab.ordinal,
+                onSelect = { model.selectTab(SearchTab.entries[it]) },
+                accent = MaterialTheme.colorScheme.primary,
+                height = 34.dp,
+            )
+            if (model.typingAhead && model.suggestions.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                SuggestionPills(model.suggestions.take(6)) { model.search(it) }
+            }
         }
         Spacer(Modifier.height(14.dp))
 
@@ -354,108 +395,161 @@ fun SearchScreen(model: SearchModel, player: DesktopPlayer, state: PlayerState, 
             when {
                 target == SearchMode.Recent.name -> RecentSearches(history, bottom, onPick = { model.search(it) })
                 target == SearchMode.Suggest.name -> Suggestions(model.suggestions, model.query, bottom, onPick = { model.search(it) })
-                model.searching -> Box(Modifier.fillMaxSize().padding(top = 60.dp), contentAlignment = Alignment.TopCenter) { CircularProgressIndicator() }
+                // Live results keep the last ones up while the next arrive; a spinner only when there are none.
+                model.searching && model.summary == null && model.items.isEmpty() -> Box(Modifier.fillMaxSize().padding(top = 60.dp), contentAlignment = Alignment.TopCenter) { CircularProgressIndicator() }
                 model.error != null -> Hint(model.error!!)
-                model.tab == SearchTab.All -> AllResults(model.summary, model.searchedQuery.orEmpty(), player, state, bottom)
+                model.tab == SearchTab.All -> AllResults(model.summary, model.searchedQuery.orEmpty(), player, state, bottom, onScope = model::selectTab)
                 else -> FilteredResults(model.tab, model.items, model.searchedQuery.orEmpty(), player, state, bottom)
             }
         }
     }
 }
 
-@Composable
-private fun TabChips(selected: SearchTab, onSelect: (SearchTab) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        SearchTab.entries.forEach { tab ->
-            val chosen = tab == selected
-            val interaction = remember { MutableInteractionSource() }
-            val hovered by interaction.collectIsHoveredAsState()
-            val background by animateColorAsState(
-                when {
-                    chosen -> MaterialTheme.colorScheme.primary
-                    hovered -> Color.White.copy(alpha = 0.13f)
-                    else -> Color.White.copy(alpha = 0.07f)
-                },
-                label = "search_tab_bg",
-            )
-            val content by animateColorAsState(if (chosen) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface, label = "search_tab_fg")
-            Text(
-                tab.label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = content,
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(background)
-                    .hoverable(interaction)
-                    .clickable(interactionSource = interaction, indication = null) { onSelect(tab) }
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-        }
-    }
-}
-
 @OptIn(ExperimentalLayoutApi::class)
+/**
+ * Search before anything is typed, as the Music app on the Mac lays it out: what you searched lately
+ * as a short list, then Browse Categories — every mood and genre as a big colour tile, FLAC first.
+ */
 @Composable
 private fun RecentSearches(history: List<String>, padding: PaddingValues, onPick: (String) -> Unit) {
-    if (history.isEmpty()) {
-        Column(Modifier.fillMaxSize().padding(top = 60.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(84.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.06f)), contentAlignment = Alignment.Center) {
-                Icon(NavIcons.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(36.dp))
-            }
-            Spacer(Modifier.height(16.dp))
-            Text("Find songs, artists, albums and playlists", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text("Type in the search field — Ctrl+F gets you there from anywhere.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        return
+    val navigator = LocalNavigator.current
+    val groups by produceState<List<MoodAndGenres>?>(initialValue = null) {
+        value = withContext(Dispatchers.IO) { YouTube.moodAndGenres().getOrNull() }.orEmpty()
     }
-    Column(Modifier.fillMaxSize().padding(padding)) {
-        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Recent searches", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            Text(
-                "Clear all",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.clip(CircleShape).clickable { DesktopPrefs.clearSearchHistory() }.padding(horizontal = 12.dp, vertical = 6.dp),
-            )
+    val categories = remember(groups) { groups.orEmpty().flatMap { it.items }.distinctBy { it.title } }
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(200.dp),
+        contentPadding = padding,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        if (history.isNotEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Recently Searched", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(
+                        "Clear",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clip(CircleShape).clickable { DesktopPrefs.clearSearchHistory() }.padding(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                }
+            }
+            items(history.take(8), key = { "recent:$it" }) { q ->
+                RecentRow(q, onClick = { onPick(q) }, onRemove = { DesktopPrefs.removeSearch(q) })
+            }
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            history.forEach { q -> RecentPill(q, onClick = { onPick(q) }, onRemove = { DesktopPrefs.removeSearch(q) }) }
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Text("Browse Categories", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = if (history.isEmpty()) 6.dp else 22.dp))
+        }
+        item(key = "category:flac") {
+            CategoryTile("FLAC", Color(0xFF1F6FEB), subtitle = "Lossless, free to stream") { navigator?.openFlac?.invoke() }
+        }
+        if (groups == null) {
+            items(11) { Box(Modifier.fillMaxWidth().aspectRatio(1.75f).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))) }
+        } else {
+            items(categories, key = { "category:${it.title}:${it.endpoint.browseId}:${it.endpoint.params}" }) { category ->
+                CategoryTile(category.title, Color(category.stripeColor)) {
+                    navigator?.openBrowse?.invoke(category.endpoint.browseId, category.endpoint.params, category.title)
+                }
+            }
         }
     }
 }
 
+/** [color]'s hue at a saturation and brightness white text reads on; greys stay grey. */
+private fun richer(color: Color): Color {
+    val hsb = java.awt.Color.RGBtoHSB((color.red * 255).toInt(), (color.green * 255).toInt(), (color.blue * 255).toInt(), null)
+    val grey = hsb[1] < 0.08f
+    val saturation = if (grey) hsb[1] else hsb[1].coerceAtLeast(0.62f)
+    // A grey has no colour to carry white text, so it goes darker than the rest.
+    val rgb = java.awt.Color.HSBtoRGB(hsb[0], saturation, hsb[2].coerceIn(0.36f, if (grey) 0.5f else 0.72f))
+    return Color(rgb or (0xFF shl 24))
+}
+
+/** A past search: magnifier, the words, and an ✕ that shows under the pointer. */
 @Composable
-private fun RecentPill(text: String, onClick: () -> Unit, onRemove: () -> Unit) {
+private fun RecentRow(text: String, onClick: () -> Unit, onRemove: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = if (hovered) 0.06f else 0f))
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(start = 10.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(NavIcons.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        if (hovered) {
+            Box(Modifier.size(28.dp).clip(CircleShape).clickable(onClick = onRemove), contentAlignment = Alignment.Center) {
+                Text("✕", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/**
+ * A category as the Music app draws one: a wide tile in the category's colour, lit from its top
+ * corner and deepening away from it, the name in white at its foot. It lifts a little under the pointer.
+ */
+@Composable
+private fun CategoryTile(title: String, color: Color, subtitle: String? = null, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.96f else 1f, spring(dampingRatio = 0.6f, stiffness = 700f), label = "recent_pill")
-    Row(
+    val scale by pressScale(pressed, hovered, pressedScale = 0.97f, hoverScale = 1.02f)
+    // YouTube's category colours are pastels, too pale for white lettering: deepen them into the
+    // rich, saturated colours the Music app's tiles have, keeping each one's hue.
+    val rich = remember(color) { richer(color) }
+    val light = lerp(rich, Color.White, 0.12f)
+    val deep = lerp(rich, Color.Black, 0.4f)
+    Box(
         Modifier
+            .fillMaxWidth()
+            .aspectRatio(1.75f)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
             }
-            .glassPlate(CircleShape, base = if (hovered) Color.White.copy(alpha = 0.06f) else Color.Unspecified)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Brush.linearGradient(listOf(light, rich, deep), start = Offset.Zero, end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)))
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(14.dp),
+        contentAlignment = Alignment.BottomStart,
     ) {
-        Icon(NavIcons.Recent, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
-        Spacer(Modifier.width(8.dp))
-        Text(text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1)
-        Box(
-            Modifier
-                .padding(start = 6.dp)
-                .size(24.dp)
-                .graphicsLayer { alpha = if (hovered) 1f else 0.35f }
-                .clip(CircleShape)
-                .clickable(onClick = onRemove),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("✕", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column {
+            Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 21.sp)
+            subtitle?.let { Text(it, fontSize = 12.sp, color = Color.White.copy(alpha = 0.8f), modifier = Modifier.padding(top = 2.dp)) }
+        }
+    }
+}
+
+/** What YouTube thinks you're typing, as a quiet row over the results; click one to search it. */
+@Composable
+private fun SuggestionPills(suggestions: List<String>, onPick: (String) -> Unit) {
+    val ink = MaterialTheme.colorScheme.onSurface
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        suggestions.forEach { suggestion ->
+            Row(
+                Modifier
+                    .clip(CircleShape)
+                    .background(ink.copy(alpha = 0.07f))
+                    .clickable { onPick(suggestion) }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(NavIcons.Search, null, tint = ink.copy(alpha = 0.5f), modifier = Modifier.size(13.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(suggestion, fontSize = 13.sp, maxLines = 1)
+            }
         }
     }
 }
@@ -502,68 +596,161 @@ private fun rememberIntro(key: Any?): () -> Float {
 }
 
 @Composable
-private fun AllResults(summary: SearchSummaryPage?, query: String, player: DesktopPlayer, state: PlayerState, padding: PaddingValues) {
+private fun AllResults(summary: SearchSummaryPage?, query: String, player: DesktopPlayer, state: PlayerState, padding: PaddingValues, onScope: (SearchTab) -> Unit) {
     val summaries = summary?.summaries.orEmpty()
     val topSummary = summaries.firstOrNull { it.title.contains("top", ignoreCase = true) }
-    val top = topSummary?.items?.firstOrNull() ?: summaries.firstOrNull()?.items?.firstOrNull()
+    // The likeliest things, whatever they are; the first is the big card, the rest a shelf of their own.
+    val top = (topSummary?.items ?: summaries.mapNotNull { it.items.firstOrNull() }).distinctBy { it.id }.take(8)
+    val best = top.firstOrNull()
     val songSummary = summaries.firstOrNull { it.title.equals("Songs", ignoreCase = true) }
+    // Songs are audio tracks, by YouTube's own tag on each result: not the music videos, interviews,
+    // fan uploads and podcast episodes a summary also carries (those have their own shelves).
     val songs = (songSummary?.items ?: summaries.flatMap { it.items })
         .filterIsInstance<SongItem>()
-        .filterNot { it.id == top?.id }
+        .filter { it.isAudioTrack && it.id != best?.id }
         .distinctBy { it.id }
-        .take(5)
+        .take(12)
+    val alsoTop = top.drop(1).filterNot { item -> songs.take(4).any { it.id == item.id } }
     val shelves = summaries.filter { it !== topSummary && it !== songSummary && it.items.isNotEmpty() }
     val intro = rememberIntro(query)
     val open = rememberItemOpener(player)
 
-    if (top == null && shelves.isEmpty()) {
+    if (top.isEmpty() && shelves.isEmpty() && songs.isEmpty()) {
         Hint("Nothing found for “$query”.")
         return
     }
 
-    LazyColumn(contentPadding = padding, verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxSize()) {
-        if (top != null) {
-            item(key = "top") {
-                BoxWithConstraints(Modifier.fillMaxWidth()) {
-                    if (maxWidth >= 900.dp) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                            Column(Modifier.weight(0.85f).feedIntro(0f, intro)) {
-                                ResultsHeader("Top result")
-                                TopResultCard(top, active = top.id == state.current?.id, playing = state.isPlaying, onPlay = { player.playNow(top) }, onOpen = { open(top) })
-                            }
-                            Column(Modifier.weight(1.35f).feedIntro(1f, intro)) {
-                                ResultsHeader("Songs") {
-                                    HeaderAction("Play all") { player.play(songs, 0) }
-                                    HeaderAction("Add all") { player.addToQueue(songs) }
-                                }
-                                songs.forEach { song -> SongRow(song, isActive = song.id == state.current?.id, onClick = { player.playItem(song) }, player = player) }
-                            }
+    LazyColumn(contentPadding = padding, modifier = Modifier.fillMaxSize()) {
+        item(key = "lead") {
+            // The best match as one big card, its songs beside it; stacked when the window is narrow.
+            BoxWithConstraints(Modifier.fillMaxWidth().feedIntro(0f, intro)) {
+                val wide = maxWidth >= 760.dp
+                val card: @Composable (Modifier) -> Unit = { modifier ->
+                    Column(modifier) {
+                        ResultsHeader("Top Result")
+                        if (best != null) {
+                            TopResultCard(
+                                best,
+                                active = best.id == state.current?.id,
+                                playing = state.isPlaying,
+                                onPlay = { player.playNow(best) },
+                                onOpen = { open(best) },
+                            )
                         }
-                    } else {
-                        Column {
-                            ResultsHeader("Top result")
-                            TopResultCard(top, active = top.id == state.current?.id, playing = state.isPlaying, onPlay = { player.playNow(top) }, onOpen = { open(top) })
-                            if (songs.isNotEmpty()) {
-                                ResultsHeader("Songs")
-                                songs.forEach { song -> SongRow(song, isActive = song.id == state.current?.id, onClick = { player.playItem(song) }, player = player) }
-                            }
+                    }
+                }
+                val list: @Composable (Modifier) -> Unit = { modifier ->
+                    val lead = songs.take(4)
+                    Column(modifier) {
+                        ResultsHeader("Songs", onMore = { onScope(SearchTab.Songs) }) {
+                            HeaderAction("Play") { player.play(songs, 0) }
                         }
+                        lead.forEachIndexed { i, song ->
+                            CompactSongRow(song, active = song.id == state.current?.id, player = player, last = i == lead.lastIndex) { player.play(songs, i) }
+                        }
+                    }
+                }
+                when {
+                    best == null -> list(Modifier.fillMaxWidth())
+                    songs.isEmpty() -> card(Modifier.widthIn(max = 460.dp).fillMaxWidth())
+                    wide -> Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+                        card(Modifier.weight(0.42f))
+                        list(Modifier.weight(0.58f))
+                    }
+                    else -> Column {
+                        card(Modifier.fillMaxWidth())
+                        list(Modifier.fillMaxWidth())
+                    }
+                }
+            }
+        }
+        if (alsoTop.isNotEmpty()) {
+            item(key = "more-h") { ResultsHeader("More Results") }
+            item(key = "more") {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp), modifier = Modifier.feedIntro(1f, intro)) {
+                    itemsIndexed(alsoTop, key = { i, item -> "more:$i:${item.id}" }) { _, item ->
+                        ItemCard(item, isActive = item.id == state.current?.id, onClick = { open(item) }, artSize = 164.dp, onPlay = { player.playNow(item) })
                     }
                 }
             }
         }
         shelves.forEachIndexed { index, shelf ->
-            item(key = "shelf:$index:${shelf.title}") {
-                Column(Modifier.feedIntro(index + 2f, intro)) {
-                    ResultsHeader(shelf.title)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        itemsIndexed(shelf.items, key = { i, item -> "$i:${item.id}" }) { _, item ->
-                            ItemCard(item, isActive = item.id == state.current?.id, onClick = { open(item) }, onPlay = { player.playNow(item) })
-                        }
+            val scope = SearchTab.entries.firstOrNull { it.filter != null && shelf.title.contains(it.label.removeSuffix("s"), ignoreCase = true) }
+            item(key = "shelf-h:$index") {
+                ResultsHeader(shelf.title, onMore = scope?.let { { onScope(it) } })
+            }
+            item(key = "shelf:$index") {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp), modifier = Modifier.feedIntro(index + 2f, intro)) {
+                    itemsIndexed(shelf.items, key = { i, item -> "$index:$i:${item.id}" }) { _, item ->
+                        ItemCard(item, isActive = item.id == state.current?.id, onClick = { open(item) }, artSize = 164.dp, onPlay = { player.playNow(item) })
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * A song beside the top result: small cover, title over artist, its length at the end, a hairline under
+ * the text (none under the [last]) and the ⋯ only under the pointer.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun CompactSongRow(song: SongItem, active: Boolean, player: DesktopPlayer, last: Boolean = false, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    var menuOpen by remember { mutableStateOf(false) }
+    val ink = MaterialTheme.colorScheme.onSurface
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(58.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(ink.copy(alpha = if (hovered) 0.05f else 0f))
+            .hoverable(interaction)
+            .onPointerEvent(PointerEventType.Press) { if (it.buttons.isSecondaryPressed) menuOpen = true }
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+    ) {
+        Row(Modifier.fillMaxSize().padding(start = 4.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            AsyncImage(
+                song.thumbnail.resizedThumbnail(120),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(44.dp).clip(RoundedCornerShape(6.dp)).background(ink.copy(alpha = 0.08f)),
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    song.title,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if (active) MaterialTheme.colorScheme.primary else ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                // Some results come without their artists; the album stands in, or the title sits alone.
+                val by = song.artists.joinToString { it.name }.ifBlank { song.album?.name.orEmpty() }
+                if (by.isNotBlank()) Text(by, fontSize = 13.sp, color = ink.copy(alpha = 0.55f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            song.duration?.let {
+                Text(formatTime(it.toDouble()), fontSize = 13.sp, color = ink.copy(alpha = 0.55f), modifier = Modifier.padding(horizontal = 8.dp))
+            }
+            Box {
+                Box(
+                    Modifier
+                        .size(30.dp)
+                        .graphicsLayer { alpha = if (hovered || menuOpen) 1f else 0f }
+                        .clip(CircleShape)
+                        .clickable { menuOpen = true },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(NavIcons.More, "More", tint = ink.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                }
+                SongActionsMenu(song, player, expanded = menuOpen, onDismiss = { menuOpen = false })
+            }
+        }
+        // The hairline starts where the text does, as Apple's list rows do.
+        if (!last) Box(Modifier.align(Alignment.BottomStart).padding(start = 60.dp).fillMaxWidth().height(0.5.dp).background(ink.copy(alpha = 0.12f)))
     }
 }
 
@@ -610,9 +797,16 @@ private fun FilteredResults(tab: SearchTab, items: List<YTItem>, query: String, 
 }
 
 @Composable
-private fun ResultsHeader(text: String, actions: @Composable RowScope.() -> Unit = {}) {
-    Row(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+private fun ResultsHeader(text: String, onMore: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
+    // One height whether or not there's an action beside it, so headers side by side line up.
+    Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 10.dp).height(34.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.clip(RoundedCornerShape(6.dp)).then(if (onMore != null) Modifier.clickable(onClick = onMore) else Modifier),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            if (onMore != null) Text(" ›", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Spacer(Modifier.weight(1f))
         actions()
     }
@@ -637,85 +831,82 @@ private fun typeLabel(item: YTItem): String = when (item) {
     is PlaylistItem -> "Playlist"
 }
 
-/** The best match, set large on its own artwork's colour, with a play button that rises in under the pointer. */
+/**
+ * The best match as one big card, as tall as the four songs beside it: artwork top left (round for an
+ * artist), the name large under it, what it is and who by in grey, and a play button at the corner.
+ * The card takes a deep shade of the artwork's own colour and lifts a little under the pointer.
+ */
 @Composable
 private fun TopResultCard(item: YTItem, active: Boolean, playing: Boolean, onPlay: () -> Unit, onOpen: () -> Unit) {
     val colors by rememberArtworkColors(item.thumbnail?.resizedThumbnail(120))
-    val base by animateColorAsState(colors.firstOrNull() ?: MaterialTheme.colorScheme.surfaceVariant, tween(500), label = "top_result_base")
+    val ink = MaterialTheme.colorScheme.onSurface
+    val base by animateColorAsState(colors.firstOrNull() ?: ink.copy(alpha = 0.3f), tween(500), label = "top_result_base")
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val pressed by interaction.collectIsPressedAsState()
-    val lift by animateFloatAsState(if (hovered) 1f else 0f, spring(dampingRatio = 0.7f, stiffness = 320f), label = "top_result_lift")
-    val press by animateFloatAsState(if (pressed) 0.985f else 1f, spring(dampingRatio = 0.6f, stiffness = 700f), label = "top_result_press")
-    val shape = RoundedCornerShape(24.dp)
-    val artShape = if (item is ArtistItem) CircleShape else RoundedCornerShape(14.dp)
+    val scale by pressScale(pressed, hovered, pressedScale = 0.985f, hoverScale = 1.01f)
+    val shape = RoundedCornerShape(18.dp)
+    val artShape = if (item is ArtistItem) CircleShape else RoundedCornerShape(10.dp)
     val accent = MaterialTheme.colorScheme.primary
+    val byline = listOf(typeLabel(item), item.subtitle().orEmpty()).filter { it.isNotBlank() }.distinct().joinToString(" · ")
 
     Box(
         Modifier
             .fillMaxWidth()
-            .height(340.dp)
+            .height(232.dp)
             .graphicsLayer {
-                translationY = -4.dp.toPx() * lift
-                scaleX = press
-                scaleY = press
+                scaleX = scale
+                scaleY = scale
             }
-            .shadow(if (hovered) 26.dp else 8.dp, shape)
             .clip(shape)
-            .background(Brush.linearGradient(listOf(lerp(base, Color.Black, 0.3f), lerp(base, Color.Black, 0.78f))))
-            .border(0.8.dp, Color.White.copy(alpha = 0.10f), shape)
+            .background(Brush.linearGradient(listOf(lerp(base, Color.Black, 0.45f), lerp(base, Color.Black, 0.8f)), start = Offset.Zero, end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)))
+            .border(0.5.dp, Color.White.copy(alpha = if (hovered) 0.16f else 0.08f), shape)
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onOpen)
-            .padding(26.dp),
+            .padding(20.dp),
     ) {
-        Column {
+        Column(Modifier.padding(end = 64.dp)) {
             AsyncImage(
-                item.thumbnail?.resizedThumbnail(544),
+                item.thumbnail?.resizedThumbnail(400),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(140.dp).shadow(18.dp, artShape).clip(artShape).background(Color.White.copy(alpha = 0.06f)),
+                modifier = Modifier.size(100.dp).shadow(12.dp, artShape).clip(artShape).background(Color.White.copy(alpha = 0.06f)),
             )
-            Spacer(Modifier.height(20.dp))
-            Text(item.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    typeLabel(item),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    modifier = Modifier.clip(CircleShape).background(Color.Black.copy(alpha = 0.35f)).padding(horizontal = 10.dp, vertical = 4.dp),
-                )
-                item.subtitle()?.let {
-                    Spacer(Modifier.width(10.dp))
-                    Text(it, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.72f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
+            Spacer(Modifier.weight(1f))
+            Text(item.title, fontSize = 28.sp, fontWeight = FontWeight.Bold, lineHeight = 32.sp, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(4.dp))
+            Text(byline, fontSize = 15.sp, color = Color.White.copy(alpha = 0.6f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        val shown by animateFloatAsState(if (hovered || active) 1f else 0f, spring(dampingRatio = 0.6f, stiffness = 500f), label = "top_result_play")
+        val playScale by animateFloatAsState(if (hovered) 1.06f else 1f, spring(dampingRatio = 0.6f, stiffness = 500f), label = "top_result_play")
         Box(
             Modifier
                 .align(Alignment.BottomEnd)
                 .graphicsLayer {
-                    alpha = shown
-                    translationY = (1f - shown) * 12.dp.toPx()
+                    scaleX = playScale
+                    scaleY = playScale
                 }
-                .size(58.dp)
-                .shadow(14.dp, CircleShape)
+                .size(48.dp)
+                .shadow(10.dp, CircleShape)
                 .clip(CircleShape)
                 .background(accent)
                 .clickable(onClick = onPlay),
             contentAlignment = Alignment.Center,
         ) {
             if (active && playing) {
-                EqualizerBars(MaterialTheme.colorScheme.onPrimary, Modifier.size(22.dp))
+                EqualizerBars(MaterialTheme.colorScheme.onPrimary, Modifier.size(20.dp))
             } else {
-                Icon(TransportIcons.Play, contentDescription = "Play", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(28.dp))
+                Icon(TransportIcons.Play, contentDescription = "Play", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp))
             }
         }
     }
 }
 
+/**
+ * The field as a capsule of the same glass as the dock and the player, not a form box: a magnifier,
+ * the words at body size, and a round clear button. Focus brightens the rim and lifts the capsule a
+ * hair instead of drawing a coloured ring; until something is typed, Ctrl K sits where the clear
+ * button goes.
+ */
 @Composable
 private fun SearchField(
     query: String,
@@ -725,44 +916,113 @@ private fun SearchField(
     focus: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
+    var focused by remember { mutableStateOf(false) }
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val ink = Color.White
+    val shape = CircleShape
+    val lift by pressScale(pressed = false, hovered = focused, hoverScale = 1.012f)
+    val rim by animateFloatAsState(
+        when {
+            focused -> 0.42f
+            hovered -> 0.26f
+            else -> 0.14f
+        },
+        tween(180),
+        label = "search_rim",
+    )
     val backdrop = LocalPageBackdrop.current
-    val shape = RoundedCornerShape(percent = 50)
     Row(
         modifier
-            .height(56.dp)
-            .then(if (backdrop != null) Modifier.liquidGlass(shape, backdrop, tintAlpha = 0.38f, blurRadius = 56.dp) else Modifier.glassPlate(shape))
-            .padding(start = 20.dp, end = 8.dp),
+            .height(52.dp)
+            .graphicsLayer {
+                scaleX = lift
+                scaleY = lift
+            }
+            .then(if (backdrop != null) Modifier.liquidGlass(shape, backdrop, tintAlpha = 0.26f) else Modifier.glassPlate(shape))
+            .border(1.dp, ink.copy(alpha = rim), shape)
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null) { runCatching { focus.requestFocus() } }
+            .padding(start = 18.dp, end = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(NavIcons.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+        Icon(NavIcons.Search, contentDescription = null, tint = ink.copy(alpha = if (focused) 0.9f else 0.6f), modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(12.dp))
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             if (query.isEmpty()) {
-                Text("Songs, artists, albums", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                Text("Artists, Songs, Lyrics, and More", fontSize = 17.sp, color = ink.copy(alpha = 0.45f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             BasicTextField(
                 value = query,
                 onValueChange = onChange,
                 singleLine = true,
-                textStyle = MaterialTheme.typography.titleMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, color = ink),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focus)
+                    .onFocusChanged { focused = it.isFocused }
                     .typingField()
                     .onPreviewKeyEvent {
-                        if (it.type == KeyEventType.KeyDown && (it.key == Key.Enter || it.key == Key.NumPadEnter)) {
-                            onSearch()
-                            true
-                        } else {
-                            false
+                        when {
+                            it.type != KeyEventType.KeyDown -> false
+                            it.key == Key.Enter || it.key == Key.NumPadEnter -> {
+                                onSearch()
+                                true
+                            }
+                            it.key == Key.Escape && query.isNotEmpty() -> {
+                                onClear()
+                                true
+                            }
+                            else -> false
                         }
                     },
             )
         }
-        if (query.isNotEmpty()) {
-            Box(Modifier.size(40.dp).clip(CircleShape).clickable(onClick = onClear), contentAlignment = Alignment.Center) {
-                Text("✕", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        AnimatedContent(
+            targetState = query.isNotEmpty(),
+            transitionSpec = { (fadeIn(tween(160)) + scaleIn(spring(0.6f, 600f), initialScale = 0.6f)) togetherWith (fadeOut(tween(100)) + scaleOut(tween(120), targetScale = 0.6f)) },
+            label = "search_trailing",
+        ) { typed ->
+            if (typed) {
+                // Drawn rather than typed, so the cross sits dead centre in its disc.
+                val clear = remember { MutableInteractionSource() }
+                val clearPressed by clear.collectIsPressedAsState()
+                val clearScale by pressScale(clearPressed, pressedScale = 0.85f)
+                Box(
+                    Modifier
+                        .size(32.dp)
+                        .graphicsLayer {
+                            scaleX = clearScale
+                            scaleY = clearScale
+                        }
+                        .clip(CircleShape)
+                        .clickable(interactionSource = clear, indication = null, onClick = onClear),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Canvas(Modifier.size(20.dp)) {
+                        drawCircle(ink.copy(alpha = 0.28f))
+                        val arm = size.minDimension * 0.18f
+                        val c = center
+                        val stroke = 1.6.dp.toPx()
+                        drawLine(Color.Black.copy(alpha = 0.75f), Offset(c.x - arm, c.y - arm), Offset(c.x + arm, c.y + arm), stroke, StrokeCap.Round)
+                        drawLine(Color.Black.copy(alpha = 0.75f), Offset(c.x + arm, c.y - arm), Offset(c.x - arm, c.y + arm), stroke, StrokeCap.Round)
+                    }
+                }
+            } else if (!focused) {
+                Text(
+                    "Ctrl K",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = ink.copy(alpha = 0.5f),
+                    modifier = Modifier
+                        .padding(end = 4.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .border(1.dp, ink.copy(alpha = 0.18f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 7.dp, vertical = 3.dp),
+                )
+            } else {
+                Spacer(Modifier.size(32.dp))
             }
         }
     }

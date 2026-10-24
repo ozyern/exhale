@@ -6,6 +6,10 @@
 
 package com.ozyern.exhale.desktop.ui.player
 
+import androidx.compose.ui.unit.sp
+import com.ozyern.exhale.desktop.ui.pressScale
+
+import com.ozyern.exhale.desktop.data.DesktopPrefs
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -74,6 +78,10 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -323,11 +331,14 @@ fun FullPlayer(
         if (videoMode) {
             Box(Modifier.fillMaxSize().background(Color.Black))
         } else {
-            PlayerBackground(song.thumbnail, colors, settings, paused = !active)
+            PlayerBackground(song.thumbnail, colors, settings, paused = !active || !state.isPlaying)
         }
 
         Column(Modifier.fillMaxSize().padding(top = LocalTitleBarHeight.current)) {
+            val videoAvailable by player.videoAvailable.collectAsState()
             PlayerTopBar(
+                videoAvailable = videoAvailable,
+                onVideo = { player.setVideoMode(true) },
                 panel = panel,
                 fullLyrics = fullLyrics && panel == PlayerPanel.Lyrics,
                 video = videoMode,
@@ -440,13 +451,15 @@ private fun SplitPlayer(
         var shownPanel by remember { mutableStateOf(PlayerPanel.Lyrics) }
         if (panelOpen && shownPanel != panel) shownPanel = panel
 
-        val columnWidth = (maxWidth * (1f / (1f + 1.15f * panelFraction)) - 24.dp).coerceIn(300.dp, 520.dp)
-        val art = minOf(columnWidth, maxHeight - 290.dp).coerceIn(160.dp, 520.dp)
+        val columnWidth = (maxWidth * (1f / (1f + 1.15f * panelFraction)) - 24.dp).coerceIn(300.dp, 560.dp)
+        // What sits under the cover — title, progress, transport, volume — needs about 300dp.
+        val art = minOf(columnWidth, maxHeight - 300.dp).coerceIn(200.dp, 560.dp)
 
         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
             if (lyricsLeft) PanelSlot(panelFraction, shownPanel, state, player, lyrics, position, lyricOffset, nudged, onNudge, onResetNudge, leading = true)
             Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                NowPlayingColumn(state, player, art, columnWidth, dismissGesture, onArtworkBounds, artworkAlpha)
+                // Title, progress, controls and volume line up under the cover, as the Music app sets them.
+                NowPlayingColumn(state, player, art, art, dismissGesture, onArtworkBounds, artworkAlpha)
             }
             if (!lyricsLeft) PanelSlot(panelFraction, shownPanel, state, player, lyrics, position, lyricOffset, nudged, onNudge, onResetNudge, leading = false)
         }
@@ -611,7 +624,8 @@ private fun PlayerBackground(thumbnail: String, colors: List<Color>, settings: S
     val base = colors.firstOrNull() ?: MaterialTheme.colorScheme.primary
     val fluid = style == "ARTWORK" && settings.animatedBackground && fluidBackgroundAvailable
     when {
-        fluid -> FluidArtwork(thumbnail.resizedThumbnail(120), Modifier.fillMaxSize(), brightness = 0.95f, paused = paused)
+        // Nothing sits over the player's background, so it drifts smoothly at the display's own rate.
+        fluid -> FluidArtwork(thumbnail.resizedThumbnail(120), Modifier.fillMaxSize(), brightness = 0.95f, paused = paused, smooth = true)
         style == "ARTWORK" || style == "BLUR" -> Crossfade(targetState = thumbnail, animationSpec = tween(700), modifier = Modifier.fillMaxSize(), label = "backdrop") { url ->
             AsyncImage(
                 model = url.resizedThumbnail(544),
@@ -636,6 +650,8 @@ private fun PlayerBackground(thumbnail: String, colors: List<Color>, settings: S
 
 @Composable
 private fun PlayerTopBar(
+    videoAvailable: Boolean,
+    onVideo: () -> Unit,
     panel: PlayerPanel,
     fullLyrics: Boolean,
     video: Boolean,
@@ -657,6 +673,8 @@ private fun PlayerTopBar(
                 // What belongs to watching lives on the picture itself; what is left is the way back.
                 PlayerCircleButton(NavIcons.Image, "Back to the artwork", active = true, onClick = onLeaveVideo)
             } else {
+                // Only for a song YouTube actually has a video of.
+                if (videoAvailable) PlayerCircleButton(NavIcons.Video, "Watch the video", active = false, onClick = onVideo)
                 PlayerCircleButton(TransportIcons.Lyrics, "Lyrics", active = panel == PlayerPanel.Lyrics) { onToggle(PlayerPanel.Lyrics) }
                 PlayerCircleButton(if (fullLyrics) NavIcons.FullscreenExit else NavIcons.Fullscreen, "Full-screen lyrics", active = fullLyrics, onClick = onToggleFull)
                 PlayerCircleButton(TransportIcons.Queue, "Up next", active = panel == PlayerPanel.Queue) { onToggle(PlayerPanel.Queue) }
@@ -683,34 +701,7 @@ private fun NowPlayingColumn(
     Column(Modifier.width(width), horizontalAlignment = Alignment.CenterHorizontally) {
         Artwork(song, art, playing = state.isPlaying || state.isLoading, modifier = dismissGesture, onBounds = onArtworkBounds, alpha = artworkAlpha)
 
-        // Only for a song YouTube actually has a video of; for everything else there's nothing to switch to.
-        val videoAvailable by player.videoAvailable.collectAsState()
-        if (videoAvailable || videoMode) {
-            Spacer(Modifier.height(14.dp))
-            Row(
-                Modifier
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.12f))
-                    .clickable { player.setVideoMode(!videoMode) }
-                    .padding(horizontal = 14.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    if (videoMode) NavIcons.New else NavIcons.Image,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(17.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    if (videoMode) "Switch to audio" else "Switch to video",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White,
-                )
-            }
-        }
-        Spacer(Modifier.height(30.dp))
+        Spacer(Modifier.height(26.dp))
 
         AnimatedContent(
             targetState = song,
@@ -723,14 +714,17 @@ private fun NowPlayingColumn(
             label = "player_title",
         ) { current ->
             Column(Modifier.fillMaxWidth()) {
-                Text(
-                    current.title,
-                    style = MaterialTheme.typography.headlineSmall.copy(letterSpacing = (-0.02).em),
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1,
-                    modifier = Modifier.playerMarquee(),
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        current.title,
+                        style = MaterialTheme.typography.headlineSmall.copy(letterSpacing = (-0.02).em),
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f).playerMarquee(),
+                    )
+                    FavoriteStar(current)
+                }
                 // Artists and the album are links to their pages; the player folds away as one opens.
                 val nav = LocalNavigator.current
                 Text(
@@ -777,6 +771,30 @@ private fun NowPlayingColumn(
     }
 }
 
+/** The Music app's star beside the title: Favorite Songs, kept on this PC. */
+@Composable
+private fun FavoriteStar(song: SongItem) {
+    val favorites by DesktopPrefs.favorites.collectAsState()
+    val on = favorites.any { it.id == song.id }
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by pressScale(pressed, pressedScale = 0.8f)
+    Box(
+        Modifier
+            .size(36.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.12f))
+            .clickable(interactionSource = interaction, indication = null) { DesktopPrefs.toggleFavorite(song) },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(if (on) NavIcons.Star else NavIcons.StarOutline, if (on) "Undo Favorite" else "Favorite", tint = Color.White, modifier = Modifier.size(19.dp))
+    }
+}
+
 /** The cover. The cue for a paused song: it sits back, and its shadow comes in close. */
 @Composable
 private fun Artwork(song: SongItem, size: Dp, playing: Boolean, modifier: Modifier, onBounds: (Rect) -> Unit, alpha: () -> Float) {
@@ -818,13 +836,22 @@ private fun MotionCoverLayer(song: SongItem, playing: Boolean, modifier: Modifie
     var url by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { url = runCatching { MotionCovers.find(song) }.getOrNull() }
     val source = url ?: return
-    val renderer = remember(source) { runCatching { MotionCoverRenderer(720) }.getOrNull() } ?: return
-    DisposableEffect(renderer) {
-        renderer.play(source)
-        // Closing waits for mpv to wind down; not on the thread that draws the window.
-        onDispose { Thread { runCatching { renderer.close() } }.apply { isDaemon = true }.start() }
+    // Loading libmpv and starting a second core takes a while: never on the thread that draws.
+    val renderer by produceState<MotionCoverRenderer?>(null, source) {
+        val made = withContext(Dispatchers.IO) { runCatching { MotionCoverRenderer(720).also { it.play(source) } }.getOrNull() }
+        value = made
+        // Closing waits for mpv to wind down; not on the thread that draws the window either.
+        awaitDispose { if (made != null) Thread { runCatching { made.close() } }.apply { isDaemon = true }.start() }
     }
-    LaunchedEffect(renderer, playing) { renderer.setPaused(!playing) }
+    val cover = renderer ?: return
+    MotionCoverFrames(cover, playing, modifier)
+}
+
+@Composable
+private fun MotionCoverFrames(renderer: MotionCoverRenderer, playing: Boolean, modifier: Modifier) {
+    // The player stays composed while it's closed; the cover rests then rather than decoding unseen.
+    val visible = LocalPlayerActive.current
+    LaunchedEffect(renderer, playing, visible) { renderer.setPaused(!playing || !visible) }
     val started by remember(renderer) { derivedStateOf { renderer.frames.intValue > 0 } }
     val shown by animateFloatAsState(if (started) 1f else 0f, tween(700), label = "motion_cover")
     if (shown <= 0f) return
@@ -832,7 +859,17 @@ private fun MotionCoverLayer(song: SongItem, playing: Boolean, modifier: Modifie
         // Read so every new frame redraws this, and only this.
         renderer.frames.intValue
         val frame = renderer.current ?: return@Canvas
-        drawImage(frame, dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()), filterQuality = FilterQuality.High)
+        // The frame as it is, straight to Skia: its texture is reused until the next one arrives.
+        drawIntoCanvas { canvas ->
+            canvas.nativeCanvas.drawImageRect(
+                frame,
+                org.jetbrains.skia.Rect.makeWH(frame.width.toFloat(), frame.height.toFloat()),
+                org.jetbrains.skia.Rect.makeWH(size.width, size.height),
+                org.jetbrains.skia.FilterMipmap(org.jetbrains.skia.FilterMode.LINEAR, org.jetbrains.skia.MipmapMode.NONE),
+                null,
+                true,
+            )
+        }
     }
 }
 
@@ -878,32 +915,38 @@ private fun RowScope.BarProgress(player: DesktopPlayer, state: PlayerState, dura
     Text("-" + formatTime(duration - elapsed), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
 }
 
-/** "Spatial Audio · 7.1" once Windows has opened a surround bed for Exhale; otherwise the codec. */
+/**
+ * The line under the scrubber, as the Android app writes it: a glyph and a word in the scrubber's own
+ * grey, no chip. "Dolby Atmos" once Windows has opened a surround bed for Exhale and Dolby Access is
+ * there to render it, "Spatial Audio" for a bed Windows Sonic renders; otherwise the codec.
+ */
 @Composable
 private fun QualityBadge(streamInfo: String?, settings: Settings) {
     val output by AudioOutputStatus.state.collectAsState()
     val spatial = settings.spatialAudio != "OFF" && output?.isSurround == true
-    val label = if (spatial) "Spatial Audio · ${output?.layout}" else streamInfo ?: return
+    val tag = when {
+        spatial && DolbyAccess.isInstalled -> SoundTag(NavIcons.DolbyAtmos, "Dolby Atmos")
+        spatial -> SoundTag(NavIcons.SpatialAudio, "Spatial Audio")
+        streamInfo != null -> SoundTag(null, streamInfo)
+        else -> return
+    }
     AnimatedContent(
-        targetState = spatial to label,
-        transitionSpec = { (fadeIn(tween(260)) + scaleIn(spring(0.7f, 400f), initialScale = 0.85f)) togetherWith fadeOut(tween(140)) },
+        targetState = tag,
+        transitionSpec = { fadeIn(tween(260)) togetherWith fadeOut(tween(140)) },
         label = "quality_badge",
-    ) { (isSpatial, text) ->
-        Row(
-            Modifier
-                .clip(RoundedCornerShape(7.dp))
-                .background(Color.White.copy(alpha = if (isSpatial) 0.16f else 0.09f))
-                .padding(horizontal = 8.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (isSpatial) {
-                Icon(NavIcons.Surround, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
-                Spacer(Modifier.width(5.dp))
+    ) { (icon, text) ->
+        val ink = Color.White.copy(alpha = 0.6f)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (icon != null) {
+                Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
             }
-            Text(text, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = Color.White.copy(alpha = 0.8f), maxLines = 1)
+            Text(text, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.1.sp, color = ink, maxLines = 1)
         }
     }
 }
+
+private data class SoundTag(val icon: ImageVector?, val label: String)
 
 @Composable
 private fun TransportRow(state: PlayerState, player: DesktopPlayer) {
@@ -966,7 +1009,7 @@ private fun GlyphButton(size: Dp, onClick: () -> Unit, enabled: Boolean = true, 
     val pressed by interaction.collectIsPressedAsState()
     val hovered by interaction.collectIsHoveredAsState()
     val disc by animateFloatAsState(if (pressed) 1f else if (hovered && enabled) 0.6f else 0f, spring(0.8f, 600f), label = "glyph_disc")
-    val scale by animateFloatAsState(if (pressed) 0.84f else 1f, spring(dampingRatio = 0.45f, stiffness = 700f), label = "glyph_scale")
+    val scale by pressScale(pressed, pressedScale = 0.84f)
     val shift = remember { Animatable(0f) }
     Box(
         Modifier
@@ -1008,7 +1051,7 @@ private fun GlyphButton(size: Dp, onClick: () -> Unit, enabled: Boolean = true, 
 private fun ToggleGlyph(icon: ImageVector, description: String, active: Boolean, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.86f else 1f, spring(0.5f, 700f), label = "toggle_scale")
+    val scale by pressScale(pressed, pressedScale = 0.86f)
     val fill by animateColorAsState(if (active) Color.White.copy(alpha = 0.2f) else Color.Transparent, label = "toggle_fill")
     val tint by animateColorAsState(if (active) Color.White else Color.White.copy(alpha = 0.55f), label = "toggle_tint")
     Box(
@@ -1107,7 +1150,7 @@ private fun PlayerCircleButton(icon: ImageVector, description: String, active: B
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val hovered by interaction.collectIsHoveredAsState()
-    val scale by animateFloatAsState(if (pressed) 0.88f else if (hovered) 1.05f else 1f, spring(0.55f, 600f), label = "player_button")
+    val scale by pressScale(pressed, hovered, pressedScale = 0.88f, hoverScale = 1.05f)
     val fill by animateColorAsState(if (active) Color.White.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.04f), label = "player_button_fill")
     Box(
         modifier
@@ -1406,15 +1449,7 @@ private fun RowScope.QuickTile(icon: ImageVector, label: String, onClick: () -> 
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        when {
-            pressed -> 0.94f
-            hovered -> 1.03f
-            else -> 1f
-        },
-        spring(dampingRatio = 0.55f, stiffness = 700f),
-        label = "quick_tile",
-    )
+    val scale by pressScale(pressed, hovered, pressedScale = 0.94f, hoverScale = 1.03f)
     val fill by animateColorAsState(if (hovered) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.07f), tween(160), label = "quick_tile_fill")
     Column(
         Modifier

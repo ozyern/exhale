@@ -15,7 +15,9 @@ import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.LaunchedEffect
 import com.ozyern.exhale.desktop.data.LocalSettings
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
+import androidx.compose.runtime.State
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -40,6 +42,23 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+
+/**
+ * Whether the listener is moving the interface right now — scrolling, or between pages. Background
+ * work that redraws the page (the moving artwork behind it) holds off meanwhile: every one of its
+ * frames re-records the whole page for the glass over it, and those are the frames a scroll or a
+ * page change can't spare.
+ */
+object UiMotion {
+    @Volatile private var busyUntil = 0L
+
+    val busy: Boolean get() = System.nanoTime() < busyUntil
+
+    /** Something just moved; count the interface as busy for [millis] more. */
+    fun poke(millis: Long = 500) {
+        busyUntil = System.nanoTime() + millis * 1_000_000L
+    }
+}
 
 /** The Android app's MotionTokens: tap physics and emphasized springs. */
 object Motion {
@@ -107,6 +126,41 @@ fun rememberCascade(key: Any?, ready: Boolean): () -> Float {
     return { clock.value }
 }
 
+/** ColorOS 17's press: the surface gives at once, with nothing to wobble about… */
+private val PressIn = spring<Float>(dampingRatio = 1f, stiffness = 1_400f)
+
+/** …and on release springs back a touch past its rest before settling, the rebound its taps are known for. */
+private val PressRelease = spring<Float>(dampingRatio = 0.48f, stiffness = 420f)
+
+/** Hover eases in and out without overshoot; it is a pointer resting, not a tap. */
+private val HoverEase = spring<Float>(dampingRatio = 0.9f, stiffness = 380f)
+
+/**
+ * The scale a pressable surface draws at, the same everywhere in the app: [pressedScale] while held,
+ * [hoverScale] under the pointer, 1 at rest — in on [PressIn], back out on [PressRelease]. Read it in
+ * a graphicsLayer so the press costs no recomposition.
+ */
+@Composable
+fun pressScale(pressed: Boolean, hovered: Boolean = false, pressedScale: Float = 0.96f, hoverScale: Float = 1f): State<Float> {
+    val scale = remember { Animatable(1f) }
+    val reduced = LocalSettings.current.reducedMotion
+    val target = when {
+        pressed -> pressedScale
+        hovered -> hoverScale
+        else -> 1f
+    }
+    LaunchedEffect(target) {
+        val spec = when {
+            reduced -> snap()
+            pressed -> PressIn
+            scale.value < 1f -> PressRelease
+            else -> HoverEase
+        }
+        scale.animateTo(target, spec)
+    }
+    return scale.asState()
+}
+
 /** A round control that squishes on press and springs back, with no ripple — glass deforms, it doesn't flash. */
 @Composable
 fun PressableIcon(
@@ -117,7 +171,7 @@ fun PressableIcon(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) Motion.PressedScale else 1f, Motion.PressSpring, label = "press")
+    val scale by pressScale(pressed, pressedScale = Motion.PressedScale)
     Box(
         Modifier
             .size(size)

@@ -68,6 +68,10 @@ F-Droid is coming soon.
 
 **Requirements:** Android 13 (API 33) or newer.
 
+On **Windows 10 or 11**, download `Exhale-Setup-<version>.exe` from the same
+[Releases](https://github.com/ozyern/Exhale/releases) page. It installs for your user only, with no
+admin rights, and *Uninstall Exhale* in Installed apps removes it again.
+
 ## Building from source
 
 You'll need **JDK 21** and **SDK Platform 37**.
@@ -94,6 +98,28 @@ work — without it, this project wouldn't exist. Check out the OG repo:
 
 Pull requests are always welcome — a bug fix, a UI tweak, even a typo. Check out the
 [Contributing Guidelines](CONTRIBUTING.md) if you want to dive in.
+
+## Privacy
+
+Exhale has no account of its own, no ads and no analytics. It connects only to the services that play
+and describe your music, and the optional ones (Last.fm, ListenBrainz, Discord) stay off until you turn
+them on. The full list is in the [privacy policy](PRIVACY.md), and the Windows installer shows it before
+anything is installed.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
+[SignPath Foundation](https://signpath.org/).
+
+Windows releases are built from this repository by GitHub Actions
+([release workflow](.github/workflows/release.yml)) and signed only after a manual approval for each
+release.
+
+- Committers and reviewers: [ozyern](https://github.com/ozyern)
+- Approvers: [ozyern](https://github.com/ozyern)
+
+Privacy: see the [privacy policy](PRIVACY.md). This program does not send any information to the
+developer, and only connects to the services listed there.
 
 ## License
 

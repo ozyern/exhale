@@ -6,6 +6,19 @@
 
 package com.ozyern.exhale.desktop.ui.pages
 
+import com.ozyern.exhale.desktop.ui.pressScale
+
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.BiasAlignment
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.luminance
+import com.ozyern.exhale.desktop.data.AppleArtistArt
+import com.ozyern.exhale.desktop.data.AppleArtistArtRepository
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -70,6 +83,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.ozyern.exhale.desktop.data.LocalSettings
 import com.ozyern.exhale.desktop.player.DesktopPlayer
@@ -129,6 +143,10 @@ fun ArtistScreen(
     val title = artist?.title ?: name.orEmpty()
     val image = artist?.thumbnail ?: thumbnail
     val audience = artist?.monthlyListenerCountText ?: artist?.subscriberCountText
+    // The Music app's own header for this artist: hero photo, title logo, colours. Null for many.
+    val apple by produceState(title.takeIf { it.isNotBlank() }?.let(AppleArtistArtRepository::cached), title) {
+        if (title.isNotBlank()) AppleArtistArtRepository.artFor(title)?.let { value = it }
+    }
     val nav = LocalNavigator.current
     val listState = rememberLazyListState()
     BenchList(listState, home = false)
@@ -157,10 +175,11 @@ fun ArtistScreen(
             LazyColumn(state = listState, contentPadding = PaddingValues(bottom = insets.bottom + 16.dp), modifier = Modifier.fillMaxSize()) {
                 item(key = "hero") {
                     ArtistHero(
+                        artistId = browseId,
                         name = title,
                         image = image,
+                        apple = apple,
                         audience = audience,
-                        description = page?.description,
                         start = start,
                         listState = listState,
                         canPlay = canPlay || topSongs.isNotEmpty(),
@@ -253,16 +272,20 @@ private fun Modifier.cascadeRow(index: Int, progress: () -> Float): Modifier = g
 }
 
 /**
- * The banner. On arrival the picture settles back from a slight zoom, the way ColorOS lands a
- * wallpaper, and the eyebrow, name, audience, blurb and buttons rise in one after another. Scrolling
- * drifts the picture slower than the page and fades the text away.
+ * The banner, as the Music app on the Mac draws it: the artist's photograph across the page — Apple's
+ * own hero shot when there is one, YouTube's banner otherwise — fading into the page at its foot. Low
+ * on the left, a round Play in the artist's colour and their name beside it: Apple's title logo when
+ * they have one, else the name in the face chosen for them (click it to choose). Shuffle and Radio sit
+ * quietly at the right. On arrival the photo settles back from a slight zoom and the name rises in;
+ * scrolling drifts the photo slower than the page and fades the name away.
  */
 @Composable
 private fun ArtistHero(
+    artistId: String,
     name: String,
     image: String?,
+    apple: AppleArtistArt?,
     audience: String?,
-    description: String?,
     start: Dp,
     listState: LazyListState,
     canPlay: Boolean,
@@ -276,78 +299,100 @@ private fun ArtistHero(
     LaunchedEffect(Unit) { settle.animateTo(1f, spring(dampingRatio = 1f, stiffness = 55f)) }
     val progress: () -> Float = { settle.value }
     val ground = MaterialTheme.colorScheme.background
-    val blurb = remember(description) {
-        description?.split(Regex("(?<=[.!?])\\s+"))?.firstOrNull()?.trim()?.takeIf { it.length in 20..220 }
-    }
+    // Re-read whenever a face is chosen, here or on another artist's page.
+    val fontChanges by ArtistNameFont.changes
+    val font = remember(artistId, fontChanges) { ArtistNameFont.resolve(artistId) }
+    var choosing by remember { mutableStateOf(false) }
 
     BoxWithConstraints(Modifier.fillMaxWidth().onSizeChanged { onHeight(it.height.toFloat()) }) {
-        val height = (maxWidth * 0.42f).coerceIn(380.dp, 560.dp)
+        val height = (maxWidth * 0.46f).coerceIn(400.dp, 620.dp)
+        val pageWidth = maxWidth
         Box(Modifier.fillMaxWidth().height(height)) {
             AsyncImage(
-                model = image?.let(::bannerUrl),
+                model = apple?.heroUrl ?: image?.let(::bannerUrl),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                alignment = Alignment.TopCenter,
+                // Apple frames its hero shots around the face; YouTube's banners are safest from the top.
+                alignment = if (apple != null) BiasAlignment(0f, -0.25f) else Alignment.TopCenter,
                 modifier = Modifier
                     .fillMaxSize()
+                    // The photo itself thins out at its foot, so it melts into whatever is under the page.
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithContent {
+                        drawContent()
+                        drawRect(Brush.verticalGradient(0.5f to Color.Black, 1f to Color.Transparent), blendMode = BlendMode.DstIn)
+                    }
                     .graphicsLayer {
                         val scrolled = if (listState.firstVisibleItemIndex == 0) listState.firstVisibleItemScrollOffset.toFloat() else size.height
                         translationY = scrolled * 0.45f
-                        val zoom = 1f + 0.16f * (1f - settle.value)
+                        val zoom = 1f + 0.12f * (1f - settle.value)
                         scaleX = zoom
                         scaleY = zoom
                         alpha = FastOutSlowInEasing.transform((settle.value * 2.4f).coerceAtMost(1f))
                     },
             )
-            // Floor fades into the page; the left side darkens so white text reads over any photo.
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to ground.copy(alpha = 0.30f), 0.40f to Color.Transparent, 1f to ground)))
-            Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to Color.Black.copy(alpha = 0.50f), 0.6f to Color.Transparent)))
+            // Enough shade behind the name to read it over any photo.
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 0.85f to Color.Black.copy(alpha = 0.32f), 1f to Color.Transparent)))
 
-            Column(
+            Row(
                 Modifier
                     .align(Alignment.BottomStart)
-                    .padding(start = start, end = 40.dp, bottom = 30.dp)
+                    .fillMaxWidth()
+                    .padding(start = start, end = 40.dp, bottom = 34.dp)
                     .graphicsLayer {
                         val scrolled = if (listState.firstVisibleItemIndex == 0) listState.firstVisibleItemScrollOffset.toFloat() else height.toPx()
-                        alpha = 1f - (scrolled / (height.toPx() * 0.55f)).coerceIn(0f, 1f)
-                        transformOrigin = TransformOrigin(0f, 1f)
+                        alpha = 1f - (scrolled / (height.toPx() * 0.5f)).coerceIn(0f, 1f)
                     },
+                verticalAlignment = Alignment.Bottom,
             ) {
-                Text(
-                    "ARTIST",
-                    style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 0.16.em),
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White.copy(alpha = 0.78f),
-                    modifier = Modifier.stage(0.12f, progress),
-                )
-                Text(
-                    name,
-                    style = (if (name.length > 20) MaterialTheme.typography.displayMedium else MaterialTheme.typography.displayLarge).copy(letterSpacing = (-0.04).em),
-                    fontWeight = FontWeight.Black,
-                    color = Color.White,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.stage(0.2f, progress),
-                )
-                audience?.let {
-                    Text(it, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Color.White.copy(alpha = 0.80f), modifier = Modifier.stage(0.3f, progress))
-                }
-                blurb?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.66f),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 8.dp).widthIn(max = 560.dp).stage(0.36f, progress),
+                Box(Modifier.padding(bottom = 6.dp).stage(0.3f, progress)) {
+                    PlayCircle(
+                        diameter = 54.dp,
+                        enabled = canPlay,
+                        description = "Play $name",
+                        color = apple?.keyColor?.let { Color(it) },
+                        onClick = onPlay,
                     )
                 }
-                Spacer(Modifier.height(20.dp))
-                // Three things, three meanings: play them, play them in any order, play on from them.
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.stage(0.44f, progress)) {
-                    PlayCircle(diameter = 58.dp, enabled = canPlay, description = "Play $name", onClick = onPlay)
-                    Spacer(Modifier.width(14.dp))
-                    PillButton("Shuffle", TransportIcons.Shuffle, primary = true, enabled = canPlay, onClick = onShuffle)
+                Spacer(Modifier.width(18.dp))
+                Column(Modifier.weight(1f).stage(0.2f, progress)) {
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { choosing = true },
+                    ) {
+                        val logo = apple?.logoUrl
+                        if (logo != null) {
+                            // Apple's own lettering for the artist, drawn the way they draw it.
+                            val aspect = apple.logoAspect.coerceIn(0.4f, 6f)
+                            val logoHeight = (height * 0.24f).coerceIn(70.dp, 150.dp)
+                            AsyncImage(logo, contentDescription = name, modifier = Modifier.height(logoHeight).width((logoHeight * aspect).coerceAtMost(pageWidth * 0.55f)))
+                        } else {
+                            ArtistDisplayName(name, font)
+                        }
+                        ArtistFontMenu(
+                            expanded = choosing,
+                            name = name,
+                            current = font,
+                            ownChoice = ArtistNameFont.forArtist(artistId) != null,
+                            onPick = { picked ->
+                                ArtistNameFont.setForArtist(artistId, picked)
+                                choosing = false
+                            },
+                            onMakeDefault = {
+                                ArtistNameFont.default = font
+                                ArtistNameFont.setForArtist(artistId, null)
+                                choosing = false
+                            },
+                            onDismiss = { choosing = false },
+                        )
+                    }
+                    audience?.let {
+                        Text(it, fontSize = 14.sp, color = Color.White.copy(alpha = 0.78f), modifier = Modifier.padding(top = 6.dp))
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp).stage(0.4f, progress)) {
+                    PillButton("Shuffle", TransportIcons.Shuffle, primary = false, enabled = canPlay, onClick = onShuffle)
                     Spacer(Modifier.width(10.dp))
                     PillButton("Radio", NavIcons.Radio, primary = false, enabled = canPlay, onClick = onRadio)
                 }
@@ -356,23 +401,84 @@ private fun ArtistHero(
     }
 }
 
+/** The artist's name, large, in [font]. */
+@Composable
+private fun ArtistDisplayName(name: String, font: ArtistNameFont) {
+    val size = font.size(name)
+    Text(
+        text = if (font.uppercase) name.uppercase() else name,
+        fontFamily = font.family,
+        fontWeight = FontWeight.Bold,
+        fontSize = size,
+        lineHeight = size * 1.02f,
+        letterSpacing = (-0.5).sp,
+        color = Color.White,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.artistNameTexture(font),
+    )
+}
+
+/** Every face, each set in itself with the artist's name; for this artist only, or for every artist. */
+@Composable
+private fun ArtistFontMenu(
+    expanded: Boolean,
+    name: String,
+    current: ArtistNameFont,
+    ownChoice: Boolean,
+    onPick: (ArtistNameFont?) -> Unit,
+    onMakeDefault: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, modifier = Modifier.widthIn(min = 320.dp)) {
+        Text(
+            "Name style for $name",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+        ArtistNameFont.entries.forEach { font ->
+            DropdownMenuItem(
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            if (font.uppercase) name.uppercase() else name,
+                            fontFamily = font.family,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp * font.scale,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f).artistNameTexture(font),
+                        )
+                        Text(font.label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 12.dp))
+                    }
+                },
+                trailingIcon = if (font == current) {
+                    { Icon(NavIcons.Check, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)) }
+                } else {
+                    null
+                },
+                onClick = { onPick(font) },
+            )
+        }
+        HorizontalDivider(Modifier.padding(vertical = 4.dp))
+        DropdownMenuItem(text = { Text("Use ${current.label} for every artist", fontSize = 14.sp) }, onClick = onMakeDefault)
+        if (ownChoice) DropdownMenuItem(text = { Text("Back to the default", fontSize = 14.sp) }, onClick = { onPick(null) })
+    }
+}
+
 /** The accent play button: grows under the pointer with a soft halo, squeezes when pressed. */
 @Composable
-internal fun PlayCircle(diameter: Dp, enabled: Boolean, description: String, onClick: () -> Unit) {
+internal fun PlayCircle(diameter: Dp, enabled: Boolean, description: String, color: Color? = null, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        when {
-            pressed -> 0.9f
-            hovered -> 1.08f
-            else -> 1f
-        },
-        spring(dampingRatio = 0.5f, stiffness = 520f),
-        label = "play_circle",
-    )
+    val scale by pressScale(pressed, hovered, pressedScale = 0.9f, hoverScale = 1.08f)
     val halo by animateFloatAsState(if (hovered && enabled) 1f else 0f, tween(260), label = "play_halo")
-    val accent = MaterialTheme.colorScheme.primary
+    val accent = color ?: MaterialTheme.colorScheme.primary
+    // A light key colour (some artists' are near white) takes a dark glyph.
+    val glyph = if (color != null && color.luminance() > 0.6f) Color.Black else if (color != null) Color.White else MaterialTheme.colorScheme.onPrimary
     Box(
         Modifier
             .size(diameter)
@@ -391,7 +497,7 @@ internal fun PlayCircle(diameter: Dp, enabled: Boolean, description: String, onC
             .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(TransportIcons.Play, contentDescription = description, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(diameter * 0.46f))
+        Icon(TransportIcons.Play, contentDescription = description, tint = glyph, modifier = Modifier.size(diameter * 0.46f))
     }
 }
 
@@ -535,7 +641,7 @@ private fun VideoCard(song: SongItem, active: Boolean, playing: Boolean, onClick
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.97f else 1f, spring(dampingRatio = 0.6f, stiffness = 600f), label = "video_press")
+    val scale by pressScale(pressed, pressedScale = 0.97f)
     val zoom by animateFloatAsState(if (hovered) 1.07f else 1f, spring(dampingRatio = 0.9f, stiffness = 220f), label = "video_zoom")
     val shape = RoundedCornerShape(16.dp)
     Column(
@@ -552,7 +658,7 @@ private fun VideoCard(song: SongItem, active: Boolean, playing: Boolean, onClick
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .shadow(if (hovered) 18.dp else 8.dp, shape, clip = false)
+                .shadow(if (hovered) 18.dp else 0.dp, shape, clip = false)
                 .clip(shape)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
@@ -593,15 +699,7 @@ private fun ArtistCircle(artist: ArtistItem, onClick: () -> Unit, modifier: Modi
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        when {
-            pressed -> 0.95f
-            hovered -> 1.04f
-            else -> 1f
-        },
-        spring(dampingRatio = 0.6f, stiffness = 420f),
-        label = "artist_circle",
-    )
+    val scale by pressScale(pressed, hovered, pressedScale = 0.95f, hoverScale = 1.04f)
     val ring by animateFloatAsState(if (hovered) 1f else 0f, tween(220), label = "artist_ring")
     val accent = MaterialTheme.colorScheme.primary
     Column(
@@ -621,7 +719,7 @@ private fun ArtistCircle(artist: ArtistItem, onClick: () -> Unit, modifier: Modi
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .size(160.dp)
-                .shadow(if (hovered) 20.dp else 8.dp, CircleShape, clip = false)
+                .shadow(if (hovered) 20.dp else 0.dp, CircleShape, clip = false)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .border(2.5.dp, accent.copy(alpha = ring), CircleShape),

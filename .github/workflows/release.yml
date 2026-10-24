@@ -116,3 +116,123 @@ jobs:
             --notes-file out/NOTES.md \
             "out/Exhale-${{ steps.tag.outputs.version }}.apk" \
             out/SHA256SUMS.txt
+
+  # The Windows setup, attached to the same release. Exhale's own installer
+  # (desktop/installer/ExhaleSetup.cs) carries the app image inside it, so signing
+  # happens twice: the app's own files before they are packed, then the setup itself.
+  # Signing goes through SignPath once these repository settings exist:
+  #   variables  SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG, SIGNPATH_SIGNING_POLICY_SLUG
+  #   secret     SIGNPATH_API_TOKEN
+  # with two artifact configurations in the SignPath project, "app" and "setup" (see
+  # .signpath/). Until then the setup is published unsigned.
+  windows:
+    needs: release
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve the tag
+        id: tag
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      # The JetBrains Runtime SDK, with jpackage: the installed app keeps its custom title bar on it.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: jetbrains
+          java-version: 21
+          java-package: jdk
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Fetch libmpv
+        shell: pwsh
+        run: ./desktop/scripts/fetch-libmpv.ps1
+
+      - name: Build the app image and uninstaller
+        shell: pwsh
+        env:
+          EXHALE_PACKAGE_JDK: ${{ env.JAVA_HOME }}
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
+          JAMENDO_CLIENT_ID: ${{ secrets.JAMENDO_CLIENT_ID }}
+        run: ./desktop/scripts/build-installer.ps1 -Stage Prepare -Unsigned
+
+      - name: Upload the app for signing
+        id: app
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: exhale-app-unsigned
+          path: desktop/build/installer/stage/
+          retention-days: 1
+
+      # Waits for the release to be approved in SignPath, then puts the signed files back.
+      - name: Sign the app
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: app
+          github-artifact-id: ${{ steps.app.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 14400
+          output-artifact-directory: desktop/build/installer/stage-signed
+
+      - name: Use the signed app
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        shell: pwsh
+        run: |
+          Remove-Item desktop/build/installer/stage -Recurse -Force
+          Move-Item desktop/build/installer/stage-signed desktop/build/installer/stage
+
+      - name: Build the setup
+        shell: pwsh
+        run: ./desktop/scripts/build-installer.ps1 -Stage Package -Unsigned
+
+      - name: Upload the setup for signing
+        id: setup
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: exhale-setup-unsigned
+          path: desktop/build/installer/Exhale-Setup-${{ steps.tag.outputs.version }}.exe
+          retention-days: 1
+
+      - name: Sign the setup
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: setup
+          github-artifact-id: ${{ steps.setup.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 14400
+          output-artifact-directory: out/signed
+
+      # The checksum list is shared with the APK; the Windows updater checks its download against it.
+      - name: Attach the setup to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SETUP="Exhale-Setup-${{ steps.tag.outputs.version }}.exe"
+          mkdir -p out
+          if [ -f "out/signed/$SETUP" ]; then cp "out/signed/$SETUP" out/; else cp "desktop/build/installer/$SETUP" out/; fi
+          cd out
+          gh release download "${{ steps.tag.outputs.tag }}" --repo "${{ github.repository }}" --pattern SHA256SUMS.txt --clobber
+          sha256sum "$SETUP" >> SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh release upload "${{ steps.tag.outputs.tag }}" --repo "${{ github.repository }}" --clobber "$SETUP" SHA256SUMS.txt

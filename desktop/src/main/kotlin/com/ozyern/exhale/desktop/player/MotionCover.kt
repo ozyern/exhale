@@ -12,8 +12,6 @@ package com.ozyern.exhale.desktop.player
 
 import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asComposeImageBitmap
 import com.ozyern.exhale.canvas.providers.AppleMusicCanvasProvider
 import com.ozyern.exhale.canvas.providers.TidalCanvasProvider
 import com.ozyern.exhale.desktop.lyrics.SongQuery
@@ -27,9 +25,11 @@ import com.sun.jna.ptr.PointerByReference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import org.jetbrains.skia.ColorSpace
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorType
+import org.jetbrains.skia.Image
 import org.jetbrains.skia.ImageInfo
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -57,14 +57,16 @@ object MotionCovers {
                         ?.preferredAnimationUrl?.takeIf { it.isNotBlank() }
             }
         }
-        val playable = url?.let { rendition(it) }
+        val playable = url?.let { rendition(it) }?.takeIf { it.isNotEmpty() }
         if (playable == null) missing += song.id else known[song.id] = playable
         return playable
     }
 
     /**
-     * The one rendition worth playing out of Apple's master playlist: H.264 (decoded in hardware
-     * everywhere), the smallest that is still at least [MinimumSide] across. Handed the master
+     * The one rendition worth playing out of Apple's master playlist: SDR, H.264, the smallest that
+     * is still at least [MinimumSide] across. SDR because mpv's software renderer converts HDR (PQ,
+     * HLG) to the screen's colours without tone mapping it, which would clip the highlights. A cover
+     * offered only in HDR gets no moving cover (empty), and the still one stays. Handed the master
      * itself, FFmpeg opens every one of its dozens of playlists — 4K, HEVC, I-frame — one after
      * another before the first frame, which took twelve seconds.
      */
@@ -78,16 +80,19 @@ object MotionCovers {
             connection.getInputStream().use { it.readBytes().decodeToString() }
         }.getOrNull() ?: return@withContext master
         val lines = text.lines()
-        data class Variant(val uri: String, val side: Int, val bandwidth: Long)
+        data class Variant(val uri: String, val side: Int, val bandwidth: Long, val sdr: Boolean)
         val variants = lines.mapIndexedNotNull { index, line ->
             if (!line.startsWith("#EXT-X-STREAM-INF:")) return@mapIndexedNotNull null
             val codecs = Regex("""CODECS="([^"]+)"""").find(line)?.groupValues?.get(1).orEmpty()
             if (!codecs.contains("avc1")) return@mapIndexedNotNull null
             val (w, h) = Regex("""RESOLUTION=(\d+)x(\d+)""").find(line)?.destructured ?: return@mapIndexedNotNull null
             val bandwidth = Regex("""[^-]BANDWIDTH=(\d+)""").find(line)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+            // No VIDEO-RANGE means SDR, as the HLS spec has it.
+            val range = Regex("""VIDEO-RANGE=([A-Z]+)""").find(line)?.groupValues?.get(1) ?: "SDR"
             val uri = lines.drop(index + 1).firstOrNull { it.isNotBlank() && !it.startsWith("#") } ?: return@mapIndexedNotNull null
-            Variant(java.net.URI(master).resolve(uri.trim()).toString(), minOf(w.toInt(), h.toInt()), bandwidth)
-        }
+            Variant(java.net.URI(master).resolve(uri.trim()).toString(), minOf(w.toInt(), h.toInt()), bandwidth, sdr = range == "SDR")
+        }.filter { it.sdr }
+        if (variants.isEmpty()) return@withContext ""
         (variants.filter { it.side >= MinimumSide }.minByOrNull { it.side * 1_000_000_000L + it.bandwidth }
             ?: variants.maxByOrNull { it.side })?.uri ?: master
     }
@@ -118,25 +123,34 @@ private fun interface UpdateCallback : Callback {
  * One moving cover, looping silently, drawn into [frames] for Compose to show. A second, video-only
  * libmpv: it decodes in software and renders through mpv's `sw` render API straight into the pixels
  * of a Skia bitmap — no window of its own, so the glass and the rounded corners go over it like they
- * go over anything else. Three bitmaps take turns, so the one being drawn is never the one being
- * written. Close it when the cover leaves the screen.
+ * go over anything else. Each frame is then frozen into an immutable image on this thread, so the
+ * window uploads it to the GPU once and redraws from that texture — drawing the mutable bitmap
+ * copied and re-uploaded it on every redraw, up to the display's full rate while anything else on
+ * the player moved. Close it when the cover leaves the screen.
  */
-class MotionCoverRenderer(private val size: Int = 720, logFile: String? = null) : AutoCloseable {
+class MotionCoverRenderer(private val size: Int = 720, logFile: String? = null, extraOptions: Map<String, String> = emptyMap()) : AutoCloseable {
     private val lib: LibMpvRender = Native.load("libmpv-2", LibMpvRender::class.java, mapOf(Library.OPTION_STRING_ENCODING to "UTF-8"))
     private val mpv: Pointer = lib.mpv_create() ?: error("mpv_create returned null")
     private val render: Pointer
 
-    private val info = ImageInfo(size, size, ColorType.BGRA_8888, ColorAlphaType.OPAQUE)
-    private val bitmaps = List(3) { Bitmap().apply { allocPixels(info) } }
-    private val images: List<ImageBitmap> = bitmaps.map { it.asComposeImageBitmap() }
+    // Tagged sRGB, which is what mpv writes. Untagged, Skia drew the frames into the window's colour
+    // space unconverted, and on a display that isn't plain sRGB the moving cover came out blown-out
+    // beside the still one.
+    private val info = ImageInfo(size, size, ColorType.BGRA_8888, ColorAlphaType.OPAQUE, ColorSpace.sRGB)
+    private val bitmap = Bitmap().apply { allocPixels(info) }
+
+    /**
+     * The last few frames, oldest first. One is retired only once several newer ones exist, so a
+     * frame the window is still drawing is never closed under it.
+     */
+    private val recent = ArrayDeque<Image>()
 
     /** Bumped for every new frame; read it while drawing [current] so each frame redraws. */
     val frames: MutableIntState = mutableIntStateOf(0)
 
-    @Volatile private var front = 0
-
     /** The frame on show. Null until the first one is drawn. */
-    val current: ImageBitmap? get() = if (frames.intValue == 0) null else images[front]
+    @Volatile var current: Image? = null
+        private set
 
     @Volatile private var running = true
     private val wake = Semaphore(0)
@@ -166,6 +180,7 @@ class MotionCoverRenderer(private val size: Int = 720, logFile: String? = null) 
             "demuxer-max-bytes" to (24L * 1024 * 1024).toString(),
         ).forEach { (name, value) -> lib.mpv_set_option_string(mpv, name, value) }
         if (logFile != null) lib.mpv_set_option_string(mpv, "log-file", logFile)
+        extraOptions.forEach { (name, value) -> lib.mpv_set_option_string(mpv, name, value) }
         check(lib.mpv_initialize(mpv) >= 0) { "mpv_initialize failed" }
 
         val apiType = Memory(3).apply { setString(0, "sw", "US-ASCII") }
@@ -195,14 +210,12 @@ class MotionCoverRenderer(private val size: Int = 720, logFile: String? = null) 
         val format = Memory(5).apply { setString(0, "bgr0", "US-ASCII") }
         val stride = Memory(8)
         val params = Memory(16L * 5).apply { clear() }
-        var back = 1
         while (running) {
             if (!wake.tryAcquire(250, TimeUnit.MILLISECONDS)) continue
             if (!running) break
             wake.drainPermits()
             val flags = lib.mpv_render_context_update(render)
             if (flags and UPDATE_FRAME == 0L) continue
-            val bitmap = bitmaps[back]
             val pixels = bitmap.peekPixels() ?: continue
             stride.setLong(0, bitmap.rowBytes.toLong())
             params.setInt(0, PARAM_SW_SIZE); params.setPointer(8, sizeParam)
@@ -211,10 +224,21 @@ class MotionCoverRenderer(private val size: Int = 720, logFile: String? = null) 
             params.setInt(48, PARAM_SW_POINTER); params.setPointer(56, Pointer(pixels.addr))
             params.setInt(64, PARAM_INVALID); params.setPointer(72, null)
             if (lib.mpv_render_context_render(render, params) < 0) continue
-            bitmap.notifyPixelsChanged()
-            front = back
-            back = (back + 1) % bitmaps.size
-            if (back == front) back = (back + 1) % bitmaps.size
+            // mpv writes bgr0: its fourth byte is zero. Declared opaque, Skia should ignore it, but the
+            // GPU path didn't — every pixel went up with alpha 0 and full colour, which as premultiplied
+            // colour *adds* onto what's under it: the still cover and the video summed, blown-out with
+            // double edges. So the byte is set to opaque here, off the window's thread, as the frame is
+            // copied out — the bitmap is free for the next frame, and the image keeps its texture.
+            val bytes = bitmap.readPixels() ?: continue
+            var a = 3
+            while (a < bytes.size) {
+                bytes[a] = -1
+                a += 4
+            }
+            val frame = Image.makeRaster(info, bytes, bitmap.rowBytes)
+            current = frame
+            recent.addLast(frame)
+            while (recent.size > RetainedFrames) recent.removeFirst().close()
             frames.intValue++
         }
     }
@@ -227,7 +251,10 @@ class MotionCoverRenderer(private val size: Int = 720, logFile: String? = null) 
         lib.mpv_render_context_set_update_callback(render, null, null)
         lib.mpv_render_context_free(render)
         lib.mpv_terminate_destroy(mpv)
-        bitmaps.forEach { it.close() }
+        current = null
+        recent.forEach { it.close() }
+        recent.clear()
+        bitmap.close()
     }
 
     private companion object {
@@ -238,6 +265,7 @@ class MotionCoverRenderer(private val size: Int = 720, logFile: String? = null) 
         const val PARAM_SW_STRIDE = 19
         const val PARAM_SW_POINTER = 20
         const val UPDATE_FRAME = 1L
+        const val RetainedFrames = 6
 
         init {
             // The same search path the player's own libmpv is loaded from.

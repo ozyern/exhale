@@ -6,6 +6,8 @@
 
 package com.ozyern.exhale.desktop.ui.pages
 
+import com.ozyern.exhale.desktop.ui.pressScale
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -702,7 +704,7 @@ fun TrackRow(
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val pressed by interaction.collectIsPressedAsState()
-    val press by animateFloatAsState(if (pressed) 0.985f else 1f, spring(dampingRatio = 0.6f, stiffness = 700f), label = "track_press")
+    val press by pressScale(pressed, pressedScale = 0.985f)
     val shape = RoundedCornerShape(14.dp)
     val accent = MaterialTheme.colorScheme.primary
 
@@ -805,15 +807,7 @@ internal fun PillButton(text: String, icon: ImageVector, primary: Boolean, enabl
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val hovered by interaction.collectIsHoveredAsState()
-    val scale by animateFloatAsState(
-        when {
-            pressed -> 0.93f
-            hovered -> 1.04f
-            else -> 1f
-        },
-        spring(dampingRatio = 0.55f, stiffness = 480f),
-        label = "pill_button",
-    )
+    val scale by pressScale(pressed, hovered, pressedScale = 0.93f, hoverScale = 1.04f)
     val background = if (primary) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = if (hovered) 0.17f else 0.10f)
     val content = if (primary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
     Row(

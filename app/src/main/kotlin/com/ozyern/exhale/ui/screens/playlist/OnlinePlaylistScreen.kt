@@ -726,7 +726,7 @@ fun OnlinePlaylistScreen(
                             ),
                         modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
                     )
-                } else if (showTopBarTitle) {
+                } else if (showTopBarTitle && com.ozyern.exhale.ui.component.LocalCollectionPane.current == null) {
                     Text(playlist?.title.orEmpty())
                 }
             },

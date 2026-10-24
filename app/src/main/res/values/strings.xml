@@ -780,6 +780,7 @@ Exhale will only extract your token, and everything else is stored locally.</str
     <string name="permission_status_required">Please allow all required permissions to continue.</string>
     <string name="next">Next</string>
     <string name="next_song">Next Song</string>
+    <string name="previous">Previous</string>
     <string name="allow">Allow</string>
     <!-- Playlist Suggestions -->
     <string name="you_might_like">You might like</string>

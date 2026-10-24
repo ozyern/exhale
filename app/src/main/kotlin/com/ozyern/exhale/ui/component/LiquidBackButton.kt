@@ -37,6 +37,8 @@ fun LiquidBackButton(
     /** Icon tint. Defaults to the on-surface colour; pass white over dark full-bleed artwork. */
     tint: Color = MaterialTheme.colorScheme.onSurface,
 ) {
+    // In the wide layout the rail carries back; the page's own disc would be a second one.
+    if (icon == R.drawable.chevron_back && LocalRailBack.current) return
     LiquidGlassIconButton(
         onClick = onClick,
         icon = icon,

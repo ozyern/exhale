@@ -75,6 +75,28 @@ fun Modifier.liquidGlass(
 }
 
 /**
+ * A flat frosted pane, as macOS draws a sidebar: what's behind is saturated and blurred, then tinted
+ * — no lens at the rim, no highlight, no shadow, because the pane is part of the window, not on it.
+ */
+fun Modifier.frostedPane(backdrop: Backdrop, tintAlpha: Float = 0.5f, blurRadius: Dp = 64.dp): Modifier {
+    if (!AppSettings.current.liquidGlass || com.ozyern.exhale.desktop.ui.Bench.off("glass")) return background(Color(0xF0141014))
+    val tint = Color.Black.copy(alpha = tintAlpha)
+    return drawBackdrop(
+        backdrop = backdrop,
+        shape = { FlatShape },
+        effects = {
+            vibrancy()
+            blur(blurRadius.toPx() * 0.25f)
+        },
+        highlight = null,
+        shadow = null,
+        onDrawSurface = { drawRect(tint) },
+    )
+}
+
+private val FlatShape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp)
+
+/**
  * The tonal glass plate for cards and placeholders, where there is nothing worth refracting:
  * gradient fill, diagonal sheen, bright rim. Port of the Android `liquidGlassSurface` (dark branch).
  */

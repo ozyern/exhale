@@ -72,16 +72,23 @@ val gitCommit = providers.exec {
     commandLine("git", "rev-parse", "--short", "HEAD")
     isIgnoreExitValue = true
 }.standardOutput.asText.map { it.trim() }
+// One version for both apps: Windows installers ride on the same GitHub releases (and tags) as the
+// Android APK, and the updater compares the tag against this, so it is the Android versionName.
+val appVersion = Regex("""versionName\s*=\s*"([^"]+)"""")
+    .find(rootProject.file("app/build.gradle.kts").readText())?.groupValues?.get(1)
+    ?: throw GradleException("versionName not found in app/build.gradle.kts")
 val buildInfoDir = layout.buildDirectory.dir("generated/build-info")
 val writeBuildInfo = tasks.register("writeBuildInfo") {
     val out = buildInfoDir.map { it.file("exhale-build.properties") }
     val commit = gitCommit
+    val version = appVersion
     inputs.property("commit", commit)
+    inputs.property("version", version)
     outputs.file(out)
     doLast {
         out.get().asFile.apply {
             parentFile.mkdirs()
-            writeText("commit=${commit.get()}\n")
+            writeText("commit=${commit.get()}\nversion=$version\n")
         }
     }
 }
@@ -121,6 +128,10 @@ compose.desktop {
             "-XX:MaxGCPauseMillis=8",
             "-XX:G1PeriodicGCInterval=20000",
             "-XX:+UseStringDeduplication",
+            // Something under the app calls System.gc() (the JDK does, to reclaim direct buffers): by
+            // default that's a full, stop-everything collection — a 75 ms freeze in the middle of a
+            // scroll. This makes it an ordinary concurrent cycle instead.
+            "-XX:+ExplicitGCInvokesConcurrent",
             "-Xms96m",
             "-Xmx1g",
             // Compile hot code after a third of the usual calls, so the first scroll through Home and
@@ -139,7 +150,7 @@ compose.desktop {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "Exhale"
             // MSI versions are MAJOR.MINOR.BUILD with MAJOR <= 255.
-            packageVersion = "1.0.20"
+            packageVersion = appVersion
             vendor = "ozyern"
             // Shown as the app's name in Task Manager and Installed apps, so just the name.
             description = "Exhale"

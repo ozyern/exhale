@@ -439,7 +439,7 @@ fun CachePlaylistScreen(
                                 .focusRequester(focusRequester)
                         )
                     }
-                    showTopBarTitle -> {
+                    showTopBarTitle && com.ozyern.exhale.ui.component.LocalCollectionPane.current == null -> {
                         Text(
                             text = stringResource(R.string.cached_playlist),
                             style = MaterialTheme.typography.titleLarge

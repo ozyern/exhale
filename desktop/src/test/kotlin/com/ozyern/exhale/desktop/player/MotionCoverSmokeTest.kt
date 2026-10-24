@@ -82,10 +82,9 @@ class MotionCoverSmokeTest {
             renderer.play(url)
             val deadline = System.currentTimeMillis() + 20_000
             while (renderer.frames.intValue < 45 && System.currentTimeMillis() < deadline) Thread.sleep(100)
-            val bitmap = renderer.current ?: return@use
-            val skia = bitmap.asSkiaBitmap()
+            val frame = renderer.current ?: return@use
             val out = File(System.getProperty("java.io.tmpdir"), "exhale-motion-cover.png")
-            Image.makeFromBitmap(skia).encodeToData(EncodedImageFormat.PNG)?.bytes?.let(out::writeBytes)
+            frame.encodeToData(EncodedImageFormat.PNG)?.bytes?.let(out::writeBytes)
             println("saved ${out.absolutePath}")
         }
     }

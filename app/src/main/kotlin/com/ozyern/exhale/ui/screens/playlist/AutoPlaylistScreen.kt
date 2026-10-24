@@ -568,7 +568,7 @@ fun AutoPlaylistScreen(
                                 .focusRequester(focusRequester)
                         )
                     }
-                    showTopBarTitle -> {
+                    showTopBarTitle && com.ozyern.exhale.ui.component.LocalCollectionPane.current == null -> {
                         Text(
                             text = playlist,
                             style = MaterialTheme.typography.titleLarge

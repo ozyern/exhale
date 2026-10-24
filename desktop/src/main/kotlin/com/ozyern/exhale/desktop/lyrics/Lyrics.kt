@@ -152,6 +152,12 @@ object LyricsRepository {
         /** The song's own name turns up in the words, as it does in most songs. */
         val echoesTitle: Boolean = true,
     ) {
+        /** Distinct words of three letters or more, to hold one source's answer against another's. */
+        val vocabulary: Set<String> by lazy {
+            val text = synced?.joinToString(" ") { it.text } ?: plain.orEmpty().joinToString(" ")
+            text.lowercase(Locale.US).split(Regex("""[^\p{L}\p{N}']+""")).filter { it.length >= 3 }.toSet()
+        }
+
         val wordLevel: Boolean get() = synced?.any { it.wordSynced } == true
     }
 
@@ -174,10 +180,14 @@ object LyricsRepository {
     private fun isPaperwork(text: String): Boolean {
         val line = text.trim()
         if (creditLine.containsMatchIn(line)) return true
+        // Writers run together with slashes and no spaces — "MarshallMathers/AndreR.Young/MikeElizondo".
+        if (writerList.matches(line)) return true
         // A label with nothing after it — "Sabrina Carpenter：" — is a heading in a file's metadata.
         // Sung lines do not end on a colon, and the full-width one belongs to the format, not a song.
         return line.length < 48 && (line.endsWith('：') || line.endsWith(':'))
     }
+
+    private val writerList = Regex("""[^\s/]{2,}(/[^\s/]{2,}){2,}""")
 
     /** What is left once the paperwork is taken out; too little left over and it was never a song. */
     private const val MinimumLines = 4
@@ -209,6 +219,37 @@ object LyricsRepository {
         if (words.isEmpty()) return true
         val body = text.lowercase(Locale.US)
         return words.any { it in body }
+    }
+
+    private val MinorWords = setOf("the", "and", "feat", "with", "from", "for", "you", "your")
+
+    /**
+     * The stricter test for a source that searches loosely: every word of the title is somewhere in
+     * the words, or the title as a phrase is. "Ass Like That" has no word distinctive enough for
+     * [echoesTitle], and the loose search answered it with "Lose Yourself" — which says "like" and
+     * "that", but never "ass".
+     */
+    private fun soundsLikeTitle(text: String, title: String): Boolean {
+        val body = text.lowercase(Locale.US)
+        val phrase = title.lowercase(Locale.US).replace(Regex("""[^\p{L}\p{N}' ]+"""), " ").replace(Regex("""\s+"""), " ").trim()
+        if (phrase.isNotEmpty() && phrase in body.replace(Regex("""[^\p{L}\p{N}' ]+"""), " ").replace(Regex("""\s+"""), " ")) return true
+        val words = phrase.split(' ').filter { it.length >= 3 && it !in MinorWords }
+        if (words.isEmpty()) return true
+        val sung = body.split(Regex("""[^\p{L}\p{N}']+""")).toSet()
+        return words.all { it in sung }
+    }
+
+    private fun isTitleHeading(line: String, title: String): Boolean {
+        fun bare(text: String) = text.lowercase(Locale.US).replace(Regex("""[^\p{L}\p{N}]+"""), "")
+        val heading = bare(line.substringBefore(" - "))
+        return heading.isNotEmpty() && heading == bare(title)
+    }
+
+    /** How much of the smaller of two answers the larger shares, word for word. */
+    private fun overlap(a: Set<String>, b: Set<String>): Double {
+        if (a.isEmpty() || b.isEmpty()) return 0.0
+        val (small, large) = if (a.size <= b.size) a to b else b to a
+        return small.count { it in large }.toDouble() / small.size
     }
 
     /** Tries each lookup in turn until one returns something. */
@@ -383,7 +424,13 @@ object LyricsRepository {
         // Spelled out before bleeped, word-timed before line-timed, and the listener's own order of
         // sources to settle the rest — `candidates` already arrives in that order, and picking the
         // first smallest keeps it.
+        // Sources that heard the same song say much the same words. One that agrees with none of the
+        // others, when the others agree among themselves, is singing something else.
+        val agreeing = candidates.filter { candidate ->
+            candidates.any { other -> other !== candidate && overlap(candidate.vocabulary, other.vocabulary) >= 0.5 }
+        }.toSet()
         val rank = compareBy<Candidate>(
+            { if (agreeing.isNotEmpty() && it !in agreeing) 1 else 0 },
             { if (it.echoesTitle) 0 else 1 },
             { if (it.censored) 1 else 0 },
             { if (it.wordLevel) 0 else 1 },
@@ -404,14 +451,20 @@ object LyricsRepository {
         // Credits out first — a source with nothing for a song will hand over the record's paperwork,
         // and it parses as cleanly as a verse. Taking those lines out also tidies the metadata some
         // files carry at the top; if hardly anything is left, it was paperwork all along.
-        val lines = parsed.filterNot { isPaperwork(it.text) }
+        val lines = parsed.filterNot { isPaperwork(it.text) }.let { kept ->
+            // A file headed with the song's own name — "Smells Like Teen Spirit" at 0:03 — isn't a sung line.
+            val head = kept.indexOfFirst { it.text.isNotBlank() }
+            if (head >= 0 && isTitleHeading(kept[head].text, title)) kept.filterIndexed { i, _ -> i != head } else kept
+        }
         val sung = lines.filter { it.text.isNotBlank() }
         if (sung.size >= MinimumLines) {
             val echo = echoesTitle(sung.joinToString(" ") { it.text }, title)
             val oneOff = isOneOff(rawTitle)
-            // KuGou is the one source that will answer a search it didn't really match. Everything
-            // else is asked by title and artist, so only this one has to prove it heard the question.
-            if (!echo && source == "KuGou") return null
+            // KuGou will answer a search it didn't really match — asked directly, or through
+            // BetterLyrics, whose line-timed answers are KuGou's passed on. Everything else is asked by
+            // title and artist, so only these have to prove they heard the question.
+            val loose = source == "KuGou" || (source == "BetterLyrics" && sung.none { it.wordSynced })
+            if (loose && !soundsLikeTitle(sung.joinToString(" ") { it.text }, title)) return null
             return if (fitsSong(sung, durationSeconds, oneOff)) Candidate(source, lines, null, bleeped, echo)
             // Right words, wrong timing (a radio edit, a live take): keep them as plain lyrics.
             else Candidate(source, null, sung.map { it.text }, bleeped, echo)
@@ -421,7 +474,7 @@ object LyricsRepository {
             .filter { it.isNotEmpty() && !it.startsWith("[") && !isPaperwork(it) }
         if (text.size < MinimumLines) return null
         val echo = echoesTitle(text.joinToString(" "), title)
-        if (!echo && source == "KuGou") return null
+        if ((source == "KuGou" || source == "BetterLyrics") && !soundsLikeTitle(text.joinToString(" "), title)) return null
         return Candidate(source, null, text, bleeped, echo)
     }
 

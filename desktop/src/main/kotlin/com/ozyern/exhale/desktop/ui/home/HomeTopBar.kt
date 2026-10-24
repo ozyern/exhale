@@ -6,6 +6,8 @@
 
 package com.ozyern.exhale.desktop.ui.home
 
+import com.ozyern.exhale.desktop.ui.pressScale
+
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
@@ -94,15 +96,7 @@ fun GlassIconButton(
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val hovered by interaction.collectIsHoveredAsState()
-    val scale by animateFloatAsState(
-        when {
-            pressed -> 0.92f
-            hovered -> 1.04f
-            else -> 1f
-        },
-        spring(dampingRatio = 0.5f, stiffness = 300f),
-        label = "glass_button",
-    )
+    val scale by pressScale(pressed, hovered, pressedScale = 0.92f, hoverScale = 1.04f)
     Box(
         modifier = modifier
             .size(size)

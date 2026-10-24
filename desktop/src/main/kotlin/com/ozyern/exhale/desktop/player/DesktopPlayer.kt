@@ -211,7 +211,8 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
 
     /** Settings that act on the audio engine itself. */
     private fun applyEngineSettings(settings: Settings) {
-        val chain = AudioEffects.filterChain(settings)
+        val opened = AudioOutputStatus.state.value?.channels
+        val chain = AudioEffects.filterChain(settings, opened)
         if (chain != appliedFilters) {
             // A libmpv without the upmix filter refuses the whole chain; keep the rest of it.
             if (!mpv.setProperty("af", chain) &&
@@ -227,6 +228,8 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         if (channels != appliedChannels || settings.exclusiveAudio != appliedExclusive || resampler != appliedResampler) {
             val firstTime = appliedChannels == null
             mpv.setProperty("audio-channels", channels)
+            // Should anything still fold surround down to stereo, it is scaled to fit rather than clipped.
+            mpv.setProperty("audio-normalize-downmix", "yes")
             mpv.setProperty("audio-exclusive", if (settings.exclusiveAudio) "yes" else "no")
             mpv.setProperty("audio-swresample-o", resampler)
             appliedChannels = channels
@@ -290,7 +293,12 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
                     exclusive = AppSettings.current.exclusiveAudio,
                 )
             }
-            if (output != null) AudioOutputStatus.publish(output)
+            if (output != null) {
+                val before = AudioOutputStatus.state.value?.channels
+                AudioOutputStatus.publish(output)
+                // The upmix follows what the device opened, so it is laid out (or taken away) now.
+                if (output.channels != before) applyEngineSettings(AppSettings.current)
+            }
         }
     }
 
@@ -479,7 +487,33 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         appliedExclusive = null
         appliedResampler = null
         applyEngineSettings(AppSettings.current)
+        audioDevice?.let { mpv.setProperty("audio-device", it) }
         if (index in _state.value.queue.indices) load(index, startAt = resumeAt)
+    }
+
+    /** One way out of the PC: mpv's name for it, and the name Windows gives it. */
+    data class AudioOutput(val name: String, val description: String)
+
+    /** The output chosen in the player bar for this session; null is Windows' default. */
+    @Volatile private var audioDevice: String? = null
+
+    /** Every output mpv can play to, Windows' default first. */
+    fun audioOutputs(): List<AudioOutput> = runCatching {
+        val list = org.json.JSONArray(mpv.getProperty("audio-device-list") ?: "[]")
+        (0 until list.length()).mapNotNull { i ->
+            val entry = list.optJSONObject(i) ?: return@mapNotNull null
+            val name = entry.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            // Only the shared-mode WASAPI devices and "auto": the rest are the same speakers again.
+            if (name != "auto" && !name.startsWith("wasapi/")) return@mapNotNull null
+            AudioOutput(name, if (name == "auto") "Windows default" else entry.optString("description").ifBlank { name })
+        }
+    }.getOrDefault(emptyList())
+
+    fun currentAudioOutput(): String = audioDevice ?: "auto"
+
+    fun setAudioOutput(name: String) {
+        audioDevice = name.takeUnless { it == "auto" }
+        mpv.setProperty("audio-device", name)
     }
 
     /** Works out the next song's URL while this one plays, so pressing skip starts it at once. */

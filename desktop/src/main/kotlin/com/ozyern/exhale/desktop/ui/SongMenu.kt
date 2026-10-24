@@ -6,6 +6,8 @@
 
 package com.ozyern.exhale.desktop.ui
 
+import androidx.compose.runtime.remember
+import com.ozyern.exhale.desktop.data.DesktopPrefs
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
@@ -40,6 +42,12 @@ fun SongActionsMenu(song: SongItem, player: DesktopPlayer, expanded: Boolean, on
     ) {
         Action(TransportIcons.Play, "Play now") {
             player.playItem(song)
+            onDismiss()
+        }
+        // The Music app's star: Favorite Songs, and the library when no account is signed in.
+        val favorite = remember(song.id, expanded) { DesktopPrefs.isFavorite(song.id) }
+        Action(NavIcons.Star, if (favorite) "Undo Favorite" else "Favorite") {
+            DesktopPrefs.toggleFavorite(song)
             onDismiss()
         }
         Action(TransportIcons.Queue, "Play next") {
