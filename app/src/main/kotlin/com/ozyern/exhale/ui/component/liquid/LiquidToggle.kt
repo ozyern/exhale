@@ -44,10 +44,32 @@ import com.kyant.backdrop.shadow.Shadow
 import kotlinx.coroutines.flow.collectLatest
 
 /**
- * Liquid glass toggle switch with lens refraction and smooth damped animation.
+ * The app's toggle: the iOS switch from the cupertino module, its thumb a drop of liquid glass, its
+ * track in the app's own accent rather than system green.
  */
 @Composable
 fun LiquidToggle(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    @Suppress("UNUSED_PARAMETER") backdrop: Backdrop = rememberInContentBackdrop(),
+) {
+    com.ozyern.exhale.cupertino.CupertinoSwitch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        modifier = modifier,
+        colors = com.ozyern.exhale.cupertino.CupertinoSwitchDefaults.colors(
+            checkedTrackColor = MaterialTheme.colorScheme.primary,
+        ),
+    )
+}
+
+/**
+ * The previous toggle: liquid glass with lens refraction and a smooth damped animation.
+ */
+@Suppress("unused")
+@Composable
+private fun LiquidToggleClassic(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,

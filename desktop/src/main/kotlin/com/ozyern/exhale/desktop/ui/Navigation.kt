@@ -39,6 +39,10 @@ class AppNavigator(
     val openPlaylist: (playlistId: String, title: String?, thumbnail: String?) -> Unit,
     val openArtistItems: (endpoint: BrowseEndpoint, title: String) -> Unit,
     val openSoundChem: () -> Unit = {},
+    val openFlac: () -> Unit = {},
+    val openFlacRelease: (key: String) -> Unit = {},
+    /** A Mood & Genres category, or any other YouTube browse page, by its endpoint. */
+    val openBrowse: (browseId: String, params: String?, title: String) -> Unit = { _, _, _ -> },
 )
 
 val LocalNavigator = staticCompositionLocalOf<AppNavigator?> { null }

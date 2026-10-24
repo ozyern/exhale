@@ -69,6 +69,9 @@ object SettingsDimensions {
     val MediumPaneRightWeight = 0.58f
     val ExpandedListPaneWidth = 380.dp
 
+    /** The widest a settings page grows; wider windows centre it. iPad's form-sheet measure. */
+    val ReadableMaxWidth = 680.dp
+
     // The grouped-table palette itself lives in `ui.component` so the shared preference widgets
     // can reach it too; these are the settings-screen names for the same three colours.
 

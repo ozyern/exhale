@@ -214,7 +214,6 @@ class HomeViewModel @Inject constructor(
                 val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                 val hideVideo = context.dataStore.get(HideVideoKey, false)
                 val languages = preferredLanguages()
-                val fromTimeStamp = System.currentTimeMillis() - 86400000 * 7 * 2
 
                 // Top Picks first, not last: they take two round trips an artist, and waiting for the
                 // rest of Home before even starting them is what kept the top of the page empty.
@@ -224,14 +223,12 @@ class HomeViewModel @Inject constructor(
                 launch { forgottenFavorites.value = database.forgottenFavorites().first().shuffled().take(20) }
                 
                 launch {
-                    val keepListeningSongs = database.mostPlayedSongs(fromTimeStamp, limit = 15, offset = 5)
-                        .first().shuffled().take(10)
-                    val keepListeningAlbums = database.mostPlayedAlbums(fromTimeStamp, limit = 8, offset = 2)
-                        .first().filter { it.album.thumbnailUrl != null }.shuffled().take(5)
-                    val keepListeningArtists = database.mostPlayedArtists(fromTimeStamp)
-                        .first().filter { it.artist.isYouTubeArtist && it.artist.thumbnailUrl != null }
-                        .shuffled().take(5)
-                    keepListening.value = (keepListeningSongs + keepListeningAlbums + keepListeningArtists).shuffled()
+                    // Home calls this shelf Recents, so it is what was played last, newest first. It
+                    // was the most played of the fortnight with the top five songs and top two albums
+                    // skipped and the rest shuffled: with a short history that left one tile, and with
+                    // a long one it was never the thing you just listened to.
+                    keepListening.value = database.recentlyPlayedSongs(limit = 20).first()
+                        .filter { it.thumbnailUrl != null }
                 }
 
                 launch {

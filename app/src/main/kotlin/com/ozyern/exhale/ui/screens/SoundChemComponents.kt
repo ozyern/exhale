@@ -221,7 +221,7 @@ private fun CapsuleLabel(
     }
 }
 
-/** Section heading between decks of cards. Bold and large — the Apple Music list header. */
+/** Section heading between decks of cards. Bold and large — the the iOS music app list header. */
 @Composable
 internal fun SoundChemSectionTitle(
     text: String,

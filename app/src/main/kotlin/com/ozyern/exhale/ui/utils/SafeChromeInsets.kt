@@ -13,7 +13,13 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 
 /**
  * The horizontal inset every piece of *floating* chrome must clear — the mini-player pill, the
@@ -39,16 +45,42 @@ import androidx.compose.ui.unit.Dp
  *
  * Callers must apply this as plain symmetric `padding`, **not** `windowInsetsPadding`, which would
  * reintroduce the per-edge asymmetry this exists to avoid.
+ *
+ * ### Tablets and foldables
+ *
+ * On a wide window the inset also centres the chrome at [ChromeMaxWidth]: a dock or a mini player
+ * stretched across 1000dp+ puts its tabs a hand-span apart and reads as a toolbar, not a dock.
+ * Doing it here rather than with `widthIn` on each piece keeps the dock, the pill and the player's
+ * morph target on one rectangle, the same way the symmetric cutout inset does.
  */
 @Composable
 fun safeHorizontalChromeInset(): Dp {
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
     val insets = WindowInsets.systemBars.union(WindowInsets.displayCutout)
-    return with(density) {
+    val windowWidth = LocalConfiguration.current.screenWidthDp.dp
+    val safe = with(density) {
         maxOf(
             insets.getLeft(density, layoutDirection),
             insets.getRight(density, layoutDirection),
         ).toDp()
     }
+    return maxOf(safe, (windowWidth - ChromeMaxWidth) / 2)
 }
+
+/** The widest the floating chrome (dock, mini player) grows; wider windows centre it. */
+val ChromeMaxWidth = 560.dp
+
+/**
+ * A page of rows at a readable measure: the full height, at most [ReadableListMaxWidth] wide and
+ * centred. On a phone it is the whole width, as before; on a tablet or an unfolded foldable it
+ * stops a list of songs becoming a row a screen wide with the duration a hand-span from the title.
+ */
+fun androidx.compose.ui.Modifier.readableListWidth(): androidx.compose.ui.Modifier = this
+    .fillMaxSize()
+    .wrapContentWidth()
+    .widthIn(max = ReadableListMaxWidth)
+    .fillMaxWidth()
+
+/** The widest a page of rows grows; wider windows centre it. */
+val ReadableListMaxWidth = 900.dp

@@ -89,7 +89,6 @@ import kotlin.random.Random
 
 /**
  * Parse useful data with [InnerTube] sending requests.
- * Modified from [ViMusic](https://github.com/vfsfitvnm/ViMusic)
  */
 object YouTube {
     private const val BROWSE_ID_EXPLORE = "FEmusic_explore"

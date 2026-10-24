@@ -20,6 +20,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
@@ -65,6 +70,37 @@ fun CollectionHero(
     artwork: @Composable BoxScope.() -> Unit,
     actions: @Composable RowScope.() -> Unit,
 ) {
+    // On a two-pane page the header stands in the left column; the list keeps only a spacer.
+    val inPane = publishToCollectionPane {
+        CollectionPaneHero(
+            title = title,
+            meta = meta,
+            credit = credit,
+            palette = palette,
+            artwork = artwork,
+            actions = {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = actions,
+                )
+            },
+        )
+    }
+    if (inPane) return
+    if (LocalWideChrome.current) {
+        // An unfolded foldable or a tablet: the sleeve beside its title, as Apple Music sets a
+        // release on a large screen. Full width there, the cover was blown up past the window's
+        // height and cropped to a face, with the title and Play a screen below.
+        if (palette != null) {
+            androidx.compose.runtime.CompositionLocalProvider(LocalReleasePalette provides palette) {
+                WideCollectionHero(title, meta, credit, palette, artwork, actions, modifier)
+            }
+        } else {
+            WideCollectionHero(title, meta, credit, null, artwork, actions, modifier)
+        }
+        return
+    }
     if (palette != null) {
         androidx.compose.runtime.CompositionLocalProvider(LocalReleasePalette provides palette) {
             ReleaseCollectionHero(title, meta, palette, credit, artwork, actions, modifier)
@@ -147,6 +183,86 @@ fun CollectionHero(
 }
 
 /**
+ * [CollectionHero] in the wide layout: a square sleeve on the left, and beside it, bottom-aligned
+ * to it, the title (Title 1), the credit in the accent, one line of facts and the round actions.
+ */
+@Composable
+private fun WideCollectionHero(
+    title: String,
+    meta: String,
+    credit: String?,
+    palette: ArtworkPalette?,
+    artwork: @Composable BoxScope.() -> Unit,
+    actions: @Composable RowScope.() -> Unit,
+    modifier: Modifier,
+) {
+    val ink = palette?.onBackground ?: MaterialTheme.colorScheme.onSurface
+    val quiet = palette?.onBackgroundVariant ?: MaterialTheme.colorScheme.onSurfaceVariant
+    val accent = palette?.accent ?: MaterialTheme.colorScheme.primary
+    val sleeveShape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+    // The sleeve takes up to half the window's height, so the first songs show under it.
+    val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
+    val sleeve = (screenHeight * 0.5f).coerceIn(200.dp, 300.dp)
+    Row(
+        verticalAlignment = Alignment.Bottom,
+        modifier = modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.statusBars)
+            // Under the page's own back button and search, which float at the top.
+            .padding(start = 28.dp, end = 28.dp, top = 72.dp, bottom = 24.dp),
+    ) {
+        Box(
+            Modifier
+                .size(sleeve)
+                .sleeveShadow(sleeveShape)
+                .clip(sleeveShape),
+        ) {
+            artwork()
+        }
+        Spacer(Modifier.width(28.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.4).sp,
+                color = ink,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (!credit.isNullOrBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = credit,
+                    fontSize = 20.sp,
+                    color = accent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = meta.replace("  ·  ", " • ").uppercase(),
+                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.7.sp),
+                fontWeight = FontWeight.SemiBold,
+                color = quiet,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(20.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                content = actions,
+            )
+        }
+    }
+}
+
+private fun Modifier.sleeveShadow(shape: androidx.compose.ui.graphics.Shape): Modifier =
+    shadow(24.dp, shape, ambientColor = Color.Black.copy(alpha = 0.45f), spotColor = Color.Black.copy(alpha = 0.45f))
+
+/**
  * [CollectionHero] on a page tinted from its artwork: the cover a touch
  * taller than square, its foot melted into the page through a blurred copy of itself, the title in
  * the page's ink, the credit in the sleeve's accent, a small spaced line of facts, and the circles.
@@ -161,11 +277,16 @@ private fun ReleaseCollectionHero(
     actions: @Composable RowScope.() -> Unit,
     modifier: Modifier,
 ) {
-    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+    // Never more than six tenths of the screen tall: a full-width sleeve on a tablet or an unfolded
+    // foldable was taller than the window, and the title and Play sat a screen below the top.
+    val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth()) {
+    val sleeveHeight = minOf(maxWidth / ReleaseSleeveRatio, screenHeight * 0.6f)
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
                 .fillMaxWidth()
-                .aspectRatio(ReleaseSleeveRatio),
+                .height(sleeveHeight),
         ) {
             artwork()
             // The join: a heavily blurred copy of the cover, shown only across its lower part, so
@@ -256,6 +377,7 @@ private fun ReleaseCollectionHero(
         )
         Spacer(Modifier.height(18.dp))
     }
+    }
 }
 
 /** A round glass action beside Play. [content] replaces the icon, for a spinner or the like. */
@@ -338,12 +460,27 @@ fun BoxScope.PlaylistArtwork(thumbnails: List<String>, placeholderIcon: Int) {
                 }
             }
         }
-        thumbnails.isNotEmpty() -> AsyncImage(
-            model = thumbnails.first(),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.matchParentSize(),
-        )
+        thumbnails.isNotEmpty() -> {
+            // Opened from a tile, the tile's own picture stays underneath until the page's larger
+            // one has loaded, so the hero never goes blank between the two.
+            val seedThumbnail = com.ozyern.exhale.ui.utils.LocalCollectionSeed.current?.thumbnail
+            if (seedThumbnail != null) {
+                AsyncImage(
+                    model = seedThumbnail,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
+            if (seedThumbnail != thumbnails.first()) {
+                AsyncImage(
+                    model = thumbnails.first(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
+        }
         else -> GradientArtwork(
             colors = listOf(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.surfaceContainer),
             icon = placeholderIcon,
@@ -369,4 +506,33 @@ fun BoxScope.GradientArtwork(colors: List<Color>, icon: Int, iconSize: Dp = 96.d
     ) {
         Icon(painterResource(icon), null, tint = Color.White.copy(alpha = 0.92f), modifier = Modifier.size(iconSize))
     }
+}
+
+/**
+ * The hero a page opened from a tile draws while its own data loads: the tile's title, credit and
+ * artwork in the page's real layout, with its actions in place and idle. The card then grows out
+ * of the tile already showing the page, and the loaded hero lands on exactly the same pixels.
+ */
+@Composable
+fun SeededCollectionHero(
+    seed: com.ozyern.exhale.ui.utils.CollectionSeed,
+    meta: String,
+    lazyListState: LazyListState,
+    palette: ArtworkPalette?,
+    placeholderIcon: Int = com.ozyern.exhale.R.drawable.queue_music,
+    artwork: @Composable BoxScope.() -> Unit = { PlaylistArtwork(listOfNotNull(seed.thumbnail), placeholderIcon) },
+) {
+    CollectionHero(
+        title = seed.title,
+        meta = meta,
+        lazyListState = lazyListState,
+        credit = seed.subtitle,
+        palette = palette,
+        artwork = artwork,
+        actions = {
+            CollectionAction(icon = com.ozyern.exhale.R.drawable.favorite_border, contentDescription = null, onClick = {})
+            CollectionPlay(onClick = {}, contentDescription = null)
+            CollectionAction(icon = com.ozyern.exhale.R.drawable.more_vert, contentDescription = null, onClick = {})
+        },
+    )
 }

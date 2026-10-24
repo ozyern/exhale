@@ -4,7 +4,7 @@
  * Licensed Under GPL-3.0 | see git history for contributors
  *
  * The three-tier queue — what you queued, what you were playing from, and Autoplay — follows
- * BitChord's QueueCoordinator (github.com/kushagrasinghx/BitChord, GPL-3.0), applied to Exhale's
+ * the reference design's QueueCoordinator (github.com/kushagrasinghx/the reference design, GPL-3.0), applied to Exhale's
  * player in place rather than by rebuilding its timeline.
  */
 

@@ -440,7 +440,7 @@ fun Thumbnail(
     }
     val currentMediaIndex = thumbnailPages.indexOfFirst { it.slotKey == "current" }
 
-    // OuterTune Snap behavior
+    // Snap behavior
     val horizontalLazyGridItemWidthFactor = 1f
     val thumbnailSnapLayoutInfoProvider = remember(thumbnailLazyGridState) {
         SnapLayoutInfoProvider(

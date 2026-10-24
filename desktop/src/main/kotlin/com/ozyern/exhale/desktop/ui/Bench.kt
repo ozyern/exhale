@@ -60,7 +60,7 @@ fun BenchList(state: LazyListState, home: Boolean) {
 }
 
 @Composable
-fun BenchRunner(openArtist: () -> Unit, back: () -> Unit, openPlayer: () -> Unit, closePlayer: () -> Unit) {
+fun BenchRunner(openArtist: () -> Unit, back: () -> Unit, openPlayer: () -> Unit, closePlayer: () -> Unit, pages: List<Pair<String, () -> Unit>> = emptyList()) {
     if (!Bench.enabled) return
     LaunchedEffect(Unit) {
         val phases = ArrayList<Bench.Phase>()
@@ -73,7 +73,12 @@ fun BenchRunner(openArtist: () -> Unit, back: () -> Unit, openPlayer: () -> Unit
                     var last = -1L
                     while (isActive) {
                         withFrameNanos { now ->
-                            if (last > 0) phase.frames += (now - last) / 1_000_000f
+                            if (last > 0) {
+                                val ms = (now - last) / 1_000_000f
+                                phase.frames += ms
+                                // Long frames, with the wall clock, to line up against a flight recording.
+                                if (ms > 30f) println("BENCH-LONG $name %.1f ms at %d".format(ms, System.currentTimeMillis()))
+                            }
                             last = now
                         }
                     }
@@ -89,7 +94,16 @@ fun BenchRunner(openArtist: () -> Unit, back: () -> Unit, openPlayer: () -> Unit
             state.animateScrollBy(-distance, tween(2_200, easing = LinearEasing))
         }
 
-        delay(16_000) // Home's feed and the artwork arrive.
+        // Home's feed and the artwork arrive; the page run also waits out the warm-up of the heavier pages.
+        delay(if (System.getenv("EXHALE_BENCH_MODE") == "pages") 30_000 else 16_000)
+        if (System.getenv("EXHALE_BENCH_MODE") == "pages") {
+            // Every sidebar page twice over: the first visit builds it, the second shows what a return costs.
+            measure("idle, Home on screen") { delay(2_000) }
+            repeat(2) { round ->
+                for ((name, open) in pages) measure("$name #${round + 1}") { open(); delay(1_200) }
+            }
+            writeReport(phases)
+        }
         if (System.getenv("EXHALE_BENCH_MODE") == "player") {
             // Just the dock-to-player animation, three times over, so a first-open hitch and the steady
             // state can be told apart.

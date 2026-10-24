@@ -229,9 +229,10 @@ val ColorOsIconColors = listOf(
 )
 
 /**
- * A settings icon the way ColorOS draws one: a solid disc of colour, lit from above — a touch
- * lighter at the top, a touch deeper at the foot, with a hairline of light on the upper rim — and
- * the glyph in white on it.
+ * A settings icon the way ColorOS 17 draws one: the glyph itself in its colour, a little larger
+ * than a list glyph, with no disc or tile behind it. The old solid disc with a white glyph read
+ * as a column of swatches; ColorOS's own Settings hands the colour to the glyph and the row back
+ * to its label.
  */
 @androidx.compose.runtime.Composable
 fun ColorOsIconDisc(
@@ -240,28 +241,18 @@ fun ColorOsIconDisc(
     size: androidx.compose.ui.unit.Dp = 30.dp,
     content: @androidx.compose.runtime.Composable () -> Unit,
 ) {
-    val top = androidx.compose.ui.graphics.lerp(color, Color.White, 0.16f)
-    val foot = androidx.compose.ui.graphics.lerp(color, Color.Black, 0.08f)
     androidx.compose.foundation.layout.Box(
-        modifier = modifier
-            .size(size)
-            .clip(androidx.compose.foundation.shape.CircleShape)
-            .background(Brush.verticalGradient(listOf(top, color, foot)))
-            .border(
-                width = 0.6.dp,
-                brush = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.35f), Color.Transparent)),
-                shape = androidx.compose.foundation.shape.CircleShape,
-            ),
+        modifier = modifier.size(size),
         contentAlignment = androidx.compose.ui.Alignment.Center,
     ) {
         androidx.compose.runtime.CompositionLocalProvider(
-            androidx.compose.material3.LocalContentColor provides Color.White,
+            androidx.compose.material3.LocalContentColor provides color,
         ) {
-            // Glyphs arrive at their usual 24dp; on a 30dp disc they want to be about 17.
+            // Glyphs arrive at 24dp; ColorOS sets them at about 26 in a 30dp slot.
             androidx.compose.foundation.layout.Box(
                 Modifier.graphicsLayer {
-                    scaleX = 0.72f
-                    scaleY = 0.72f
+                    scaleX = 1.08f
+                    scaleY = 1.08f
                 },
                 contentAlignment = androidx.compose.ui.Alignment.Center,
             ) { content() }

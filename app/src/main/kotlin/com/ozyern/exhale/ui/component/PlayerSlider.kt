@@ -37,7 +37,7 @@ fun PlayerSliderTrack(
     val activeTrackColor = colors.activeTrackColor
     val inactiveTickColor = colors.inactiveTickColor
     val activeTickColor = colors.activeTickColor
-    val valueRange = sliderState.valueRange
+    val valueRange = sliderState.trackRange
 
     Canvas(
         modifier
@@ -244,4 +244,20 @@ object PlayerSliderColors {
         /** Default inactive color when no theme color is available */
         val DEFAULT_INACTIVE_COLOR = Color.White.copy(alpha = PlayerSliderColors.Config.INACTIVE_TRACK_ALPHA)
     }
+}
+
+/**
+ * A [SliderState] that follows [value] from outside, for the state-based Slider: material3 1.5
+ * dropped the overload that took a plain value alongside a custom thumb and track.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun rememberSliderStateOf(
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
+    steps: Int = 0,
+): SliderState {
+    val state = androidx.compose.runtime.remember(valueRange, steps) { SliderState(value, steps, valueRange) }
+    state.value = value
+    return state
 }

@@ -6,6 +6,7 @@
 
 package com.ozyern.exhale.ui.component
 
+import com.ozyern.exhale.ui.component.foldingdock.foldingDockGlass
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
@@ -38,6 +39,7 @@ import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
@@ -135,7 +137,7 @@ fun TopSearch(
     leftFocusRequester: FocusRequester? = null,
     // When true the input field is docked at the BOTTOM of the (full-screen) search
     // surface as a floating frosted pill, with the result/browse content filling the
-    // space above it — mirroring Apple Music's Search layout. When false the classic
+    // space above it — mirroring the iOS music app's Search layout. When false the classic
     // top-anchored search bar layout is used.
     inputAtBottom: Boolean = false,
     // Space reserved below the docked pill so it floats above the system nav bar and
@@ -291,9 +293,10 @@ fun TopSearch(
             }
 
             if (inputAtBottom) {
-                // Apple-Music layout: browse/result content fills the top, the search
-                // field floats as a frosted pill docked at the bottom of the screen.
-                Column(Modifier.fillMaxSize()) {
+                // The results fill the whole screen and the field floats over their foot, as the
+                // reference's does: the page shows either side of the pill. Stacked under the
+                // results instead, the strip beside the pill was the overlay's own black.
+                Box(Modifier.fillMaxSize()) {
                     if (animationProgress > 0) {
                         // PERF: the surface's height animates from the collapsed bar to the
                         // full screen, and this used to be `weight(1f)` — so the entire
@@ -307,16 +310,17 @@ fun TopSearch(
                         // measured once at its final height and the growing surface simply
                         // clips it. Anchoring to the bottom means the window opens upward
                         // from the field — the list is revealed rather than stretched, which
-                        // also happens to be the motion Apple Music uses.
+                        // also happens to be the motion the iOS music app uses.
                         Box(
                             modifier = Modifier
-                                .weight(1f)
+                                .fillMaxSize()
+                                .imePadding()
                                 .clipToBounds(),
                             contentAlignment = Alignment.BottomCenter,
                         ) {
                             Column(
                                 modifier = Modifier
-                                    .requiredHeight(contentTargetHeight)
+                                    .requiredHeight(contentTargetHeight + InputFieldHeight + bottomBarPadding)
                                     .fillMaxWidth()
                                     // The docked layout bypasses the classic top-anchored inset
                                     // handling, so the safe-area inset must be applied here —
@@ -330,23 +334,30 @@ fun TopSearch(
                                     // `alpha()` — this keeps the fade in the draw phase and off
                                     // the recomposition path entirely.
                                     .graphicsLayer { alpha = animationProgress },
+                                horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
-                                content()
+                                // Suggestions and results at a readable measure on a tablet.
+                                Column(Modifier.widthIn(max = 760.dp).fillMaxWidth().weight(1f)) {
+                                    content()
+                                }
                             }
                         }
                     }
 
-                    val pillHorizontalPadding = lerp(0.dp, SearchBarHorizontalPadding, animationProgress)
+                    // The reference's typing field floats inside the screen rather than across it:
+                    // about 36dp in from either side, plus the dock's own centring on a wide window.
+                    val pillHorizontalPadding = lerp(
+                        0.dp,
+                        TypingPillSideInset + com.ozyern.exhale.ui.utils.safeHorizontalChromeInset(),
+                        animationProgress,
+                    )
                     val pillBottomPadding = lerp(0.dp, bottomBarPadding, animationProgress)
-                    // Apple-Music search field: a heavily-frosted, pill-shaped glass capsule that
-                    // reads as part of the floating bottom chrome — NOT a flat Material text field.
-                    // Uses the same genuine Kyant liquid-glass backdrop as the nav bar so content
-                    // scrolling behind it refracts through the pill. When the field is active a
-                    // "Cancel" text button slides in on the trailing edge (outside the capsule),
-                    // exactly like iOS.
+                    // The typing field: one capsule of the dock's clear glass riding the keyboard,
+                    // its way out the arrow inside it — no separate cancel disc beside it.
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
+                            .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                             .imePadding()
                             .padding(
@@ -365,44 +376,11 @@ fun TopSearch(
                             // The pill keeps its slim InputFieldHeight in every state.
                             inputField(Modifier)
                         }
-
-                        AnimatedVisibility(
-                            visible = active,
-                            enter = fadeIn(tween(200)) + expandHorizontally(
-                                animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f),
-                                expandFrom = Alignment.Start,
-                            ),
-                            exit = fadeOut(tween(150)) + shrinkHorizontally(
-                                animationSpec = spring(dampingRatio = 0.8f, stiffness = 300f),
-                                shrinkTowards = Alignment.Start,
-                            ),
-                        ) {
-                            // The cancel affordance, as glass rather than as a bare glyph.
-                            //
-                            // It sits immediately beside a frosted pill, which is what made the
-                            // old version stand out: one half of the row was a surface and the
-                            // other was ink printed on the background. Same disc, same lens, same
-                            // press as the back arrow and the app-bar search icon.
-                            LiquidGlassIconButton(
-                                onClick = { onActiveChange(false) },
-                                icon = R.drawable.expand_more, // Closes search; the X inside the field only clears it.
-                                contentDescription = stringResource(R.string.action_cancel),
-                                tint = MaterialTheme.colorScheme.primary,
-                                diameter = 34.dp,
-                                iconSize = 17.dp,
-                                modifier = Modifier.padding(start = 6.dp),
-                                // The pill's own backdrop. This sits in chrome, immediately beside
-                                // the bar, so it can and should bend exactly the pixels the bar is
-                                // bending — anything else and two touching surfaces would be
-                                // showing two different views of what is behind them.
-                                backdrop = LocalAppBackdrop.current,
-                            )
-                        }
                     }
                 }
             } else {
                 Column {
-                    // The field at the top is the dock's glass — BitChord's — so the bar at the
+                    // The field at the top is the dock's glass — the reference design's — so the bar at the
                     // top and the bar at the bottom are one material.
                     Box(
                         Modifier
@@ -448,21 +426,16 @@ private fun SearchFrostedPill(
     content: @Composable () -> Unit,
 ) {
     val shape = RoundedCornerShape(percent = 50)
-    val isDark = isSystemInDarkTheme()
-    // Thicker frost than the nav dock: this is a place to type, so it has to read as a solid
-    // surface. Same correction as the dock — the old Kyant path refracted an empty backdrop
-    // and painted nothing but its own film.
-    val glass = rememberChromeGlassModifier(
-        shape = shape,
-        dark = isDark,
-        tintAlpha = if (isDark) 0.42f else 0.38f,
-        blurRadius = 56.dp,
-        quality = 0.5f,
-    )
+    // The reference's typing field is the dock's clear lens glass: the page shows through it, bent
+    // at the rim, rather than a thick frosted slab.
     androidx.compose.runtime.CompositionLocalProvider(
         androidx.compose.material3.LocalContentColor provides contentColor,
     ) {
-        Box(modifier = modifier.then(glass)) { content() }
+        Box(
+            modifier = modifier
+                .clip(shape)
+                .foldingDockGlass(shape),
+        ) { content() }
     }
 }
 
@@ -569,7 +542,7 @@ private fun SearchBarInputField(
 }
 
 // Measurement specs
-// 44dp: a slim, sleek pill matching Apple Music's search-field proportions —
+// 44dp: a slim, sleek pill matching the iOS music app's search-field proportions —
 // noticeably thinner than the stock M3 48dp input row.
 val InputFieldHeight = 44.dp
 private val SearchBarCornerRadius: Dp = InputFieldHeight / 2
@@ -577,3 +550,5 @@ internal val SearchBarVerticalPadding: Dp = 8.dp
 internal val SearchBarHorizontalPadding: Dp = 12.dp
 val SearchBarIconOffsetX: Dp = 4.dp
 private const val AnimationDurationMillis: Int = 300
+/** How far in from each side the typing field floats, as the reference sets it. */
+private val TypingPillSideInset = 36.dp

@@ -41,7 +41,7 @@ fun makeTimeString(duration: Long?): String {
 }
 
 /**
- * A collection's running time the way Apple Music writes it: "1 hr 23 min", "45 min", or seconds
+ * A collection's running time the way the iOS music app writes it: "1 hr 23 min", "45 min", or seconds
  * only when it is under a minute. Empty for nothing.
  */
 fun totalLengthString(totalSeconds: Long): String {

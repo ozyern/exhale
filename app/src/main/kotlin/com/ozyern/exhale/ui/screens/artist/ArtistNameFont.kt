@@ -20,7 +20,7 @@ import com.ozyern.exhale.R
 /**
  * How an artist's name is set at the top of their page.
  *
- * Apple Music 7 draws each artist in a face of their own. Exhale cannot know the face an artist's
+ * the iOS music app 7 draws each artist in a face of their own. Exhale cannot know the face an artist's
  * label uses, so it lets the listener choose: a default for every artist in Settings, and — by
  * holding the name — one for this artist alone, remembered per artist.
  */
@@ -39,7 +39,7 @@ enum class ArtistNameFont(val label: String) {
     val family: FontFamily
         get() = when (this) {
             CLASSIC -> FontFamily(Font(R.font.sfprodisplaybold, FontWeight.Bold))
-            // Apple Music's condensed news-gothic credit, as on Bruno Mars's page.
+            // the iOS music app's condensed news-gothic credit, as on Bruno Mars's page.
             HEADLINE -> FontFamily(
                 Font(
                     R.font.anybody,

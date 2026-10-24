@@ -261,7 +261,17 @@ private fun MenuCard(
             .widthIn(min = 190.dp, max = 280.dp)
             .width(IntrinsicSize.Max)
             .androidxShadow(shape)
-            .background(card, shape)
+            // ColorOS's frosted card: a touch lighter at the top, as glass catching light, rather
+            // than one flat fill.
+            .background(
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    listOf(
+                        androidx.compose.ui.graphics.lerp(card, if (dark) Color.White else Color.Black, 0.05f),
+                        card,
+                    ),
+                ),
+                shape,
+            )
             .border(0.6.dp, rim, shape),
     ) {
         Column(
@@ -334,7 +344,8 @@ private fun Modifier.androidxShadow(shape: RoundedCornerShape): Modifier =
     })
 
 private val MenuCornerRadius = 22.dp
-private val MenuRowHeight = 46.dp
+/** ColorOS's menu rows: tighter than a list row, so the card stays compact beside its button. */
+private val MenuRowHeight = 42.dp
 private val MenuPadding = 6.dp
 
 @Composable

@@ -51,7 +51,7 @@ class ArtistViewModel @Inject constructor(
 
     /**
      * The artist's top songs, up to twenty. The landing page lists about five; the Songs shelf's
-     * "See all" is the artist's own top-songs playlist, so that fills it out (as BitChord does).
+     * "See all" is the artist's own top-songs playlist, so that fills it out (as the reference design does).
      */
     var topSongs by mutableStateOf<List<SongItem>>(emptyList())
         private set

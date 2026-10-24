@@ -6,6 +6,8 @@
 
 package com.ozyern.exhale.desktop.ui.pages
 
+import com.ozyern.exhale.desktop.ui.pressScale
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -148,7 +150,7 @@ private class CollectionHeader(
     val description: String?,
 )
 
-/** How long a list of songs runs, the way Apple Music says it: "43 min", "1 hr 12 min". */
+/** How long a list of songs runs, said plainly: "43 min", "1 hr 12 min". */
 private fun runningTime(songs: List<SongItem>): String? {
     val seconds = songs.sumOf { it.duration ?: 0 }
     if (seconds <= 0) return null
@@ -310,7 +312,7 @@ fun PlaylistScreen(
 }
 
 /**
- * An album or a playlist, laid out for a wide window the way Apple Music does it on a Mac: the cover
+ * An album or a playlist, laid out for a wide window: the cover
  * and what it is on the left, standing still, and the songs scrolling beside it. Narrow windows stack
  * the two. The cover arrives from the card that was clicked (see sharedArtwork), the page is washed in
  * the cover's colour, and the songs cascade in once they've loaded.
@@ -702,7 +704,7 @@ fun TrackRow(
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val pressed by interaction.collectIsPressedAsState()
-    val press by animateFloatAsState(if (pressed) 0.985f else 1f, spring(dampingRatio = 0.6f, stiffness = 700f), label = "track_press")
+    val press by pressScale(pressed, pressedScale = 0.985f)
     val shape = RoundedCornerShape(14.dp)
     val accent = MaterialTheme.colorScheme.primary
 
@@ -805,15 +807,7 @@ internal fun PillButton(text: String, icon: ImageVector, primary: Boolean, enabl
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val hovered by interaction.collectIsHoveredAsState()
-    val scale by animateFloatAsState(
-        when {
-            pressed -> 0.93f
-            hovered -> 1.04f
-            else -> 1f
-        },
-        spring(dampingRatio = 0.55f, stiffness = 480f),
-        label = "pill_button",
-    )
+    val scale by pressScale(pressed, hovered, pressedScale = 0.93f, hoverScale = 1.04f)
     val background = if (primary) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = if (hovered) 0.17f else 0.10f)
     val content = if (primary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
     Row(

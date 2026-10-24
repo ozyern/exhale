@@ -27,5 +27,7 @@ data class SearchLyricsResponse(
         val productFrom: String, // Consider choosing '官方推荐歌词'
         val duration: Long,
         val accesskey: String,
+        val song: String? = null,
+        val singer: String? = null,
     )
 }

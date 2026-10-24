@@ -18,7 +18,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 
 /**
  * Where the finger is being held, if it is — so a menu opened by a long press can open *there*,
- * as Apple Music's does, while the same menu opened from a ⋮ tap keeps arriving as a sheet.
+ * as the iOS music app's does, while the same menu opened from a ⋮ tap keeps arriving as a sheet.
  *
  * Watched once, at the root of the window, on the initial pass and without consuming anything:
  * no list, row or tile needs to know about it, and every long press in the app gets the popup.

@@ -5,7 +5,7 @@
  *
  * The same sources as the Android app's lyrics/OpenLyricsProviders.kt, AppleCatalogLyricsProviders.kt
  * and LrcRedLyricsProvider.kt. The LyricsPlus, Binimum, Unison, Megalobiz, Genius, PaxSenix,
- * Musixmatch and lrc.red clients there follow BitChord's (github.com/kushagrasinghx/BitChord, GPL-3.0).
+ * Musixmatch and lrc.red clients there follow the reference implementation.
  * Word-timed results come back as TTML, line-timed ones as LRC and the rest as plain text — what
  * [LyricsParser] already reads.
  */

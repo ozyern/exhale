@@ -256,7 +256,7 @@ internal fun CanvasArtworkPlayer(
  * The fade itself is a RenderEffect on the view's own node, not a DstIn gradient in the caller's
  * draw scope: a TextureView's frames are composited from its own surface, and a Compose blend drawn
  * over the node lands on the layer around the video rather than on the video. (Adapted from
- * BitChord's CanvasArtworkPlayer, GPL-3.0.)
+ * the reference design's CanvasArtworkPlayer, GPL-3.0.)
  *
  * @param bottomFade the share of the view's height, from the bottom, given to the dissolve.
  * @param alpha read while drawing, so a per-frame fade costs no recomposition.

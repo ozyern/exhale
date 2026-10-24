@@ -3,7 +3,7 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * The idea is BitChord's VersionAudioAligner (github.com/kushagrasinghx/BitChord, GPL-3.0): find
+ * The idea is the reference design's VersionAudioAligner (github.com/kushagrasinghx/the reference design, GPL-3.0): find
  * where a song sits inside another cut of it — a music video with an intro — by lining the two
  * recordings' loudness up, rather than trusting their lengths.
  */

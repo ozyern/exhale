@@ -68,6 +68,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.ozyern.exhale.ui.utils.readableListWidth
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
@@ -474,7 +475,7 @@ fun AlbumScreen(
     // State for LazyColumn to track scroll
     val lazyListState = rememberLazyListState()
 
-    // The album's motion artwork: Apple's editorial loop for this album,
+    // The album's motion artwork: iOS's editorial loop for this album,
     // playing where the cover is. Looked up once per album, and only with animated covers on.
     val (animatedCovers) = rememberPreference(com.ozyern.exhale.constants.ExhaleCanvasKey, true)
     var albumMotion by remember(albumWithSongs?.album?.id) { mutableStateOf<String?>(null) }
@@ -511,7 +512,8 @@ fun AlbumScreen(
 
     // The release page: the sleeve's colours for the whole page, the artwork behind the
     // list, a band of blur across the join, and the track list numbered underneath.
-    val palette = com.ozyern.exhale.ui.component.rememberReleasePalette(albumWithSongs?.album?.thumbnailUrl)
+    val seed = com.ozyern.exhale.ui.utils.LocalCollectionSeed.current
+    val palette = com.ozyern.exhale.ui.component.rememberReleasePalette(seed?.thumbnail ?: albumWithSongs?.album?.thumbnailUrl)
     val albumBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
     var searching by rememberSaveable(albumBrowseId) { mutableStateOf(false) }
     var query by rememberSaveable(albumBrowseId) { mutableStateOf("") }
@@ -566,7 +568,7 @@ fun AlbumScreen(
 
         LazyColumn(
             state = lazyListState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.readableListWidth(),
             contentPadding = PaddingValues(
                 bottom = LocalPlayerAwareWindowInsets.current.asPaddingValues()
                     .calculateBottomPadding(),
@@ -589,6 +591,7 @@ fun AlbumScreen(
                         meta = meta,
                         palette = palette,
                         artHeight = artHeight,
+                        artworkUrl = albumWithSongs.album.thumbnailUrl,
                         onCreditClick = albumWithSongs.artists.firstOrNull()?.let { artist ->
                             { navController.navigate("artist/${artist.id}") }
                         },
@@ -723,10 +726,16 @@ fun AlbumScreen(
                             }
                         },
                         onLongClick = {
+                            // Held: the song's options, as everywhere else in the app. Select mode is a
+                            // long press on the back button.
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            if (!selection) selection = true
-                            wrappedSongs.forEach { it.isSelected = false }
-                            songWrapper.isSelected = true
+                            menuState.show {
+                                SongMenu(
+                                    originalSong = song,
+                                    navController = navController,
+                                    onDismiss = menuState::dismiss,
+                                )
+                            }
                         },
                         onMore = {
                             menuState.show {
@@ -801,7 +810,9 @@ fun AlbumScreen(
             } else {
                 when (val state = uiState) {
                     AlbumUiState.Loading,
-                    AlbumUiState.Content -> {
+                    AlbumUiState.Content -> if (seed != null) {
+                        // The tile's hero stands in above the list; see below.
+                    } else {
                         item(key = "shimmer") {
                             ShimmerHost {
                                 Column(
@@ -951,6 +962,34 @@ fun AlbumScreen(
             }
         }
 
+        // Opened out of a tile: the tile's hero over the list until the page's own has loaded in
+        // underneath, then it lets go. Kept out of the list, so nothing in view is built twice.
+        if (seed != null) {
+            var seedShown by remember { mutableStateOf(uiState == AlbumUiState.Loading || albumWithSongs?.songs.isNullOrEmpty()) }
+            val seedAlpha by androidx.compose.animation.core.animateFloatAsState(
+                targetValue = if (seedShown) 1f else 0f,
+                animationSpec = androidx.compose.animation.core.tween(150),
+                label = "seedHero",
+            )
+            LaunchedEffect(uiState == AlbumUiState.Loading || albumWithSongs?.songs.isNullOrEmpty()) {
+                if (!(uiState == AlbumUiState.Loading || albumWithSongs?.songs.isNullOrEmpty())) {
+                    kotlinx.coroutines.delay(150)
+                    seedShown = false
+                }
+            }
+            if (seedAlpha > 0f) {
+                Box(Modifier.readableListWidth().alpha(seedAlpha)) {
+                    com.ozyern.exhale.ui.component.SeededCollectionHero(
+                        seed = seed,
+                        meta = "Album",
+                        lazyListState = rememberLazyListState(),
+                        palette = palette,
+                        placeholderIcon = R.drawable.album,
+                    )
+                }
+            }
+        }
+
         // Top App Bar
         val topAppBarColors = if (transparentAppBar) {
             TopAppBarDefaults.topAppBarColors(
@@ -981,7 +1020,7 @@ fun AlbumScreen(
                         text = pluralStringResource(R.plurals.n_song, count, count),
                         style = MaterialTheme.typography.titleLarge
                     )
-                } else if (showTopBarTitle) {
+                } else if (showTopBarTitle && com.ozyern.exhale.ui.component.LocalCollectionPane.current == null) {
                     Text(
                         text = albumWithSongs?.album?.title.orEmpty(),
                         style = MaterialTheme.typography.titleLarge,

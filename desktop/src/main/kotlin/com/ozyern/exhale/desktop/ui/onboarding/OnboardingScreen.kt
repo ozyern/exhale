@@ -151,7 +151,7 @@ private suspend fun searchArtists(query: String): List<PreferredArtist> = withCo
 }
 
 /**
- * First-run taste setup, the Apple Music way: languages first (which also fixes the region YouTube
+ * First-run taste setup: languages first (which also fixes the region YouTube
  * localises for), then artists to build Home around.
  */
 @Composable

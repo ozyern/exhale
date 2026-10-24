@@ -61,7 +61,6 @@ private const val HEAD_CUT_LIMIT = 30
 
 /**
  * KuGou Lyrics Library
- * Modified from [ViMusic](https://github.com/vfsfitvnm/ViMusic)
  */
 @OptIn(ExperimentalEncodingApi::class)
 object KuGou {
@@ -82,7 +81,7 @@ object KuGou {
     ) {
         val keyword = generateKeyword(title, artist)
         searchSongs(keyword).data.info.forEach {
-            if (duration == -1 || abs(it.duration - duration) <= DURATION_TOLERANCE) {
+            if ((duration == -1 || abs(it.duration - duration) <= DURATION_TOLERANCE) && it.isSongOf(keyword)) {
                 searchLyricsByHash(it.hash).candidates.firstOrNull()?.let { candidate ->
                     Base64.Default.decode(
                         downloadLyrics(candidate.id, candidate.accesskey).content
@@ -90,7 +89,7 @@ object KuGou {
                 }
             }
         }
-        searchLyricsByKeyword(keyword, duration).candidates.forEach { candidate ->
+        searchLyricsByKeyword(keyword, duration).candidates.filter { it.isSongOf(keyword) }.forEach { candidate ->
             Base64.Default.decode(
                 downloadLyrics(candidate.id, candidate.accesskey).content
             ).decodeToString().normalize().let(callback)
@@ -100,13 +99,44 @@ object KuGou {
     suspend fun getLyricsCandidate(
         keyword: Keyword, duration: Int
     ): SearchLyricsResponse.Candidate? {
+        // A hit has to be this title by this artist, not just a song of about this length: matched on
+        // length alone, a song KuGou doesn't have came back with whichever namesake (or stranger)
+        // happened to run as long, and those words were shown as this song's.
         searchSongs(keyword).data.info.forEach { song ->
-            if (duration == -1 || abs(song.duration - duration) <= DURATION_TOLERANCE) { // if duration == -1, we don't care duration
+            if ((duration == -1 || abs(song.duration - duration) <= DURATION_TOLERANCE) && song.isSongOf(keyword)) {
                 val candidate = searchLyricsByHash(song.hash).candidates.firstOrNull()
                 if (candidate != null) return candidate
             }
         }
-        return searchLyricsByKeyword(keyword, duration).candidates.firstOrNull()
+        return searchLyricsByKeyword(keyword, duration).candidates.firstOrNull { it.isSongOf(keyword) }
+    }
+
+    private fun SearchSongResponse.Data.Info.isSongOf(keyword: Keyword): Boolean {
+        // "Artist - Title" is how KuGou names a file when the separate fields are missing.
+        val fromFile = filename?.split(" - ", limit = 2)?.takeIf { it.size == 2 }
+        return sameSong(keyword, songname ?: fromFile?.get(1), singername ?: fromFile?.get(0))
+    }
+
+    private fun SearchLyricsResponse.Candidate.isSongOf(keyword: Keyword): Boolean =
+        sameSong(keyword, song, singer)
+
+    private fun simplified(text: String): String =
+        normalizeTitle(text).lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+
+    private val artistSplit = Regex("[、,&/;]|\\s+(?:feat\\.?|ft\\.?|x|and)\\s+", RegexOption.IGNORE_CASE)
+
+    /** The same title, and at least one artist in common when KuGou names one. */
+    private fun sameSong(keyword: Keyword, title: String?, artist: String?): Boolean {
+        val wanted = simplified(keyword.title)
+        val got = simplified(title ?: return false)
+        if (wanted.isEmpty() || got.isEmpty()) return false
+        val titleMatches = wanted == got ||
+            (minOf(wanted.length, got.length) >= 4 && (wanted.startsWith(got) || got.startsWith(wanted)))
+        if (!titleMatches) return false
+        if (artist.isNullOrBlank() || keyword.artist.isBlank()) return true
+        val wantedArtists = keyword.artist.split(artistSplit).map(::simplified).filter { it.isNotEmpty() }
+        val gotArtists = artist.split(artistSplit).map(::simplified).filter { it.isNotEmpty() }
+        return wantedArtists.any { a -> gotArtists.any { b -> a == b || a.contains(b) || b.contains(a) } }
     }
 
     suspend fun searchSongs(keyword: Keyword) =

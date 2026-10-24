@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.sp
 /**
  * The Play / Shuffle pair that sits under an album or playlist header.
  *
- * Apple Music gives these two a tinted capsule each, with the glyph and the word in the accent
+ * the iOS music app gives these two a tinted capsule each, with the glyph and the word in the accent
  * colour - light on the page, and legible about what each one does. Exhale had Material's filled
  * `Button`: a solid primary slab carrying a bare icon and no label, which is both the loudest
  * shape on the page and the least clear, because "the triangle one" and "the crossed-arrows one"
@@ -55,7 +55,7 @@ fun PlayShuffleButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     /**
-     * Solid, the way Apple Music draws these under an album cover: a filled capsule in the page's
+     * Solid, the way the iOS music app draws these under an album cover: a filled capsule in the page's
      * ink with the label knocked out of it, rather than a tinted wash. Reserved for a page whose
      * header *is* the artwork - on a plain list the tinted pair is quieter and still correct.
      */
@@ -75,7 +75,7 @@ fun PlayShuffleButton(
 
     // Glass, not paint.
     //
-    // `solid` used to mean a filled slab of the page's ink, which is how Apple Music draws these -
+    // `solid` used to mean a filled slab of the page's ink, which is how the iOS music app draws these -
     // but this app's own material is the frosted pane it uses for every other floating control,
     // and two systems on one page is one too many. The glass keeps the contrast (it carries its
     // own rim and gradient) and stops the pair being the brightest rectangle on the screen.

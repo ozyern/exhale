@@ -78,7 +78,7 @@ import com.ozyern.exhale.ui.component.NavigationTitle
 import com.ozyern.exhale.ui.utils.resize
 
 /**
- * "Top Picks for You", the big cards at the top of Home, after the hero shelf and Apple's
+ * "Top Picks for You", the big cards at the top of Home, after the hero shelf and iOS's
  * Listen Now: tall cards, the artwork whole, and the caption laid over a frosted strip of that same
  * artwork — blurred where it sits, so the words rest on the cover's own colour rather than on a
  * panel that guesses at it. A glass play disc in the corner plays the pick without opening it.
@@ -97,7 +97,7 @@ fun HomeMadeForYou(
         BoxWithConstraints {
             // A share of the row with a ceiling, so the next card always peeks in — and a tablet
             // doesn't get one card the size of a poster.
-            val cardWidth = minOf(maxWidth * 0.74f, 320.dp)
+            val cardWidth = if (maxWidth >= 600.dp) 260.dp else minOf(maxWidth * 0.74f, 320.dp)
             LazyRow(
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -174,7 +174,7 @@ private fun HeroPickCard(
                 .fillMaxSize()
                 .layerBackdrop(coverBackdrop),
         )
-        // BeatWave's floating caption: a pane of glass set in from the card's edges rather than a
+        // the reference dock's floating caption: a pane of glass set in from the card's edges rather than a
         // strip across its foot - the cover runs all the way round it, so the card still reads as
         // the artwork with the words resting on it.
         val panelShape = RoundedCornerShape(24.dp)

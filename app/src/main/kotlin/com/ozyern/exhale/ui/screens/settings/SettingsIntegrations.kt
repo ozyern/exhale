@@ -40,10 +40,10 @@ import com.ozyern.exhale.R
 import com.ozyern.exhale.ui.component.settingsIconPuck
 
 /**
- * Integrations rendered as a true Apple Music inset grouped list — full-width rows
+ * Integrations rendered as a true the iOS music app inset grouped list — full-width rows
  * stacked vertically inside one block clipped to 16dp over a frosted surface, with a
  * thin divider BETWEEN rows only (never top/bottom). The horizontal pill carousel is
- * gone: Apple's Settings never scroll sideways.
+ * gone: iOS's Settings never scroll sideways.
  */
 @Composable
 fun SettingsIntegrationsSection(

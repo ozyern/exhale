@@ -6,6 +6,8 @@
 
 package com.ozyern.exhale.desktop.ui.library
 
+import com.ozyern.exhale.desktop.ui.pressScale
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -92,6 +94,7 @@ fun MoodAndGenresScreen(insets: ChromeInsets, onOpen: (browseId: String, params:
         modifier = Modifier.fillMaxSize(),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) { LargeTitle("Mood & Genres", Modifier.padding(bottom = 8.dp)) }
+        item(span = { GridItemSpan(maxLineSpan) }) { com.ozyern.exhale.desktop.ui.pages.FlacShelf() }
         val loaded = groups
         if (loaded == null) {
             items(12) { Box(Modifier.fillMaxWidth().height(88.dp).glassPlate(RoundedCornerShape(16.dp))) }
@@ -116,15 +119,7 @@ private fun MoodButton(title: String, stripeColor: Long, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val hovered by interaction.collectIsHoveredAsState()
-    val scale by animateFloatAsState(
-        when {
-            pressed -> 0.96f
-            hovered -> 1.02f
-            else -> 1f
-        },
-        spring(0.72f, 520f),
-        label = "mood_button",
-    )
+    val scale by pressScale(pressed, hovered, pressedScale = 0.96f, hoverScale = 1.02f)
     Box(
         contentAlignment = Alignment.BottomStart,
         modifier = Modifier
@@ -192,12 +187,21 @@ private val LibraryTabs = listOf("Recently played", "Artists", "Stations")
 
 /** The Library tab: what's been played, the artists picked in Your Music Taste, and their stations. */
 @Composable
-fun LibraryScreen(feed: HomeFeed, player: DesktopPlayer, state: PlayerState, insets: ChromeInsets, onOpenSettings: () -> Unit) {
+fun LibraryScreen(
+    feed: HomeFeed,
+    player: DesktopPlayer,
+    state: PlayerState,
+    insets: ChromeInsets,
+    onOpenSettings: () -> Unit,
+    /** The section to show: the sidebar picks it; the chips move it and report back. */
+    initialTab: Int = 0,
+    onTabChange: (Int) -> Unit = {},
+) {
     val history by DesktopPrefs.history.collectAsState()
     val artists by DesktopPrefs.artists.collectAsState()
     val open = rememberItemOpener(player)
     val navigator = LocalNavigator.current
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by remember(initialTab) { mutableIntStateOf(initialTab) }
     val items: List<YTItem> = when (tab) {
         0 -> history
         1 -> artists.map { ArtistItem(id = it.id, title = it.name, thumbnail = it.thumbnail, shuffleEndpoint = null, radioEndpoint = null) }
@@ -220,7 +224,12 @@ fun LibraryScreen(feed: HomeFeed, player: DesktopPlayer, state: PlayerState, ins
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LibraryTabs.forEachIndexed { index, label -> LibraryChip(label, index == tab) { tab = index } }
+                LibraryTabs.forEachIndexed { index, label ->
+                    LibraryChip(label, index == tab) {
+                        tab = index
+                        onTabChange(index)
+                    }
+                }
             }
         }
         if (items.isEmpty()) {

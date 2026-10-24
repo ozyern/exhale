@@ -5,9 +5,11 @@
  */
 
 package com.ozyern.exhale.ui.screens
+import com.ozyern.exhale.ui.component.CollectionPanes
 import com.ozyern.exhale.ui.screens.DownloadQueueScreen
 
 import android.net.Uri
+import com.ozyern.exhale.ui.utils.CollectionMorphFrame
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.tween
@@ -162,6 +164,15 @@ fun NavGraphBuilder.navigationBuilder(
     composable("charts_screen") {
         ChartsScreen(navController)
     }
+    composable("flac") {
+        FlacScreen(navController)
+    }
+    composable(
+        route = "flac_release/{key}",
+        arguments = listOf(navArgument("key") { type = NavType.StringType }),
+    ) { entry ->
+        FlacReleaseScreen(navController, entry.arguments?.getString("key").orEmpty())
+    }
     composable(
         route = "browse/{browseId}",
         arguments = listOf(
@@ -234,8 +245,8 @@ fun NavGraphBuilder.navigationBuilder(
                     type = NavType.StringType
                 },
             ),
-    ) {
-        AlbumScreen(navController, scrollBehavior)
+    ) { entry ->
+        CollectionMorphFrame(entry) { CollectionPanes { AlbumScreen(navController, scrollBehavior) } }
     }
     composable(
         route = "artist/{artistId}",
@@ -245,8 +256,8 @@ fun NavGraphBuilder.navigationBuilder(
                     type = NavType.StringType
                 },
             ),
-    ) {
-        ArtistScreen(navController, scrollBehavior)
+    ) { entry ->
+        CollectionMorphFrame(entry) { ArtistScreen(navController, scrollBehavior) }
     }
     composable(
         route = "artist/{artistId}/songs",
@@ -296,8 +307,8 @@ fun NavGraphBuilder.navigationBuilder(
                     type = NavType.StringType
                 },
             ),
-    ) {
-        OnlinePlaylistScreen(navController, scrollBehavior)
+    ) { entry ->
+        CollectionMorphFrame(entry) { CollectionPanes { OnlinePlaylistScreen(navController, scrollBehavior) } }
     }
     composable(
         route = "local_playlist/{playlistId}",
@@ -307,8 +318,8 @@ fun NavGraphBuilder.navigationBuilder(
                     type = NavType.StringType
                 },
             ),
-    ) {
-        LocalPlaylistScreen(navController, scrollBehavior)
+    ) { entry ->
+        CollectionMorphFrame(entry) { CollectionPanes { LocalPlaylistScreen(navController, scrollBehavior) } }
     }
     composable(
         route = "auto_playlist/{playlist}",
@@ -318,8 +329,8 @@ fun NavGraphBuilder.navigationBuilder(
                     type = NavType.StringType
                 },
             ),
-    ) {
-        AutoPlaylistScreen(navController, scrollBehavior)
+    ) { entry ->
+        CollectionMorphFrame(entry) { CollectionPanes { AutoPlaylistScreen(navController, scrollBehavior) } }
     }
     composable(
         route = "cache_playlist/{playlist}",
@@ -330,7 +341,7 @@ fun NavGraphBuilder.navigationBuilder(
                 },
             ),
     ) {
-        CachePlaylistScreen(navController, scrollBehavior)
+        CollectionPanes { CachePlaylistScreen(navController, scrollBehavior) }
     }
     composable(
         route = "top_playlist/{top}",
@@ -341,7 +352,7 @@ fun NavGraphBuilder.navigationBuilder(
                 },
             ),
     ) {
-        TopPlaylistScreen(navController, scrollBehavior)
+        CollectionPanes { TopPlaylistScreen(navController, scrollBehavior) }
     }
     composable(
         route = "youtube_browse/{browseId}?params={params}",
@@ -356,11 +367,20 @@ fun NavGraphBuilder.navigationBuilder(
                     nullable = true
                 },
             ),
-    ) {
-        YouTubeBrowseScreen(navController)
+    ) { entry ->
+        CollectionMorphFrame(entry) { YouTubeBrowseScreen(navController) }
     }
-    settingsComposable("settings") {
-        SettingsScreen(navController, scrollBehavior, latestVersionName)
+    composable("settings") {
+        val width = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
+        when {
+            // A tablet or an unfolded foldable: ColorOS's split — the list beside the page.
+            width >= com.ozyern.exhale.ui.screens.settings.SettingsSplitMinWidthDp &&
+                com.ozyern.exhale.ui.screens.settings.LocalSettingsSidebar.current == null ->
+                com.ozyern.exhale.ui.screens.settings.SettingsSplit(navController, latestVersionName)
+            else -> SettingsPage {
+                SettingsScreen(navController, scrollBehavior, latestVersionName)
+            }
+        }
     }
     settingsComposable("settings/appearance") {
         AppearanceSettings(navController, scrollBehavior)

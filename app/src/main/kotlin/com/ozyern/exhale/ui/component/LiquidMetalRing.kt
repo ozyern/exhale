@@ -51,6 +51,9 @@ fun Modifier.liquidMetalRing(
                 if (last != 0L) time.floatValue += ((now - last) / 1e9f).coerceAtMost(0.1f)
                 last = now
             }
+            // On the shared ambient grid rather than every vsync: 120 redraws a second of the
+            // player pill for reflections that drift a few pixels a second.
+            com.ozyern.exhale.utils.awaitAmbientStep()
         }
     }
 

@@ -298,7 +298,7 @@ fun ColumnScope.PlayerMenu(
     // Sleep timer.
     //
     // It lives here rather than in Player.kt because the collapsed queue bars that used to be its
-    // only way in do not all have one — the Apple Music player, which is the default, has no such
+    // only way in do not all have one — the the iOS music app player, which is the default, has no such
     // bar at all — so on a stock install the feature was unreachable. Every player design can open
     // this menu.
     var showSleepTimerDialog by rememberSaveable { mutableStateOf(false) }
@@ -731,7 +731,9 @@ fun ColumnScope.PlayerMenu(
                     )
 
                     // A tagged .m4a in Music/Exhale. Songs already on the phone have nothing to save.
-                    if (!com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaMetadata.id)) {
+                    if (!com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaMetadata.id) &&
+                        !com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaMetadata.id)
+                    ) {
                         Divider()
                         PlayerMenuRow(
                             icon = R.drawable.save_to_device,
@@ -1023,7 +1025,7 @@ private fun VolumeSliderL(value: Float, onValueChange: (Float) -> Unit, modifier
     LaunchedEffect(safeValue) { if (!isDragging) sliderValue = safeValue }
 
     Slider(
-        value = sliderValue,
+        state = com.ozyern.exhale.ui.component.rememberSliderStateOf(sliderValue, 0f..1f),
         onValueChange = { updated ->
             isDragging = true
             val coerced = updated.coerceIn(0f, 1f)
@@ -1031,7 +1033,6 @@ private fun VolumeSliderL(value: Float, onValueChange: (Float) -> Unit, modifier
             onValueChange(coerced)
         },
         onValueChangeFinished = { isDragging = false },
-        valueRange = 0f..1f,
         modifier = modifier.height(36.dp),
         thumb = {
             Box(modifier = Modifier.size(14.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))

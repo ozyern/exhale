@@ -6,6 +6,8 @@
 
 package com.ozyern.exhale.desktop.ui.home
 
+import com.ozyern.exhale.desktop.ui.pressScale
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -301,6 +303,8 @@ fun HomeScreen(
     onRetry: () -> Unit,
     onOpenSettings: () -> Unit,
     onSignIn: () -> Unit,
+    /** Beside the sidebar: the Music app's Home — its title, feature cards and song lists. */
+    sidebar: Boolean = false,
 ) {
     val history by DesktopPrefs.history.collectAsState()
     val artists by DesktopPrefs.artists.collectAsState()
@@ -366,13 +370,20 @@ fun HomeScreen(
             var order = 2f
             fun nextIntro(): Modifier = Modifier.feedIntro(order.also { order += 1f }, introProgress)
 
-            item(key = "header") {
-                HomeHeader(onOpenSettings, onSignIn, Modifier.padding(start = start, end = 40.dp, bottom = 20.dp))
+            // The sidebar carries the account and Settings; the header would only repeat them.
+            if (!sidebar) {
+                item(key = "header") {
+                    HomeHeader(onOpenSettings, onSignIn, Modifier.padding(start = start, end = 40.dp, bottom = 20.dp))
+                }
             }
             item(key = "large_title") {
                 LargeTitle(
-                    if (firstName != null) "$greeting, $firstName" else greeting,
-                    eyebrow = today,
+                    when {
+                        sidebar -> "Home"
+                        firstName != null -> "$greeting, $firstName"
+                        else -> greeting
+                    },
+                    eyebrow = if (sidebar) null else today,
                     modifier = Modifier
                         .padding(start = start, end = 40.dp, bottom = 4.dp)
                         .graphicsLayer {
@@ -395,7 +406,7 @@ fun HomeScreen(
                         },
                 )
             }
-            item(key = "subtitle") {
+            if (!sidebar) item(key = "subtitle") {
                 Text(
                     if (state.current != null) "Pick up where you left off, or try something new." else "Here's something to exhale to.",
                     style = MaterialTheme.typography.titleMedium,
@@ -411,13 +422,23 @@ fun HomeScreen(
             }
 
             when {
+                feed.recommended.isNotEmpty() && sidebar -> item(key = "recommended") {
+                    Box(Modifier.padding(top = 18.dp).feedIntro(0f, introProgress)) { FeatureRow(feed.recommended, state, player, start) }
+                }
                 feed.recommended.isNotEmpty() -> item(key = "recommended") {
                     RecommendedRow(feed.recommended, state, player, start, introProgress)
                 }
                 feed.isLoading -> item(key = "recommended_placeholder") { RecommendedPlaceholder(start) }
             }
 
-            if (shortcuts.isNotEmpty()) {
+            if (sidebar && history.isNotEmpty()) {
+                item(key = "recent_songs") {
+                    Column(Modifier.feedIntro(1f, introProgress)) {
+                        MusicShelfTitle("Recently Played", modifier = Modifier.padding(start = start, end = 40.dp, top = 34.dp, bottom = 10.dp))
+                        SongListGrid(history, state, player, start)
+                    }
+                }
+            } else if (shortcuts.isNotEmpty()) {
                 item(key = "shortcuts") {
                     Column(Modifier.feedIntro(1f, introProgress)) {
                         Box(Modifier.padding(start = start, end = 40.dp, top = 30.dp, bottom = 10.dp)) { SectionHeader("Jump back in", "Recently played") }
@@ -435,13 +456,15 @@ fun HomeScreen(
 
             feed.tasteShelves.forEach { shelf ->
                 val sectionIntro = nextIntro()
-                header(shelf.key, start, sectionIntro) { SectionHeader(shelf.label, shelf.title, shelf.thumbnail, shelf.roundThumbnail) }
+                header(shelf.key, start, sectionIntro) {
+                    if (sidebar) MusicShelfTitle(shelf.title, shelf.label) else SectionHeader(shelf.label, shelf.title, shelf.thumbnail, shelf.roundThumbnail)
+                }
                 shelfRow("${shelf.key}_row", shelf.items, rowPadding, sectionIntro, isActive, playNow, open)
             }
 
             if (feed.topPicks.isNotEmpty()) {
                 val sectionIntro = nextIntro()
-                header("stations", start, sectionIntro) { SectionHeader("Made for you", "Stations") }
+                header("stations", start, sectionIntro) { if (sidebar) MusicShelfTitle("Stations for You") else SectionHeader("Made for you", "Stations") }
                 item(key = "stations_row") {
                     LazyRow(sectionIntro, contentPadding = rowPadding, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         itemsIndexed(feed.topPicks, key = { i, pick -> "$i:${pick.item.id}" }) { _, pick ->
@@ -453,13 +476,13 @@ fun HomeScreen(
 
             if (feed.similarArtists.isNotEmpty()) {
                 val sectionIntro = nextIntro()
-                header("similar", start, sectionIntro) { SectionHeader("Discover", "Artists you might like") }
+                header("similar", start, sectionIntro) { if (sidebar) MusicShelfTitle("Artists You Might Like") else SectionHeader("Discover", "Artists you might like") }
                 shelfRow("similar_row", feed.similarArtists, rowPadding, sectionIntro, isActive, playNow, open)
             }
 
             if (feed.releases.isNotEmpty()) {
                 val sectionIntro = nextIntro()
-                header("releases", start, sectionIntro) { SectionHeader(null, "New releases") }
+                header("releases", start, sectionIntro) { if (sidebar) MusicShelfTitle("New Releases") else SectionHeader(null, "New releases") }
                 shelfRow("releases_row", feed.releases.take(24), rowPadding, sectionIntro, isActive, playNow, open)
             }
 
@@ -467,7 +490,8 @@ fun HomeScreen(
                 val key = "yt_${ytKeys[index]}"
                 val sectionIntro = nextIntro()
                 header(key, start, sectionIntro) {
-                    SectionHeader(section.label, section.title, section.thumbnail, section.endpoint?.browseId?.startsWith("UC") == true)
+                    if (sidebar) MusicShelfTitle(section.title, section.label)
+                    else SectionHeader(section.label, section.title, section.thumbnail, section.endpoint?.browseId?.startsWith("UC") == true)
                 }
                 shelfRow("${key}_row", section.items, rowPadding, sectionIntro, isActive, playNow, open)
             }
@@ -582,7 +606,7 @@ private fun SpotlightCard(pick: Recommendation, active: Boolean, playing: Boolea
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.98f else if (hovered) 1.01f else 1f, spring(dampingRatio = 0.7f, stiffness = 400f), label = "spotlight_scale")
+    val scale by pressScale(pressed, hovered, pressedScale = 0.98f, hoverScale = 1.01f)
     val lift by animateFloatAsState(if (hovered) 1f else 0f, spring(dampingRatio = 0.6f, stiffness = 240f), label = "spotlight_lift")
     val shape = RoundedCornerShape(28.dp)
 
@@ -594,7 +618,7 @@ private fun SpotlightCard(pick: Recommendation, active: Boolean, playing: Boolea
                 scaleX = scale
                 scaleY = scale
             }
-            .shadow(if (hovered) 30.dp else 14.dp, shape)
+            .shadow(if (hovered) 30.dp else 0.dp, shape)
             .clip(shape)
             .background(lerp(base, Color.Black, 0.55f))
             .hoverable(interaction)
@@ -678,7 +702,7 @@ private fun SpotlightButton(icon: ImageVector, label: String, filled: Boolean, o
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val hovered by interaction.collectIsHoveredAsState()
-    val scale by animateFloatAsState(if (pressed) 0.94f else if (hovered) 1.03f else 1f, spring(dampingRatio = 0.55f, stiffness = 600f), label = "spotlight_button")
+    val scale by pressScale(pressed, hovered, pressedScale = 0.94f, hoverScale = 1.03f)
     val content = if (filled) Color.Black else Color.White
     Row(
         Modifier
@@ -709,7 +733,7 @@ private fun PickCard(pick: Recommendation, active: Boolean, playing: Boolean, on
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.96f else 1f, spring(dampingRatio = 0.7f, stiffness = 500f), label = "pick_scale")
+    val scale by pressScale(pressed, pressedScale = 0.96f)
     val lift by animateFloatAsState(if (hovered) 1f else 0f, spring(dampingRatio = 0.65f, stiffness = 300f), label = "pick_lift")
     val shape = RoundedCornerShape(24.dp)
 
@@ -722,7 +746,7 @@ private fun PickCard(pick: Recommendation, active: Boolean, playing: Boolean, on
                 scaleY = scale
                 translationY = -8.dp.toPx() * lift
             }
-            .shadow(if (hovered) 26.dp else 8.dp, shape)
+            .shadow(if (hovered) 26.dp else 0.dp, shape)
             .clip(shape)
             .background(panel)
             .hoverable(interaction)
@@ -802,7 +826,7 @@ private fun ShortcutTile(tile: Shortcut, active: Boolean, playing: Boolean, modi
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val hovered by interaction.collectIsHoveredAsState()
-    val scale by animateFloatAsState(if (pressed) 0.96f else if (hovered) 1.015f else 1f, spring(Motion.AquamorphicDamping, Motion.AquamorphicStiffness), label = "shortcut")
+    val scale by pressScale(pressed, hovered, pressedScale = 0.96f, hoverScale = 1.015f)
     Row(
         modifier = modifier
             .height(60.dp)

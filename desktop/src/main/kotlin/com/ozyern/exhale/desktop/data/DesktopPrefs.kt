@@ -104,7 +104,8 @@ object DesktopPrefs {
 
     fun recordPlayed(song: SongItem) {
         if (AppSettings.current.pauseHistory) return
-        val updated = (listOf(song) + _history.value.filterNot { it.id == song.id }).take(40)
+        // Enough to make a library of for listeners who never sign in.
+        val updated = (listOf(song) + _history.value.filterNot { it.id == song.id }).take(300)
         putRecords("history", encodeSongs(updated))
         _history.value = updated
     }
@@ -112,6 +113,20 @@ object DesktopPrefs {
     fun clearHistory() {
         put("history", null)
         _history.value = emptyList()
+    }
+
+    // Favourites — the Music app's Favorite Songs, and what Library's Songs, Albums, Artists and
+    // Recently Added are made of when no account is signed in. Newest first.
+
+    private val _favorites = MutableStateFlow(decodeSongs(records("favorites")))
+    val favorites: StateFlow<List<SongItem>> = _favorites.asStateFlow()
+
+    fun isFavorite(id: String): Boolean = _favorites.value.any { it.id == id }
+
+    fun toggleFavorite(song: SongItem) {
+        val updated = if (isFavorite(song.id)) _favorites.value.filterNot { it.id == song.id } else listOf(song) + _favorites.value
+        putRecords("favorites", encodeSongs(updated))
+        _favorites.value = updated
     }
 
     private val _searchHistory = MutableStateFlow(readSearchHistory())

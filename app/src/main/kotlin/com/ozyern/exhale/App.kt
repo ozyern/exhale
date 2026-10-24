@@ -140,6 +140,7 @@ class App : Application(), SingletonImageLoader.Factory {
             apiKey = BuildConfig.LASTFM_API_KEY,
             secret = BuildConfig.LASTFM_SECRET
         )
+        com.ozyern.exhale.openflac.OpenFlac.jamendoClientId = BuildConfig.JAMENDO_CLIENT_ID
     }
 
     /**
@@ -466,7 +467,7 @@ class App : Application(), SingletonImageLoader.Factory {
 
     /**
      * The players ask for YouTube covers at `maxresdefault.jpg`, which plenty of videos don't
-     * have: the request 404s and the cover simply isn't there — the Apple Music player was a flat
+     * have: the request 404s and the cover simply isn't there — the the iOS music app player was a flat
      * colour while the mini player showed the art. Every video has `hqdefault.jpg`, so a failed
      * max-res request is tried again at that before anything gives up.
      */

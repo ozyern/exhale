@@ -3,7 +3,7 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * Follows BitChord's CastController (github.com/kushagrasinghx/BitChord, GPL-3.0).
+ * Follows the reference design's CastController (github.com/kushagrasinghx/the reference design, GPL-3.0).
  */
 
 package com.ozyern.exhale.playback.cast

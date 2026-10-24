@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SignPath artifact configuration "app": the staged app image and uninstaller, uploaded by the
+     release workflow before they are packed into the setup. Only Exhale's own executables are signed;
+     the Java runtime, libmpv and skiko DLLs belong to their own projects and pass through unchanged. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <directory path="Exhale">
+      <pe-file path="Exhale.exe" product-name="Exhale">
+        <authenticode-sign />
+      </pe-file>
+    </directory>
+    <pe-file path="Uninstall Exhale.exe" product-name="Exhale">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

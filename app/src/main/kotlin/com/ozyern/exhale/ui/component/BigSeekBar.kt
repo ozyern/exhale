@@ -32,10 +32,8 @@ fun BigSeekBar(
     steps: Int = 19,
 ) {
     Slider(
-        value = progressProvider(),
+        state = com.ozyern.exhale.ui.component.rememberSliderStateOf(progressProvider(), 0f..1f, steps),
         onValueChange = onProgressChange,
-        valueRange = 0f..1f,
-        steps = steps,
         colors = PlayerSliderColors.standardSliderColors(color),
         thumb = {
             Spacer(modifier = Modifier.size(0.dp))

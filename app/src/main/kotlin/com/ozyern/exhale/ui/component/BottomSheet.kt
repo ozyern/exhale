@@ -93,20 +93,24 @@ private const val PILL_VERTICAL_SQUASH = 0.5f
 // song superimposed. That double image was the single most visible flaw in the collapse.
 private const val MORPH_HANDOFF_FRACTION = 0.28f
 
-/** Below this progress the full player's content is gone; only the card is morphing. */
-private const val CONTENT_GONE_BELOW = 0.38f
+/**
+ * Below this progress the full player's content is gone. Low, so the content and the pill trade
+ * places over one window as exact complements: it was 0.38 with the pill gone by 0.26, and between
+ * the two the window showed nothing but the sheet's black ground.
+ */
+private const val CONTENT_GONE_BELOW = 0.12f
+
+/** Below this progress the morph window's ground hands over to the pill it has landed on. */
+private const val GROUND_GONE_BELOW = 0.22f
 
 /** Over how much progress above [CONTENT_GONE_BELOW] the content fades in or out. */
-private const val CONTENT_FADE_SPAN = 0.32f
+private const val CONTENT_FADE_SPAN = 0.30f
 
-/** Above this progress the mini pill's content is gone. Below [CONTENT_GONE_BELOW], so they never stack. */
-private const val PILL_GONE_ABOVE = 0.26f
 
 
 
 /**
  * Bottom Sheet
- * Modified from [ViMusic](https://github.com/vfsfitvnm/ViMusic)
  */
 @Composable
 fun BottomSheet(
@@ -239,8 +243,19 @@ fun BottomSheet(
                         // The sheet's ground, inside the window: it shrinks with the player instead
                         // of hanging behind it at full size.
                         .drawBehind {
+                            // At the content's own opacity. It used to be full by 15% of the travel
+                            // while the content only came in from 38%, and the pill was gone by 26%:
+                            // through that stretch the window was nothing but this ground — the black
+                            // slab between the dock and the player.
+                            //
+                            // Solid until the window has all but reached the pill. Faded with the
+                            // content, the window was an empty, see-through card for most of a close,
+                            // gone before it reached the dock, over a dock pill that had been there
+                            // the whole time: two things that never met. Now a solid card lands on
+                            // the pill and only then gives way to it.
                             val p = state.progress.coerceIn(0f, 1f)
-                            val alpha = backgroundColor.alpha * (p / 0.15f).coerceIn(0f, 1f)
+                            val landed = (p / GROUND_GONE_BELOW).coerceIn(0f, 1f)
+                            val alpha = backgroundColor.alpha * landed * landed * (3f - 2f * landed)
                             if (alpha > 0f) drawRect(backgroundColor.copy(alpha = alpha))
                         }
                 },
@@ -377,9 +392,10 @@ fun BottomSheet(
                             scaleX = grow
                             scaleY = grow
                             transformOrigin = TransformOrigin(0.5f, 0f)
-                            // Exactly the complement of the content layer's ramp above, so the two
-                            // always sum to 1 and never both paint at full strength.
-                            val handoff = (p / PILL_GONE_ABOVE).coerceIn(0f, 1f)
+                            // Exactly the complement of the content layer's ramp above, over the
+                            // same window, so the two always sum to 1: never both at full strength,
+                            // and never neither.
+                            val handoff = ((p - CONTENT_GONE_BELOW) / CONTENT_FADE_SPAN).coerceIn(0f, 1f)
                             alpha = 1f - handoff
                             // The other half of the focus pull.
                             renderEffect = null
@@ -514,9 +530,16 @@ class BottomSheetState(
         // separately animated, and it is the difference the eye reads as "weight".
         val initialVelocity = with(density) { velocity.toDp() }
 
+        // Closing an open player takes more than opening one. At 250 px/s a sideways swipe across
+        // the lyrics page's top bar, drifting a few pixels down, was enough to throw the whole
+        // player away. Down from open it now takes a real flick that has also moved the sheet.
+        val open = value > collapsedBound
+        val travelled = (expandedBound - value) / (expandedBound - collapsedBound).coerceAtLeast(1.dp)
+        val closeFling = if (open) velocity < -1100 && travelled > 0.06f else velocity < -250
+
         if (velocity > 250) {
             expand(initialVelocity)
-        } else if (velocity < -250) {
+        } else if (closeFling) {
             if (value < collapsedBound && onDismiss != null) {
                 dismiss()
                 onDismiss.invoke()

@@ -73,7 +73,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ozyern.exhale.R
 import com.ozyern.exhale.ui.component.liquid.LiquidToggle
-import me.saket.squiggles.SquigglySlider
+
 import kotlin.math.roundToInt
 
 val LocalPreferenceInGroup = compositionLocalOf { false }
@@ -269,7 +269,7 @@ fun PreferenceEntry(
         }
         rowContent()
     } else {
-        // Apple Music-style inset row: NO Material Card (no elevation, no border, no tonal
+        // the iOS music app-style inset row: NO Material Card (no elevation, no border, no tonal
         // tint). A 16dp clip over the SOLID group surface — the same colour the grouped cards
         // use — so a standalone row and a row inside a group are visibly the same material.
         Box(

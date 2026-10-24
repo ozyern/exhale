@@ -6,6 +6,8 @@
 
 package com.ozyern.exhale.desktop.ui.shell
 
+import com.ozyern.exhale.desktop.ui.pressScale
+
 import com.ozyern.exhale.desktop.ui.rememberPosition
 
 import androidx.compose.animation.AnimatedContent
@@ -474,15 +476,7 @@ private fun NowPlayingIsland(
     val hovered by interaction.collectIsHoveredAsState()
     val pressed by interaction.collectIsPressedAsState()
     // Under the pointer it lifts a touch and brightens; pressed, it gives.
-    val lift by animateFloatAsState(
-        when {
-            pressed -> 0.985f
-            hovered -> 1.01f
-            else -> 1f
-        },
-        spring(dampingRatio = 0.6f, stiffness = 600f),
-        label = "island_lift",
-    )
+    val lift by pressScale(pressed, hovered, pressedScale = 0.985f, hoverScale = 1.01f)
     val sheen by animateFloatAsState(if (hovered) 1f else 0f, tween(180), label = "island_sheen")
 
     Box(
@@ -586,7 +580,7 @@ private fun Modifier.collapseHeight(fraction: () -> Float): Modifier = layout { 
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun DockProgress(fraction: () -> Float, duration: Double, onSeek: (Float) -> Unit, modifier: Modifier) {
+internal fun DockProgress(fraction: () -> Float, duration: Double, onSeek: (Float) -> Unit, modifier: Modifier) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     var pointerX by remember { mutableFloatStateOf(-1f) }
@@ -674,7 +668,7 @@ private class AboveAt(private val x: Float) : PopupPositionProvider {
 /** Scroll over the dock to change the volume, about 4% a notch; a touchpad's small steps add up. */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun Modifier.volumeWheel(player: DesktopPlayer): Modifier {
+internal fun Modifier.volumeWheel(player: DesktopPlayer): Modifier {
     val carry = remember { floatArrayOf(0f) }
     return onPointerEvent(PointerEventType.Scroll) { event ->
         val dy = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
@@ -769,19 +763,11 @@ private fun DockSearchField(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun DockIconButton(icon: ImageVector, description: String, enabled: Boolean = true, onClick: () -> Unit) {
+internal fun DockIconButton(icon: ImageVector, description: String, enabled: Boolean = true, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val hovered by interaction.collectIsHoveredAsState()
-    val scale by animateFloatAsState(
-        when {
-            pressed -> 0.86f
-            hovered && enabled -> 1.08f
-            else -> 1f
-        },
-        spring(dampingRatio = 0.5f, stiffness = 700f),
-        label = "dock_button",
-    )
+    val scale by pressScale(pressed, hovered, pressedScale = 0.86f, hoverScale = 1.08f)
     val wash by animateFloatAsState(if (hovered && enabled) 0.09f else 0f, tween(160), label = "dock_button_wash")
     // What the button does, above it, after a moment's hover.
     TooltipArea(
@@ -829,7 +815,7 @@ private fun FrostedCircle(onClick: () -> Unit, modifier: Modifier = Modifier, co
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     // Underdamped and stiff: a droplet that overshoots, like the capsule beside it.
-    val scale by animateFloatAsState(if (pressed) 0.88f else 1f, spring(dampingRatio = 0.55f, stiffness = 900f), label = "circle_press")
+    val scale by pressScale(pressed, pressedScale = 0.88f)
     Box(
         modifier = modifier
             .size(DockCircleSize)
@@ -1248,7 +1234,7 @@ fun PlayPauseSquircle(isPlaying: Boolean, isLoading: Boolean, size: Dp, onClick:
     val accent = MaterialTheme.colorScheme.primary
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) Motion.PressedScale else 1f, Motion.PressSpring, label = "play_press")
+    val scale by pressScale(pressed, pressedScale = Motion.PressedScale)
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier

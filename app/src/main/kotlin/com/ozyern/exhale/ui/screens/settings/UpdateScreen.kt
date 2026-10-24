@@ -233,16 +233,23 @@ private fun UpdateScreenContent(
                 return@launch
             }
             updateCheckState = UpdateCheckState.Loading
-            onLastCheckedAtChange(System.currentTimeMillis())
+            val startedAt = System.currentTimeMillis()
+            onLastCheckedAtChange(startedAt)
             // Always from the network: this screen is someone asking. See Updater.checkForUpdate.
-            Updater.checkForUpdate(BuildConfig.VERSION_NAME, forceRefresh = true)
+            val result = Updater.checkForUpdate(BuildConfig.VERSION_NAME, forceRefresh = true)
+            // ColorOS lets the check be seen: the pill and its spinner stay up for a beat even
+            // when the answer is instant, so the card arriving reads as the answer to it.
+            kotlinx.coroutines.delay((MinCheckingMillis - (System.currentTimeMillis() - startedAt)).coerceAtLeast(0L))
+            result
                 .onSuccess { info ->
                     if (info == null) {
                         updateCheckState = UpdateCheckState.UpToDate
                     } else {
                         pendingUpdateInfo = info
                         updateCheckState = UpdateCheckState.UpdateAvailable(info)
-                        showUpdateDialog = true
+                        // The card says so on its own; the sheet only opens straight away when
+                        // the launch prompt's "Update Now" sent us here to fetch it.
+                        if (autoStart) showUpdateDialog = true
                     }
                 }
                 .onFailure { err ->
@@ -253,8 +260,9 @@ private fun UpdateScreenContent(
         }
     }
 
-    LaunchedEffect(autoStart) {
-        if (autoStart) checkForUpdate()
+    // ColorOS's update page checks as it opens: "Checking for updates" first, then the answer.
+    LaunchedEffect(Unit) {
+        checkForUpdate()
     }
 
     if (showUpdateDialog) {
@@ -352,66 +360,47 @@ private fun UpdateScreenContent(
                     .padding(horizontal = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Spacer(Modifier.weight(0.5f))
+                // Checking, the mark sits low and a single glass pill at the foot says what is
+                // happening; answered, the pill dissolves, the mark rises, and the card comes up
+                // in its place.
+                val checking = updateCheckState == UpdateCheckState.Loading || updateCheckState == UpdateCheckState.Idle
+                val heroLift by animateFloatAsState(
+                    targetValue = if (checking) 0f else 1f,
+                    animationSpec = spring(dampingRatio = 0.86f, stiffness = 140f),
+                    label = "updateHeroLift",
+                )
+                Spacer(Modifier.weight(1.1f - 0.75f * heroLift))
                 com.ozyern.exhale.ui.component.ExhaleGlowWordmark(fontSize = 66.sp)
                 com.ozyern.exhale.ui.component.ColorOsVersionText(BuildConfig.VERSION_NAME, fontSize = 22.sp, modifier = Modifier.padding(top = 12.dp))
                 Spacer(Modifier.weight(1f))
 
-                // The card: what state you are in, the build, and the two things you can do.
-                val cardShape = RoundedCornerShape(32.dp)
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(cardShape)
-                        .background(
-                            androidx.compose.ui.graphics.Brush.verticalGradient(
-                                listOf(Color(0xCC2A1C08), Color(0xE60E0A05)),
-                            ),
-                        )
-                        .border(0.8.dp, Color.White.copy(alpha = 0.14f), cardShape)
-                        .padding(horizontal = 24.dp, vertical = 26.dp),
-                ) {
-                    Text(
-                        text = statusTitle,
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = "Exhale_${BuildConfig.VERSION_NAME}_${BuildConfig.ARCHITECTURE}(${BuildConfig.GIT_COMMIT})",
-                        fontSize = 15.sp,
-                        color = Color.White.copy(alpha = 0.7f),
-                    )
-                    (updateCheckState as? UpdateCheckState.Error)?.let {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            if (it.message == NO_INTERNET) "Connect to Wi-Fi or mobile data and try again." else it.message,
-                            fontSize = 13.sp,
-                            color = Color.White.copy(alpha = 0.55f),
+                AnimatedContent(
+                    targetState = checking,
+                    transitionSpec = {
+                        (fadeIn(tween(380, delayMillis = 140)) + slideInVertically(spring(dampingRatio = 0.86f, stiffness = 260f)) { it / 2 }) togetherWith
+                            fadeOut(tween(220))
+                    },
+                    contentAlignment = Alignment.BottomCenter,
+                    label = "updateFoot",
+                ) { isChecking ->
+                    if (isChecking) {
+                        CheckingPill()
+                    } else {
+                        UpdateResultCard(
+                            statusTitle = statusTitle,
+                            state = updateCheckState,
+                            canDownload = canDownload,
+                            onPrimary = {
+                                val pending = pendingUpdateInfo
+                                when {
+                                    pending != null && Updater.hasUpdate(pending.versionName, BuildConfig.VERSION_NAME) -> showUpdateDialog = true
+                                    updateCheckState is UpdateCheckState.Error -> checkForUpdate()
+                                    else -> navController.navigate("settings/changelog")
+                                }
+                            },
+                            onNotes = { navController.navigate("settings/update/notes") },
                         )
                     }
-                    Spacer(Modifier.height(22.dp))
-                    UpdatePill(
-                        label = if (canDownload) "Download & install" else "Check for updates",
-                        loading = updateCheckState == UpdateCheckState.Loading,
-                        filled = true,
-                        onClick = {
-                            val pending = pendingUpdateInfo
-                            if (pending != null && Updater.hasUpdate(pending.versionName, BuildConfig.VERSION_NAME)) {
-                                showUpdateDialog = true
-                            } else {
-                                checkForUpdate()
-                            }
-                        },
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    UpdatePill(
-                        label = "View update notes",
-                        loading = false,
-                        filled = false,
-                        onClick = { navController.navigate("settings/update/notes") },
-                    )
                 }
                 Spacer(Modifier.height(16.dp))
             }
@@ -453,6 +442,95 @@ private fun UpdatePill(label: String, loading: Boolean, filled: Boolean, onClick
         } else {
             Text(label, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = if (filled) Color(0xFF141414) else Color.White)
         }
+    }
+}
+
+private const val MinCheckingMillis = 1800L
+
+/** ColorOS's "Checking for updates" pill: frosted, the words on the left, a spinner on the right. */
+@Composable
+private fun CheckingPill() {
+    val shape = RoundedCornerShape(28.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .clip(shape)
+            .background(Color(0xB3141018))
+            .border(0.8.dp, Color.White.copy(alpha = 0.12f), shape)
+            .padding(start = 22.dp, end = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "Checking for updates",
+            fontSize = 16.sp,
+            color = Color.White.copy(alpha = 0.92f),
+            modifier = Modifier.weight(1f),
+        )
+        LoadingRing(modifier = Modifier.size(20.dp), stroke = 2.dp, color = Color.White.copy(alpha = 0.85f))
+    }
+}
+
+/** The answer: status, the build, and ColorOS's two pills. */
+@Composable
+private fun UpdateResultCard(
+    statusTitle: String,
+    state: UpdateCheckState,
+    canDownload: Boolean,
+    onPrimary: () -> Unit,
+    onNotes: () -> Unit,
+) {
+    val cardShape = RoundedCornerShape(32.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    listOf(Color(0x99231C2C), Color(0xCC120E18)),
+                ),
+            )
+            .border(0.8.dp, Color.White.copy(alpha = 0.14f), cardShape)
+            .padding(horizontal = 22.dp, vertical = 24.dp),
+    ) {
+        Text(
+            text = statusTitle,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = "Exhale_${BuildConfig.VERSION_NAME}_${BuildConfig.ARCHITECTURE}(${BuildConfig.GIT_COMMIT})",
+            fontSize = 15.sp,
+            color = Color.White.copy(alpha = 0.7f),
+        )
+        (state as? UpdateCheckState.Error)?.let {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                if (it.message == NO_INTERNET) "Connect to Wi-Fi or mobile data and try again." else it.message,
+                fontSize = 13.sp,
+                color = Color.White.copy(alpha = 0.55f),
+            )
+        }
+        Spacer(Modifier.height(20.dp))
+        UpdatePill(
+            label = when {
+                canDownload -> "Download & install"
+                state is UpdateCheckState.Error -> "Try again"
+                else -> "Highlights"
+            },
+            loading = false,
+            filled = true,
+            onClick = onPrimary,
+        )
+        Spacer(Modifier.height(12.dp))
+        UpdatePill(
+            label = "View update notes",
+            loading = false,
+            filled = false,
+            onClick = onNotes,
+        )
     }
 }
 
@@ -737,7 +815,7 @@ private sealed interface DownloadState {
 }
 
 /**
- * The "Software Update" sheet — Apple's presentation of an available update, in our glass.
+ * The "Software Update" sheet — iOS's presentation of an available update, in our glass.
  *
  * Replaces an `AlertDialog` whose only action kicked the user out to a browser to download the APK
  * by hand. The download now happens in place, which is the whole point of the ported backend: the

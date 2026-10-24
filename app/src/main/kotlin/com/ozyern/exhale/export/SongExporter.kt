@@ -81,7 +81,7 @@ import javax.inject.Singleton
  * ### What goes in the file
  *
  * Title, artists, album artist, album, year, the cover at 1200px and the lyrics — time-synced LRC
- * when there are synced lyrics — in the atoms Poweramp, Musicolet, Samsung Music, Apple Music and
+ * when there are synced lyrics — in the atoms Poweramp, Samsung Music, the iOS music app and
  * foobar all read. Synced lyrics are normalised to plain line-level LRC, because word-level TTML
  * shows as markup in every other player.
  *
@@ -121,7 +121,7 @@ class SongExporter @Inject constructor(
 
     /** Queues what can be saved — not songs already waiting, not files already on the phone — and says how many. */
     fun enqueue(songs: List<MediaMetadata>): Int {
-        val fresh = songs.filter { it.id !in pending.value && !com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(it.id) }
+        val fresh = songs.filter { it.id !in pending.value && !com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(it.id) && !com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(it.id) }
         if (fresh.isEmpty()) return 0
         if (pending.value.isEmpty()) {
             queued.set(0); done.set(0); failed.set(0)

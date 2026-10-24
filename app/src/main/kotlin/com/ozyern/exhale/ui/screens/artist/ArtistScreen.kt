@@ -36,6 +36,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -268,7 +270,7 @@ fun ArtistScreen(
         showLocal = libraryArtist?.artist?.isLocal == true
     }
 
-    // Apple Music's photograph of the artist and their title logo, found by name (BitChord's
+    // the iOS music app's photograph of the artist and their title logo, found by name (the reference design's
     // source). YouTube's square channel picture stands in until — and unless — it arrives.
     var appleArt by remember(artistName) {
         mutableStateOf(artistName?.let { com.ozyern.exhale.utils.AppleArtistArtRepository.cached(it) })
@@ -325,7 +327,7 @@ fun ArtistScreen(
 
         LazyColumn(
             state = lazyListState,
-            // No top inset: the photo runs to the top edge, under the see-through bar, as Apple's does.
+            // No top inset: the photo runs to the top edge, under the see-through bar, as iOS's does.
             contentPadding = LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
                 .asPaddingValues(),
@@ -494,7 +496,7 @@ fun ArtistScreen(
                                     ),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                // Apple's own title logo for the artist when there is one, drawn
+                                // iOS's own title logo for the artist when there is one, drawn
                                 // as they draw it; otherwise the name in the chosen face.
                                 val logo = appleArt?.logoUrl
                                 if (logo != null) {
@@ -588,7 +590,7 @@ fun ArtistScreen(
                         Spacer(Modifier.height(22.dp))
 
                         // The newest release, on a card of its own under the actions — what
-                        // someone opening an artist most often came for (as BitChord does).
+                        // someone opening an artist most often came for (as the reference design does).
                         val latest = viewModel.latestRelease.takeIf { !showLocal }
                         if (latest != null) {
                             LatestReleaseCard(
@@ -800,7 +802,16 @@ fun ArtistScreen(
                                 }
                                 val rowState = rememberLazyListState()
                                 BoxWithConstraints(Modifier.fillMaxWidth()) {
-                                    val columnWidth = minOf(maxWidth * 0.86f, 420.dp)
+                                    // A phone shows one column and the edge of the next. A tablet fits whole
+                                    // columns across: at a fixed 420dp the third one was cut through its
+                                    // titles at the window's edge, which read as a layout fault, not a hint.
+                                    val columnWidth = if (maxWidth < 600.dp) {
+                                        minOf(maxWidth * 0.86f, 420.dp)
+                                    } else {
+                                        val usable = maxWidth - 20.dp
+                                        val count = ((usable + 12.dp) / (340.dp + 12.dp)).toInt().coerceAtLeast(2)
+                                        (usable - 12.dp * (count - 1)) / count
+                                    }
                                     LazyRow(
                                         state = rowState,
                                         contentPadding = PaddingValues(horizontal = 10.dp),
@@ -1034,8 +1045,8 @@ private fun ArtistActionButton(
 
 /**
  * The artist's newest release, on a card the width of the page: the sleeve, what it is and when,
- * and its title, on a light veil (after BitChord's top-release card). A light container rather
- * than a dark one: on Apple's pages a dark panel reads as a hole in the page.
+ * and its title, on a light veil (after the reference design's top-release card). A light container rather
+ * than a dark one: on iOS's pages a dark panel reads as a hole in the page.
  */
 @Composable
 private fun LatestReleaseCard(
@@ -1056,6 +1067,10 @@ private fun LatestReleaseCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
+            // A card, not a banner: on a tablet it keeps a phone's width, centred under the
+            // centred name and Play rather than stranded at the left with the half beside it empty.
+            .wrapContentWidth(Alignment.CenterHorizontally)
+            .widthIn(max = 520.dp)
             .clip(shape)
             .background(Color.White.copy(alpha = 0.10f), shape)
             .border(0.5.dp, Color.White.copy(alpha = 0.16f), shape)

@@ -43,11 +43,8 @@ import kotlinx.coroutines.withContext
 /** The cover is shrunk to this many pixels a side: the field is soft gradients, and this is all it samples. */
 private const val Side = 48
 
-/** About 30 frames a second. */
-private const val FRAME_STEP_MS = 30L
-
 /**
- * Apple Music's moving artwork: four slowly counter-rotating, domain-warped samplings of the cover,
+ * the iOS music app's moving artwork: four slowly counter-rotating, domain-warped samplings of the cover,
  * averaged, pushed in saturation and vignetted — evaluated on the GPU in one pass.
  *
  * The Windows app works the same field out on the CPU because a desktop window is enormous; on a phone a
@@ -178,7 +175,7 @@ fun FluidArtworkBackground(
                 if (last != 0L) clock.floatValue += ((now - last) / 1_000_000_000f).coerceAtMost(0.1f)
                 last = now
             }
-            delay(FRAME_STEP_MS)
+            com.ozyern.exhale.utils.awaitAmbientStep()
         }
     }
 

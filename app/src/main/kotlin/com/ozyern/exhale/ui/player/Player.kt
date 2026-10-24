@@ -201,6 +201,8 @@ fun BottomSheetPlayer(
     // When true (State B / scrolled), the standalone collapsed mini-player is hidden
     // because the floating bottom bar shows the mini-player pill instead.
     hideMiniPlayer: Boolean = false,
+    /** Swap the mini player in and out on the spot: the folding dock flies its own copy over it. */
+    instantMiniPlayerSwap: Boolean = false,
     // Dynamic-Island morph target. The host measures where the player is actually collapsing to
     // — the floating pill above the nav bar (State A) or the nav bar's own centre capsule
     // (State B) — and hands the bounds down, so this sheet never has to guess.
@@ -236,13 +238,22 @@ fun BottomSheetPlayer(
 
     val (classicPlayer) = rememberPreference(ClassicPlayerKey, defaultValue = false)
     val (liquidGlassPlayer) = rememberPreference(com.ozyern.exhale.constants.LiquidGlassPlayerKey, false)
-    // The Now Playing screen is a portrait layout; a phone on its side keeps the chosen design.
-    // Kept while a full-screen video is up: that turns the phone to landscape, and switching
-    // design then took the video — and the full-screen player itself — away with it.
-    val nowPlaying = !classicPlayer &&
-        (LocalConfiguration.current.orientation != Configuration.ORIENTATION_LANDSCAPE || FullscreenVideoState.active)
+    // Now Playing in every orientation: a wide window (a tablet, an unfolded foldable, a phone on
+    // its side) gets its two-column layout, `LandscapeNowPlaying`, instead of falling back to the
+    // classic design. It used to be gated to portrait here, which left the landscape layout
+    // unreachable — the `else` branch below that chooses it never ran in landscape.
+    val nowPlaying = !classicPlayer
+    val landscapeNowPlaying = nowPlaying && !FullscreenVideoState.active && !FullscreenVideoState.watching &&
+        LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val coverFlight = LocalCoverFlight.current
-    if (coverFlight != null) SideEffect { coverFlight.enabled = nowPlaying }
+    // A tablet or an unfolded foldable opens the player as a card growing out of the dock, as
+    // iPad's the iOS music app does, rather than by flying the cover: there the flight is a 48dp
+    // thumbnail thrown up to a banner the width of the screen, a thirteen-fold jump that read as
+    // the cover lurching into place.
+    val tabletWindow = LocalConfiguration.current.smallestScreenWidthDp >= 600
+    val flyCover = nowPlaying && !landscapeNowPlaying && !tabletWindow
+    // The flight lands on the portrait sleeve; the two-column layout's sleeve is somewhere else.
+    if (coverFlight != null) SideEffect { coverFlight.enabled = flyCover }
 
     val playerBackground by rememberEnumPreference(
         key = PlayerBackgroundStyleKey,
@@ -731,8 +742,8 @@ fun BottomSheetPlayer(
         },
         // The Now Playing screen opens by carrying its cover out of the mini player (see
         // CoverFlight); the other designs keep the rectangle→pill morph.
-        dynamicIslandMorph = !nowPlaying || coverFlight == null,
-        coverFlight = nowPlaying && coverFlight != null,
+        dynamicIslandMorph = !flyCover || coverFlight == null,
+        coverFlight = flyCover && coverFlight != null,
         pillHeight = morphPillHeight,
         pillHorizontalInset = morphPillHorizontalInset,
         pillCornerRadius = morphPillCornerRadius,
@@ -744,10 +755,21 @@ fun BottomSheetPlayer(
         collapsedContent = {
             // State B puts the player inside the bar instead. It is not removed and re-added: it
             // is the same accessory, and it flies from here into the bar's pill.
+            // It sinks toward the dock and fades as the dock's own pill settles in, and rises back
+            // out of it unfolding: timed to the dock's fold (see FluidDock), so the two never show
+            // at once at full strength.
             androidx.compose.animation.AnimatedVisibility(
                 visible = !hideMiniPlayer,
-                enter = androidx.compose.animation.fadeIn(),
-                exit = androidx.compose.animation.fadeOut(),
+                enter = if (instantMiniPlayerSwap) androidx.compose.animation.EnterTransition.None else androidx.compose.animation.fadeIn(
+                    androidx.compose.animation.core.tween(220, delayMillis = 120),
+                ) + androidx.compose.animation.slideInVertically(
+                    androidx.compose.animation.core.spring(dampingRatio = 0.82f, stiffness = 160f),
+                ) { it / 3 },
+                exit = if (instantMiniPlayerSwap) androidx.compose.animation.ExitTransition.None else androidx.compose.animation.fadeOut(
+                    androidx.compose.animation.core.tween(160),
+                ) + androidx.compose.animation.slideOutVertically(
+                    androidx.compose.animation.core.spring(dampingRatio = 0.82f, stiffness = 160f),
+                ) { it / 3 },
             ) {
                 MiniPlayer(
                     position = position,
@@ -858,7 +880,7 @@ fun BottomSheetPlayer(
 
         // A full-screen video turns the phone; the portrait player stays put under it rather than
         // being swapped for the landscape one, which would take the video away with it.
-        when (if (FullscreenVideoState.active) Configuration.ORIENTATION_PORTRAIT else LocalConfiguration.current.orientation) {
+        when (if (FullscreenVideoState.active || nowPlaying) Configuration.ORIENTATION_PORTRAIT else LocalConfiguration.current.orientation) {
             Configuration.ORIENTATION_LANDSCAPE -> {
                 if (playerDesignStyle == PlayerDesignStyle.V5) {
                     val littleBackground = MaterialTheme.colorScheme.primaryContainer
@@ -1077,7 +1099,7 @@ fun BottomSheetPlayer(
                         // switch to the landscape player took the video's own screen away.
                         val landscapeWindow = androidx.compose.ui.platform.LocalConfiguration.current.let {
                             it.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-                        } && !FullscreenVideoState.active
+                        } && !FullscreenVideoState.active && !FullscreenVideoState.watching
                         if (landscapeWindow) LandscapeNowPlaying(
                             playerSheetState = state,
                             navController = navController,
@@ -1232,7 +1254,7 @@ fun BottomSheetPlayer(
                         }
                     }
                 } else if (playerDesignStyle == PlayerDesignStyle.V8) {
-                    // V8 - Apple Music Style (Portrait)
+                    // V8 - the iOS music app Style (Portrait)
                     Box(
                         modifier = Modifier.fillMaxSize()
                     ) {

@@ -1,0 +1,54 @@
+name: Signed build
+
+# A release-signed APK without a release: push a `build/*` branch (or run this by hand)
+# and the APK is attached to the run as an artifact. Nothing is published, so the in-app
+# updater never sees it. Use it to test a build on a phone that has the release installed.
+on:
+  push:
+    branches: ['build/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore the signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::KEYSTORE_BASE64 is not set."
+            exit 1
+          fi
+          mkdir -p app/keystore
+          echo "$KEYSTORE_BASE64" | base64 -d > app/keystore/release.keystore
+
+      - name: Build the release APK
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleUniversalRelease
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Exhale-${{ github.sha }}
+          path: app/build/outputs/apk/universal/release/app-universal-release.apk
+          retention-days: 14

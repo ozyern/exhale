@@ -131,7 +131,7 @@ private fun formatListened(ms: Long): String {
 private fun playsText(plays: Int): String = if (plays == 1) "1 play" else "${formatCount(plays.toLong())} plays"
 
 @Composable
-fun SoundChemScreen(player: DesktopPlayer, state: PlayerState, insets: ChromeInsets, onBack: () -> Unit) {
+fun SoundChemScreen(player: DesktopPlayer, state: PlayerState, insets: ChromeInsets, onBack: (() -> Unit)?) {
     val version by ListeningLog.version.collectAsState()
     val months by produceState(listOf(YearMonth.now()), version) { value = withContext(Dispatchers.IO) { ListeningLog.months() } }
     var index by remember { mutableIntStateOf(0) }
@@ -156,7 +156,7 @@ fun SoundChemScreen(player: DesktopPlayer, state: PlayerState, insets: ChromeIns
                 contentPadding = PaddingValues(start = start, end = 40.dp, top = 16.dp, bottom = insets.bottom + 24.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                item(key = "back") { GlassIconButton(NavIcons.Back, "Back", onBack, Modifier.padding(bottom = 18.dp)) }
+                if (onBack != null) item(key = "back") { GlassIconButton(NavIcons.Back, "Back", onBack, Modifier.padding(bottom = 18.dp)) }
                 item(key = "header") {
                     ChemHeader(
                         month = monthName,
@@ -744,7 +744,7 @@ private fun ArtistPoster(rank: Int, artist: ArtistTally, modifier: Modifier, onC
                 portrait,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(160.dp).shadow(if (hovered) 20.dp else 8.dp, CircleShape, clip = false).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
+                modifier = Modifier.size(160.dp).shadow(if (hovered) 20.dp else 0.dp, CircleShape, clip = false).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
             )
             RankBadge(rank, Modifier.align(Alignment.BottomStart))
         }
@@ -775,7 +775,7 @@ private fun AlbumPoster(rank: Int, title: String, image: String, detail: String,
                 image.resizedThumbnail(360),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(184.dp).shadow(if (hovered) 20.dp else 8.dp, shape, clip = false).clip(shape).background(MaterialTheme.colorScheme.surfaceVariant),
+                modifier = Modifier.size(184.dp).shadow(if (hovered) 20.dp else 0.dp, shape, clip = false).clip(shape).background(MaterialTheme.colorScheme.surfaceVariant),
             )
             RankBadge(rank, Modifier.align(Alignment.TopStart).padding(10.dp))
         }

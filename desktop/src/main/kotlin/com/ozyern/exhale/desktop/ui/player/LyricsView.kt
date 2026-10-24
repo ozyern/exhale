@@ -304,7 +304,7 @@ private fun SourceLabel(text: String) {
 }
 
 /**
- * Apple Music's lyrics, laid out by hand rather than by a list: every line knows where it should
+ * The lyrics, laid out by hand rather than by a list: every line knows where it should
  * stand relative to the sung one, and springs there on its own — the sung line first, each line
  * under it a beat later, so a line change ripples down the page like a waterfall. Lines away from
  * the sung one soften with distance; pointing at the lyrics brings them all into focus to read.

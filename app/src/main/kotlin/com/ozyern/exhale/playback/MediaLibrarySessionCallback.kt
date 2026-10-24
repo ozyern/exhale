@@ -87,18 +87,60 @@ constructor(
         controller: MediaSession.ControllerInfo,
     ): MediaSession.ConnectionResult {
         val connectionResult = super.onConnect(session, controller)
-        return MediaSession.ConnectionResult.accept(
-            connectionResult.availableSessionCommands
-                .buildUpon()
-                .add(MediaSessionConstants.CommandToggleLike)
-                .add(MediaSessionConstants.CommandToggleStartRadio)
-                .add(MediaSessionConstants.CommandToggleLibrary)
-                .add(MediaSessionConstants.CommandToggleShuffle)
-                .add(MediaSessionConstants.CommandToggleRepeatMode)
-                .add(MediaSessionConstants.CommandOutputSwitcher)
-                .build(),
-            connectionResult.availablePlayerCommands,
-        )
+        if (controller.packageName == AndroidAutoPackage) LockScreenLyrics.carControllers.add(controller)
+        val sessionCommands = connectionResult.availableSessionCommands
+            .buildUpon()
+            .add(MediaSessionConstants.CommandToggleLike)
+            .add(MediaSessionConstants.CommandToggleStartRadio)
+            .add(MediaSessionConstants.CommandToggleLibrary)
+            .add(MediaSessionConstants.CommandToggleShuffle)
+            .add(MediaSessionConstants.CommandToggleRepeatMode)
+            .add(MediaSessionConstants.CommandOutputSwitcher)
+            .build()
+        // The lock screen and the shade draw their transport from the platform session, and Media3
+        // builds that session's actions from the player's commands *intersected with the media
+        // notification controller's*. Granted explicitly here, so play/pause and previous/next are
+        // always in that intersection — without them SystemUI drew only play/pause, with the
+        // output button pushed into the empty previous slot.
+        val playerCommands =
+            if (session.isMediaNotificationController(controller)) {
+                MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS
+            } else {
+                connectionResult.availablePlayerCommands
+            }
+        return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+            .setAvailableSessionCommands(sessionCommands)
+            .setAvailablePlayerCommands(playerCommands)
+            .build()
+    }
+
+    /**
+     * The shade's "resume" card after a restart or once the app has been closed. Without this the
+     * system's media-resumption connection was refused ("Cannot resume with ...MusicService") and
+     * the card did nothing. The service restores the last queue itself as it starts, so this waits
+     * a moment for that and hands the same queue back.
+     */
+    override fun onPlaybackResumption(
+        mediaSession: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        isForPlayback: Boolean,
+    ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> =
+        scope.future {
+            val player = mediaSession.player
+            kotlinx.coroutines.withTimeoutOrNull(3_000) {
+                while (player.mediaItemCount == 0) kotlinx.coroutines.delay(100)
+            }
+            if (player.mediaItemCount == 0) throw UnsupportedOperationException("Nothing to resume")
+            MediaSession.MediaItemsWithStartPosition(
+                (0 until player.mediaItemCount).map { player.getMediaItemAt(it) },
+                player.currentMediaItemIndex,
+                player.currentPosition,
+            )
+        }
+
+    override fun onDisconnected(session: MediaSession, controller: MediaSession.ControllerInfo) {
+        LockScreenLyrics.carControllers.remove(controller)
+        super.onDisconnected(session, controller)
     }
 
     override fun onCustomCommand(
@@ -827,3 +869,6 @@ constructor(
         private const val HISTORY = "history"
     }
 }
+
+/** Android Auto, as it connects to the session to drive the car display. */
+private const val AndroidAutoPackage = "com.google.android.projection.gearhead"

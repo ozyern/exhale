@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -79,7 +80,32 @@ internal fun LibraryCollectionsHero(
     val rest = collections.drop(1)
     val likedCount by LocalDatabase.current.likedSongsCount().collectAsState(initial = 0)
 
+    // A tablet or an unfolded foldable: the lead card and the rest in one row of cards the same
+    // height, rather than a banner across the whole screen over three stretched tiles.
+    val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 840
+    val stack: @Composable (@Composable () -> Unit, @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) -> Unit =
+        { leadCard, tiles ->
+            if (wide) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth().height(132.dp),
+                ) {
+                    Box(Modifier.weight(2f).fillMaxHeight()) { leadCard() }
+                    tiles()
+                }
+            } else {
+                Column(Modifier.fillMaxWidth()) {
+                    leadCard()
+                    if (rest.isNotEmpty()) {
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) { tiles() }
+                    }
+                }
+            }
+        }
+
     Column(Modifier.fillMaxWidth().padding(horizontal = gutter)) {
+        stack({
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -156,13 +182,12 @@ internal fun LibraryCollectionsHero(
             }
         }
 
-        if (rest.isNotEmpty()) {
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        }, {
                 rest.forEach { c ->
                     Column(
                         modifier = Modifier
                             .weight(1f)
+                            .then(if (wide) Modifier.fillMaxHeight() else Modifier)
                             .liquidGlassSurface(RoundedCornerShape(20.dp), tint = c.colors.first())
                             .clickable(onClick = c.onClick)
                             .padding(horizontal = 12.dp, vertical = 14.dp),
@@ -196,8 +221,7 @@ internal fun LibraryCollectionsHero(
                         )
                     }
                 }
-            }
-        }
+        })
     }
 }
 
@@ -207,11 +231,33 @@ internal fun LibraryCollectionsHero(
  */
 @Composable
 internal fun LibraryDestinationList(destinations: List<LibraryDestination>, gutter: Dp) {
-    Column(
+    // Two grouped cards side by side on a tablet, rather than one list of rows a screen wide.
+    if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 840 && destinations.size > 1) {
+        val half = (destinations.size + 1) / 2
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = gutter).padding(top = 22.dp),
+        ) {
+            listOf(destinations.take(half), destinations.drop(half)).forEach { column ->
+                Box(Modifier.weight(1f)) { DestinationGroup(column) }
+            }
+        }
+        return
+    }
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = gutter)
-            .padding(top = 22.dp)
+            .padding(top = 22.dp),
+    ) { DestinationGroup(destinations) }
+}
+
+@Composable
+private fun DestinationGroup(destinations: List<LibraryDestination>) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
             .liquidGlassSurface(RoundedCornerShape(22.dp)),
     ) {
         destinations.forEachIndexed { i, d ->

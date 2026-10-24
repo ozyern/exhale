@@ -6,6 +6,8 @@
 
 package com.ozyern.exhale.desktop.ui.settings
 
+import com.ozyern.exhale.desktop.ui.pressScale
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -86,6 +88,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -374,7 +377,7 @@ private fun categories(
             Group(
                 "Lossless",
                 listOf(
-                    CustomItem("Lossless sources", keywords = "lossless hires hi-res flac alac wav subsonic navidrome jellyfin airsonic addon library folder bitchord") { LosslessSourcesCard() },
+                    CustomItem("Lossless sources", keywords = "lossless hires hi-res flac alac wav subsonic navidrome jellyfin airsonic addon library folder") { LosslessSourcesCard() },
                     SwitchItem(
                         "Prefer lossless",
                         "When one of your sources has the song, play its copy instead of YouTube's stream.",
@@ -771,6 +774,15 @@ fun SettingsScreen(
                         if (AppSettings.current.reducedMotion) intro.snapTo(1f) else intro.animateTo(1f, tween(480, easing = LinearOutSlowInEasing))
                     }
                     val progress: () -> Float = { intro.value }
+                    // A category's groups are built one per frame rather than all in the first: a big
+                    // category laid out every row and switch at once, a 400 ms freeze on first open.
+                    var shownGroups by remember { mutableIntStateOf(2) }
+                    LaunchedEffect(Unit) {
+                        while (shownGroups < 64) {
+                            withFrameNanos { }
+                            shownGroups++
+                        }
+                    }
                     var viewportTop by remember { mutableFloatStateOf(0f) }
                     val groupTops = remember { mutableStateMapOf<Int, Float>() }
                     BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { viewportTop = it.positionInRoot().y }) {
@@ -802,6 +814,7 @@ fun SettingsScreen(
                                         verticalArrangement = Arrangement.spacedBy(6.dp),
                                     ) {
                                         category.groups.forEachIndexed { index, group ->
+                                            if (index >= shownGroups) return@forEachIndexed
                                             GroupCard(
                                                 group.title,
                                                 group.items,
@@ -1528,7 +1541,7 @@ private fun LayoutOption(label: String, selected: Boolean, accent: Color, onClic
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.96f else if (hovered) 1.02f else 1f, spring(dampingRatio = 0.6f, stiffness = 500f), label = "layout_option")
+    val scale by pressScale(pressed, hovered, pressedScale = 0.96f, hoverScale = 1.02f)
     val rim by animateColorAsState(if (selected) accent else Color.White.copy(alpha = if (hovered) 0.18f else 0.08f), label = "layout_rim")
     Column(
         Modifier

@@ -26,10 +26,12 @@ dependencyResolutionManagement {
 
 rootProject.name = "Exhale"
 include(":app")
+include(":cupertino")
 include(":innertube")
 include(":spotify")
 include(":kugou")
 include(":lrclib")
+include(":openflac")
 include(":lastfm")
 include("simpmusic")
 include(":betterlyrics")

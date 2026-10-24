@@ -148,6 +148,8 @@ constructor(
             ),
         ) { dataSpec ->
             val mediaId = dataSpec.key ?: error("No media id")
+            // A FLAC-page song downloads its own file, as it is.
+            com.ozyern.exhale.utils.OpenFlacSongs.uriFor(mediaId)?.let { return@Factory dataSpec.withUri(it) }
             songUrlCache[mediaId]?.takeIf { it.second > System.currentTimeMillis() }?.let {
                 // The length of *this* stream, never the shared format row, which playback rewrites.
                 return@Factory bounded(dataSpec.withUri(it.first.toUri()), mediaId, it.third, useStoredLength = false)
@@ -218,6 +220,21 @@ constructor(
     @Volatile private var cooldownUntil = 0L
     @Volatile private var refusalsInARow = 0
 
+    /**
+     * How many stream clients past the preferred one downloads are asking with. A long batch
+     * (a few hundred songs) gets one client bot-checked; waiting it out with the same client just
+     * got refused again, the songs ran out of retries, and the queue sat dead until a setting
+     * change — usually the stream client — happened to send a different request. Now the next
+     * client is tried at once, and kept while it works.
+     */
+    @Volatile private var clientRotation = 0
+
+    private fun downloadClient(): PlayerStreamClient {
+        if (clientRotation == 0) return preferredStreamClient
+        val all = PlayerStreamClient.entries
+        return all[(all.indexOf(preferredStreamClient) + clientRotation) % all.size]
+    }
+
     /** When downloads may next ask YouTube for a stream, if they are being held back; 0 when not. */
     val resolveHoldUntil = MutableStateFlow(0L)
 
@@ -231,7 +248,7 @@ constructor(
                     YTPlayerUtils.playerResponseForPlayback(
                         mediaId,
                         audioQuality = audioQuality,
-                        preferredStreamClient = preferredStreamClient,
+                        preferredStreamClient = downloadClient(),
                         connectivityManager = connectivityManager,
                         networkMetered = context.dataStore.get(NetworkMeteredKey, false),
                         avoidCodecs = avoidStreamCodecs,
@@ -248,7 +265,16 @@ constructor(
             val error = result.exceptionOrNull()!!
             if (!isBotCheck(error) || ++refused > MAX_REFUSALS_PER_SONG) throw error
             refusalsInARow++
-            val pause = (BOT_COOLDOWN_MS shl (refusalsInARow - 1).coerceAtMost(4)).coerceAtMost(MAX_BOT_COOLDOWN_MS)
+            // A refused client is swapped for the next one straight away; the long wait is only
+            // for when every client has been refused in turn.
+            clientRotation++
+            val everyClientTried = refusalsInARow >= PlayerStreamClient.entries.size
+            val pause = if (!everyClientTried) {
+                CLIENT_SWAP_PAUSE_MS
+            } else {
+                (BOT_COOLDOWN_MS shl (refusalsInARow - PlayerStreamClient.entries.size).coerceAtMost(4))
+                    .coerceAtMost(MAX_BOT_COOLDOWN_MS)
+            }
             cooldownUntil = maxOf(cooldownUntil, System.currentTimeMillis() + pause)
             resolveHoldUntil.value = cooldownUntil
             timber.log.Timber.tag("DownloadUtil").w("Bot check while resolving $mediaId; holding downloads for ${pause / 1000}s")
@@ -400,6 +426,9 @@ constructor(
         const val RESOLVE_SPACING_MS = 1_500L
         /** The first cool-down after a bot check; it doubles with each refusal in a row. */
         const val BOT_COOLDOWN_MS = 20_000L
+
+        /** The breath between a refused client and the next one being asked. */
+        const val CLIENT_SWAP_PAUSE_MS = 3_000L
         const val MAX_BOT_COOLDOWN_MS = 4 * 60_000L
         /** How many cool-downs one song sits through before it is allowed to fail. */
         const val MAX_REFUSALS_PER_SONG = 6

@@ -71,7 +71,7 @@ import com.ozyern.exhale.ui.component.shimmer.TextPlaceholder
 import com.ozyern.exhale.viewmodels.MoodAndGenresViewModel
 
 /**
- * Moods & Genres, laid out the way Apple Music's Browse lays out its categories: the moods as a row of
+ * Moods & Genres, laid out the way the iOS music app's Browse lays out its categories: the moods as a row of
  * large featured cards you swipe through, then every genre as a two-column grid of colour tiles.
  *
  * It used to be one flat grid of short strips — YouTube's pastel stripe colour behind a small white
@@ -261,7 +261,7 @@ fun CategoryTile(
                     translationY = size.height * (if (large) 0.30f else -0.28f)
                 },
         )
-        // The category's own music, as Apple Music's Browse tiles carry it: one cover tilted into
+        // The category's own music, as the iOS music app's Browse tiles carry it: one cover tilted into
         // the corner of a small tile, three fanned across the foot of a featured one. Faded in
         // once fetched; until then the tile is colour alone, as before.
         val artAlpha by animateFloatAsState(if (covers.isEmpty()) 0f else 1f, label = "categoryArt")

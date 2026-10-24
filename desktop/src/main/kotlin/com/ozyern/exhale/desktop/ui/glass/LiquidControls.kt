@@ -14,6 +14,8 @@
 
 package com.ozyern.exhale.desktop.ui.glass
 
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.draw.shadow
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.spring
@@ -98,7 +100,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
-/** The track's colour off, as Apple's dark switches have it. */
+/** The track's colour off, as dark iOS switches have it. */
 private val TrackOff = Color(0xFF787880).copy(alpha = 0.36f)
 
 /** What the controls refract: the page's own ground when it publishes one, nothing otherwise. */
@@ -340,6 +342,18 @@ fun LiquidToggle(
     LaunchedEffect(hovered) { drag.hover(hovered && enabled) }
 
     val trackBackdrop = rememberLayerBackdrop()
+    // At rest the thumb is a plain white drop with a soft shadow — which is all the glass pipeline drew
+    // there anyway, at the price of copying the page and the track into layers every frame. A page of
+    // these (Settings) paid that for every one on every frame of its arrival. The glass takes over the
+    // moment the thumb is pressed or dragged.
+    val glassy by remember { derivedStateOf { drag.pressProgress > 0.001f } }
+    val restingThumb = Modifier
+        .graphicsLayer {
+            scaleX = drag.scaleX
+            scaleY = drag.scaleY
+        }
+        .shadow(3.dp, CircleShape)
+        .background(Color.White, CircleShape)
     Box(
         modifier
             .size(64.dp, 28.dp)
@@ -362,7 +376,8 @@ fun LiquidToggle(
                 }
                 .semantics { role = Role.Switch }
                 .then(if (enabled) drag.modifier else Modifier)
-                .drawBackdrop(
+                .then(if (glassy) Modifier else restingThumb)
+                .then(if (!glassy) Modifier else Modifier.drawBackdrop(
                     backdrop = rememberCombinedBackdrop(
                         backdrop,
                         rememberBackdrop(trackBackdrop) { drawTrack ->
@@ -394,7 +409,7 @@ fun LiquidToggle(
                         scaleY = drag.scaleY * (1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f))
                     },
                     onDrawSurface = { drawRect(Color.White.copy(alpha = 1f - drag.pressProgress)) },
-                )
+                ))
                 .size(40.dp, 24.dp),
         )
     }
@@ -507,6 +522,18 @@ fun LiquidSlider(
                 )
             }
         }
+        // At rest the thumb is a plain white drop with a soft shadow — which is all the glass pipeline drew
+        // there anyway, at the price of copying the page and the track into layers every frame. A page of
+        // these (Settings) paid that for every one on every frame of its arrival. The glass takes over the
+        // moment the thumb is pressed or dragged.
+        val glassy by remember { derivedStateOf { drag.pressProgress > 0.001f } }
+        val restingThumb = Modifier
+            .graphicsLayer {
+                scaleX = drag.scaleX
+                scaleY = drag.scaleY
+            }
+            .shadow(3.dp, CircleShape)
+            .background(Color.White, CircleShape)
         Box(
             Modifier
                 .graphicsLayer {
@@ -515,7 +542,8 @@ fun LiquidSlider(
                 }
                 .hoverable(interaction)
                 .then(drag.modifier)
-                .drawBackdrop(
+                .then(if (glassy) Modifier else restingThumb)
+                .then(if (!glassy) Modifier else Modifier.drawBackdrop(
                     backdrop = rememberCombinedBackdrop(
                         backdrop,
                         rememberBackdrop(trackBackdrop) { drawTrack ->
@@ -546,7 +574,7 @@ fun LiquidSlider(
                         scaleY = drag.scaleY * (1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f))
                     },
                     onDrawSurface = { drawRect(Color.White.copy(alpha = 1f - drag.pressProgress)) },
-                )
+                ))
                 .size(40.dp, 24.dp),
         )
     }
@@ -559,7 +587,7 @@ fun LiquidSlider(
 /**
  * A segmented control whose selection is a pill you can click to or drag along: held, it becomes a
  * drop of glass that magnifies the labels under it as it slides, and settles on the nearest option
- * when let go. Segments share one width — the widest label's — as Apple's do. At rest it is a plain
+ * when let go. Segments share one width — the widest label's — as iOS's do. At rest it is a plain
  * coloured pill under the labels; the glass is only drawn while it is held or hovered.
  */
 @Composable

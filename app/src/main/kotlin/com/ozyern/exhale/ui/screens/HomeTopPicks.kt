@@ -50,8 +50,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -72,9 +72,9 @@ import com.ozyern.exhale.db.entities.Song
 import com.ozyern.exhale.ui.component.NavigationTitle
 
 /**
- * Apple Music's "Top Picks for You": a row of tall cards, the artwork above and a caption panel below
+ * the iOS music app's "Top Picks for You": a row of tall cards, the artwork above and a caption panel below
  * washed in that artwork's own colour — the panel *is* the artwork, stretched and blurred, which is
- * how Apple's cards come to match their covers without anything being guessed at.
+ * how iOS's cards come to match their covers without anything being guessed at.
  *
  * It replaces a Spotify-style six-tile shortcut grid, which was the one thing at the top of Home that
  * belonged to another app.
@@ -126,8 +126,16 @@ fun HomeTopPicks(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         itemsIndexed(items.chunked(4), key = { _, page -> page.first().id }) { _, page ->
-                            Column(Modifier.width(columnWidth)) {
-                                page.forEach { item ->
+                            // A page is one grouped card, as Apple groups a list: the rows share
+                            // a plate and are parted by hairlines inset to the text.
+                            Column(
+                                Modifier
+                                    .width(columnWidth)
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+                                    .padding(vertical = 4.dp),
+                            ) {
+                                page.forEachIndexed { i, item ->
                                     RecentRow(
                                         item = item,
                                         active = activeId != null && item.id == activeId,
@@ -135,21 +143,32 @@ fun HomeTopPicks(
                                         onClick = { onItemClick(item) },
                                         onLongClick = { onItemLongClick(item) },
                                     )
+                                    if (i < page.lastIndex) {
+                                        Box(
+                                            Modifier
+                                                .padding(start = 12.dp + 54.dp + 14.dp)
+                                                .fillMaxWidth()
+                                                .height(0.5.dp)
+                                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)),
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                 }
             } else {
-                // The grid: the lead-shelf hero cards, seven tenths of the row wide.
+                // the iOS music app's Recently Played: square tiles a little under half a phone wide,
+                // so two and a bit show and the shelf reads as a shelf, not a carousel of posters.
+                // A tablet shows more of them rather than bigger ones.
                 BoxWithConstraints {
-                    val cardWidth = minOf(maxWidth * 0.70f, 320.dp)
+                    val cardWidth = if (maxWidth >= 600.dp) 176.dp else 156.dp
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
-                            RecentHeroCard(
+                            RecentTile(
                                 item = item,
                                 active = activeId != null && item.id == activeId,
                                 isPlaying = isPlaying,
@@ -165,7 +184,11 @@ fun HomeTopPicks(
     }
 }
 
-/** One recent as a row: the artwork small, the title and what it is, and a way to its menu. */
+/**
+ * One recent as a row of its page's card: the artwork, the title, and what it is and who made it in
+ * grey. Long-press for its menu - the row no longer carries a menu button, which on four rows a page
+ * was four more things to look past - and the one playing shows its bars on the artwork.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RecentRow(
@@ -177,22 +200,34 @@ private fun RecentRow(
 ) {
     val haptic = LocalHapticFeedback.current
     val round = item is Artist
-    val shape = if (round) CircleShape else RoundedCornerShape(8.dp)
+    val shape = if (round) CircleShape else RoundedCornerShape(10.dp)
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val wash by animateFloatAsState(if (pressed) 0.08f else 0f, tween(120), label = "recentRowPress")
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = wash))
             .combinedClickable(
+                interactionSource = interaction,
+                indication = null,
                 onClick = onClick,
                 onLongClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     onLongClick()
                 },
             )
-            .padding(vertical = 5.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
-        Box(Modifier.size(50.dp).clip(shape).background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
+        Box(
+            Modifier
+                .size(54.dp)
+                .shadow(4.dp, shape, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.25f))
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            contentAlignment = Alignment.Center,
+        ) {
             if (item.thumbnailUrl != null) {
                 AsyncImage(
                     model = item.thumbnailUrl,
@@ -202,17 +237,16 @@ private fun RecentRow(
                 )
             }
             if (active) {
-                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
-                    Icon(
-                        painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)))
+                com.ozyern.exhale.ui.component.PlayingIndicatorBox(
+                    isActive = true,
+                    playWhenReady = isPlaying,
+                    color = Color.White,
+                    modifier = Modifier.size(22.dp),
+                )
             }
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 item.title,
@@ -222,37 +256,24 @@ private fun RecentRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            Spacer(Modifier.height(2.dp))
             Text(
-                listOfNotNull(eyebrowFor(item), subtitleFor(item)).joinToString(" · "),
+                listOfNotNull(kindOf(item), subtitleFor(item)?.takeIf { it != kindOf(item) }).joinToString(" · "),
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .clickable(onClick = onLongClick),
-        ) {
-            Icon(
-                painterResource(R.drawable.more_vert),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp),
-            )
-        }
     }
 }
 
-private fun eyebrowFor(item: LocalItem): String = when (item) {
-    is Artist -> "YOUR ARTIST"
-    is Album -> "ON REPEAT"
-    is Playlist -> "YOUR PLAYLIST"
-    is Song -> "KEEP LISTENING"
-    else -> "FOR YOU"
+private fun kindOf(item: LocalItem): String? = when (item) {
+    is Song -> "Song"
+    is Album -> "Album"
+    is Artist -> "Artist"
+    is Playlist -> "Playlist"
+    else -> null
 }
 
 private fun subtitleFor(item: LocalItem): String? = when (item) {
@@ -263,10 +284,14 @@ private fun subtitleFor(item: LocalItem): String? = when (item) {
     else -> null
 }
 
-/** One recent: the artwork filling it, the caption over a scrim. */
+/**
+ * One recent, as the iOS music app shows it: the artwork is the card — square, an artist round — and the
+ * caption sits under it, title in 14 medium and what it is and who made it in 13 grey. The one
+ * playing wears its bars on the artwork; a press dips the tile, nothing more.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun RecentHeroCard(
+private fun RecentTile(
     item: LocalItem,
     active: Boolean,
     isPlaying: Boolean,
@@ -277,18 +302,15 @@ private fun RecentHeroCard(
     val haptic = LocalHapticFeedback.current
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.97f else 1f, spring(dampingRatio = 0.62f, stiffness = 600f), label = "recentHeroPress")
-    val shape = RoundedCornerShape(18.dp)
-    Box(
+    val scale by animateFloatAsState(if (pressed) 0.96f else 1f, spring(dampingRatio = 0.7f, stiffness = 700f), label = "recentTilePress")
+    val round = item is Artist
+    val shape = if (round) CircleShape else RoundedCornerShape(10.dp)
+    Column(
         modifier
-            .aspectRatio(0.92f)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
             }
-            .clip(shape)
-            .border(1.dp, Color.White.copy(alpha = 0.15f), shape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .combinedClickable(
                 interactionSource = source,
                 indication = null,
@@ -298,57 +320,54 @@ private fun RecentHeroCard(
                     onLongClick()
                 },
             ),
+        horizontalAlignment = if (round) Alignment.CenterHorizontally else Alignment.Start,
     ) {
-        if (item.thumbnailUrl != null) {
-            AsyncImage(
-                model = item.thumbnailUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-        if (active) {
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(12.dp)
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.45f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painterResource(if (isPlaying) R.drawable.pause else R.drawable.play),
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .shadow(6.dp, shape, ambientColor = Color.Black.copy(alpha = 0.22f), spotColor = Color.Black.copy(alpha = 0.22f))
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .border(0.5.dp, Color.White.copy(alpha = 0.08f), shape),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (item.thumbnailUrl != null) {
+                AsyncImage(
+                    model = item.thumbnailUrl,
                     contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp),
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            if (active) {
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
+                com.ozyern.exhale.ui.component.PlayingIndicatorBox(
+                    isActive = true,
+                    playWhenReady = isPlaying,
+                    color = Color.White,
+                    modifier = Modifier.size(28.dp),
                 )
             }
         }
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomStart)
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.78f))))
-                .padding(start = 16.dp, end = 16.dp, top = 34.dp, bottom = 14.dp),
-        ) {
+        Spacer(Modifier.height(8.dp))
+        Text(
+            item.title,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        val caption = listOfNotNull(kindOf(item), subtitleFor(item)?.takeIf { it != kindOf(item) }).joinToString(" · ")
+        if (caption.isNotEmpty()) {
             Text(
-                item.title,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
+                caption,
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            subtitleFor(item)?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.72f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
         }
     }
 }

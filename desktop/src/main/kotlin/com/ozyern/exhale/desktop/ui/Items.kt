@@ -96,15 +96,7 @@ fun YTItem.subtitle(): String? = when (this) {
 private fun rememberCardMotion(interaction: MutableInteractionSource): Pair<Float, Boolean> {
     val hovered by interaction.collectIsHoveredAsState()
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = when {
-            pressed -> 0.96f
-            hovered -> 1.02f
-            else -> 1f
-        },
-        animationSpec = spring(dampingRatio = 0.72f, stiffness = 520f),
-        label = "card_scale",
-    )
+    val scale by pressScale(pressed, hovered, pressedScale = 0.96f, hoverScale = 1.02f)
     return scale to hovered
 }
 
@@ -190,7 +182,9 @@ fun ItemCard(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(if (Bench.off("shadow")) Modifier else Modifier.shadow(if (hovered) 18.dp else 8.dp, artShape, clip = false))
+                    // A shadow only under the pointer: every card in a shelf casting one at rest was a
+                    // large share of what scrolling a page cost.
+                    .then(if (Bench.off("shadow")) Modifier else Modifier.shadow(if (hovered) 18.dp else 0.dp, artShape, clip = false))
                     .clip(artShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .then(
@@ -275,7 +269,7 @@ fun StationCard(title: String, subtitle: String?, image: String?, onClick: () ->
         Box(
             Modifier
                 .size(cardSize)
-                .shadow(if (hovered) 18.dp else 8.dp, shape, clip = false)
+                .shadow(if (hovered) 18.dp else 0.dp, shape, clip = false)
                 .clip(shape)
                 .background(Brush.linearGradient(listOf(tint, Color(0xFF0E0B12)))),
         ) {
@@ -331,7 +325,7 @@ fun HeroCard(song: SongItem, isActive: Boolean, onClick: () -> Unit) {
                 scaleX = scale
                 scaleY = scale
             }
-            .shadow(if (hovered) 24.dp else 10.dp, shape, clip = false)
+            .shadow(if (hovered) 24.dp else 0.dp, shape, clip = false)
             .clip(shape)
             .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), shape)
             .hoverable(interaction)

@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
@@ -139,7 +140,7 @@ fun LiquidGlassSheet(
     /**
      * Where on screen a hold opened this, for a popup in place of a sheet: the panel opens out of
      * that point — scaled up from it, the page blurring behind — and sits beside the finger
-     * rather than at the bottom edge, the way Apple Music answers a long press. Null for a sheet.
+     * rather than at the bottom edge, the way the iOS music app answers a long press. Null for a sheet.
      */
     anchor: androidx.compose.ui.geometry.Offset? = null,
     content: @Composable ColumnScope.() -> Unit,
@@ -241,6 +242,10 @@ fun LiquidGlassSheet(
                 val sideMarginPx = with(density) { SheetSideMargin.toPx() }
                 Column(
                     modifier = modifier
+                        // A form sheet on a tablet or an unfolded foldable, centred, as iPad
+                        // presents one — not a phone sheet stretched across 1000dp. A held popup
+                        // is narrower still: it is a menu beside a finger.
+                        .widthIn(max = if (held == null) SheetMaxWidth else PopupMaxWidth)
                         .fillMaxWidth()
                         .then(if (held == null) Modifier.navigationBarsPadding() else Modifier)
                         .padding(
@@ -398,3 +403,8 @@ private val SheetEntranceSpring = spring<Float>(
     stiffness = AquamorphicStiffness,
 )
 
+/** The widest a sheet grows; wider windows centre it. iPad's form-sheet width, plus margins. */
+private val SheetMaxWidth = 580.dp
+
+/** The widest a long-press popup grows. */
+private val PopupMaxWidth = 420.dp

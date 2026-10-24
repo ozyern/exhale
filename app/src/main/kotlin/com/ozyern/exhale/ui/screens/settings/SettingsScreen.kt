@@ -20,6 +20,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -70,13 +71,18 @@ fun SettingsScreen(
     val focusManager = LocalFocusManager.current
     val isAndroid12OrLater = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val listState = rememberLazyListState()
+    // Set when this list is the tablet split's sidebar: its rows open pages in the right pane,
+    // and its back button leaves Settings.
+    val sidebar = LocalSettingsSidebar.current
 
     var isSearching by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf(TextFieldValue()) }
     val focusRequester = remember { FocusRequester() }
     // Settings keeps its field at the foot of the page. The Search bar setting moves the field on
     // the Search page only; it used to move this one instead and leave Search untouched.
-    val searchAtTop = false
+    // In the tablet split's sidebar it sits under the title, where ColorOS puts it there: at the foot
+    // it lay over the sidebar's rows with the dock under both.
+    val searchAtTop = sidebar != null
 
 
     val storagePermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -177,8 +183,14 @@ fun SettingsScreen(
                 permissionLauncher.launch(toRequest.toTypedArray())
             }
         },
-        onUpdateClick = { navController.navigate("settings/update") },
-        onAboutClick = { navController.navigate("settings/about") },
+        onUpdateClick = {
+            sidebar?.let { it.reset(); it.selected = null }
+            navController.navigate("settings/update")
+        },
+        onAboutClick = {
+            sidebar?.let { it.reset(); it.selected = null }
+            navController.navigate("settings/about")
+        },
         onSearchClick = { focusRequester.requestFocus() },
     )
 
@@ -195,7 +207,7 @@ fun SettingsScreen(
                 },
                 navigationIcon = {
                     LiquidBackButton(
-                        onClick = navController::navigateUp,
+                        onClick = { sidebar?.exit?.invoke() ?: navController.navigateUp() },
                         onLongClick = navController::backToMain,
                         icon = R.drawable.chevron_back,
                     )
@@ -235,7 +247,7 @@ fun SettingsScreen(
                         .padding(top = innerPadding.calculateTopPadding())
                 } else {
                     Modifier.align(Alignment.BottomCenter)
-                },
+                }.widthIn(max = SettingsDimensions.ReadableMaxWidth),
             )
         }
     }

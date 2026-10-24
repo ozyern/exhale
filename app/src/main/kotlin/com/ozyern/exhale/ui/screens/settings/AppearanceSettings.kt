@@ -123,7 +123,6 @@ import com.ozyern.exhale.constants.SwipeSensitivityKey
 import com.ozyern.exhale.constants.SwipeToSongKey
 import com.ozyern.exhale.constants.HidePlayerThumbnailKey
 import com.ozyern.exhale.constants.ClassicPlayerKey
-import com.ozyern.exhale.constants.ReactiveBackdropKey
 import com.ozyern.exhale.constants.ExhaleCanvasKey
 import com.ozyern.exhale.constants.ExhaleCanvasKey
 import com.ozyern.exhale.constants.ThumbnailCornerRadiusKey
@@ -213,10 +212,6 @@ fun AppearanceSettings(
     )
     val (animatedCovers, onAnimatedCoversChange) = rememberPreference(
         ExhaleCanvasKey,
-        defaultValue = true
-    )
-    val (reactiveBackdrop, onReactiveBackdropChange) = rememberPreference(
-        ReactiveBackdropKey,
         defaultValue = true
     )
     val (canvasSource, setCanvasSource) = rememberEnumPreference(
@@ -574,14 +569,6 @@ fun AppearanceSettings(
                     onClick = { navController.navigate("customize_background") }
                 )
             }
-
-            SwitchPreference(
-                title = { Text("Music-reactive player") },
-                description = "The player's colours breathe with the song and light up on the beat",
-                icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
-                checked = reactiveBackdrop,
-                onCheckedChange = onReactiveBackdropChange
-            )
 
             SwitchPreference(
                 title = { Text("Animated covers") },

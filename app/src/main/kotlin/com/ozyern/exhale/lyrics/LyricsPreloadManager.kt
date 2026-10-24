@@ -55,8 +55,12 @@ class LyricsPreloadManager @Inject constructor(
         // Cancel any existing preload job
         preloadJob?.cancel()
         
-        // Check if pre-load is enabled
-        scope.launch {
+        // Held until the playing song has had its own lookup to itself: started at once, three
+        // more full races ran alongside it on the same connection, and the song you were actually
+        // listening to ran out its deadline and was saved as having no lyrics. Kept as the preload
+        // job, so skipping on cancels the wait too.
+        preloadJob = scope.launch {
+            kotlinx.coroutines.delay(PRELOAD_DELAY_MS)
             try {
                 val preferences = context.dataStore.data.first()
                 val isEnabled = preferences[PreloadQueueLyricsEnabledKey] ?: true
@@ -119,8 +123,8 @@ class LyricsPreloadManager @Inject constructor(
      * Pre-load lyrics for the given songs.
      * Uses parallel fetching with limited concurrency.
      */
-    private fun preloadLyrics(songs: List<MediaMetadata>) {
-        preloadJob = scope.launch {
+    private suspend fun preloadLyrics(songs: List<MediaMetadata>) {
+        kotlinx.coroutines.coroutineScope {
             try {
                 // Process songs with limited concurrency
                 songs.forEach { song ->
@@ -146,6 +150,8 @@ class LyricsPreloadManager @Inject constructor(
                             }
                             Log.d(TAG, "Pre-loaded lyrics for: ${song.title}")
                         }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to pre-load lyrics for ${song.title}: ${e.message}")
                     }
@@ -192,5 +198,6 @@ class LyricsPreloadManager @Inject constructor(
     companion object {
         private const val TAG = "LyricsPreloadManager"
         private const val DEFAULT_PRELOAD_COUNT = 3
+        private const val PRELOAD_DELAY_MS = 20_000L
     }
 }

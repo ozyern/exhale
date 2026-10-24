@@ -93,19 +93,39 @@ object MusicVideo {
             val raw = video.title.lowercase()
             if (EDITS.any { it.containsMatchIn(raw) } && EDITS.none { it.containsMatchIn(song.title.lowercase()) }) return@mapNotNull null
             val title = normalize(video.title)
-            if (!title.contains(wanted)) return@mapNotNull null
+            if (!hasWords(title, wanted)) return@mapNotNull null
             val channels = video.artists.map { normalize(it.name).replace(" ", "") }
             // The artist's own channel (or their VEVO), not an uploader who put the name in the title.
             val ownChannel = artistNames.any { name ->
                 val compact = name.replace(" ", "")
-                channels.any { it == compact || it == "${compact}vevo" || it == "${compact}official" }
+                channels.any { it == compact || it == "${compact}vevo" || it == "${compact}official" || it == "${compact}topic" }
             }
-            val named = artistNames.any { name -> channels.any { it.contains(name.replace(" ", "")) } || title.contains(name) }
+            // "Artist - Title": whoever the title names on the other side of the dash must be one
+            // of this song's artists. Two singers' songs of the same name (Good Luck, Babe! by
+            // Chappell Roan, and a version by someone else) differ only there, and a search for
+            // one returns the other's official video near the top.
+            val sides = video.title.split(TITLE_SEPARATOR, limit = 2).map(::normalize)
+            if (sides.size == 2) {
+                val other = if (hasWords(sides[0], wanted)) sides[1] else sides[0]
+                val otherIsOurs = other.isBlank() || hasWords(other, wanted) ||
+                    artistNames.any { hasWords(other, it) || hasWords(it, other) }
+                if (!otherIsOurs) return@mapNotNull null
+            }
+            // Named as whole words, not as a substring: a short artist name was found inside other
+            // words of a stranger's title.
+            val named = artistNames.any { name -> channels.any { it.startsWith(name.replace(" ", "")) } || hasWords(title, name) }
             if (!ownChannel && !named) return@mapNotNull null
+            // Off the artist's own channel, only a video that presents itself as the video: a
+            // label's or a VEVO's upload says so in its title. A fan's re-upload naming the artist
+            // ("bass boosted", a lyric slideshow, a visualiser) was winning when the official one
+            // ranked lower in search.
+            if (!ownChannel && OFFICIAL_MARKERS.none { it in raw }) return@mapNotNull null
             val drift = if (video.duration == null || song.duration <= 0) 0 else abs(video.duration!! - song.duration)
             if (drift > MAX_DURATION_DRIFT_S) return@mapNotNull null
             var score = 0
             if (ownChannel) score += 100
+            // The video is titled exactly the song (once its artist and decorations are off).
+            if (sides.any { it == wanted } || title == wanted) score += 30
             if ("official" in raw && ("video" in raw || "mv" in raw)) score += 40
             if ("lyric" in raw || "visualizer" in raw || "audio" in raw) score -= 30
             score -= drift / 3
@@ -120,7 +140,18 @@ object MusicVideo {
         "cover", "reaction", "1 hour", "10 hours", "loop", "live at", "live from", "(live", "[live",
         "remix", "mashup", "tutorial", "dance practice", "fanmade", "fan made", "zumba", "workout",
         "choreography", "dance cover", "dance fitness", "piano", "guitar",
+        "bass boosted", "boosted", "bass", "extended", "edit", "audio", "visualizer", "visualiser",
     ).map { Regex("""(^|[^\p{L}])${Regex.escape(it)}($|[^\p{L}])""") }
+
+    /** What a label's upload of the actual video calls itself. */
+    private val OFFICIAL_MARKERS = listOf("official", "music video", "full video", "video song", "(mv)", "[mv]", " m/v")
+
+    /** "Artist - Title", with any of the dashes and bars uploaders use between the two. */
+    private val TITLE_SEPARATOR = Regex("""\s+[-–—|]\s+""")
+
+    /** Whether [needle] appears in [haystack] as whole words. Both already [normalize]d. */
+    private fun hasWords(haystack: String, needle: String): Boolean =
+        needle.isNotBlank() && " $haystack ".contains(" $needle ")
 
     /** Lowercase, no accents, and none of the "(Official Video)" or "[Remastered]" decorations. */
     private fun normalize(text: String): String {

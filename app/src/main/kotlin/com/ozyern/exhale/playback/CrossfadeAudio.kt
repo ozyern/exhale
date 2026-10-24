@@ -95,6 +95,9 @@ internal class CrossfadeAudio(
     private val handoffRampStartDriftToleranceMs = 120L
     private val handoffTimeoutMs = 5000L
 
+    /** The longest the overlap will carry a song for a main player that has not started. */
+    private val HANDOFF_HARD_TIMEOUT_MS = 15_000L
+
     // ── Buffer mínimo antes de arrancar el crossfade ──────────────────────────
 
     /** Cuánto buffer (ms) necesita el overlap player antes de permitir beginOverlapCrossfade.
@@ -922,7 +925,14 @@ internal class CrossfadeAudio(
             val overlapDead =
                 overlap.playbackState == Player.STATE_IDLE || overlap.playbackState == Player.STATE_ENDED
             val handoffElapsed = nowElapsedMs - handoffStartElapsedMs
-            val handoffTimedOut = handoffElapsed >= handoffTimeoutMs
+            // Issue #8: the timeout used to stop the overlap whether or not the main player had
+            // started, and when it hadn't, the arriving song went silent for as long as the main
+            // player took to buffer — the "pause" in the middle of every Automix. Now the overlap
+            // carries the song until the main player is actually playing, with a hard cap only so
+            // a stream that never loads cannot hold two players open forever.
+            val mainPlaying = player.playbackState == Player.STATE_READY && player.isPlaying
+            val handoffTimedOut = handoffElapsed >= handoffTimeoutMs &&
+                (mainPlaying || handoffElapsed >= HANDOFF_HARD_TIMEOUT_MS)
 
             if (overlapDead || handoffTimedOut) {
                 completeHandoffFromOverlap()
@@ -933,9 +943,13 @@ internal class CrossfadeAudio(
             val mainPositionMs = player.currentPosition.coerceAtLeast(0L)
             val positionDriftMs = mainPositionMs - overlapPositionMs
 
+            // Re-synced only once the main player is ready. While it buffers it stands still, so the
+            // drift grows by itself — and re-seeking every 180ms on that drift restarted the buffer
+            // each time, so the main player never got ready, the timeout fired, and the song cut out.
             val shouldResyncMainToOverlap =
                 !handoffSeekIssued || (
-                        abs(positionDriftMs) > handoffDriftCorrectionThresholdMs &&
+                        player.playbackState == Player.STATE_READY &&
+                                abs(positionDriftMs) > handoffDriftCorrectionThresholdMs &&
                                 nowElapsedMs - handoffLastSyncSeekElapsedMs >= handoffReseekMinIntervalMs
                         )
 

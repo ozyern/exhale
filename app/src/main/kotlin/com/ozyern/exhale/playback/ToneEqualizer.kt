@@ -3,10 +3,10 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * The filter layout, tone pad mapping, presets and state-variable processor follow BitChord's
- * equaliser (github.com/kushagrasinghx/BitChord, GPL-3.0), adapted to Exhale's audio chain: it
+ * The filter layout, tone pad mapping, presets and state-variable processor follow the reference design's
+ * equaliser (github.com/kushagrasinghx/the reference design, GPL-3.0), adapted to Exhale's audio chain: it
  * reads float as well as 16-bit PCM, and is aimed from settings through a static target the way
- * the Cavern spatialiser is.
+ * the the spatial engine spatialiser is.
  */
 
 package com.ozyern.exhale.playback

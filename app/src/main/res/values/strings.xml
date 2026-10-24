@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Upstream InnerTune strings --><!-- Do not add new features here --><!-- Try to re-use strings here, but be careful on its usage e.g. verb vs noun --><!-- "InnerTune" is replaced with "Exhale" --><!-- Translators: Do not modify this file for translations, use InnerTune's Weblate instead. --><resources>
+<!-- Upstream strings --><!-- Do not add new features here --><!-- Try to re-use strings here, but be careful on its usage e.g. verb vs noun --><resources>
     <!-- Bottom navigation -->
     <string name="home">Home</string>
     <string name="back">Back</string>
@@ -435,7 +435,7 @@
     <string name="fade">Fade</string>
     <string name="slide">Slide</string>
     <string name="karaoke">Karaoke</string>
-    <string name="apple_music_style">Apple Music</string>
+    <string name="apple_music_style">Floating</string>
     <!-- Lyrics line spacing -->
     <string name="lyrics_line_spacing">Lyrics line spacing</string>
     <string name="content">Content</string>
@@ -780,6 +780,7 @@ Exhale will only extract your token, and everything else is stored locally.</str
     <string name="permission_status_required">Please allow all required permissions to continue.</string>
     <string name="next">Next</string>
     <string name="next_song">Next Song</string>
+    <string name="previous">Previous</string>
     <string name="allow">Allow</string>
     <!-- Playlist Suggestions -->
     <string name="you_might_like">You might like</string>
@@ -968,7 +969,7 @@ Exhale will only extract your token, and everything else is stored locally.</str
     <string name="lock_screen_lyrics">Lock screen lyrics</string>
     <string name="lock_screen_lyrics_desc">Publishes timed lyrics to Live Space on OxygenOS and ColorOS. Stock ColorOS only draws them for players on its own approved list, so on an unmodified phone this does nothing by itself and the media card below is what shows your lyrics.</string>
     <string name="lyrics_on_media_card">Lyrics on the media card</string>
-    <string name="lyrics_on_media_card_desc">Shows the line playing now under the song title on the lock screen and in the notification. Works on every phone. The lyric takes the place of the artist name wherever playback is shown, including Bluetooth and Android Auto. On OnePlus and OPPO phones this steps aside on its own while Live Space above is on, because the two cannot both own the lock screen.</string>
+    <string name="lyrics_on_media_card_desc">Shows the line playing now under the song title on the lock screen and in the notification. Works on every phone. The lyric takes the place of the artist name wherever playback is shown, including Bluetooth and Android Auto.</string>
     <string name="logout">Sign out</string>
     <!-- Account sheet. Distinct from logout_confirm_* above, which is Discord's. -->
     <string name="account_signout_title">Sign out?</string>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SignPath artifact configuration "setup": Exhale-Setup-<version>.exe, built from the signed app. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="Exhale-Setup-*.exe" product-name="Exhale">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

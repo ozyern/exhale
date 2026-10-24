@@ -3,7 +3,7 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * The receiver side follows BitChord's CastPlayback (github.com/kushagrasinghx/BitChord, GPL-3.0).
+ * The receiver side follows the reference design's CastPlayback (github.com/kushagrasinghx/the reference design, GPL-3.0).
  */
 
 package com.ozyern.exhale.playback.cast

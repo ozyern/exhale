@@ -47,7 +47,7 @@ import com.ozyern.exhale.R
 import com.ozyern.exhale.innertube.models.SongItem
 import com.ozyern.exhale.ui.utils.resize
 
-/** The colour of each chart's cards, in order — Apple Music's red first, then its siblings. */
+/** The colour of each chart's cards, in order — the iOS music app's red first, then its siblings. */
 private val ChartPalettes = listOf(
     Color(0xFFFF4F6D) to Color(0xFFE8304D),
     Color(0xFF6E6BFF) to Color(0xFF4B3FE0),
@@ -57,7 +57,7 @@ private val ChartPalettes = listOf(
 )
 
 /**
- * One chart as Apple Music shows it: a run of big colour cards swiped sideways, each carrying nine
+ * One chart as the iOS music app shows it: a run of big colour cards swiped sideways, each carrying nine
  * ranks — number, artwork, title, artist and a play button — under the chart's name.
  */
 @OptIn(ExperimentalFoundationApi::class)

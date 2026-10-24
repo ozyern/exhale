@@ -3,8 +3,8 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * The PaxSenix and Musixmatch clients follow BitChord's
- * (github.com/kushagrasinghx/BitChord, GPL-3.0), adapted to hand Exhale the formats it stores:
+ * The PaxSenix and Musixmatch clients follow the reference design's
+ * (github.com/kushagrasinghx/the reference design, GPL-3.0), adapted to hand Exhale the formats it stores:
  * word-timed results become TTML, line-timed ones stay LRC.
  */
 
@@ -67,7 +67,7 @@ private fun catalogGet(url: String, headers: Map<String, String> = emptyMap()): 
 // ============================================================================================
 
 /**
- * Apple Music's own word-timed lyrics, found by asking Apple's catalogue which track this is.
+ * the iOS music app's own word-timed lyrics, found by asking iOS's catalogue which track this is.
  *
  * The other Apple hosts are asked by name and hope; this one searches the catalogue, scores every
  * candidate on title, artist and length, and asks for the lyrics of the one track id that won —

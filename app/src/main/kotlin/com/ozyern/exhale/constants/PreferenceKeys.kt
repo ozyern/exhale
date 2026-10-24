@@ -51,8 +51,6 @@ val LiquidGlassPlayerKey = booleanPreferencesKey("liquidGlassPlayer")
 /** Home's Recently Played as pages of rows rather than a row of covers. */
 val HomeRecentsAsListKey = booleanPreferencesKey("homeRecentsAsList")
 
-/** On by default: the Now Playing backdrop breathes with the music's loudness and lights on the beat. */
-val ReactiveBackdropKey = booleanPreferencesKey("reactiveBackdrop")
 val UseNewLibraryDesignKey = booleanPreferencesKey("useNewLibraryDesign")
 val UseNewMiniPlayerDesignKey = booleanPreferencesKey("useNewMiniPlayerDesign")
 val HidePlayerThumbnailKey = booleanPreferencesKey("hidePlayerThumbnail")
@@ -321,7 +319,7 @@ val AudioNormalizationKey = booleanPreferencesKey("audioNormalization")
 val EightDEnabledKey = booleanPreferencesKey("eightDEnabled")
 val EightDRotationHzKey = floatPreferencesKey("eightDRotationHz")
 val EightDDepthKey = floatPreferencesKey("eightDDepth")
-val SpatialAudioKey = booleanPreferencesKey("spatialAudio") // Cavern-style Atmos/spatial upscaling
+val SpatialAudioKey = booleanPreferencesKey("spatialAudio") // the spatial engine-style Atmos/spatial upscaling
 
 /**
  * How wide the spatial stage is.
@@ -694,7 +692,23 @@ enum class LyricsAnimationStyle {
     APPLE,
 }
 
-/** Which full-screen lyrics view the player opens: the classic one, or the Apple Music glass one. */
+/**
+ * How the lyrics move. [EXHALE] is the original: every line scrolls up as it is reached and
+ * dims as soon as it is sung, and every word swells as it lights. [APPLE_MUSIC] holds a group of up
+ * to three sung lines lit and scrolls a group at a time, words rise a touch as they are sung,
+ * and only held notes swell and glow.
+ */
+// A new key, so everyone starts again on the 1.0.405 motion: the ported panel had been the
+// default and was saved as a choice nobody made.
+val LyricsMotionKey = stringPreferencesKey("lyricsMotion405")
+enum class LyricsMotion {
+    EXHALE,
+    APPLE_MUSIC,
+    /** the reference design's lyric panel, ported whole (ui/lyricsflow). */
+    FLOW,
+}
+
+/** Which full-screen lyrics view the player opens: the classic one, or the the iOS music app glass one. */
 val LyricsLayoutKey = stringPreferencesKey("lyricsLayout")
 enum class LyricsLayout {
     CLASSIC,

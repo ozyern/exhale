@@ -196,7 +196,7 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         scope.launch {
             state.map { it.current }.distinctUntilChanged { a, b -> a?.id == b?.id }.collect { song ->
                 _videoAvailable.value = false
-                if (song == null) return@collect
+                if (song == null || OpenFlacSongs.isFlacId(song.id)) return@collect
                 val answer = runCatching { MusicVideoMatch.videoIdFor(song) != null }.getOrDefault(false)
                 if (_state.value.current?.id == song.id) _videoAvailable.value = answer
             }
@@ -206,12 +206,13 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         restoreQueue()
         // The first song after launch pays for everything the rest are spared — YouTube's player script,
         // the client that works — so the restored song is worked out now, while the window is still coming up.
-        _state.value.current?.let { song -> scope.launch { runCatching { StreamResolver.warm(song.id) } } }
+        _state.value.current?.takeUnless { OpenFlacSongs.isFlacId(it.id) }?.let { song -> scope.launch { runCatching { StreamResolver.warm(song.id) } } }
     }
 
     /** Settings that act on the audio engine itself. */
     private fun applyEngineSettings(settings: Settings) {
-        val chain = AudioEffects.filterChain(settings)
+        val opened = AudioOutputStatus.state.value?.channels
+        val chain = AudioEffects.filterChain(settings, opened)
         if (chain != appliedFilters) {
             // A libmpv without the upmix filter refuses the whole chain; keep the rest of it.
             if (!mpv.setProperty("af", chain) &&
@@ -227,6 +228,8 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         if (channels != appliedChannels || settings.exclusiveAudio != appliedExclusive || resampler != appliedResampler) {
             val firstTime = appliedChannels == null
             mpv.setProperty("audio-channels", channels)
+            // Should anything still fold surround down to stereo, it is scaled to fit rather than clipped.
+            mpv.setProperty("audio-normalize-downmix", "yes")
             mpv.setProperty("audio-exclusive", if (settings.exclusiveAudio) "yes" else "no")
             mpv.setProperty("audio-swresample-o", resampler)
             appliedChannels = channels
@@ -290,7 +293,12 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
                     exclusive = AppSettings.current.exclusiveAudio,
                 )
             }
-            if (output != null) AudioOutputStatus.publish(output)
+            if (output != null) {
+                val before = AudioOutputStatus.state.value?.channels
+                AudioOutputStatus.publish(output)
+                // The upmix follows what the device opened, so it is laid out (or taken away) now.
+                if (output.channels != before) applyEngineSettings(AppSettings.current)
+            }
         }
     }
 
@@ -350,8 +358,10 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         // What Windows shows in its own panel and on the volume overlay.
         WindowsMediaSession.nowPlaying(song.title, song.artists.joinToString { it.name })
         loadJob = scope.launch {
+            // A FLAC-page song is its own file: no video, no YouTube, nothing to look up.
+            val direct = OpenFlacSongs.streamFor(song.id)
             // Watching rather than listening: the picture and its own sound track, into the surface.
-            if (_videoMode.value && videoSurface != null) {
+            if (direct == null && _videoMode.value && videoSurface != null) {
                 _videoAvailable.value = true
                 // An album track has no picture of its own: the music video's picture is shown, and
                 // the sound stays the song's — the video's own track can carry skits, a longer intro
@@ -389,16 +399,19 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
             // catalogue can take seconds, and no song should ever wait on one: YouTube's stream is
             // ready when it's ready, a lossless copy gets a moment's grace to beat it, and whatever
             // hasn't answered by then is dropped.
-            val youtube = async { StreamResolver.resolve(song.id) }
-            val lossless = if (AppSettings.current.preferLossless && LosslessLibrary.isConfigured) {
-                async { runCatching { LosslessLibrary.resolve(song) }.getOrNull() }
-            } else {
-                null
+            val resolved = direct?.let { Result.success(it) } ?: run {
+                val youtube = async { StreamResolver.resolve(song.id) }
+                val lossless = if (AppSettings.current.preferLossless && LosslessLibrary.isConfigured) {
+                    async { runCatching { LosslessLibrary.resolve(song) }.getOrNull() }
+                } else {
+                    null
+                }
+                val fromYouTube = youtube.await()
+                val better = lossless?.let { withTimeoutOrNull(700) { it.await() } }
+                lossless?.cancel()
+                better?.let { Result.success(it) } ?: fromYouTube
             }
-            val fromYouTube = youtube.await()
-            val better = lossless?.let { withTimeoutOrNull(700) { it.await() } }
-            lossless?.cancel()
-            (better?.let { Result.success(it) } ?: fromYouTube)
+            resolved
                 .onSuccess { stream ->
                     ensureActive()
                     normalizationDb = stream.loudnessDb?.let { (-it).coerceIn(-20.0, 0.0) } ?: 0.0
@@ -474,12 +487,39 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         appliedExclusive = null
         appliedResampler = null
         applyEngineSettings(AppSettings.current)
+        audioDevice?.let { mpv.setProperty("audio-device", it) }
         if (index in _state.value.queue.indices) load(index, startAt = resumeAt)
+    }
+
+    /** One way out of the PC: mpv's name for it, and the name Windows gives it. */
+    data class AudioOutput(val name: String, val description: String)
+
+    /** The output chosen in the player bar for this session; null is Windows' default. */
+    @Volatile private var audioDevice: String? = null
+
+    /** Every output mpv can play to, Windows' default first. */
+    fun audioOutputs(): List<AudioOutput> = runCatching {
+        val list = org.json.JSONArray(mpv.getProperty("audio-device-list") ?: "[]")
+        (0 until list.length()).mapNotNull { i ->
+            val entry = list.optJSONObject(i) ?: return@mapNotNull null
+            val name = entry.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            // Only the shared-mode WASAPI devices and "auto": the rest are the same speakers again.
+            if (name != "auto" && !name.startsWith("wasapi/")) return@mapNotNull null
+            AudioOutput(name, if (name == "auto") "Windows default" else entry.optString("description").ifBlank { name })
+        }
+    }.getOrDefault(emptyList())
+
+    fun currentAudioOutput(): String = audioDevice ?: "auto"
+
+    fun setAudioOutput(name: String) {
+        audioDevice = name.takeUnless { it == "auto" }
+        mpv.setProperty("audio-device", name)
     }
 
     /** Works out the next song's URL while this one plays, so pressing skip starts it at once. */
     private fun prefetchNext(index: Int) {
         val next = _state.value.queue.getOrNull(index + 1) ?: return
+        if (OpenFlacSongs.isFlacId(next.id)) return
         scope.launch { runCatching { StreamResolver.warm(next.id) } }
     }
 

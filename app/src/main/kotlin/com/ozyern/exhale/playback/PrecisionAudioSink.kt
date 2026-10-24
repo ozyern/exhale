@@ -3,7 +3,7 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * The idea is BitChord's PrecisionAudioSink (github.com/kushagrasinghx/BitChord, GPL-3.0): run the
+ * The idea is the reference design's PrecisionAudioSink (github.com/kushagrasinghx/the reference design, GPL-3.0): run the
  * app's own DSP in front of Media3's sink, so float output stops costing the DSP. This is a
  * smaller take on it, built on Media3's own AudioProcessingPipeline and Exhale's processors.
  */
@@ -73,7 +73,10 @@ class PrecisionAudioSink(
     override fun supportsFormat(format: Format): Boolean =
         getFormatSupport(format) != AudioSink.SINK_FORMAT_UNSUPPORTED
 
-    override fun configure(inputFormat: Format, specifiedBufferSize: Int, outputChannels: IntArray?) {
+    // media3 1.11 made the (Format, bufferSize, channels) overload final; the config object
+    // carries the same three plus the timeline, which is passed through untouched.
+    override fun configure(audioSinkConfig: AudioSink.AudioSinkConfig) {
+        val inputFormat = audioSinkConfig.format
         clearPending()
         val linear = MimeTypes.AUDIO_RAW == inputFormat.sampleMimeType &&
             Util.isEncodingLinearPcm(inputFormat.pcmEncoding) &&
@@ -89,14 +92,22 @@ class PrecisionAudioSink(
                         .setSampleRate(out.sampleRate)
                         .setChannelCount(out.channelCount)
                         .build()
-                    delegate.configure(processed, specifiedBufferSize, outputChannels)
+                    @Suppress("DEPRECATION")
+                    delegate.configure(
+                        AudioSink.AudioSinkConfig.Builder(processed)
+                            .setPreferredBufferSizeOverride(audioSinkConfig.preferredBufferSizeOverride)
+                            .setOutputChannelMapping(audioSinkConfig.outputChannelMapping)
+                            .setTimeline(audioSinkConfig.timeline)
+                            .setMediaPeriodId(audioSinkConfig.mediaPeriodId)
+                            .build(),
+                    )
                     processing = true
                     return
                 }
             }
         }
         processing = false
-        delegate.configure(inputFormat, specifiedBufferSize, outputChannels)
+        delegate.configure(audioSinkConfig)
     }
 
     override fun handleBuffer(buffer: ByteBuffer, presentationTimeUs: Long, encodedAccessUnitCount: Int): Boolean {

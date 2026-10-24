@@ -1029,9 +1029,6 @@ class MusicService :
             .distinctUntilChanged()
             .collectLatest(scope) { enabled ->
                 liveLyricsDocument = enabled
-                // Turning the document channel on hands the lock screen back to it, so the
-                // subtitle goes back to being the artist.
-                if (enabled) publishMediaCardLine(null)
             }
 
         dataStore.data
@@ -1092,7 +1089,7 @@ class MusicService :
                 EightDAudioProcessor.depth = depth
             }
 
-        // Cavern spatial-audio upscaler toggle. The flag is a @Volatile static
+        // the spatial engine spatial-audio upscaler toggle. The flag is a @Volatile static
         // read once per audio buffer, so flipping it is instant and never
         // requires rebuilding the player/sink.
         dataStore.data
@@ -1101,7 +1098,7 @@ class MusicService :
             .map { it[SpatialAudioKey] ?: com.ozyern.exhale.utils.DeviceAudio.defaultSpatialAudio }
             .distinctUntilChanged()
             .collectLatest(scope) { enabled ->
-                CavernSpatialAudioProcessor.globalEnabled = enabled
+                SpatialAudioProcessor.globalEnabled = enabled
             }
 
         dataStore.data
@@ -1113,9 +1110,9 @@ class MusicService :
             .distinctUntilChanged()
             .collectLatest(scope) { profile ->
                 when (profile) {
-                    SpatialAudioProfile.NATURAL -> CavernSpatialAudioProcessor.applyProfile(1.15f, 0.30f, 0.06f)
-                    SpatialAudioProfile.WIDE -> CavernSpatialAudioProcessor.applyProfile(1.35f, 0.38f, 0.12f)
-                    SpatialAudioProfile.CINEMA -> CavernSpatialAudioProcessor.applyProfile(1.60f, 0.46f, 0.20f)
+                    SpatialAudioProfile.NATURAL -> SpatialAudioProcessor.applyProfile(1.15f, 0.30f, 0.06f)
+                    SpatialAudioProfile.WIDE -> SpatialAudioProcessor.applyProfile(1.35f, 0.38f, 0.12f)
+                    SpatialAudioProfile.CINEMA -> SpatialAudioProcessor.applyProfile(1.60f, 0.46f, 0.20f)
                 }
             }
 
@@ -2117,6 +2114,9 @@ class MusicService :
         withContext(Dispatchers.Main) {
             liveLyricTickerJob?.cancel()
             liveLyricLineIndex = -1
+            // A new track arrives with its real artist in the subtitle; forget the last line, so
+            // the new track's first line is written even if it happens to read the same.
+            liveLyricCardLine = null
             liveLyricLines = parsed
             LockScreenLyrics.publishLines(parsed)
 
@@ -2185,9 +2185,15 @@ class MusicService :
                     // Publishing "" leaves the lock screen showing an empty subtitle under the
                     // title, which looks like the feature broke; null restores the artist, which
                     // is what an instrumental passage should say.
+                    // The lyric holds the artist's place for the whole song. A blank entry — a
+                    // breath between lines or an instrumental — keeps the line just sung rather than
+                    // handing the artist back for a moment, which read as the card flickering
+                    // lyric → artist → lyric.
                     val text = entry.text.takeIf { it.isNotBlank() }
-                    publishSessionCurrentLine(text, entry.time)
-                    publishMediaCardLine(text)
+                    if (text != null) {
+                        publishSessionCurrentLine(text, entry.time)
+                        publishMediaCardLine(text)
+                    }
                 }
 
                 // Sleep until just before the next line rather than for a fixed interval.
@@ -2244,7 +2250,6 @@ class MusicService :
         // A null is a *restore*, so it is allowed through even when the feature is off - that is
         // how switching the preference puts the real artist back straight away.
         if (line != null && !liveLyricsOnMediaCard) return
-        if (line != null && cardLineWouldFightDocument) return
         if (line == liveLyricCardLine) return
 
         val index = player.currentMediaItemIndex
@@ -2291,6 +2296,9 @@ class MusicService :
     // media-controller lyric config (announced via OplusLiveLyrics.LYRIC_PAGE_UNLOCK_PROP), is what
     // admits the rest. Without either, the per-line subtitle is the only lyric the lock screen
     // shows, so it stays on.
+    // Now consulted only for the session-extras line. The subtitle — the lyric in the artist's
+    // place on the lock screen — is written whatever the document path is doing: standing it down
+    // left the lock screen with no lyric at all on phones where the native page didn't draw.
     private val cardLineWouldFightDocument: Boolean
         get() = liveLyricsDocument && com.ozyern.exhale.utils.DeviceAudio.isOplusDevice &&
             (lockScreenLyricBridgeInstalled || OplusLiveLyrics.lyricPageUnlockedBySystem())
@@ -2437,10 +2445,10 @@ class MusicService :
     private fun updateNotification() {
         try {
             val liked = currentSong.value?.song?.liked == true
-            // Exactly two buttons, the way the system media card lays a music player out: like and
-            // the output picker, one either side of the transport. ColorOS shows only the first
-            // one or two of the list and nothing past them, so anything more here only pushes one
-            // of these two out of sight — repeat, shuffle and radio stay in the app's own player.
+            // Like, alone, in the space left of the transport. The output picker used to be the
+            // second button, but the lock screen draws its own output switcher on the right, and
+            // ColorOS gives a player's custom buttons that one left-hand slot: with two, it was
+            // the picker that took it (and only while previous was missing) and Like never showed.
             val customLayout = listOf(
                 CommandButton
                     .Builder()
@@ -2448,15 +2456,13 @@ class MusicService :
                     .setIconResId(if (liked) R.drawable.favorite else R.drawable.favorite_border)
                     .setSessionCommand(CommandToggleLike)
                     .setEnabled(currentSong.value != null)
-                    .build(),
-                CommandButton
-                    .Builder()
-                    .setDisplayName(getString(R.string.output_device))
-                    .setIconResId(R.drawable.output_devices)
-                    .setSessionCommand(CommandOutputSwitcher)
+                    .setSlots(CommandButton.SLOT_OVERFLOW)
                     .build(),
             )
-            mediaSession.setCustomLayout(customLayout)
+            // Pinned to the overflow slot. Published through the deprecated custom layout with no
+            // slots, Media3 was free to seat them in the BACK/FORWARD positions — and a button in
+            // those slots takes previous/next off the lock screen.
+            mediaSession.setMediaButtonPreferences(customLayout)
         } catch (e: Exception) {
             reportException(e)
         }
@@ -2502,11 +2508,15 @@ class MusicService :
             val item = player.getMediaItemAt(index)
             if (item.mediaId != mediaId) continue
             val names = metadata.artists.joinToString { it.name }
+            // On the playing song the artist field may be holding the lyric line for the lock
+            // screen. Writing the names back there put the artist up for the rest of that line, which
+            // is the lyric → artist → lyric flicker; the line stays, and the names go in the tag.
+            val shown = liveLyricCardLine.takeIf { index == player.currentMediaItemIndex } ?: names
             player.replaceMediaItem(
                 index,
                 item.buildUpon()
                     .setTag(metadata)
-                    .setMediaMetadata(item.mediaMetadata.buildUpon().setArtist(names).setSubtitle(names).build())
+                    .setMediaMetadata(item.mediaMetadata.buildUpon().setArtist(shown).setSubtitle(shown).build())
                     .build(),
             )
         }
@@ -4559,7 +4569,7 @@ class MusicService :
             // same stereo pair: the stage collapses toward the middle, the centre image goes
             // hollow and cymbals smear - the "weirdish" sound those devices get. The device's own
             // one wins, because it is the one the speakers and the tuning were designed around and
-            // the one the user can control from the system panel. This is the same rule the Cavern
+            // the one the user can control from the system panel. This is the same rule the the spatial engine
             // spatial stage follows in DeviceAudio.defaultSpatialAudio.
             val ours = settings.virtualizerEnabled && !com.ozyern.exhale.utils.DeviceAudio.isOplusDevice
             runCatching { v.enabled = ours }
@@ -5478,6 +5488,29 @@ class MusicService :
         return track
     }
 
+    /** FLAC-page songs whose format row is written; every chunk of a stream asks, the first one writes. */
+    private val flacFormatsWritten = ConcurrentHashMap.newKeySet<String>()
+
+    /** Records a FLAC-page song as FLAC, so the player's badge says Lossless for it. */
+    private fun rememberFlacFormat(mediaId: String) {
+        if (!flacFormatsWritten.add(mediaId)) return
+        database.query {
+            upsert(
+                FormatEntity(
+                    id = mediaId,
+                    itag = -1,
+                    mimeType = "audio/flac",
+                    codecs = "flac",
+                    bitrate = 0,
+                    sampleRate = null,
+                    contentLength = 0L,
+                    loudnessDb = null,
+                    playbackUrl = null,
+                ),
+            )
+        }
+    }
+
     /**
      * The catalogue song a music video is a video of: searched by its title and artist, and
      * accepted only when the title and artist agree and the length is close — a video's intro and
@@ -5600,6 +5633,12 @@ class MusicService :
 
             // Music from this phone is the file itself: nothing to look up, cache or fetch.
             com.ozyern.exhale.utils.LocalMediaScanner.uriFor(mediaId)?.let { return@Factory dataSpec.withUri(it) }
+
+            // A song from the FLAC page streams its own file, cached under its id like any stream.
+            com.ozyern.exhale.utils.OpenFlacSongs.uriFor(mediaId)?.let { uri ->
+                rememberFlacFormat(mediaId)
+                return@Factory dataSpec.withUri(uri)
+            }
 
             // A lossless copy of this song on the phone beats YouTube's stream. Decided once per song,
             // so every later chunk of the same stream is a map lookup. Played under its own cache key:
@@ -5926,6 +5965,7 @@ class MusicService :
     /** Where [mediaId] is playing from this session, for the menu: "JioSaavn · 320 kbps", "YouTube". */
     fun streamSourceLabel(mediaId: String): String? {
         if (com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaId)) return "This phone"
+        if (com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId)) return "FLAC"
         val source = streamSource[mediaId] ?: return null
         if (source == YOUTUBE_SOURCE) {
             return "YouTube"
@@ -5953,6 +5993,7 @@ class MusicService :
     private fun saavnLookup(mediaId: String): kotlinx.coroutines.Deferred<JioSaavn.Stream?>? {
         if (!jioSaavnUpgrade || audioQuality == com.ozyern.exhale.constants.AudioQuality.LOW) return null
         if (com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaId)) return null
+        if (com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId)) return null
         saavnLookups[mediaId]?.let { return it }
         val song = queueMetadata[mediaId] ?: return null
         return saavnLookups.getOrPut(mediaId) {
@@ -5967,6 +6008,8 @@ class MusicService :
             .getOrNull()
             ?.takeIf { it.isNotBlank() }
             ?: return
+        // A FLAC-page song is its own address: there is no YouTube URL to fetch ahead.
+        if (com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId)) return
 
         rememberQueueMetadata()
         saavnLookup(mediaId)
@@ -6017,7 +6060,9 @@ class MusicService :
             val currentId = withContext(Dispatchers.Main) {
                 player.currentMediaItem?.mediaId?.trim()?.takeIf { it.isNotBlank() }
             }
-            val streamable = currentId?.takeUnless { com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(it) }
+            val streamable = currentId?.takeUnless {
+                com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(it) || com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(it)
+            }
 
             runCatching {
                 com.ozyern.exhale.innertube.NewPipeUtils.warmUp(streamable ?: WARM_UP_VIDEO_ID)
@@ -6071,6 +6116,10 @@ class MusicService :
             val scheme = item.localConfiguration?.uri?.scheme
             if (scheme == "content" || scheme == "file") return@withContext null
             val mediaId = item.mediaId
+            // A FLAC-page song is a public file the receiver can open itself.
+            com.ozyern.exhale.utils.OpenFlacSongs.uriFor(mediaId)?.let { uri ->
+                return@withContext com.ozyern.exhale.playback.cast.CastStream(uri.toString(), "audio/flac")
+            }
             val cached = playbackUrlCache[mediaId]
                 ?.takeIf { it.second > System.currentTimeMillis() + 60_000L }
                 ?.first
@@ -6269,7 +6318,7 @@ class MusicService :
                         ToneEqualizerProcessor(),
                         // Automix's filter sweeps and bass swaps; a straight copy between transitions.
                         transitionFilter,
-                        CavernSpatialAudioProcessor(),
+                        SpatialAudioProcessor(),
                         // After the stage is built: 8D moves the whole of it round the head.
                         EightDAudioProcessor(),
                         // Last: it only measures what everything before it made.
@@ -6354,6 +6403,8 @@ class MusicService :
     }
 
     private suspend fun registerRemoteListeningHistory(mediaId: String) {
+        // Not a YouTube video: there is no watch history to add it to.
+        if (com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId)) return
         if (!isRemoteHistorySyncAllowed()) return
 
         val attemptedUrls = LinkedHashSet<String>()
@@ -6867,6 +6918,7 @@ class MusicService :
 
         /** Shortest, used as a line boundary comes up. This is the placement error, near enough. */
         private const val LiveLyricsMinTickMs = 32L
+
 
         /**
          * How far ahead of a line's own timestamp it is published.

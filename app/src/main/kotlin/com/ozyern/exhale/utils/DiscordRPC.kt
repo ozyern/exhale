@@ -350,6 +350,10 @@ class DiscordRPC(
 
         val applicationIdToSend = APPLICATION_ID
 
+        // Discord drops a Streaming activity that has no stream URL - silently, so the presence
+        // froze on the last song that was sent as something else. It only takes YouTube or Twitch.
+        val streamUrl = if (resolvedType == Type.STREAMING) "https://www.youtube.com/watch?v=${song.song.id}" else null
+
         val platformPref = context.dataStore[DiscordActivityPlatformKey] ?: "desktop"
         this.setPlatform(platformPref)
 
@@ -407,6 +411,7 @@ class DiscordRPC(
                     smallText = sendSmallText ?: "",
                     buttons = finalButtons,
                     type = resolvedType,
+                    streamUrl = streamUrl,
                     statusDisplayType = StatusDisplayType.STATE,
                     since = sendSince,
                     startTime = sendStartTime,
@@ -425,6 +430,7 @@ class DiscordRPC(
                     largeText = resolvedLargeText ?: "",
                     smallText = sendSmallText ?: "",
                     type = resolvedType,
+                    streamUrl = streamUrl,
                     statusDisplayType = StatusDisplayType.STATE,
                     since = sendSince,
                     startTime = sendStartTime,

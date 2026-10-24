@@ -6,6 +6,7 @@
 
 package com.ozyern.exhale.desktop.ui
 
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
@@ -151,6 +152,9 @@ object TransportIcons {
     val Pause by lazy { materialIcon("Exhale.Pause", "M6,19h4V5H6v14zm8,-14v14h4V5h-4z") }
     val Next by lazy { materialIcon("Exhale.Next", "M6,18l8.5,-6L6,6v12zM16,6v12h2V6h-2z") }
     val Previous by lazy { materialIcon("Exhale.Previous", "M6,6h2v12H6zm3.5,6l8.5,6V6z") }
+    /** The Music app's back and forward: two solid wedges each, no bar. */
+    val Backward by lazy { materialIcon("Exhale.Backward", "M11,18V6l-8.5,6 8.5,6zM11.5,12l8.5,6V6l-8.5,6z") }
+    val Forward by lazy { materialIcon("Exhale.Forward", "M4,18l8.5,-6L4,6v12zM13,6v12l8.5,-6L13,6z") }
 
     /** Ten seconds back and forward, digits and all — the pair every video player has. */
     val Back10 by lazy {
@@ -212,6 +216,23 @@ object NavIcons {
     val Surround by lazy {
         materialIcon("Exhale.Surround", "M20,4H4C2.9,4 2,4.9 2,6v12c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2V6C22,4.9 21.1,4 20,4zM7.76,16.24l-1.41,1.41C4.78,16.1 4,14.05 4,12c0,-2.05 0.78,-4.1 2.34,-5.66l1.41,1.41C6.59,8.93 6,10.46 6,12S6.59,15.07 7.76,16.24zM12,16c-2.21,0 -4,-1.79 -4,-4s1.79,-4 4,-4 4,1.79 4,4S14.21,16 12,16zM17.66,17.66l-1.41,-1.41C17.41,15.07 18,13.54 18,12s-0.59,-3.07 -1.76,-4.24l1.41,-1.41C19.22,7.9 20,9.95 20,12C20,14.05 19.22,16.1 17.66,17.66zM12,10c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2S13.1,10 12,10z")
     }
+    /** Dolby's double-D: two solid Ds back to back, their bowls meeting in the middle. */
+    val DolbyAtmos by lazy {
+        materialIcon("Exhale.DolbyAtmos", "M2,5h2.5a7,7 0,0 1,0 14H2z M22,5h-2.5a7,7 0,0 0,0 14H22z")
+    }
+
+    /**
+     * The Android app's Spatial Audio mark (res/drawable/ic_spatial_audio.xml): a listener, and a ring
+     * of sound passing behind them and in front.
+     */
+    val SpatialAudio by lazy {
+        ImageVector.Builder(name = "Exhale.SpatialAudio", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)
+            .addPath(addPathNodes("M2.8,15.4A9.2,3.1 0,0 1,21.2 15.4"), stroke = SolidColor(Color.Black), strokeAlpha = 0.45f, strokeLineWidth = 1.3f, strokeLineCap = StrokeCap.Round)
+            .addPath(addPathNodes("M9.3,9.2a2.7,2.7 0,1 0,5.4 0a2.7,2.7 0,1 0,-5.4 0z"), fill = SolidColor(Color.Black))
+            .addPath(addPathNodes("M7.4,17.4c0.5,-2.9 2.3,-4.4 4.6,-4.4s4.1,1.5 4.6,4.4z"), fill = SolidColor(Color.Black))
+            .addPath(addPathNodes("M2.8,15.4A9.2,3.1 0,0 0,21.2 15.4"), stroke = SolidColor(Color.Black), strokeLineWidth = 1.4f, strokeLineCap = StrokeCap.Round)
+            .build()
+    }
     val Headphones by lazy {
         materialIcon("Exhale.Headphones", "M12,1c-4.97,0 -9,4.03 -9,9v7c0,1.66 1.34,3 3,3h3v-8H5v-2c0,-3.87 3.13,-7 7,-7s7,3.13 7,7v2h-4v8h3c1.66,0 3,-1.34 3,-3v-7c0,-4.97 -4.03,-9 -9,-9z")
     }
@@ -230,6 +251,13 @@ object NavIcons {
         materialIcon("Exhale.Explicit", "M19,3H5c-1.11,0 -2,0.9 -2,2v14c0,1.1 0.89,2 2,2h14c1.1,0 2,-0.9 2,-2V5c0,-1.1 -0.9,-2 -2,-2zM15,9h-4v2h4v2h-4v2h4v2H9V7h6v2z")
     }
     val Delete by lazy { materialIcon("Exhale.Delete", "M6,19c0,1.1 0.9,2 2,2h8c1.1,0 2,-0.9 2,-2V7H6v12zM19,4h-3.5l-1,-1h-5l-1,1H5v2h14V4z") }
+    /** A screen with a play mark: watch the song's video. */
+    val Video by lazy {
+        materialIcon("Exhale.Video", "M21,3H3C1.89,3 1,3.89 1,5v12c0,1.1 0.89,2 2,2h5v2h8v-2h5c1.1,0 1.99,-0.9 1.99,-2L23,5c0,-1.11 -0.9,-2 -2,-2zM21,17H3V5h18v12zM16,11l-7,4V7z")
+    }
+    val StarOutline by lazy {
+        materialIcon("Exhale.StarOutline", "M22,9.24l-7.19,-0.62L12,2 9.19,8.63 2,9.24l5.46,4.73L5.82,21 12,17.27 18.18,21l-1.63,-7.03L22,9.24zM12,15.4l-3.76,2.27 1,-4.28 -3.32,-2.88 4.38,-0.38L12,6.1l1.71,4.04 4.38,0.38 -3.32,2.88 1,4.28L12,15.4z")
+    }
     val Image by lazy {
         materialIcon("Exhale.Image", "M21,19V5c0,-1.1 -0.9,-2 -2,-2H5c-1.1,0 -2,0.9 -2,2v14c0,1.1 0.9,2 2,2h14c1.1,0 2,-0.9 2,-2zM8.5,13.5l2.5,3.01L14.5,12l4.5,6H5l3.5,-4.5z")
     }
@@ -331,6 +359,10 @@ object NavIcons {
     }
     val Taste by lazy {
         materialIcon("Exhale.Taste", "M12,21.35l-1.45,-1.32C5.4,15.36 2,12.28 2,8.5 2,5.42 4.42,3 7.5,3c1.74,0 3.41,0.81 4.5,2.09C13.09,3.81 14.76,3 16.5,3 19.58,3 22,5.42 22,8.5c0,3.78 -3.4,6.86 -8.55,11.54L12,21.35z")
+    }
+    /** Where the sound goes: a screen with a wedge rising into it. */
+    val Output by lazy {
+        materialIcon("Exhale.Output", "M6,22h12l-6,-6zM21,3H3C1.9,3 1,3.9 1,5v12c0,1.1 0.9,2 2,2h4v-2H3V5h18v12h-4v2h4c1.1,0 2,-0.9 2,-2V5c0,-1.1 -0.9,-2 -2,-2z")
     }
     val Check by lazy { materialIcon("Exhale.Check", "M9,16.17L4.83,12l-1.42,1.41L9,19 21,7l-1.41,-1.41z") }
     val Settings by lazy {

@@ -57,7 +57,7 @@ fun squirclePath(left: Float, top: Float, width: Float, height: Float, cornerRad
     val h = max(height, 0.01f)
     val budget = min(w, h) / 2
     val r = min(max(cornerRadius, 0.001f), budget / CONTINUOUS_CORNER_EXTENT)
-    // Apple's continuous corner, as ten points along one corner from the top edge to the side.
+    // iOS's continuous corner, as ten points along one corner from the top edge to the side.
     val shape = floatArrayOf(
         -CONTINUOUS_CORNER_EXTENT * r, 0f,
         -1.08849323f * r, 0f,

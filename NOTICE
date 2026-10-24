@@ -1,0 +1,27 @@
+Exhale is licensed under the GNU General Public License v3.0 (see LICENSE).
+
+It includes or adapts work from these open-source projects, under their licenses:
+
+- BitChord (https://github.com/kushagrasinghx/BitChord), GPL-3.0:
+  the lyric panel in app/.../ui/lyricsflow, the precision audio sink, the cover flight
+  between mini player and player, the player sheet spring, and desktop tray, lyrics-source
+  and motion-cover approaches.
+
+- Convx (https://github.com/cosmictaserdev-creator/Convx), GPL-3.0:
+  the launch intro, the pop-out menu motion, the artwork motion curve and page treatment,
+  the iOS rubber-band overscroll, the folding tab bar behind the jelly dock (app/.../ui/component/
+  foldingdock) with its fold, search morph, gooey merge and glass levels, and the card morph that
+  opens a release or playlist out of its tile. The dock's Home glyph is the SF Symbols house.fill
+  shape from the Jetpack SF Symbols set Convx uses.
+
+- compose-hig (https://github.com/ienground/compose-hig), Apache License 2.0, Copyright (c)
+  IENGROUND of IENLAB and prior contributors (Compose Cupertino project, Scott Lanoue):
+  the cupertino/ module. See cupertino/LICENSE and the notices in its source files.
+
+- ViMusic (https://github.com/vfsfitvnm/ViMusic), GPL-3.0:
+  the original bottom sheet, the YouTube client and the KuGou lyrics client.
+
+- OuterTune (https://github.com/OuterTune/OuterTune), GPL-3.0:
+  the snap layout provider and the network connectivity observer.
+
+- InnerTune (https://github.com/z-huang/InnerTune), GPL-3.0: the project Exhale grew from.

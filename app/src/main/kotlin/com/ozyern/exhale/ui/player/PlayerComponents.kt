@@ -107,7 +107,7 @@ import coil3.compose.AsyncImage
 import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.ui.component.liquid.LiquidSlider
 import com.ozyern.exhale.ui.component.liquid.LocalAppBackdrop
-import me.saket.squiggles.SquigglySlider
+import com.ozyern.exhale.ui.component.SquigglySlider
 import com.ozyern.exhale.R
 import com.ozyern.exhale.constants.PlayerBackgroundStyle
 import com.ozyern.exhale.constants.PlayerDesignStyle
@@ -853,8 +853,7 @@ fun StyledPlaybackSlider(
 
         SliderStyle.Thick -> {
             Slider(
-                value = value,
-                valueRange = valueRange,
+                state = com.ozyern.exhale.ui.component.rememberSliderStateOf(value, valueRange),
                 onValueChange = onValueChange,
                 onValueChangeFinished = onValueChangeFinished,
                 colors = PlayerSliderColors.thickSliderColors(activeColor),
@@ -887,8 +886,7 @@ fun StyledPlaybackSlider(
 
         SliderStyle.Simple -> {
             Slider(
-                value = value,
-                valueRange = valueRange,
+                state = com.ozyern.exhale.ui.component.rememberSliderStateOf(value, valueRange),
                 onValueChange = onValueChange,
                 onValueChangeFinished = onValueChangeFinished,
                 colors = PlayerSliderColors.simpleSliderColors(activeColor),
@@ -2739,7 +2737,7 @@ fun PlayerBackground(
 
 
 // ============================================================
-// V8 - Apple Music Style Components
+// V8 - the iOS music app Style Components
 // ============================================================
 
 /**
@@ -2779,7 +2777,7 @@ fun V8PlayerBackdrop(
             bottomScrimAlpha = 0.62f,
             sharpArtwork = true,
         )
-        // The song's motion artwork, where it has one, edge to edge as Apple Music plays it:
+        // The song's motion artwork, where it has one, edge to edge as the iOS music app plays it:
         // over the still cover, under a scrim of its own so the controls stay on the same contrast.
         if (mediaMetadata != null) V8MotionArtwork(mediaMetadata, isPlaying)
     }
@@ -3032,7 +3030,7 @@ fun V8PlayerControlsContent(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Like
-                // Apple's discs: frosted, with a hairline rim, lit a little brighter when on.
+                // iOS's discs: frosted, with a hairline rim, lit a little brighter when on.
                 val likeFill by animateColorAsState(
                     textBackgroundColor.copy(alpha = if (currentSongLiked) 0.26f else 0.14f),
                     label = "v8LikeFill",
@@ -3098,7 +3096,7 @@ fun V8PlayerControlsContent(
 
         // The scrubber is a hairline until you touch it, and then it is a handle.
         //
-        // Apple's grows under the finger - the track roughly doubles while a drag is in progress
+        // iOS's grows under the finger - the track roughly doubles while a drag is in progress
         // and settles back when it ends - which is what makes a bar with no visible thumb feel
         // like something you are holding. A fixed 10dp bar is just a progress indicator you happen
         // to be allowed to drag.
@@ -3110,16 +3108,15 @@ fun V8PlayerControlsContent(
             label = "v8TrackHeight",
         )
         Slider(
-            value = safeValue,
-            valueRange = 0f..maxOf(1f, safeDuration),
+            state = com.ozyern.exhale.ui.component.rememberSliderStateOf(safeValue, 0f..maxOf(1f, safeDuration)),
             onValueChange = { onSliderValueChange(it.toLong()) },
             onValueChangeFinished = onSliderValueChangeFinished,
             interactionSource = scrubInteraction,
             colors = PlayerSliderColors.thickSliderColors(textBackgroundColor),
             thumb = { Spacer(modifier = Modifier.size(0.dp)) },
             track = { sliderState ->
-                val fraction = ((sliderState.value - sliderState.valueRange.start) /
-                        (sliderState.valueRange.endInclusive - sliderState.valueRange.start))
+                val fraction = ((sliderState.value - sliderState.trackRange.start) /
+                        (sliderState.trackRange.endInclusive - sliderState.trackRange.start))
                     .coerceIn(0f, 1f)
                 GlassTrack(
                     fraction = fraction,
@@ -3179,7 +3176,7 @@ fun V8PlayerControlsContent(
             }
         )
 
-        // === A CONTINUACIÓN: preview del siguiente track, rasgo clásico de Apple Music ===
+        // === A CONTINUACIÓN: preview del siguiente track, rasgo clásico de the iOS music app ===
         if (nextUpMetadata != null) {
             Spacer(Modifier.height(6.dp))
             Row(
@@ -3265,14 +3262,13 @@ fun V8VolumeSlider(
         )
 
         Slider(
-            value = volume,
-            valueRange = 0f..1f,
+            state = com.ozyern.exhale.ui.component.rememberSliderStateOf(volume, 0f..1f),
             onValueChange = onVolumeChange,
             colors = PlayerSliderColors.thickSliderColors(activeColor),
             thumb = { Spacer(modifier = Modifier.size(0.dp)) },
             track = { sliderState ->
-                val fraction = ((sliderState.value - sliderState.valueRange.start) /
-                        (sliderState.valueRange.endInclusive - sliderState.valueRange.start))
+                val fraction = ((sliderState.value - sliderState.trackRange.start) /
+                        (sliderState.trackRange.endInclusive - sliderState.trackRange.start))
                     .coerceIn(0f, 1f)
                 GlassTrack(
                     fraction = fraction,
@@ -3332,7 +3328,7 @@ fun V8PlaybackControls(
             )
         }
 
-        // Play/Pause - no container, like Apple Music
+        // Play/Pause - no container, like the iOS music app
         V8TransportButton(
             onClick = {
                 if (playbackState == Player.STATE_ENDED) {
@@ -3395,7 +3391,7 @@ fun V8PlaybackControls(
  * One transport control: no container, no ripple, and a glyph that gives under the finger.
  *
  * These were `Surface(onClick)` buttons with a transparent colour, which still draws Material's
- * ripple - an expanding grey disc over album art, on the three controls the eye is on most. Apple's
+ * ripple - an expanding grey disc over album art, on the three controls the eye is on most. iOS's
  * transport has no container at all; what acknowledges the press is the glyph itself dipping and
  * coming back. Underdamped on the way out so it overshoots slightly, which is what makes a flat
  * glyph feel like a physical button.
@@ -3493,7 +3489,7 @@ fun QueueCollapsedContentV8(
 
 
 /**
- * Track con efecto "glass" (vidrio esmerilado translúcido), estilo Apple Music.
+ * Track con efecto "glass" (vidrio esmerilado translúcido), estilo the iOS music app.
  * Capa base translúcida + blur sutil + borde tenue + relleno de progreso con highlight.
  */
 @Composable

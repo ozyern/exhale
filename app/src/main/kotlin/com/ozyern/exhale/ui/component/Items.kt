@@ -8,6 +8,7 @@
 
 package com.ozyern.exhale.ui.component
 
+import com.ozyern.exhale.ui.utils.collectionMorphSource
 import androidx.compose.ui.unit.sp
 import android.widget.Toast
 import androidx.annotation.DrawableRes
@@ -211,6 +212,7 @@ fun GridItem(
     thumbnailContent: @Composable BoxWithConstraintsScope.() -> Unit,
     thumbnailRatio: Float = 1f,
     fillMaxWidth: Boolean = false,
+    morphSeed: com.ozyern.exhale.ui.utils.CollectionSeed? = null,
 ) {
     Column(
         modifier = (if (fillMaxWidth) {
@@ -231,6 +233,8 @@ fun GridItem(
                 Modifier.height(GridThumbnailHeight)
             }
                 .aspectRatio(thumbnailRatio)
+                // A release or playlist opened from here grows out of this artwork.
+                .collectionMorphSource(morphSeed)
         ) {
             thumbnailContent()
         }
@@ -739,10 +743,12 @@ fun GridItem(
     thumbnailContent: @Composable BoxWithConstraintsScope.() -> Unit,
     thumbnailRatio: Float = 1f,
     fillMaxWidth: Boolean = false,
+    morphSeed: com.ozyern.exhale.ui.utils.CollectionSeed? = null,
 ) = GridItem(
     modifier = modifier,
+    morphSeed = morphSeed,
     title = {
-        // Apple Music's shelf captions: a quiet 14pt title under the artwork, not a bold headline.
+        // the iOS music app's shelf captions: a quiet 14pt title under the artwork, not a bold headline.
         Text(
             text = title,
             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 18.sp),
@@ -885,7 +891,7 @@ fun SongGridItem(
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            // Still, ending in an ellipsis, as Apple's grids do. Scrolling, a page of tiles had every title
+            // Still, ending in an ellipsis, as iOS's grids do. Scrolling, a page of tiles had every title
             // sliding at once, and mid-loop they drew past their own tile into the next.
             modifier = Modifier.fillMaxWidth()
         )
@@ -973,6 +979,7 @@ fun ArtistGridItem(
     },
     fillMaxWidth: Boolean = false,
 ) = GridItem(
+    morphSeed = com.ozyern.exhale.ui.utils.CollectionSeed(artist.artist.name, artist.artist.thumbnailUrl),
     title = artist.artist.name,
     subtitle = pluralStringResource(R.plurals.n_song, artist.songCount, artist.songCount),
     badges = badges,
@@ -1108,6 +1115,7 @@ fun AlbumGridItem(
     isPlaying: Boolean = false,
     fillMaxWidth: Boolean = false,
 ) = GridItem(
+    morphSeed = com.ozyern.exhale.ui.utils.CollectionSeed(album.album.title, album.album.thumbnailUrl, album.artists.joinToString { it.name }),
     title = {
         Text(
             text = album.album.title,
@@ -1115,7 +1123,7 @@ fun AlbumGridItem(
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            // Still, ending in an ellipsis, as Apple's grids do. Scrolling, a page of tiles had every title
+            // Still, ending in an ellipsis, as iOS's grids do. Scrolling, a page of tiles had every title
             // sliding at once, and mid-loop they drew past their own tile into the next.
             modifier = Modifier.fillMaxWidth()
         )
@@ -1347,6 +1355,7 @@ fun PlaylistGridItem(
     },
     fillMaxWidth: Boolean = false,
 ) = GridItem(
+    morphSeed = com.ozyern.exhale.ui.utils.CollectionSeed(playlist.playlist.name, playlist.thumbnails.firstOrNull()),
     title = {
         Text(
             text = playlist.playlist.name,
@@ -1354,7 +1363,7 @@ fun PlaylistGridItem(
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            // Still, ending in an ellipsis, as Apple's grids do. Scrolling, a page of tiles had every title
+            // Still, ending in an ellipsis, as iOS's grids do. Scrolling, a page of tiles had every title
             // sliding at once, and mid-loop they drew past their own tile into the next.
             modifier = Modifier.fillMaxWidth()
         )
@@ -1573,6 +1582,12 @@ fun YouTubeGridItem(
     isPlaying: Boolean = false,
     fillMaxWidth: Boolean = false,
 ) = GridItem(
+    morphSeed = when (item) {
+        is AlbumItem -> com.ozyern.exhale.ui.utils.CollectionSeed(item.title, item.thumbnail, item.artists?.joinToString { it.name })
+        is PlaylistItem -> com.ozyern.exhale.ui.utils.CollectionSeed(item.title, item.thumbnail, item.author?.name)
+        is ArtistItem -> com.ozyern.exhale.ui.utils.CollectionSeed(item.title, item.thumbnail)
+        else -> null
+    },
     title = {
         Text(
             text = item.title,
@@ -1581,7 +1596,7 @@ fun YouTubeGridItem(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = if (item is ArtistItem) TextAlign.Center else TextAlign.Start,
-            // Still, ending in an ellipsis, as Apple's grids do. Scrolling, a page of tiles had every title
+            // Still, ending in an ellipsis, as iOS's grids do. Scrolling, a page of tiles had every title
             // sliding at once, and mid-loop they drew past their own tile into the next.
             modifier = Modifier.fillMaxWidth()
         )
@@ -1752,7 +1767,7 @@ fun ItemThumbnail(
     /**
      * Soft drop shadow under the artwork. Off by default — a shadow behind a 48dp list-row
      * thumbnail is noise. Grid cards opt in, because a shelf of covers floating a millimetre
-     * off the page is the difference between Apple Music's Home and a wall of flat squares,
+     * off the page is the difference between the iOS music app's Home and a wall of flat squares,
      * and it is a shadow, not a border, that does it.
      */
     shadowElevation: Dp = 0.dp,

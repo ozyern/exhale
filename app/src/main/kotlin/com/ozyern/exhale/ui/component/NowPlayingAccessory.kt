@@ -28,7 +28,7 @@ import androidx.compose.ui.Modifier
  * A shared element is the fix: both places claim the same key inside one [SharedTransitionScope],
  * Compose measures the two rectangles, and the accessory *flies* between them — the artwork,
  * the title and the controls carried across, shrinking into the bar as it goes. It is the same
- * mechanism Apple's tab-bar accessory uses, and the one Echo's dock uses.
+ * mechanism iOS's tab-bar accessory uses, and the one the reference's dock uses.
  *
  * The scope is published here rather than passed down because the two ends are far apart in the
  * tree; whoever owns both (the Scaffold's bottom bar slot) provides it.

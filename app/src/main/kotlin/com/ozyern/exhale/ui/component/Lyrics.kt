@@ -565,11 +565,12 @@ fun Lyrics(
     val lyricsGlowColor = Color.White
     val textColor = lyricsBaseColor
 
+    // Word-synced lyrics still lead by what drawing and reading cost; at 0 they ran visibly late.
     val wordSyncLeadMs = remember(lyrics) {
-        if (lyrics != null && isTtml(lyrics)) 0L else LyricsWordSyncLeadMs
+        if (lyrics != null && isTtml(lyrics)) LyricsTtmlVisualLeadMs else LyricsWordSyncLeadMs
     }
     val lineSyncLeadMs = remember(lyrics) {
-        if (lyrics != null && isTtml(lyrics)) 0L else LyricsWordSyncLeadMs
+        if (lyrics != null && isTtml(lyrics)) LyricsTtmlVisualLeadMs else LyricsWordSyncLeadMs
     }
 
     var currentLineIndex by remember {
@@ -669,6 +670,7 @@ fun Lyrics(
         mutableStateOf(false)
     }
 
+    val smoothPosition = remember { com.ozyern.exhale.utils.SmoothPlaybackPosition() }
     LaunchedEffect(lyrics, lines, isAppMinimized) {
         if (lyrics.isNullOrEmpty() || (!lyrics.startsWith("[") && !isTtml(lyrics))) {
             currentLineIndex = -1
@@ -687,7 +689,13 @@ fun Lyrics(
             if (isSeeking != seekingNow) {
                 isSeeking = seekingNow
             }
-            val position = sliderPosition ?: playerConnection.player.currentPosition
+            // Carried forward between the player's once-a-second readings (Media3 1.11); see
+            // SmoothPlaybackPosition.
+            val position = sliderPosition ?: smoothPosition.read(
+                playerConnection.player.currentPosition,
+                playerConnection.player.isPlaying,
+                playerConnection.player.playbackParameters.speed.takeIf { it > 0.05f } ?: 1f,
+            )
             val syncedPosition =
                 (position + wordSyncLeadMs + lyricsSyncOffset.toLong()).coerceAtLeast(0L)
             if (currentPlaybackPosition != syncedPosition) {
@@ -930,7 +938,7 @@ fun Lyrics(
                         )
 
                         // Scale from the text's anchored edge so left-aligned lines grow
-                        // rightward (like Apple Music) instead of ballooning from center.
+                        // rightward (like the iOS music app) instead of ballooning from center.
                         val lineTransformOrigin = when (lyricsTextPosition) {
                             LyricsPosition.LEFT -> TransformOrigin(0f, 0.5f)
                             LyricsPosition.CENTER -> TransformOrigin(0.5f, 0.5f)
@@ -2332,6 +2340,7 @@ private const val Exhale_SEEK_DURATION = 800L
 private const val Exhale_FAST_SEEK_DURATION = 600L
 
 private const val LyricsWordSyncLeadMs = 300L
+private const val LyricsTtmlVisualLeadMs = 0L
 
 val LyricsPreviewTime = 2.seconds
 

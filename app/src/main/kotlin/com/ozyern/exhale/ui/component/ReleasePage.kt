@@ -109,6 +109,8 @@ fun ReleaseBackground(
 ) {
     Box(modifier.clipToBounds().background(palette.background)) {
         ArtworkWash(palette = palette, modifier = Modifier.matchParentSize())
+        // On a two-pane page the sleeve is in the left column, not behind the list.
+        if (LocalCollectionPane.current != null) return@Box
         Box(
             Modifier
                 .fillMaxWidth()
@@ -156,6 +158,7 @@ fun ReleaseMergeBand(
     enabled: Boolean = true,
 ) {
     if (!enabled || android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) return
+    if (LocalCollectionPane.current != null) return
     val painter = rememberAsyncImagePainter(artworkUrl)
     Box(
         Modifier
@@ -273,8 +276,33 @@ fun ReleaseHeader(
     artHeight: Dp,
     onCreditClick: (() -> Unit)?,
     badges: @Composable () -> Unit = {},
+    /** The sleeve, for the two-pane layout, where the header carries its own artwork. */
+    artworkUrl: String? = null,
     actions: @Composable () -> Unit,
 ) {
+    val inPane = publishToCollectionPane {
+        CollectionPaneHero(
+            title = title,
+            meta = meta,
+            credit = credit,
+            palette = palette,
+            onCreditClick = onCreditClick,
+            artwork = {
+                AsyncImage(
+                    model = artworkUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(palette.elevated),
+                )
+            },
+            badges = badges,
+            wash = true,
+            actions = actions,
+        )
+    }
+    if (inPane) return
     Box(Modifier.fillMaxWidth()) {
         Spacer(Modifier.fillMaxWidth().height(artHeight + ReleaseHeaderDrop))
         Column(

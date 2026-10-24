@@ -73,13 +73,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -252,139 +252,108 @@ private fun AboutScreenContent(
                 )
             }
 
-            // (Version and architecture are on the poster and in the table below it; a pair of
-            // cards repeating them between the two was the same fact three times on one screen.)
-
-            item(key = "maintainer") {
-                Column(modifier = Modifier.padding(bottom = spacing)) {
-                    SettingsSectionHeader(stringResource(R.string.about_maintainer))
-                    AboutGroup {
-                        AboutPersonRow(
-                            avatarUrl = LeadDeveloperAvatar,
-                            name = LeadDeveloperName,
-                            role = stringResource(R.string.about_lead_developer),
-                            onClick = { uriHandler.openUri(LeadDeveloperUrl) },
-                        )
-                    }
-                }
-            }
-
-            item(key = "social") {
-                Column(modifier = Modifier.padding(bottom = spacing)) {
-                    SettingsSectionHeader(stringResource(R.string.about_connect))
-                    AboutGroup {
-                        SocialLinks.forEachIndexed { index, link ->
-                            if (index > 0) AboutDivider()
-                            AboutRow(
-                                icon = link.iconRes,
-                                title = link.label,
-                                value = link.handle,
-                                onClick = { uriHandler.openUri(link.url) },
-                            )
-                        }
-                    }
-                }
-            }
-
-            item(key = "updates") {
-                Column(modifier = Modifier.padding(bottom = spacing)) {
-                    SettingsSectionHeader(stringResource(R.string.updates))
-                    AboutGroup {
-                        // About is where people come looking for this, and until now the only
-                        // route to it was back out to Settings and down a different branch.
-                        AboutRow(
-                            icon = R.drawable.update,
-                            title = stringResource(R.string.update_check_now),
-                            value = null,
-                            onClick = { navController.navigate("settings/update") },
-                        )
-                        AboutDivider()
-                        AboutRow(
-                            icon = R.drawable.history,
-                            title = stringResource(R.string.view_changelog),
-                            value = null,
-                            onClick = { navController.navigate("settings/changelog") },
-                        )
-                    }
+            // Laid out the way ColorOS lays out About device: no headings between the cards, a
+            // short card of the things you might act on, a card that states the build in grey
+            // labels over bold values, and the people and paperwork in cards of their own.
+            item(key = "version") {
+                AboutGroup(modifier = Modifier.padding(bottom = spacing)) {
+                    ColorOsRow(
+                        title = stringResource(R.string.update_installed_version),
+                        value = buildFacts.version,
+                        onClick = { navController.navigate("settings/update") },
+                    )
+                    AboutPlainDivider()
+                    ColorOsRow(
+                        title = stringResource(R.string.view_changelog),
+                        value = null,
+                        onClick = { navController.navigate("settings/changelog") },
+                    )
                 }
             }
 
             item(key = "info") {
-                Column(modifier = Modifier.padding(bottom = spacing)) {
-                    SettingsSectionHeader(stringResource(R.string.about_information))
-                    AboutGroup {
-                        // The table answers the question this page is actually opened for, which
-                        // is almost never "what version am I on" in isolation — it is "what
-                        // exactly am I running", asked because something is wrong. Three rows
-                        // naming the app and nothing naming the phone or the build left the other
-                        // half of that answer somewhere in Android's own settings.
-                        AboutValueRow(
-                            title = stringResource(R.string.update_installed_version),
-                            value = buildFacts.version,
+                AboutGroup(modifier = Modifier.padding(bottom = spacing)) {
+                    // The table answers the question this page is actually opened for, which is
+                    // almost never "what version am I on" in isolation — it is "what exactly am I
+                    // running", asked because something is wrong.
+                    Column(
+                        modifier = Modifier.padding(
+                            horizontal = SettingsDimensions.RowHorizontalPadding,
+                            vertical = 18.dp,
+                        ),
+                    ) {
+                        Text(
+                            text = "Exhale",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
+                        Text(
+                            text = "${buildFacts.version} (${buildFacts.build}) · ${buildFacts.buildType}",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    AboutPlainDivider()
+                    Column(
+                        modifier = Modifier.padding(
+                            horizontal = SettingsDimensions.RowHorizontalPadding,
+                            vertical = 18.dp,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(18.dp),
+                    ) {
+                        ColorOsSpec(stringResource(R.string.about_architecture), buildFacts.architecture)
+                        ColorOsSpec(stringResource(R.string.about_commit), buildFacts.commit)
+                        ColorOsSpec(stringResource(R.string.about_package), buildFacts.packageName)
+                        ColorOsSpec(stringResource(R.string.about_android), buildFacts.android)
+                        ColorOsSpec(stringResource(R.string.about_device), buildFacts.device)
+                    }
+                    AboutPlainDivider()
+                    // One tap instead of eight fields transcribed by hand into a bug report. No
+                    // chevron: it does something here rather than going somewhere.
+                    ColorOsRow(
+                        title = stringResource(R.string.about_copy_build_info),
+                        value = null,
+                        showChevron = false,
+                        onClick = {
+                            clipboard.setText(AnnotatedString(buildFacts.asReport()))
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.about_build_info_copied),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        },
+                    )
+                }
+            }
+
+            item(key = "people") {
+                AboutGroup(modifier = Modifier.padding(bottom = spacing)) {
+                    AboutPersonRow(
+                        avatarUrl = LeadDeveloperAvatar,
+                        name = LeadDeveloperName,
+                        role = stringResource(R.string.about_lead_developer),
+                        onClick = { uriHandler.openUri(LeadDeveloperUrl) },
+                    )
+                    SocialLinks.forEach { link ->
                         AboutPlainDivider()
-                        AboutValueRow(
-                            title = stringResource(R.string.about_build),
-                            value = buildFacts.build,
-                        )
-                        AboutPlainDivider()
-                        AboutValueRow(
-                            title = stringResource(R.string.about_build_type),
-                            value = buildFacts.buildType,
-                        )
-                        AboutPlainDivider()
-                        AboutValueRow(
-                            title = stringResource(R.string.about_commit),
-                            value = buildFacts.commit,
-                        )
-                        AboutPlainDivider()
-                        AboutValueRow(
-                            title = stringResource(R.string.about_package),
-                            value = buildFacts.packageName,
-                        )
-                        AboutPlainDivider()
-                        AboutValueRow(
-                            title = stringResource(R.string.about_android),
-                            value = buildFacts.android,
-                        )
-                        AboutPlainDivider()
-                        AboutValueRow(
-                            title = stringResource(R.string.about_device),
-                            value = buildFacts.device,
-                        )
-                        AboutDivider()
-                        // One tap instead of eight fields transcribed by hand into a bug report,
-                        // half of them wrong. No chevron: it does something here rather than
-                        // going somewhere.
-                        AboutRow(
-                            icon = R.drawable.content_copy,
-                            title = stringResource(R.string.about_copy_build_info),
-                            value = stringResource(R.string.about_copy_build_info_desc),
-                            showChevron = false,
-                            onClick = {
-                                clipboard.setText(AnnotatedString(buildFacts.asReport()))
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.about_build_info_copied),
-                                    Toast.LENGTH_SHORT,
-                                ).show()
-                            },
+                        ColorOsRow(
+                            title = link.label,
+                            value = link.handle,
+                            onClick = { uriHandler.openUri(link.url) },
                         )
                     }
                 }
             }
 
             item(key = "license") {
-                Column {
-                    SettingsSectionHeader(stringResource(R.string.about_legal))
-                    AboutGroup {
-                        AboutRow(
-                            icon = R.drawable.policy,
-                            title = "GNU General Public License v3.0",
-                            value = null,
-                            onClick = { uriHandler.openUri(LicenseUrl) },
-                        )
-                    }
+                AboutGroup {
+                    ColorOsRow(
+                        title = stringResource(R.string.about_legal),
+                        subtitle = "GNU General Public License v3.0",
+                        value = null,
+                        onClick = { uriHandler.openUri(LicenseUrl) },
+                    )
                 }
             }
         }
@@ -557,16 +526,60 @@ private fun AboutHero(
 @Composable
 private fun AboutReleaseCard(status: String?, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(30.dp)
+    // ColorOS lights its About card up as the page opens: the card arrives as dark navy with only
+    // the wordmark on it, then the artwork sweeps in from the bottom-left corner while it settles
+    // from a slight zoom.
+    val reveal = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(120)
+        reveal.animateTo(
+            1f,
+            androidx.compose.animation.core.tween(
+                durationMillis = 1500,
+                easing = androidx.compose.animation.core.CubicBezierEasing(0.33f, 0f, 0.2f, 1f),
+            ),
+        )
+    }
     Box(
         modifier = modifier
             .clip(shape)
+            .background(Color(0xFF0B0A22))
             .border(1.dp, Color.White.copy(alpha = 0.12f), shape),
     ) {
         Image(
             painter = painterResource(R.drawable.exhale_about_card),
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.matchParentSize(),
+            modifier = Modifier
+                .matchParentSize()
+                .graphicsLayer {
+                    val p = reveal.value
+                    val zoom = 1.14f - 0.14f * p
+                    scaleX = zoom
+                    scaleY = zoom
+                    alpha = 0.25f + 0.75f * p
+                    compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
+                }
+                .drawWithContent {
+                    drawContent()
+                    val p = reveal.value
+                    if (p < 1f) {
+                        // The lit edge travels corner to corner, soft over 40% of the diagonal.
+                        val lead = (p * 1.4f).coerceIn(0.002f, 1f)
+                        val tail = (p * 1.4f - 0.4f).coerceIn(0f, lead - 0.001f)
+                        drawRect(
+                            brush = Brush.linearGradient(
+                                0f to Color.Black,
+                                tail to Color.Black,
+                                lead to Color.Transparent,
+                                1f to Color.Transparent,
+                                start = androidx.compose.ui.geometry.Offset(0f, size.height),
+                                end = androidx.compose.ui.geometry.Offset(size.width, 0f),
+                            ),
+                            blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                        )
+                    }
+                },
         )
         // A faint darkening at the foot so the pill and the version sit on the picture rather
         // than fight its brightest highlights.
@@ -696,23 +709,14 @@ private fun AboutStatCard(
 // ─── Grouped rows ─────────────────────────────────────────────────────────────
 
 @Composable
-private fun AboutGroup(content: @Composable () -> Unit) {
+private fun AboutGroup(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .settingsGlassGroup(RoundedCornerShape(SettingsDimensions.GroupCardCornerRadius)),
     ) {
         content()
     }
-}
-
-@Composable
-private fun AboutDivider() {
-    HorizontalDivider(
-        modifier = Modifier.padding(start = SettingsDimensions.DividerStartIndent),
-        thickness = SettingsDimensions.DividerThickness,
-        color = SettingsDimensions.dividerColor(),
-    )
 }
 
 /** A row fronted by a circular photograph rather than a glyph tile: a person, not a setting. */
@@ -762,97 +766,71 @@ private fun AboutPersonRow(
     }
 }
 
+/**
+ * A ColorOS row: the title in 17 semibold — ColorOS sets its row titles heavier than iOS does — a
+ * grey value at the end and a chevron when it goes somewhere. No leading icon; the cards on About
+ * device have none.
+ */
 @Composable
-private fun AboutRow(
-    icon: Int,
+private fun ColorOsRow(
     title: String,
     value: String?,
     onClick: () -> Unit,
-    // A chevron promises another screen. Rows that act on the spot must not wear one.
+    subtitle: String? = null,
     showChevron: Boolean = true,
 ) {
-    // A coloured glyph on nothing, like every other settings row - see SettingsRow. These were the
-    // last blue pucks left in the app: a column of identical primary-tinted tiles, all one colour
-    // because they all took the theme accent rather than one of their own.
-    val accent = IosAutoColors[(title.hashCode() and 0x7fffffff) % IosAutoColors.size]
-
     AboutRowScaffold(onClick = onClick) {
-        Box(
-            modifier = Modifier.size(30.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                painter = painterResource(icon),
-                contentDescription = null,
-                tint = accent,
-                modifier = Modifier.size(25.dp),
+        Column(Modifier.weight(1f).padding(vertical = 4.dp)) {
+            Text(
+                text = title,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
-
-        Spacer(Modifier.width(14.dp))
-
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-
         if (value != null) {
+            Spacer(Modifier.width(12.dp))
             Text(
                 text = value,
-                style = MaterialTheme.typography.bodyMedium,
+                fontSize = 15.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.width(6.dp))
         }
-
-        if (showChevron) AboutChevron()
+        if (showChevron) {
+            Spacer(Modifier.width(4.dp))
+            AboutChevron()
+        }
     }
 }
 
-/**
- * A row that states a fact: label left, value right. No chevron, no press state, no icon —
- * nothing here is tappable and nothing here needs distinguishing from its neighbours.
- *
- * The value is allowed to wrap to three lines and stays right-aligned when it does, which is how
- * OxygenOS handles a long processor name. Ellipsising it instead would hide exactly the tail of the
- * string — the build suffix, the ABI — that someone reading this page came for.
- */
+/** A ColorOS spec line: the label small and grey, the value under it in bold, wrapping freely. */
 @Composable
-private fun AboutValueRow(
-    title: String,
-    value: String,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(
-                horizontal = SettingsDimensions.RowHorizontalPadding,
-                vertical = SettingsDimensions.RowVerticalPadding,
-            ),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+private fun ColorOsSpec(label: String, value: String) {
+    Column {
         Text(
-            text = title,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface,
+            text = label,
+            fontSize = 14.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-
-        Spacer(Modifier.width(16.dp))
-
+        Spacer(Modifier.height(2.dp))
         Text(
             text = value,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.End,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
         )
     }
 }

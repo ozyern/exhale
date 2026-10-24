@@ -42,6 +42,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Modifier
+import com.ozyern.exhale.ui.utils.readableListWidth
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -198,7 +199,8 @@ fun HistoryScreen(
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
                 .asPaddingValues(),
-            modifier = Modifier.windowInsetsPadding(
+            // Centred at a readable measure on a tablet; the whole width on a phone.
+            modifier = Modifier.readableListWidth().windowInsetsPadding(
                 LocalPlayerAwareWindowInsets.current.only(
                     WindowInsetsSides.Top
                 )
@@ -352,11 +354,16 @@ fun HistoryScreen(
                                         }
                                     },
                                     onLongClick = {
+                                        // Held: the song's options, as everywhere else in the app. Select mode is a
+                                        // long press on the back button.
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        if (!selection) {
-                                            selection = true
-                                            allWrappedItems.forEach { it.isSelected = false }
-                                            wrappedItem.isSelected = true
+                                        menuState.show {
+                                            SongMenu(
+                                                originalSong = event.song,
+                                                event = event.event,
+                                                navController = navController,
+                                                onDismiss = menuState::dismiss
+                                            )
                                         }
                                     }
                                 )

@@ -103,7 +103,7 @@ val LocalGlass = staticCompositionLocalOf<GlassTokens> {
 }
 
 /**
- * Motion tokens for the "Apple Music-level smoothness" pass: physical spring specs that
+ * Motion tokens for the "the iOS music app-level smoothness" pass: physical spring specs that
  * replace rigid tweens. Prefer these over ad-hoc `tween()` so momentum feels consistent
  * app-wide. All are float specs (drive `graphicsLayer` scale/alpha/translation on the GPU).
  */

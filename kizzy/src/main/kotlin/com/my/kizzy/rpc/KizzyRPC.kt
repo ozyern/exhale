@@ -90,8 +90,11 @@ open class KizzyRPC(private val token: String, private val injectedLogger: Kizzy
     ): Presence {
         DiscordAssets.use(token, applicationId)
         // Resolve image ids once so we have consistent values to log and send.
-        val resolvedLarge = largeImage?.resolveImage(kizzyRepository)
-        val resolvedSmall = smallImage?.resolveImage(kizzyRepository)
+        // A picture that will not resolve (a dead custom URL, an artist with no photo) costs the
+        // picture, not the update: thrown from here it took the whole presence with it, and Discord
+        // went on showing the previous song.
+        val resolvedLarge = runCatching { largeImage?.resolveImage(kizzyRepository) }.getOrNull()
+        val resolvedSmall = runCatching { smallImage?.resolveImage(kizzyRepository) }.getOrNull()
 
         try {
             logger.info("Resolved assets: large=$resolvedLarge small=$resolvedSmall")

@@ -80,7 +80,7 @@ data class BrowseCategory(
 )
 
 /**
- * Curated genre/category buckets shown on the Search landing. Colours echo Apple Music's own
+ * Curated genre/category buckets shown on the Search landing. Colours echo the iOS music app's own
  * category palette and double as the instant placeholder while the artwork streams in.
  * `query` is what gets run as a YouTube Music search when the card is tapped.
  */
@@ -102,6 +102,9 @@ val BrowseCategories: List<BrowseCategory> = listOf(
     BrowseCategory("Workout", "Workout", Color(0xFFFF8A5B), Color(0xFFD6552E)),
     BrowseCategory("Focus", "Focus", Color(0xFF7E9CE0), Color(0xFF4B6BB0)),
 )
+
+/** The FLAC page's tile: lossless recordings, free to play. */
+private val FlacCategory = BrowseCategory("FLAC", "", Color(0xFF3DB8A8), Color(0xFF1E6F86))
 
 /**
  * Process-wide cache of dynamic category artwork, resolved once from YouTube Music (top featured
@@ -144,7 +147,7 @@ object BrowseCategoryImages {
 }
 
 /**
- * The 2-column category card grid, mirroring Apple Music's Search landing exactly: photo-backed
+ * The 2-column category card grid, mirroring the iOS music app's Search landing exactly: photo-backed
  * rounded cards (~1.85:1, the reference's aspect), a dark scrim gradient for text legibility and
  * a bold white bottom-left label. Cards paint their gradient immediately and crossfade the real
  * artwork in as [BrowseCategoryImages] resolves it.
@@ -156,8 +159,19 @@ fun BrowseCategoriesGrid(
     onCategoryClick: (String) -> Unit,
     contentPadding: PaddingValues,
     showProfile: Boolean = true,
+    /** Under the title, full width: the search field, when it sits at the top. */
+    searchField: (@Composable () -> Unit)? = null,
+    /** Opens the FLAC page; given, a FLAC tile leads the grid. */
+    onFlacClick: (() -> Unit)? = null,
 ) {
     val categoryImages by BrowseCategoryImages.images.collectAsState()
+    var flacImage by remember { mutableStateOf<String?>(null) }
+    if (onFlacClick != null) {
+        LaunchedEffect(Unit) {
+            flacImage = com.ozyern.exhale.openflac.OpenFlac.shelves().getOrNull()
+                ?.firstNotNullOfOrNull { shelf -> shelf.releases.firstNotNullOfOrNull { it.artworkUrl } }
+        }
+    }
 
     // Resolve artwork off the main thread; no-op once cached.
     LaunchedEffect(Unit) {
@@ -166,8 +180,16 @@ fun BrowseCategoriesGrid(
         }
     }
 
+    // Two across on a phone, as the iOS music app sets them; a tablet gets more cards of the same size
+    // rather than two banners half a screen wide each.
+    val windowWidth = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
+    val columns = when {
+        windowWidth >= 900 -> 4
+        windowWidth >= 600 -> 3
+        else -> 2
+    }
     LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
+        columns = GridCells.Fixed(columns),
         contentPadding = contentPadding,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -214,6 +236,18 @@ fun BrowseCategoriesGrid(
             }
         }
 
+        if (searchField != null) {
+            item(span = { GridItemSpan(maxLineSpan) }, key = "browse_field", contentType = "field") {
+                Box(Modifier.padding(bottom = 4.dp)) { searchField() }
+            }
+        }
+
+        if (onFlacClick != null) {
+            item(key = "flac", contentType = "category") {
+                BrowseCategoryCard(category = FlacCategory, imageUrl = flacImage, onClick = onFlacClick)
+            }
+        }
+
         items(BrowseCategories, key = { it.title }, contentType = { "category" }) { category ->
             BrowseCategoryCard(
                 category = category,
@@ -242,7 +276,7 @@ private fun BrowseCategoryCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            // Apple Music reference card geometry: just under 2:1.
+            // the iOS music app reference card geometry: just under 2:1.
             .aspectRatio(1.62f)
             .scale(scale)
             .clip(RoundedCornerShape(14.dp))
@@ -272,7 +306,7 @@ private fun BrowseCategoryCard(
                 },
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                // Apple's duotone: the photo's light and shade redrawn in the card's own colour,
+                // iOS's duotone: the photo's light and shade redrawn in the card's own colour,
                 // so every tile is one colour with a picture in it rather than a photo under a scrim.
                 colorFilter = remember(category) { duotone(category.end, category.start) },
                 modifier = Modifier.matchParentSize(),

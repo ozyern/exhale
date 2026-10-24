@@ -97,7 +97,7 @@ object MusicLinks {
         val description = meta("og:description")?.let(::unescape).orEmpty()
         val album = url.encodedPath.contains("/album")
         // "Espresso" + "Sabrina Carpenter · Espresso · Song · 2024" (Spotify), "360 by Charli xcx on
-        // Apple Music", "Song - Artist" and the like elsewhere.
+        // the iOS music app", "Song - Artist" and the like elsewhere.
         val byMatch = Regex("""^(.*?) by (.*?)(?: on [A-Z].*)?$""").find(ogTitle)
         return when {
             " · " in description -> Ref(ogTitle, description.substringBefore(" · "), album)

@@ -13,13 +13,9 @@
         <item name="android:enforceNavigationBarContrast" tools:ignore="NewApi">false</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
-        <!-- Android 12+ SplashScreen API (minSdk 33): black, with the boot sequence's first
-             light already in it. Not the mark - showing the logo here and again in BootSplash
-             read as the app starting twice - but the amber ember the bloom grows from, swelling
-             while the process starts, so a cold start never opens on a second of dead black.
-             BootSplash picks the ember up where it is and widens it into the bloom. -->
+        <!-- Android 12+ SplashScreen API (minSdk 33): plain black. BootSplash's disc springs in
+             out of nothing, so the launch window shows nothing but the black it springs out of. -->
         <item name="android:windowSplashScreenBackground">@color/splash_background</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_ember_animated</item>
-        <item name="android:windowSplashScreenAnimationDuration">1000</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon_none</item>
     </style>
 </resources>

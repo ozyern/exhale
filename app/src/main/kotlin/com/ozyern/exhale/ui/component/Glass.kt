@@ -68,7 +68,7 @@ val supportsLiveBlur: Boolean
  * The app's one real liquid-glass modifier for **floating chrome** — the bottom dock, the
  * search capsule. Built on Kyant's AndroidLiquidGlass: it blurs the app content *and* bends
  * it at the edges (`lens`), which is the part a plain blur can never fake and the reason
- * Apple's chrome reads as a physical pane rather than a frosted rectangle.
+ * iOS's chrome reads as a physical pane rather than a frosted rectangle.
  *
  * **The default backdrop is chrome-only.** [LocalAppBackdrop] is a recording of the NavHost
  * content, so a component that lives *inside* that content and then consumes it is a re-entrant
@@ -156,10 +156,10 @@ fun Modifier.clearGlass(
         .drawBackdrop(
             backdrop = backdrop,
             shape = { shape },
-            // BitChord's liquid glass, number for number — see [dockGlass]. One material for the
+            // the reference design's liquid glass, number for number — see [dockGlass]. One material for the
             // dock, its circles, the mini player and the round chrome, so no two pieces of glass
             // side by side are two densities.
-            effects = { bitChordGlassEffects() },
+            effects = { slabGlassEffects() },
             highlight = { Highlight.Default },
             shadow = { Shadow.Default },
             layerBlock = layerBlock,
@@ -170,7 +170,7 @@ fun Modifier.clearGlass(
         .border(0.5.dp, Color.White.copy(alpha = if (dark) 0.10f else 0.35f), shape)
 }
 
-private const val ClearGlassFilm = 0.40f
+private const val ClearGlassFilm = 0.32f
 
 /**
  * The mini player's glass: the dock's own film, saturation and rim bend — so the pill and the dock
@@ -184,49 +184,36 @@ fun Modifier.miniPlayerGlass(
     backdrop: Backdrop = LocalAppBackdrop.current,
     dark: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
 ): Modifier {
-    // BitChord's mini player is the same liquid glass as its dock, and so is ours now. It was a
+    // the reference design's mini player is the same liquid glass as its dock, and so is ours now. It was a
     // lighter grey film (#3A3A3E) with a lens that had no depth and no colour fringing: next to
-    // BitChord's it read as a flat grey bar rather than a dark glossy slab bending the page's
+    // the reference design's it read as a flat grey bar rather than a dark glossy slab bending the page's
     // colour at its rim.
     return dockGlass(shape, backdrop, dark)
 }
 
 /**
- * BeatWave's glass, for the folded dock: their default GlassEffectConfig, number for number —
- * vibrancy 1.2 (saturation 1.6), a 2dp blur, a lens of 40% and 60% of 48dp with no depth or
- * fringing, a #1A1A1A film at 50%, and the rim at the 0.3 their nav bar passes. A clearer, harder
- * glass than BitChord's: the page stays legible through the circles and the bend at the rim does
- * the work.
+ * The folded dock's glass: the reference design's, the same as [dockGlass]. (It was the reference dock's clearer 2dp
+ * recipe; kept as its own name so the folded pieces can diverge again in one place.)
  */
 @Composable
-fun Modifier.beatWaveGlass(
+fun Modifier.foldedGlass(
     shape: Shape,
     backdrop: Backdrop = LocalAppBackdrop.current,
     dark: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
 ): Modifier {
-    val film = if (dark) Color(0xFF1A1A1A).copy(alpha = 0.5f) else Color(0xFFFAFAFA).copy(alpha = 0.5f)
-    return this.drawBackdrop(
-        backdrop = backdrop,
-        shape = { shape },
-        effects = {
-            colorControls(saturation = 1.6f)
-            blur(2f.dp.toPx())
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                lens(refractionHeight = 19.2f.dp.toPx(), refractionAmount = 28.8f.dp.toPx())
-            }
-        },
-        highlight = { Highlight.Default.copy(alpha = 0.3f) },
-        shadow = { Shadow.Default },
-        onDrawSurface = { drawRect(film) },
-    )
+    // Now the reference design's glass, the same as the open dock: the folded circles and the song's pill were
+    // the reference dock's clearer 2dp glass, so folding the dock visibly changed its material.
+    return dockGlass(shape, backdrop, dark)
 }
 
 /**
- * BitChord's glass effects (their LiquidGlass.kt, from Echo's Apple-matched config): half again the
+ * the reference design's glass effects (their LiquidGlass.kt, from the reference's Apple-matched config): half again the
  * saturation, an 8dp blur, and a 24dp lens with depth and colour fringing at the rim.
  */
-internal fun com.kyant.backdrop.BackdropEffectScope.bitChordGlassEffects() {
-    colorControls(saturation = 1.5f)
+internal fun com.kyant.backdrop.BackdropEffectScope.slabGlassEffects() {
+    // A touch past the reference design's 1.5: they render this at a third of the resolution, which pools the
+    // page's colour in the blur, and at full resolution the same number read greyer beside theirs.
+    colorControls(saturation = 1.7f)
     blur(8f.dp.toPx())
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         lens(
@@ -249,15 +236,17 @@ fun Modifier.dockGlass(
     backdrop: Backdrop = LocalAppBackdrop.current,
     dark: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
 ): Modifier {
-    // BitChord's dock glass, number for number (their LiquidGlass.kt, from Echo's Apple-matched
+    // the reference design's dock glass, number for number (their LiquidGlass.kt, from the reference's Apple-matched
     // config): half again the saturation, an 8dp blur, a 24dp lens with depth and colour fringing
     // at the rim, and a near-black film at 40%. Ours was a 2dp blur under a thin grey film — the
     // page read straight through it, so it looked like a tint rather than a slab of glass.
-    val film = if (dark) Color(0xFF121212).copy(alpha = 0.40f) else Color(0xFFFAFAFA).copy(alpha = 0.40f)
+    // 32%, not the reference design's 40%: see the saturation note above — the same film over our full-
+    // resolution blur buried the colours their downscaled one lets through.
+    val film = if (dark) Color(0xFF121212).copy(alpha = 0.32f) else Color(0xFFFAFAFA).copy(alpha = 0.32f)
     return this.drawBackdrop(
         backdrop = backdrop,
         shape = { shape },
-        effects = { bitChordGlassEffects() },
+        effects = { slabGlassEffects() },
         highlight = { Highlight.Default },
         shadow = { Shadow.Default },
         onDrawSurface = { drawRect(film) },
@@ -387,7 +376,7 @@ fun LiquidBackground(
                 if (last != 0L) clock.floatValue += ((now - last) / 1_000_000_000f).coerceAtMost(0.1f)
                 last = now
             }
-            kotlinx.coroutines.delay(30)
+            com.ozyern.exhale.utils.awaitAmbientStep()
         }
     }
 
