@@ -22,9 +22,10 @@ trap 'rm -rf "$WORK"' EXIT
 
 cp "$HERE/config.yml" "$WORK/"
 cp -r "$HERE/metadata" "$WORK/"
-mkdir -p "$WORK/metadata/$APP_ID" "$WORK/repo/icons"
+mkdir -p "$WORK/metadata/$APP_ID" "$WORK/repo"
 cp -r "$ROOT/fastlane/metadata/android/." "$WORK/metadata/$APP_ID/"
-cp "$ROOT/fastlane/metadata/android/en-US/images/icon.png" "$WORK/repo/icons/icon.png"
+# fdroidserver copies repo_icon from the working directory into repo/icons itself.
+cp "$ROOT/fastlane/metadata/android/en-US/images/icon.png" "$WORK/icon.png"
 
 echo "$FDROID_KEYSTORE_BASE64" | base64 -d > "$WORK/keystore.p12"
 chmod 600 "$WORK/config.yml" "$WORK/keystore.p12"
