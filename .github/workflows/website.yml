@@ -1,13 +1,17 @@
 name: Website
 
 # Builds the marketing site in website/ and publishes it to GitHub Pages at
-# exhale.ozyern.me. Only runs when the site itself changes — an app-only
-# commit should not redeploy the site, and vice versa.
+# exhale.ozyern.me, with the F-Droid repository at /fdroid/repo. Only runs when
+# the site or the repo's listing changes — an app-only commit should not
+# redeploy the site. release.yml dispatches it after every release so the
+# F-Droid repo picks up the new APK.
 on:
   push:
     branches: [master]
     paths:
       - 'website/**'
+      - 'fdroid/**'
+      - 'fastlane/**'
       - '.github/workflows/website.yml'
   workflow_dispatch:
 
@@ -39,6 +43,23 @@ jobs:
 
       - run: npm ci
       - run: npm run build
+
+      # Pages serves one artifact per repository, so the F-Droid repo rides along
+      # inside the site. Without its signing secrets the site still deploys.
+      - name: Build the F-Droid repository
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FDROID_KEYSTORE_BASE64: ${{ secrets.FDROID_KEYSTORE_BASE64 }}
+          FDROID_KEYSTORE_PASS: ${{ secrets.FDROID_KEYSTORE_PASS }}
+        run: |
+          if [ -z "$FDROID_KEYSTORE_BASE64" ]; then
+            echo "::warning::FDROID_KEYSTORE_BASE64 is not set; deploying the site without the F-Droid repo."
+            exit 0
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fdroidserver
+          bash fdroid/build-repo.sh website/dist/fdroid
 
       # `enablement` turns Pages on AND sets its source to this workflow. Without
       # it a repository whose Pages source is still "deploy from a branch" keeps

@@ -117,6 +117,20 @@ jobs:
             "out/Exhale-${{ steps.tag.outputs.version }}.apk" \
             out/SHA256SUMS.txt
 
+  # A release made with github.token does not fire other workflows' release
+  # events, but a workflow_dispatch does go through. The site build pulls the new
+  # APK into the F-Droid repo.
+  fdroid:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Rebuild the site and its F-Droid repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run website.yml --repo "${{ github.repository }}" --ref master
+
   # The Windows setup, attached to the same release. Exhale's own installer
   # (desktop/installer/ExhaleSetup.cs) carries the app image inside it, so signing
   # happens twice: the app's own files before they are packed, then the setup itself.

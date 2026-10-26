@@ -1,0 +1,18 @@
+# The title, descriptions, icon and screenshots come from fastlane/metadata/android,
+# copied in next to this file by build-repo.sh.
+AuthorName: ozyern
+Categories:
+  - Multimedia
+License: GPL-3.0-or-later
+WebSite: https://exhale.ozyern.me
+SourceCode: https://github.com/ozyern/exhale
+IssueTracker: https://github.com/ozyern/exhale/issues
+Changelog: https://github.com/ozyern/exhale/blob/master/CHANGELOG.md
+
+# Chromecast goes through Google's proprietary play-services-cast-framework, and
+# playback depends on YouTube's non-free network services.
+AntiFeatures:
+  - NonFreeDep
+  - NonFreeNet
+
+AutoName: Exhale
