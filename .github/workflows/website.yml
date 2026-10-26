@@ -57,9 +57,11 @@ jobs:
             echo "::warning::FDROID_KEYSTORE_BASE64 is not set; deploying the site without the F-Droid repo."
             exit 0
           fi
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq fdroidserver
-          bash fdroid/build-repo.sh website/dist/fdroid
+          # From PyPI, not apt: Ubuntu's 2.2 bundles an androguard that cannot parse
+          # the resources.arsc current AGP writes ("res1 must be zero!").
+          python3 -m venv "$RUNNER_TEMP/fdroid"
+          "$RUNNER_TEMP/fdroid/bin/pip" install -q fdroidserver
+          PATH="$RUNNER_TEMP/fdroid/bin:$PATH" bash fdroid/build-repo.sh website/dist/fdroid
 
       # `enablement` turns Pages on AND sets its source to this workflow. Without
       # it a repository whose Pages source is still "deploy from a branch" keeps
