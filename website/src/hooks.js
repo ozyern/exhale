@@ -12,9 +12,8 @@ const reduced = () =>
  */
 export function useReveals() {
   useEffect(() => {
-    const nodes = document.querySelectorAll('.reveal')
     if (reduced() || !('IntersectionObserver' in window)) {
-      nodes.forEach((n) => n.classList.add('in'))
+      document.querySelectorAll('.reveal').forEach((n) => n.classList.add('in'))
       return
     }
 
@@ -26,11 +25,22 @@ export function useReveals() {
           io.unobserve(entry.target)
         })
       },
-      { rootMargin: '0px 0px -12% 0px', threshold: 0.08 },
+      { rootMargin: '0px 0px -6% 0px', threshold: 0.04 },
     )
 
-    nodes.forEach((n) => io.observe(n))
-    return () => io.disconnect()
+    const observeAll = () => {
+      document.querySelectorAll('.reveal:not(.in)').forEach((n) => io.observe(n))
+    }
+
+    observeAll()
+
+    const mo = new MutationObserver(() => observeAll())
+    mo.observe(document.body, { childList: true, subtree: true })
+
+    return () => {
+      io.disconnect()
+      mo.disconnect()
+    }
   }, [])
 }
 

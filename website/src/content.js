@@ -6,7 +6,7 @@
  * innertube/). Shipped goes here; planned doesn't.
  */
 
-export const REPO = 'https://github.com/ozyern/Exhale'
+export const REPO = 'https://github.com/ozyern/exhale'
 export const RELEASES = `${REPO}/releases/latest`
 export const APK_URL = 'https://github.com/ozyern/exhale/releases/download/v1.0.405/Exhale-1.0.405.apk'
 export const VERSION = '1.0.405'
@@ -179,9 +179,149 @@ export const ABOUT_FACTS = [
  */
 export const RELEASE_NOTES = [
   {
+    version: '1.0.405',
+    date: 'October 11, 2026',
+    tag: 'Current release',
+    summary:
+      'Ultra fluid. Knows your music. Liquid glass in every page, a player that flies out of the dock, music videos over the song’s own sound, and a search that finds a song from a link or a line of it.',
+    groups: [
+      {
+        title: 'New',
+        items: [
+          {
+            title: 'Music video in the player',
+            body: 'The artist’s own video, picked over fan uploads, plays over the song’s own stream, with a full-screen landscape player in liquid glass.',
+          },
+          {
+            title: 'Horizontal lyrics',
+            body: 'Turn the phone on its side from the lyrics’ own buttons: the cover large on the left, the lyrics lighting a word at a time on the right.',
+          },
+          {
+            title: 'Search that knows your music',
+            body: 'Paste a Spotify, Apple Music, Deezer, Tidal, SoundCloud or YouTube link into search, or type a line of a song to find it by its lyrics.',
+          },
+          {
+            title: 'Artist pages, rebuilt',
+            body: 'Apple Music’s photograph and title logo for the artist, the latest release on its own card, twenty top songs, and the story at the end of the page.',
+          },
+          {
+            title: '8D audio & Sound presets',
+            body: '8D audio that passes behind your head, and one-tap Sound presets: Sped up, Nightcore, Slowed, Daycore and Vaporwave.',
+          },
+          {
+            title: 'Chromecast',
+            body: 'Cast to the big screen straight from the device sheet with full playback, seek and volume control.',
+          },
+          {
+            title: 'Offline mode',
+            body: 'With no internet, the app automatically switches to what is saved on the phone, ready to play and shuffle.',
+          },
+          {
+            title: 'Settings search',
+            body: 'Search lands on the setting itself — even below the fold — and lights the row so the eye goes straight to it.',
+          },
+          {
+            title: 'Jelly dock style',
+            body: 'A fluid dock with labels, compact and touch-glow options that stretches between tabs and folds as you scroll.',
+          },
+          {
+            title: 'AMOLED black theme',
+            body: 'A true black theme tailored for OLED displays across every screen and surface.',
+          },
+          {
+            title: 'Always-on display lyrics',
+            body: 'Word-by-word synchronized lyrics displayed cleanly on the always-on display.',
+          },
+          {
+            title: 'Voice control',
+            body: '“Play … on Exhale” from Google Gemini or Google Assistant finds the song, artist, album or playlist.',
+          },
+        ],
+      },
+      {
+        title: 'Improved',
+        items: [
+          {
+            title: 'Liquid glass everywhere',
+            body: 'Real refracting liquid glass in pages, not only the dock; the mini player and search bar are clear glass too.',
+          },
+          {
+            title: 'The dock folds as you scroll',
+            body: 'The tab strip folds along its length into a circle as you scroll and unfolds back into the bar, the active tab flying smoothly between them.',
+          },
+          {
+            title: 'The cover flies from the dock',
+            body: 'It lifts out of the mini player on a curve while the player rises in behind it, and flies home when you close it.',
+          },
+          {
+            title: 'The Library, redesigned',
+            body: 'A Liked hero card with Play, glass collection tiles, and one destination list for pinned and recent music.',
+          },
+          {
+            title: 'Under a second to start',
+            body: 'Songs you have never played before start in under a second, at the best quality available.',
+          },
+          {
+            title: 'Menus grow from touch',
+            body: 'Long-press menus open out of the held point over a blurred page; pop-ups grow directly from their button.',
+          },
+          {
+            title: 'Moving artwork at 30 fps',
+            body: 'The ambient artwork runs at 30 frames a second and only while music plays, sleeping when playback pauses.',
+          },
+          {
+            title: 'Mini player progress ring',
+            body: 'The mini player is the same slim size on every tab, with play and pause hosted inside a ring tracking song progress.',
+          },
+        ],
+      },
+      {
+        title: 'Fixed',
+        items: [
+          {
+            title: 'Queue was never saved',
+            body: 'The saved queue was never actually written to disk. Now it is, so after Android closes the app your song is still there at the second you left it.',
+          },
+          {
+            title: 'Crash on resume',
+            body: 'Resuming a song no longer crashes on a spring animation that dipped below zero, and streams with missing codecs no longer fail.',
+          },
+          {
+            title: 'Songs sat at 00:00',
+            body: 'Resolved issues where playback sat at 00:00 or stopped in runs when stream sessions expired.',
+          },
+          {
+            title: 'Official video prioritized',
+            body: 'The artist’s own official video is picked over fan lyric videos, and landscape video no longer drops out on exit.',
+          },
+          {
+            title: 'Lyrics sync and drift',
+            body: 'Fixed lyrics running ahead, reading lines twice, or stopping loading after a single provider failed.',
+          },
+          {
+            title: 'Pasted link search error',
+            body: 'A pasted song or album link no longer displays “No results found” under its own resolved match.',
+          },
+          {
+            title: 'Black band across inner pages',
+            body: 'Eliminated an unwanted black strip across the top of inner screens under the status bar.',
+          },
+          {
+            title: 'Namesake lyrics mismatch',
+            body: 'Lyrics sources must now match both title and artist, preventing incorrect lyrics from another artist being cached.',
+          },
+          {
+            title: 'Automix tempo stretch',
+            body: 'Automix tempo adjustment is now strictly capped within 6% instead of stretching a song by up to 15%.',
+          },
+        ],
+      },
+    ],
+  },
+  {
     version: '1.0.304',
     date: 'September 26, 2026',
-    tag: 'Current release',
+    tag: 'Previous release',
     summary:
       'The whole app in Apple Music’s shape, music that plays without a network, updates that install themselves, and a long list of things that had been quietly wrong.',
     groups: [
@@ -285,7 +425,7 @@ export const RELEASE_NOTES = [
   {
     version: '1.0.203',
     date: 'September 5, 2026',
-    tag: 'Previous release',
+    tag: 'Earlier release',
     summary:
       'Everything that moved since the first public release: the interface at your size, a library shaped like a library, a sleep timer you can read half asleep, and glass that bends the pixels actually behind it.',
     groups: [

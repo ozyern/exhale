@@ -33,8 +33,8 @@ export const SHOT405 = {
 export const RELEASE_405 = {
   version: '1.0.405',
   code: 405,
-  date: 'October 10, 2026',
-  dateISO: '2026-10-10',
+  date: 'October 11, 2026',
+  dateISO: '2026-10-11',
   kicker: 'Release',
   read: '3 min read',
 

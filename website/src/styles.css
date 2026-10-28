@@ -34,7 +34,9 @@
   --shell: min(1120px, 100% - 44px);
   --phone-scale: 1;
 
-  --settle: cubic-bezier(0.22, 1.16, 0.36, 1);
+  --settle: cubic-bezier(0.16, 1, 0.3, 1);
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --fluid: cubic-bezier(0.25, 1, 0.5, 1);
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -235,14 +237,14 @@ svg {
 
 .wordmark svg,
 .wordmark .mark {
-  /* Alone in the bar with no wordmark beside it, the icon IS the identity, so
-     it gets a couple more pixels than it had when it was only a bullet in
-     front of a label, and a couple more again now that it is a glyph on
-     transparency rather than a tile, since the artwork carries its own margin
-     and the visible mark is smaller than its box. */
-  width: 25px;
-  height: 25px;
+  width: 26px;
+  height: 26px;
   display: block;
+  transition: transform 0.3s var(--settle);
+}
+
+.wordmark:hover .mark {
+  transform: scale(1.08);
 }
 
 .topbar a:hover,
@@ -718,6 +720,16 @@ svg {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.07),
     inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  transition: transform 0.45s var(--settle), box-shadow 0.45s var(--ease);
+}
+
+.ft:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 20px 40px -12px rgba(0, 0, 0, 0.75),
+    0 0 32px -8px color-mix(in oklab, var(--glow) 26%, transparent);
 }
 
 .ft:nth-child(2) { --glow: var(--ember); }
@@ -768,6 +780,11 @@ svg {
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.08),
     0 -24px 80px -30px rgba(0, 0, 0, 0.9);
+  transition: transform 0.65s var(--settle);
+}
+
+.ft:hover .ft-shot img {
+  transform: scale(1.02) translateY(-2px);
 }
 
 .ft-shot[data-crop='middle'] img {
@@ -808,6 +825,11 @@ svg {
   gap: 6px;
   padding-top: 20px;
   border-top: 1px solid var(--hairline);
+  transition: border-color 0.35s var(--ease);
+}
+
+.fx:hover {
+  border-top-color: color-mix(in oklab, var(--rose) 50%, rgba(255, 255, 255, 0.3));
 }
 
 .fx-glyph {
@@ -815,7 +837,11 @@ svg {
   height: 30px;
   margin-bottom: 10px;
   color: var(--rose);
-  transition: color 0.7s var(--ease);
+  transition: transform 0.35s var(--settle), color 0.7s var(--ease);
+}
+
+.fx:hover .fx-glyph {
+  transform: translateY(-3px) scale(1.1);
 }
 
 .fx-glyph svg {
@@ -845,11 +871,15 @@ svg {
 
 .getit-icon {
   display: block;
-  width: 88px;
-  height: 88px;
+  width: 96px;
+  height: 96px;
   margin: 0 auto 26px;
-  border-radius: 22px;
-  filter: drop-shadow(0 18px 40px rgba(255, 170, 40, 0.28));
+  filter: drop-shadow(0 18px 40px rgba(255, 170, 40, 0.32));
+  transition: transform 0.4s var(--settle);
+}
+
+.getit-icon:hover {
+  transform: scale(1.06);
 }
 
 .getit-read {
@@ -1055,16 +1085,18 @@ svg {
   letter-spacing: -0.01em;
   color: #fff;
   background: var(--rose);
-  transition: transform 0.4s var(--settle), filter 0.2s var(--ease),
-    background 0.7s var(--ease);
+  transition: transform 0.35s var(--settle), box-shadow 0.35s var(--ease),
+    filter 0.2s var(--ease), background 0.7s var(--ease);
 }
 
 .btn:hover {
-  filter: brightness(1.1);
+  transform: translateY(-2px) scale(1.02);
+  filter: brightness(1.08);
+  box-shadow: 0 12px 28px -6px color-mix(in oklab, var(--rose) 45%, transparent);
 }
 
 .btn:active {
-  transform: scale(0.95);
+  transform: translateY(0) scale(0.97);
 }
 
 .btn-sm {
@@ -1076,10 +1108,15 @@ svg {
 .btn-ghost {
   background: #1c1c1e;
   color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  transition: transform 0.35s var(--settle), box-shadow 0.35s var(--ease),
+    background 0.25s var(--ease);
 }
 
 .btn-ghost:hover {
-  background: #262629;
+  background: #28282c;
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 10px 24px -6px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.18);
   filter: none;
 }
 
@@ -2085,17 +2122,15 @@ video.phone-shot {
    deck rather than as something settling into place. */
 .reveal {
   opacity: 0;
-  /* A hair of scale with the rise. Translation alone slides an element into
-     position; the two together read as it arriving from slightly further away,
-     which is the difference between a transition and an entrance. */
-  transform: translateY(18px) scale(0.988);
-  transition: opacity 0.8s var(--ease), transform 0.9s var(--settle);
+  transform: translate3d(0, 20px, 0) scale(0.988);
+  transition: opacity 0.75s var(--ease), transform 0.85s var(--settle);
   transition-delay: var(--d, 0ms);
+  backface-visibility: hidden;
 }
 
 .reveal.in {
   opacity: 1;
-  transform: none;
+  transform: translate3d(0, 0, 0) scale(1);
 }
 
 /* The big titles fill in a word at a time as they arrive, rather than the
@@ -3995,6 +4030,12 @@ html:has(.release) {
   overflow: hidden;
   scroll-snap-align: start;
   background: #1d1d1f;
+  transition: transform 0.45s var(--settle), box-shadow 0.45s var(--ease);
+}
+
+.hl-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 20px 44px -12px rgba(0, 0, 0, 0.85), 0 0 24px -6px var(--hl-wash, rgba(237, 85, 100, 0.25));
 }
 
 /* Each tile carries a faint wash of its own, so seven dark cards in a row are
@@ -4057,6 +4098,11 @@ html:has(.release) {
   object-position: top;
   border-radius: 26px;
   box-shadow: 0 30px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  transition: transform 0.65s var(--settle);
+}
+
+.hl-card:hover .hl-shot img {
+  transform: scale(1.025);
 }
 
 .hl-controls {
@@ -4112,7 +4158,7 @@ html:has(.release) {
   cursor: pointer;
   color: var(--ink);
   background: rgba(66, 66, 69, 0.72);
-  transition: background 0.2s var(--ease), opacity 0.2s var(--ease);
+  transition: transform 0.25s var(--settle), background 0.2s var(--ease), opacity 0.2s var(--ease);
 }
 
 .hl-arrow svg {
@@ -4126,7 +4172,12 @@ html:has(.release) {
 }
 
 .hl-arrow:hover:not(:disabled) {
-  background: rgba(90, 90, 94, 0.8);
+  background: rgba(90, 90, 94, 0.88);
+  transform: scale(1.08);
+}
+
+.hl-arrow:active:not(:disabled) {
+  transform: scale(0.94);
 }
 
 .hl-arrow:disabled {
@@ -5149,3 +5200,15 @@ html:has(.release) {
   .film { height: auto; }
   .film-stick { position: static; height: auto; padding-block: 40px; }
 }
+
+/* ========================================================= performance */
+
+@supports (content-visibility: auto) {
+  .tour-features,
+  .open,
+  .sp-tail {
+    content-visibility: auto;
+    contain-intrinsic-size: 1px 700px;
+  }
+}
+

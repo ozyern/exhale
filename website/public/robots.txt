@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://exhale.ozyern.me/sitemap.xml

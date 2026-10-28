@@ -125,6 +125,7 @@ function Hero({ release }) {
         <h1 className="c17-hero-ver">
           <span className="c17-sr">Exhale </span>
           {release.version}
+          <span className="c17-sr"> — Release Notes</span>
         </h1>
         <p className="c17-hero-line">
           <span>{first}</span> <span className="c17-grad">{second}</span>

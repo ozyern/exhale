@@ -32,14 +32,34 @@ export default function HighlightSlider({ id = 'highlights', title = 'Get the hi
   useEffect(() => {
     const node = rail.current
     if (!node) return undefined
-    const onScroll = () => {
+    let frame = 0
+    let pitch = 0
+
+    const updatePitch = () => {
       const first = node.firstElementChild
-      if (!first) return
-      const pitch = first.getBoundingClientRect().width + 20
-      setAt(Math.round(node.scrollLeft / pitch))
+      if (first) pitch = first.offsetWidth + 20
     }
+    updatePitch()
+
+    const onScroll = () => {
+      if (frame) return
+      frame = requestAnimationFrame(() => {
+        frame = 0
+        if (!pitch) updatePitch()
+        if (pitch > 0) {
+          const next = Math.round(node.scrollLeft / pitch)
+          setAt((prev) => (prev !== next ? next : prev))
+        }
+      })
+    }
+
     node.addEventListener('scroll', onScroll, { passive: true })
-    return () => node.removeEventListener('scroll', onScroll)
+    window.addEventListener('resize', updatePitch)
+    return () => {
+      node.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', updatePitch)
+      if (frame) cancelAnimationFrame(frame)
+    }
   }, [])
 
   const goTo = (index, byItself = false) => {

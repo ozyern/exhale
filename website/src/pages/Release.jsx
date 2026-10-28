@@ -131,7 +131,7 @@ function SplitTitle({ release, onReplay }) {
           heading's real text is the one line in the middle. */}
       <h1 className="rh-type" key={key}>
         <Word text="Exhale" from="end" />{' '}
-        <span className="rh-said">Exhale {release.version}, Universal</span>{' '}
+        <span className="rh-said">Exhale {release.version} — Release Notes</span>{' '}
         <Word text="Universal" />
       </h1>
 

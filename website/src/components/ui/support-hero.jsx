@@ -77,7 +77,7 @@ export function SupportHero({ version, releasePath, facts, faq, paths, onPick })
         </Link>
 
         <h1 className="mt-7 max-w-[20ch] text-balance font-semibold text-[clamp(44px,7.4vw,92px)] text-foreground leading-[1.02] tracking-[-0.035em]">
-          What can I <AuroraText colors={AURORA}>help</AuroraText> with?
+          <span className="sr-only">Exhale Support — </span>What can I <AuroraText colors={AURORA}>help</AuroraText> with?
         </h1>
 
         <p className="mt-6 max-w-[42ch] text-[clamp(17px,1.8vw,21px)] text-muted-foreground leading-[1.45]">

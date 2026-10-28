@@ -74,6 +74,8 @@ export default function Site() {
     set('meta[name="description"]', 'content', head.description)
     set('meta[property="og:title"]', 'content', head.title)
     set('meta[property="og:description"]', 'content', head.description)
+    set('meta[name="twitter:title"]', 'content', head.title)
+    set('meta[name="twitter:description"]', 'content', head.description)
     set('meta[property="og:url"]', 'content', `https://exhale.ozyern.me${head.path}`)
     set('link[rel="canonical"]', 'href', `https://exhale.ozyern.me${head.path}`)
   }, [page, release])

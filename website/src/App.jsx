@@ -399,7 +399,7 @@ export default function App() {
 
         <section className="finale shell" id="download">
           <div className="getit">
-            <img className="getit-icon reveal" src="/logo.png" alt="" width="96" height="96" />
+            <img className="getit-icon reveal" src="/logo.png" alt="Exhale app icon" width="96" height="96" />
             <h2 className="headline">
               <Words text="Put it on your phone." />
             </h2>
@@ -451,7 +451,7 @@ export default function App() {
               <p className="ft-kicker">Build it yourself</p>
               <pre className="code">
                 <b>git</b> clone {REPO}.git{'\n'}
-                <b>cd</b> Exhale{'\n'}
+                <b>cd</b> exhale{'\n'}
                 <b>./gradlew</b> assembleUniversalDebug
               </pre>
               <p className="subnote">

@@ -187,5 +187,5 @@ export const MoonIcon = () => (
  * app ships, so the site and the phone agree about what Exhale looks like.
  */
 export const Mark = () => (
-  <img className="mark" src="/logo.png" alt="" width="25" height="25" />
+  <img className="mark" src="/logo.png" alt="Exhale" width="25" height="25" />
 )

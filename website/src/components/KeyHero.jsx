@@ -93,7 +93,7 @@ export default function KeyHero({ id, version, fullVersion = version, name = 'Ex
               {version}
             </p>
             <h1 className="kh-name">
-              <span className="kh-sr">{name} {fullVersion}</span>
+              <span className="kh-sr">{name} — A music player that breathes (v{fullVersion})</span>
               <span aria-hidden="true">{name}</span>
             </h1>
             <p className="kh-line">{line}</p>

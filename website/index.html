@@ -3,12 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta http-equiv="content-language" content="en" />
 
     <title>Exhale — a music player that breathes</title>
     <meta
       name="description"
       content="A fast, open-source music player for Android. Live liquid glass, lyrics on the beat, and color that follows your album art."
     />
+    <meta
+      name="keywords"
+      content="Exhale, music player, Android music player, open source music player, liquid glass, synced lyrics, offline music player, FLAC, lossless audio, ColorOS, Apple Music style, Android 13"
+    />
+    <meta name="author" content="Aditya Jha (@ozyern)" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <meta name="theme-color" content="#000000" />
     <!-- The site is dark already. Dark Reader repainted it anyway — black boxes
          over the glow, buttons without their fill — and this tells it not to. -->
@@ -18,6 +25,8 @@
     <link rel="canonical" href="https://exhale.ozyern.me/" />
 
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Exhale" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:url" content="https://exhale.ozyern.me/" />
     <meta property="og:title" content="Exhale — a music player that breathes" />
     <meta
@@ -28,6 +37,50 @@
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Exhale — a music player that breathes" />
+    <meta
+      name="twitter:description"
+      content="A fast, open-source music player for Android. Live liquid glass, lyrics on the beat, and color that follows your album art."
+    />
+    <meta name="twitter:image" content="https://exhale.ozyern.me/og.png" />
+    <meta name="twitter:creator" content="@ozyern" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "SoftwareApplication",
+          "@id": "https://exhale.ozyern.me/#app",
+          "name": "Exhale",
+          "operatingSystem": "Android 13 or later",
+          "applicationCategory": "MultimediaApplication",
+          "applicationSubCategory": "Music Player",
+          "downloadUrl": "https://github.com/ozyern/exhale/releases/download/v1.0.405/Exhale-1.0.405.apk",
+          "softwareVersion": "1.0.405",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+          },
+          "description": "A fast, open-source music player for Android. Live liquid glass, lyrics on the beat, and color that follows your album art.",
+          "author": {
+            "@type": "Person",
+            "name": "Aditya Jha",
+            "url": "https://github.com/ozyern"
+          }
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://exhale.ozyern.me/#website",
+          "url": "https://exhale.ozyern.me/",
+          "name": "Exhale",
+          "description": "Exhale — a music player that breathes",
+          "inLanguage": "en-US"
+        }
+      ]
+    }
+    </script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -37,7 +90,107 @@
     />
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Pre-rendered semantic structure for search crawlers, SEO engines, and non-JS clients.
+         Hydrated cleanly on client render by React createRoot. -->
+    <div id="root">
+      <header>
+        <nav aria-label="Main Navigation">
+          <a href="/">Home</a>
+          <a href="#overview">Overview</a>
+          <a href="#highlights">Highlights</a>
+          <a href="#film">Ultra Fluid</a>
+          <a href="#lyrics">Lyrics</a>
+          <a href="#design">Design</a>
+          <a href="#features">Features</a>
+          <a href="#download">Download APK</a>
+          <a href="/release/1.0.405">Exhale 1.0.405 Release Notes</a>
+          <a href="/release/1.0.304">Exhale 1.0.304</a>
+          <a href="/release/1.0.203">Exhale 1.0.203</a>
+          <a href="/support">Support and FAQ</a>
+        </nav>
+      </header>
+
+      <main>
+        <section id="overview">
+          <h1>Exhale — a music player that breathes</h1>
+          <p>Ultra fluid. Knows your music. A fast, open-source music player for Android 13 and later.</p>
+          <p>Live liquid glass on every surface, synchronized lyrics that land on the beat, and dynamic colors that follow whatever is playing. Built with no accounts, no ads, no telemetry, and full offline playback.</p>
+          <div>
+            <a href="https://github.com/ozyern/exhale/releases/download/v1.0.405/Exhale-1.0.405.apk">Download Exhale v1.0.405 Universal APK</a>
+            <a href="/release/1.0.405">Read the 1.0.405 Release Notes</a>
+          </div>
+        </section>
+
+        <section id="highlights">
+          <h2>Get the highlights</h2>
+          <p>Exhale is designed to look, move, and feel like modern flagship mobile operating systems:</p>
+          <ul>
+            <li><strong>Home leads with what you play:</strong> Top Picks for You is learned from your listening history, ready to play immediately.</li>
+            <li><strong>The song brings its own color:</strong> Full-bleed album artwork tints the entire player, background glow, and controls with organic gradients.</li>
+            <li><strong>Lyrics land on the word:</strong> Word-by-word synchronized lyrics light up in real time, with horizontal view and always-on display support.</li>
+            <li><strong>Plays with the radio off:</strong> Downloaded tracks play with no internet connection, and the queue skips smoothly to available music.</li>
+            <li><strong>Artists the way they should look:</strong> High-resolution artist portraits, latest releases, top tracks, and stories.</li>
+            <li><strong>One material, everywhere:</strong> Liquid glass tables, floating capsules, and jelly docks across every screen down to Settings.</li>
+            <li><strong>Updates itself:</strong> Built-in APK updater checks, downloads, and installs without external stores or browser redirects.</li>
+          </ul>
+        </section>
+
+        <section id="film">
+          <h2>The system runs smoothly — Ultra fluid motion</h2>
+          <p>Liquid glass deforms toward touch, with specular highlights tracking your finger. Springs settle without wobble, and the dock smoothly folds into a compact circle as you scroll.</p>
+        </section>
+
+        <section id="lyrics">
+          <h2>Lyrics — Every word, on time</h2>
+          <p>Synced lyrics matched strictly by title and artist. Words illuminate as they are sung while upcoming and past lines softly fall out of focus.</p>
+        </section>
+
+        <section id="design">
+          <h2>Design — Built like the phone it runs on</h2>
+          <p>Real-time refraction and background blur rather than simulated layers. Responsive dock physics, seamless player expansion, and fluid tab switches.</p>
+        </section>
+
+        <section id="features">
+          <h2>And everything else — Open-source music player features</h2>
+          <ul>
+            <li><strong>Sound and Acoustics:</strong> 8D spatial audio, lossless FLAC/WAV/AIFF playback priority, and sound presets (Sped up, Nightcore, Slowed, Daycore, Vaporwave).</li>
+            <li><strong>Search and Discovery:</strong> Paste links from Spotify, Apple Music, Deezer, Tidal, SoundCloud, or YouTube; or find songs by lyrics.</li>
+            <li><strong>Offline and Storage:</strong> Export tagged .m4a files with embedded cover art and lyrics to your device's Music folder.</li>
+            <li><strong>Ecosystem:</strong> Chromecast streaming, Android per-app language settings, sleep timers, and Discord rich presence.</li>
+          </ul>
+        </section>
+
+        <section id="download">
+          <h2>Put it on your phone — Download Exhale APK</h2>
+          <p>One universal APK for every Android 13 or newer device (ARM64, ARM32, x86_64). 100% open-source under GPL-3.0.</p>
+          <p><a href="https://github.com/ozyern/exhale/releases/download/v1.0.405/Exhale-1.0.405.apk">Download Exhale v1.0.405 (41 MB Universal APK)</a></p>
+          <p><a href="/release/1.0.405">Read the full 1.0.405 release notes</a></p>
+        </section>
+      </main>
+
+      <footer>
+        <nav aria-label="Footer Navigation">
+          <h3>Exhale Music Player</h3>
+          <ul>
+            <li><a href="/">Home</a></li>
+            <li><a href="/release/1.0.405">Exhale 1.0.405</a></li>
+            <li><a href="/release/1.0.304">Exhale 1.0.304</a></li>
+            <li><a href="/release/1.0.203">Exhale 1.0.203</a></li>
+            <li><a href="/support">Help & Support</a></li>
+            <li><a href="https://github.com/ozyern/exhale" target="_blank" rel="noreferrer">GitHub Repository</a></li>
+            <li><a href="https://github.com/ozyern/exhale/blob/master/CHANGELOG.md" target="_blank" rel="noreferrer">Full Changelog</a></li>
+          </ul>
+        </nav>
+      </footer>
+    </div>
+
+    <noscript>
+      <div style="padding: 24px; color: #fff; background: #000; font-family: sans-serif; text-align: center;">
+        <p>Exhale is a fast, open-source music player for Android 13+.</p>
+        <p><a href="https://github.com/ozyern/exhale/releases/download/v1.0.405/Exhale-1.0.405.apk" style="color: #ed5564;">Download Exhale 1.0.405 APK</a> | <a href="/support" style="color: #ed5564;">Support & FAQ</a> | <a href="/release/1.0.405" style="color: #ed5564;">Release Notes</a></p>
+      </div>
+    </noscript>
+
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

@@ -27,8 +27,8 @@ export function AnnounceBar() {
     <Link className="announce" to={RELEASE_PATH}>
       <span className="announce-tag">New</span>
       <span className="announce-text">
-        Exhale {RELEASE.version} — Apple Music’s shape across the whole app,
-        offline playback, and updates that install themselves
+        Exhale {RELEASE.version} — Liquid glass in every page, music videos over the
+        song’s own sound, and search that knows your music
       </span>
       <span className="announce-go" aria-hidden="true">
         ›
@@ -109,7 +109,7 @@ export function SiteFooter({ onNotes }) {
     <footer className="footer">
       <div className="shell">
         <div className="footer-mark">
-          <img src="/logo.png" alt="" width="30" height="30" />
+          <img src="/logo.png" alt="Exhale" width="30" height="30" />
           Exhale
         </div>
 
@@ -232,7 +232,7 @@ export function SiteFooter({ onNotes }) {
                 {MAINTAINER.name} — {MAINTAINER.role}
               </li>
               <li>
-                <a href={REPO.replace('/Exhale', '')} target="_blank" rel="noreferrer">
+                <a href={REPO.replace(/\/exhale$/i, '')} target="_blank" rel="noreferrer">
                   GitHub {MAINTAINER.handle}
                 </a>
               </li>
