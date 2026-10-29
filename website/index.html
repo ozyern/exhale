@@ -88,7 +88,38 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
+    <link rel="preload" href="/fonts/DisplaySans-VF.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/DisplaySans-Bold.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/DisplaySans-Medium.woff2" as="font" type="font/woff2" crossorigin />
     <style>
+      @font-face {
+        font-family: 'DisplaySans';
+        src: url('/fonts/DisplaySans-VF.woff2') format('woff2');
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'DisplaySans-Bold';
+        src: url('/fonts/DisplaySans-Bold.woff2') format('woff2');
+        font-weight: 700;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'DisplaySans-Medium';
+        src: url('/fonts/DisplaySans-Medium.woff2') format('woff2');
+        font-weight: 500;
+        font-style: normal;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'DisplaySans-Regular';
+        src: url('/fonts/DisplaySans-Regular.woff2') format('woff2');
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
       html, body {
         background-color: #000;
         color: #f5f5f7;

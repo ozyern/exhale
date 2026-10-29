@@ -3,35 +3,41 @@ import { prefersReducedMotion } from '../hooks.js'
 import './keyhero.css'
 
 /**
- * KeyHero — Flagship ColorOS 17 multi-device scroll hero.
+ * KeyHero — Flagship Exhale 405 multi-device scroll hero.
  *
- * Sequence:
- * - Scroll 0: Plain golden ribbons background with big metallic "405 Exhale" mark.
- *   No phones visible.
- * - Scroll 0 -> 0.35: Middle phone smoothly appears and scales in while the 405
- *   mark shrinks and merges into the phone's screen.
- * - Scroll 0.28 -> 0.72: The other 4 authentic OPPO devices fan out smoothly
- *   from behind the middle phone into their ColorOS showcase layout.
- * - Scroll 0.72 -> 0.80: All 5 devices locked in full showcase layout.
- * - Scroll 0.80 -> 1.00: Devices gracefully lift and fade out completely; copy
- *   and CTA rise into the center with zero overlap.
+ * Sequence (matching Exhale 405 hero):
+ * - Scroll 0.00: Fullscreen golden ribbons background with big metallic "405 Exhale" mark.
+ * - Scroll 0.00 -> 0.15: Initial entrance zoom-out:
+ *   Center phone appears scaled in close (scale ~2.10) framing the background,
+ *   while the metallic 405 mark smoothly shrinks and dissolves into the phone's screen.
+ * - Scroll 0.15 -> 0.45: [LONG SOLO PHONE HOLD]
+ *   The phone stays alone in the center for an extended scroll duration (~150vh),
+ *   commanding the entire screen at prominent portrait hero scale (easing 1.75 -> 1.45).
+ *   No companion devices are visible yet.
+ * - Scroll 0.45 -> 0.74: [SHOWCASE DOCKING]
+ *   The center phone smoothly settles from 1.45 down to 1.00 into its showcase dock.
+ *   Simultaneously, the 4 companion showcase devices glide in smoothly from their OWN
+ *   respective off-screen sides (tablet from left, phone from top, tablet from right,
+ *   phone from bottom) to frame the center phone.
+ * - Scroll 0.74 -> 0.88: All 5 devices locked in full showcase layout with brand lockup & CTA.
+ * - Scroll 0.84 -> 0.98: Golden ribbon background smoothly fades to black.
  */
 
 const SURROUNDING_DEVICES = [
   {
     id: 'tablet-left',
     src: '/hero/oppo_dev_tablet_left.png',
-    alt: 'Exhale on OPPO Find N foldable tablet',
+    alt: 'Exhale on showcase Find N foldable tablet',
     x: '6.83%',
     y: '27.36%',
     w: '29.42%',
     h: '63.06%',
-    dx: '28.60%',
-    dy: '-2.44%',
-    depth: 1.1,
+    dx: '-260%',
+    dy: '0%',
+    depth: 1.05,
     zIndex: 3,
-    tStart: 0.28,
-    tDur: 0.44,
+    tStart: 0.45,
+    tDur: 0.27,
   },
   {
     id: 'tablet-right',
@@ -41,42 +47,42 @@ const SURROUNDING_DEVICES = [
     y: '-2%',
     w: '37.53%',
     h: '55.99%',
-    dx: '-31.10%',
-    dy: '30.45%',
+    dx: '220%',
+    dy: '-40%',
     depth: 0.95,
     zIndex: 2,
-    tStart: 0.30,
-    tDur: 0.44,
+    tStart: 0.47,
+    tDur: 0.25,
   },
   {
     id: 'phone-top',
     src: '/hero/oppo_dev_phone_top.png',
-    alt: 'Exhale word-synced lyrics on landscape OPPO phone',
+    alt: 'Exhale word-synced lyrics on landscape showcase phone',
     x: '16.04%',
     y: '-4%',
     w: '33.32%',
     h: '19.40%',
-    dx: '17.44%',
-    dy: '50.75%',
-    depth: 0.85,
+    dx: '0%',
+    dy: '-280%',
+    depth: 0.90,
     zIndex: 4,
-    tStart: 0.32,
-    tDur: 0.42,
+    tStart: 0.43,
+    tDur: 0.29,
   },
   {
     id: 'phone-bottom',
     src: '/hero/oppo_dev_phone_bottom.png',
-    alt: 'Exhale music player on landscape OPPO phone',
+    alt: 'Exhale music player on landscape showcase phone',
     x: '62.43%',
     y: '66.38%',
     w: '29.86%',
     h: '27.90%',
-    dx: '-27.22%',
-    dy: '-23.88%',
-    depth: 1.25,
+    dx: '80%',
+    dy: '240%',
+    depth: 1.15,
     zIndex: 4,
-    tStart: 0.34,
-    tDur: 0.42,
+    tStart: 0.49,
+    tDur: 0.23,
   },
 ]
 
@@ -101,7 +107,7 @@ export default function KeyHero({
     if (queryKp !== null) {
       const p = Math.min(1, Math.max(0, parseFloat(queryKp) || 0))
       node.style.setProperty('--kp', p.toFixed(4))
-      node.dataset.settled = p > 0.68 ? 'showcase' : 'intro'
+      node.dataset.settled = p > 0.74 ? 'showcase' : 'intro'
       return
     }
 
@@ -118,7 +124,7 @@ export default function KeyHero({
       const run = Math.max(1, rect.height - window.innerHeight)
       const p = Math.min(1, Math.max(0, -rect.top / run))
       node.style.setProperty('--kp', p.toFixed(4))
-      node.dataset.settled = p > 0.68 ? 'showcase' : 'intro'
+      node.dataset.settled = p > 0.74 ? 'showcase' : 'intro'
     }
     const size = () => {
       const w = window.innerWidth
@@ -150,7 +156,7 @@ export default function KeyHero({
           <p className="kh-plain-line">{line}</p>
         </div>
 
-        {/* The 5 authentic OPPO devices stage */}
+        {/* The 5 authentic showcase devices stage */}
         <div className="kh-devices" aria-hidden="true">
           {/* Surrounding 4 devices fan out from behind the middle phone */}
           {SURROUNDING_DEVICES.map((d) => (
@@ -196,7 +202,7 @@ export default function KeyHero({
           </div>
         </div>
 
-        {/* Brand Lockup & Actions — rises in directly beneath the showcase devices like OPPO ColorOS 17 */}
+        {/* Brand Lockup & Actions — rises in directly beneath the showcase devices like Exhale 405 */}
         <div className="kh-brand-lockup">
           <h2 className="kh-brand-title">
             <span className="kh-brand-name">{name}</span>

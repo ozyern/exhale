@@ -1,42 +1,77 @@
 /* ==========================================================================
-   KeyHero — Flagship ColorOS 17 multi-device scroll hero.
-
-   Animation sequence:
-   - Scroll 0.00: Plain golden ribbons with big metallic "405 Exhale" mark.
-     No phones visible.
-   - Scroll 0.00 -> 0.26: Middle phone smoothly appears & scales in while the 405
-     mark shrinks and dissolves cleanly into the phone's screen.
-   - Scroll 0.28 -> 0.68: The 4 surrounding authentic OPPO devices fan out
-     smoothly from behind the middle phone into their ColorOS positions.
-   - Scroll 0.64 -> 0.84: Devices smoothly lift slightly to open up room underneath.
-   - Scroll 0.68 -> 0.88: Brand lockup ("Exhale 405" + "Silky Smooth. Knows your music."
-     + Download Exhale & What’s new buttons) rises in cleanly beneath the devices.
-   - Scroll 0.88 -> 1.00: Full showcase + buttons locked & interactive.
+   KeyHero — Flagship Exhale 405 multi-device scroll hero.
    ========================================================================== */
+
+@font-face {
+  font-family: 'DisplaySans';
+  src: url('/fonts/DisplaySans-VF.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'DisplaySans-Bold';
+  src: url('/fonts/DisplaySans-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'DisplaySans-Medium';
+  src: url('/fonts/DisplaySans-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'DisplaySans-Regular';
+  src: url('/fonts/DisplaySans-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
 
 .kh {
   --kp: 0;
 
-  /* Phase 1: 405 initial mark shrinks & merges into phone (0..0.22) */
-  --a: clamp(0, calc(var(--kp) / 0.22), 1);
+  /* Phase 1: 405 initial mark shrinks & merges into phone (0.00..0.14) */
+  --a: clamp(0, calc(var(--kp) / 0.14), 1);
   --merge: calc(var(--a) * var(--a) * (3 - 2 * var(--a)));
 
-  /* Middle phone zooms in from scale 1.85 down to 1.00 (0.00..0.26) */
-  --mid-t: clamp(0, calc(var(--kp) / 0.26), 1);
-  --mid-in: calc(1 - (1 - var(--mid-t)) * (1 - var(--mid-t)) * (1 - var(--mid-t)));
+  /* Middle phone: appears quickly as 405 shrinks (0.00..0.10) */
+  --mid-fade: clamp(0, calc(var(--kp) / 0.10), 1);
+  --mid-in: calc(var(--mid-fade) * var(--mid-fade) * (3 - 2 * var(--mid-fade)));
 
-  /* Devices fan out smoothly from behind middle phone (0.28..0.68) */
+  /* Extended solo phone hold (0.00..0.40):
+     Phone stays front-and-center for a long scroll duration, easing gently 1.55 -> 1.22 */
+  --solo-t: clamp(0, calc(var(--kp) / 0.40), 1);
+  --solo-e: calc(1 - (1 - var(--solo-t)) * (1 - var(--solo-t)));
 
-  /* Stage slightly lifts to make room for brand lockup (0.58..0.74) */
-  --dev-lift: clamp(0, calc((var(--kp) - 0.58) / 0.16), 1);
+  /* Docking phase (0.40..0.74):
+     Phone settles 1.22 -> 1.00 as the 4 companion devices glide in from off-screen */
+  --dock-t: clamp(0, calc((var(--kp) - 0.40) / 0.34), 1);
+  --dock-p: calc(1 - var(--dock-t));
+  --dock-e: calc(1 - var(--dock-p) * var(--dock-p) * var(--dock-p));
+
+  --mid-scale: calc(1.55 - 0.33 * var(--solo-e) - 0.22 * var(--dock-e));
+
+  /* Stage slightly lifts to make room for brand lockup (0.66..0.80) */
+  --dev-lift: clamp(0, calc((var(--kp) - 0.66) / 0.14), 1);
   --dev-lift-e: calc(var(--dev-lift) * var(--dev-lift) * (3 - 2 * var(--dev-lift)));
 
-  /* Brand lockup & buttons rise in under the middle phone (0.62..0.76) */
-  --b: clamp(0, calc((var(--kp) - 0.62) / 0.14), 1);
+  /* Brand lockup & buttons rise in under the middle phone (0.70..0.84) */
+  --b: clamp(0, calc((var(--kp) - 0.70) / 0.14), 1);
   --brand-in: calc(var(--b) * var(--b) * (3 - 2 * var(--b)));
 
+  /* Progressive fade-out to pure black for the background only (0.82..0.96) */
+  --exit-t: clamp(0, calc((var(--kp) - 0.82) / 0.14), 1);
+  --exit-e: calc(var(--exit-t) * var(--exit-t) * (3 - 2 * var(--exit-t)));
+
   position: relative;
-  height: 380vh;
+  height: 480vh;
 }
 
 .kh-stage {
@@ -60,6 +95,18 @@
   z-index: 1;
 }
 
+/* Progressive fade-out overlay — dissolves only the background wallpaper into pure black */
+.kh-stage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #000;
+  opacity: var(--exit-e);
+  pointer-events: none;
+  z-index: 2;
+  will-change: opacity;
+}
+
 .kh-sr {
   position: absolute;
   width: 1px;
@@ -74,7 +121,7 @@
 .kh-plain-kv {
   position: absolute;
   left: 50%;
-  top: 50%;
+  top: 48%;
   transform: translate(-50%, calc(-50% + var(--merge) * 20px)) scale(calc(1 - 0.25 * var(--merge)));
   display: flex;
   flex-direction: column;
@@ -89,58 +136,61 @@
 
 .kh-plain-num {
   margin: 0;
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: clamp(96px, 16vw, 190px);
-  font-weight: 800;
-  line-height: 0.88;
-  letter-spacing: -0.055em;
-  font-variant-numeric: tabular-nums;
+  display: inline-block;
+  padding: 0.08em 0.35em;
+  box-sizing: content-box;
+  font-family: 'DisplaySans', 'DisplaySans-Bold', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: clamp(110px, 18vw, 216px);
+  font-weight: 700;
+  line-height: 0.98;
+  letter-spacing: -0.015em;
   color: transparent;
-  /* Frosted liquid glass surface matching OPPO 17 */
+  -webkit-text-fill-color: transparent;
+  /* Luminous frosted liquid acrylic matching Exhale 405 */
   background: linear-gradient(
-    155deg,
-    rgba(255, 255, 255, 0.98) 0%,
-    rgba(255, 255, 255, 0.70) 18%,
-    rgba(255, 255, 255, 0.25) 45%,
-    rgba(255, 255, 255, 0.38) 70%,
-    rgba(255, 255, 255, 0.90) 92%,
-    rgba(255, 255, 255, 1.0) 100%
+    172deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(255, 248, 235, 0.85) 30%,
+    rgba(255, 242, 220, 0.68) 58%,
+    rgba(255, 250, 242, 0.88) 84%,
+    #ffffff 100%
   );
   -webkit-background-clip: text;
   background-clip: text;
-  -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.72);
-  filter: drop-shadow(0 0 35px rgba(255, 255, 255, 0.42))
-          drop-shadow(0 18px 45px rgba(0, 0, 0, 0.75));
-  text-shadow: 0 0 24px rgba(255, 255, 255, 0.4);
+  filter: drop-shadow(0 0 1.2px rgba(255, 255, 255, 0.95))
+          drop-shadow(0 0 25px rgba(255, 235, 180, 0.35))
+          drop-shadow(0 15px 35px rgba(0, 0, 0, 0.45));
 }
 
 .kh-plain-name {
-  margin: 0.14em 0 0;
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: clamp(36px, 5.2vw, 62px);
+  margin: -0.02em 0 0;
+  font-family: 'DisplaySans', 'DisplaySans-Bold', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: clamp(30px, 4.4vw, 56px);
   font-weight: 600;
-  letter-spacing: -0.02em;
+  line-height: 1;
+  letter-spacing: -0.025em;
   color: #ffffff;
-  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.65);
+  filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.50));
 }
 
 .kh-plain-line {
-  margin: 0.45em 0 0;
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: clamp(15px, 2.0vw, 23px);
-  font-weight: 400;
-  letter-spacing: -0.008em;
-  color: rgba(255, 255, 255, 0.96);
-  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.5);
+  margin: 0.38em 0 0;
+  font-family: 'DisplaySans-Medium', 'DisplaySans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: clamp(14px, 1.7vw, 20px);
+  font-weight: 450;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: rgba(255, 255, 255, 0.92);
+  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.45));
 }
 
-/* --------------------------------------------------- The 5 OPPO Devices Stage */
+/* --------------------------------------------------- The 5 showcase Devices Stage */
 
 .kh-devices {
   position: absolute;
   left: 50%;
   top: 50%;
-  /* Maintain the exact 2518:1294 (~1.946) aspect ratio of OPPO's showcase */
+  /* Maintain the exact 2518:1294 (~1.946) aspect ratio of the showcase showcase */
   width: min(100vw, calc(100vh * 2518 / 1294));
   height: min(calc(100vw * 1294 / 2518), 100vh);
   transform: translate(-50%, calc(-50% - var(--dev-lift-e) * 11vh));
@@ -171,11 +221,10 @@
 
 .kh-dev-phone-middle {
   z-index: 5;
-  /* Smoothly zooms out from scale 1.85 down to 1.00 as it arrives in center, matching OPPO */
   opacity: var(--mid-in);
-  transform: translate3d(0, calc((1 - var(--mid-in)) * 24px), 0)
-    scale(calc(1.85 - 0.85 * var(--mid-in)));
+  transform: translate3d(0, 0, 0) scale(var(--mid-scale));
   transform-origin: 50% 50%;
+  will-change: transform, opacity;
 }
 
 .kh-mid-app {
@@ -186,12 +235,12 @@
 /* ----------------------------------------------------- Surrounding 4 Devices */
 
 .kh-dev:not(.kh-dev-phone-middle) {
-  /* Fluid individual progress and quartic ease-out per device (OPPO ColorOS physics) */
-  --prog: clamp(0, calc((var(--kp) - var(--t-start, 0.28)) / var(--t-dur, 0.40)), 1);
+  /* Fluid individual progress and quartic ease-out per device (showcase ColorOS physics) */
+  --prog: clamp(0, calc((var(--kp) - var(--t-start, 0.38)) / var(--t-dur, 0.34)), 1);
   --p: calc(1 - var(--prog));
   --ease: calc(1 - var(--p) * var(--p) * var(--p) * var(--p));
-  /* Emerges solid from under middle phone without ghost transparency */
-  opacity: clamp(0, calc(var(--prog) * 6), 1);
+  /* Smooth opacity entrance as it crosses the viewport border */
+  opacity: clamp(0, calc(var(--prog) * 4), 1);
   transform: translate3d(
       calc(var(--dx) * (1 - var(--ease))),
       calc(var(--dy) * (1 - var(--ease))),
@@ -229,18 +278,18 @@
 }
 
 .kh-brand-name {
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'DisplaySans', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: clamp(34px, 5.2vw, 60px);
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.03em;
   color: #ffffff;
   text-shadow: 0 4px 24px rgba(0, 0, 0, 0.85);
 }
 
 .kh-brand-ver {
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'DisplaySans', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: clamp(34px, 5.2vw, 60px);
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: -0.04em;
   background: linear-gradient(135deg, #ffe082 0%, #ffb300 45%, #ff8f00 75%, #ff6f00 100%);
   -webkit-background-clip: text;
@@ -252,7 +301,7 @@
 .kh-brand-line {
   margin: 10px auto 0;
   max-width: 500px;
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'DisplaySans', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: clamp(16px, 2.2vw, 24px);
   font-weight: 400;
   letter-spacing: -0.012em;
@@ -276,7 +325,7 @@
   height: 46px;
   padding: 0 30px;
   border-radius: 999px;
-  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'DisplaySans', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 15.5px;
   font-weight: 600;
   text-decoration: none;
@@ -315,9 +364,9 @@
 
 @media (max-width: 768px) {
   .kh-devices {
-    /* Match OPPO mobile layout: size stage to 250vw width so the center phone
+    /* Match showcase mobile layout: size stage to 250vw width so the center phone
        takes ~38% of mobile viewport, and all 4 surrounding devices peek in
-       from the 4 edges exactly matching OPPO's mobile design */
+       from the 4 edges exactly matching the showcase mobile design */
     width: 250vw;
     height: calc(250vw * 1294 / 2518);
     left: 50%;
@@ -331,15 +380,18 @@
   }
 
   .kh-plain-num {
-    font-size: clamp(80px, 22vw, 130px);
+    font-size: clamp(96px, 24vw, 150px);
+    line-height: 0.82;
   }
 
   .kh-plain-name {
-    font-size: clamp(30px, 8.5vw, 46px);
+    font-size: clamp(34px, 8.8vw, 52px);
+    margin-top: 0.02em;
   }
 
   .kh-plain-line {
     font-size: clamp(14px, 3.8vw, 18px);
+    margin-top: 0.28em;
   }
 
   .kh-brand-lockup {
@@ -379,6 +431,14 @@
 /* Reduced motion */
 .kh[data-static='true'] {
   height: 100vh;
+}
+
+.kh[data-static='true'] .kh-stage {
+  opacity: 1;
+}
+
+.kh[data-static='true'] .kh-stage::after {
+  display: none;
 }
 
 .kh[data-static='true'] .kh-plain-kv {
