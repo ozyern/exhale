@@ -1,39 +1,63 @@
 /* ==========================================================================
-   Key visual hero, in the shape of OPPO's ColorOS 16 page.
+   KeyHero — Flagship ColorOS 17 multi-device scroll hero.
 
-   --kp is the scroll through the section, 0..1. Two phases come out of it:
-   --ea closes the full-window visual into a disc (the first 45%), --eb
-   settles it: the disc shrinks and lifts, the screens around it clear and the
-   copy comes in under it (50% to 80%). Both are smoothstepped here, so the
-   script never does more than write one number.
+   Animation sequence:
+   - Scroll 0.00: Plain golden ribbons with big metallic "405 Exhale" mark.
+     No phones visible.
+   - Scroll 0.00 -> 0.26: Middle phone smoothly appears & scales in while the 405
+     mark shrinks and dissolves cleanly into the phone's screen.
+   - Scroll 0.28 -> 0.68: The 4 surrounding authentic OPPO devices fan out
+     smoothly from behind the middle phone into their ColorOS positions.
+   - Scroll 0.64 -> 0.84: Devices smoothly lift slightly to open up room underneath.
+   - Scroll 0.68 -> 0.88: Brand lockup ("Exhale 405" + "Silky Smooth. Knows your music."
+     + Download Exhale & What’s new buttons) rises in cleanly beneath the devices.
+   - Scroll 0.88 -> 1.00: Full showcase + buttons locked & interactive.
    ========================================================================== */
 
 .kh {
   --kp: 0;
-  --kh-cover: 120vmax;
-  --kh-min: 100vmin;
-  --kh-lift: 16vh;
-  --a: clamp(0, calc(var(--kp) / 0.45), 1);
-  --b: clamp(0, calc((var(--kp) - 0.5) / 0.3), 1);
-  --ea: calc(var(--a) * var(--a) * (3 - 2 * var(--a)));
-  --eb: calc(var(--b) * var(--b) * (3 - 2 * var(--b)));
-  --r-big: calc(var(--kh-min) * 0.21);
-  --r-small: calc(var(--kh-min) * 0.105);
-  --r1: calc(var(--kh-cover) + (var(--r-big) - var(--kh-cover)) * var(--ea));
-  --r: calc(var(--r1) + (var(--r-small) - var(--r1)) * var(--eb));
+
+  /* Phase 1: 405 initial mark shrinks & merges into phone (0..0.22) */
+  --a: clamp(0, calc(var(--kp) / 0.22), 1);
+  --merge: calc(var(--a) * var(--a) * (3 - 2 * var(--a)));
+
+  /* Middle phone zooms in from scale 1.85 down to 1.00 (0.00..0.26) */
+  --mid-t: clamp(0, calc(var(--kp) / 0.26), 1);
+  --mid-in: calc(1 - (1 - var(--mid-t)) * (1 - var(--mid-t)) * (1 - var(--mid-t)));
+
+  /* Devices fan out smoothly from behind middle phone (0.28..0.68) */
+
+  /* Stage slightly lifts to make room for brand lockup (0.58..0.74) */
+  --dev-lift: clamp(0, calc((var(--kp) - 0.58) / 0.16), 1);
+  --dev-lift-e: calc(var(--dev-lift) * var(--dev-lift) * (3 - 2 * var(--dev-lift)));
+
+  /* Brand lockup & buttons rise in under the middle phone (0.62..0.76) */
+  --b: clamp(0, calc((var(--kp) - 0.62) / 0.14), 1);
+  --brand-in: calc(var(--b) * var(--b) * (3 - 2 * var(--b)));
 
   position: relative;
-  height: 230vh;
+  height: 380vh;
 }
 
 .kh-stage {
   position: sticky;
   top: 0;
+  width: 100%;
   height: 100vh;
   height: 100svh;
   overflow: hidden;
-  background: #000;
+  background: #000 url('/hero/banner-bg.png') center / cover no-repeat;
   isolation: isolate;
+}
+
+/* Cinematic dark vignette */
+.kh-stage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.12) 0%, rgba(0, 0, 0, 0.55) 75%, #000 100%);
+  pointer-events: none;
+  z-index: 1;
 }
 
 .kh-sr {
@@ -45,153 +69,84 @@
   white-space: nowrap;
 }
 
-/* ------------------------------------------------------------- the visual */
+/* ----------------------------- Plain Initial 405 Key Visual (At Scroll 0) */
 
-.kh-kv {
+.kh-plain-kv {
   position: absolute;
-  inset: 0;
-  z-index: 2;
-  clip-path: circle(var(--r) at 50% 50%);
-  transform: translate3d(0, calc(var(--eb) * var(--kh-lift) * -1), 0);
-  will-change: clip-path, transform;
-}
-
-.kh-art {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  /* Black, lit warm from the left: the mark's own ground. */
-  background:
-    radial-gradient(120% 90% at 8% 30%, #3a2a0c 0%, #1a1206 40%, transparent 75%),
-    linear-gradient(160deg, #1c150a 0%, #0b0805 55%, #020101 100%);
-  transform: scale(calc(1 - 0.55 * var(--ea) - 0.2 * var(--eb)));
-  transform-origin: 50% 50%;
-}
-
-.kh-shape {
-  position: absolute;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  translate: -50% -50%;
-}
-
-/* A sheet of champagne light across the top, lit from its lower edge. */
-.kh-shape-sky {
-  left: 62%;
-  top: -46%;
-  width: 150vmax;
-  background: radial-gradient(
-    circle at 50% 100%,
-    #ffeec0 0%,
-    #e8b54a 4%,
-    #a8741c 10%,
-    #4a3108 22%,
-    #160f05 40%,
-    #080502 55%,
-    transparent 72%
-  );
-  box-shadow: 0 0 0 1px rgba(255, 226, 160, 0.4);
-}
-
-/* A glossy black sphere with a gold rim, low on the right: the mark's body. */
-.kh-shape-moon {
-  left: 104%;
-  top: 92%;
-  width: 92vmax;
-  background: radial-gradient(
-    circle at 28% 22%,
-    #fff3cf 0%,
-    #8a6a2c 10%,
-    #2a2016 26%,
-    #0d0a07 52%,
-    #030202 78%
-  );
-  box-shadow:
-    inset 0 0 0 2px rgba(255, 214, 120, 0.75),
-    inset 0 14px 40px rgba(255, 200, 100, 0.22),
-    0 0 70px rgba(255, 180, 70, 0.3);
-}
-
-/* Molten gold: the mark's rim light, as a sphere, from white-hot at its lit edge to black. */
-.kh-shape-sun {
-  left: 42%;
-  top: 128%;
-  width: 110vmax;
-  background: radial-gradient(
-    circle at 30% 14%,
-    #fff6d8 0%,
-    #f2c14e 3.5%,
-    #8a5d14 9%,
-    #2a1c08 20%,
-    #0b0805 38%,
-    #030202 64%
-  ),
-    radial-gradient(circle at 12% 30%, rgba(255, 200, 90, 0.35), transparent 34%);
-  background-blend-mode: screen;
-  box-shadow:
-    inset 0 0 0 2px rgba(255, 232, 170, 0.85),
-    inset 0 18px 60px rgba(255, 210, 120, 0.35),
-    0 0 90px rgba(245, 190, 70, 0.45);
-}
-
-.kh-mark {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-content: center;
-  justify-items: center;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, calc(-50% + var(--merge) * 20px)) scale(calc(1 - 0.25 * var(--merge)));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   text-align: center;
-  transform: scale(calc(1 - 0.4 * var(--ea) - 0.25 * var(--eb)));
-  transform-origin: 50% 50%;
+  z-index: 10;
+  opacity: clamp(0, calc(1 - var(--merge) * 1.6), 1);
+  pointer-events: none;
+  will-change: transform, opacity;
 }
 
-.kh-num {
+.kh-plain-num {
   margin: 0;
-  font-size: clamp(110px, 24vmin, 230px);
-  font-weight: 700;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: clamp(96px, 16vw, 190px);
+  font-weight: 800;
   line-height: 0.88;
   letter-spacing: -0.055em;
   font-variant-numeric: tabular-nums;
   color: transparent;
-  /* Polished gold: a highlight across the top, a darker band through the middle. */
+  /* Frosted liquid glass surface matching OPPO 17 */
   background: linear-gradient(
-    172deg,
-    #fffaf0 0%,
-    #ffe7a3 22%,
-    #f2c14e 46%,
-    #b8862a 62%,
-    #ffe39a 84%,
-    #fff6dc 100%
+    155deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(255, 255, 255, 0.70) 18%,
+    rgba(255, 255, 255, 0.25) 45%,
+    rgba(255, 255, 255, 0.38) 70%,
+    rgba(255, 255, 255, 0.90) 92%,
+    rgba(255, 255, 255, 1.0) 100%
   );
   -webkit-background-clip: text;
   background-clip: text;
-  filter: drop-shadow(0 12px 28px rgba(20, 10, 0, 0.6));
+  -webkit-text-stroke: 1.5px rgba(255, 255, 255, 0.72);
+  filter: drop-shadow(0 0 35px rgba(255, 255, 255, 0.42))
+          drop-shadow(0 18px 45px rgba(0, 0, 0, 0.75));
+  text-shadow: 0 0 24px rgba(255, 255, 255, 0.4);
 }
 
-.kh-name {
-  margin: 0.32em 0 0;
-  font-size: clamp(44px, 7.5vmin, 72px);
-  font-weight: 500;
-  line-height: 1;
+.kh-plain-name {
+  margin: 0.14em 0 0;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: clamp(36px, 5.2vw, 62px);
+  font-weight: 600;
   letter-spacing: -0.02em;
-  color: #fff1cc;
-  text-shadow: 0 2px 18px rgba(30, 18, 0, 0.55);
+  color: #ffffff;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.65);
 }
 
-.kh-line {
+.kh-plain-line {
   margin: 0.45em 0 0;
-  font-size: clamp(20px, 3vmin, 28px);
-  font-weight: 500;
-  color: #fff1cc;
-  opacity: calc(1 - var(--ea) * 1.6);
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: clamp(15px, 2.0vw, 23px);
+  font-weight: 400;
+  letter-spacing: -0.008em;
+  color: rgba(255, 255, 255, 0.96);
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.5);
 }
 
-/* ------------------------------------------------------------ the screens */
+/* --------------------------------------------------- The 5 OPPO Devices Stage */
 
 .kh-devices {
   position: absolute;
-  inset: 0;
-  z-index: 1;
+  left: 50%;
+  top: 50%;
+  /* Maintain the exact 2518:1294 (~1.946) aspect ratio of OPPO's showcase */
+  width: min(100vw, calc(100vh * 2518 / 1294));
+  height: min(calc(100vw * 1294 / 2518), 100vh);
+  transform: translate(-50%, calc(-50% - var(--dev-lift-e) * 11vh));
+  pointer-events: none;
+  z-index: 5;
+  will-change: transform;
 }
 
 .kh-dev {
@@ -199,148 +154,248 @@
   left: var(--x);
   top: var(--y);
   width: var(--w);
-  aspect-ratio: 720 / 1280;
-  border-radius: calc(var(--w) * 0.13);
-  padding: calc(var(--w) * 0.022);
-  background: #1c1c1f;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
-    0 30px 70px rgba(0, 0, 0, 0.6);
-  opacity: calc(var(--ea) * 0.5 + var(--eb) * 0.5);
-  filter: grayscale(calc(0.75 * (1 - var(--eb)))) brightness(calc(0.5 + 0.5 * var(--eb)));
-  transform: translate3d(0, calc((0.6 - var(--kp)) * 140px * var(--depth)), 0)
-    scale(calc(1.14 - 0.14 * var(--ea))) rotate(var(--rot));
-  will-change: transform, opacity, filter;
-}
-
-.kh-dev-wide {
-  aspect-ratio: 1280 / 720;
-  border-radius: calc(var(--w) * 0.05);
-  padding: calc(var(--w) * 0.012);
+  height: var(--h);
+  z-index: var(--z, 1);
+  will-change: transform, opacity;
 }
 
 .kh-dev img {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  border-radius: inherit;
+  object-fit: contain;
+  filter: drop-shadow(0 20px 45px rgba(0, 0, 0, 0.85));
 }
 
-.kh-dev:not(.kh-dev-wide) img {
-  border-radius: calc(var(--w) * 0.11);
+/* -------------------------------------------------------------- Middle Phone */
+
+.kh-dev-phone-middle {
+  z-index: 5;
+  /* Smoothly zooms out from scale 1.85 down to 1.00 as it arrives in center, matching OPPO */
+  opacity: var(--mid-in);
+  transform: translate3d(0, calc((1 - var(--mid-in)) * 24px), 0)
+    scale(calc(1.85 - 0.85 * var(--mid-in)));
+  transform-origin: 50% 50%;
 }
 
-.kh-dev-wide img {
-  border-radius: calc(var(--w) * 0.04);
+.kh-mid-app {
+  position: relative;
+  z-index: 1;
 }
 
-/* ---------------------------------------------------------------- the copy */
+/* ----------------------------------------------------- Surrounding 4 Devices */
 
-.kh-copy {
+.kh-dev:not(.kh-dev-phone-middle) {
+  /* Fluid individual progress and quartic ease-out per device (OPPO ColorOS physics) */
+  --prog: clamp(0, calc((var(--kp) - var(--t-start, 0.28)) / var(--t-dur, 0.40)), 1);
+  --p: calc(1 - var(--prog));
+  --ease: calc(1 - var(--p) * var(--p) * var(--p) * var(--p));
+  /* Emerges solid from under middle phone without ghost transparency */
+  opacity: clamp(0, calc(var(--prog) * 6), 1);
+  transform: translate3d(
+      calc(var(--dx) * (1 - var(--ease))),
+      calc(var(--dy) * (1 - var(--ease))),
+      0
+    );
+  transform-origin: 50% 50%;
+}
+
+/* ------------------------------------------------ Brand Lockup & Actions */
+
+.kh-brand-lockup {
   position: absolute;
-  z-index: 3;
+  z-index: 20;
   left: 50%;
-  top: calc(50% - var(--kh-lift) + var(--r-small) + 30px);
-  width: min(500px, 100% - 48px);
-  translate: -50% 0;
+  bottom: clamp(24px, 6.5vh, 64px);
+  width: min(640px, 92vw);
+  transform: translate(-50%, calc((1 - var(--brand-in)) * 30px));
   text-align: center;
-  opacity: clamp(0, calc(var(--eb) * 2 - 1), 1);
-  transform: translate3d(0, calc((1 - var(--eb)) * 48px), 0);
+  opacity: var(--brand-in);
   pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
-.kh[data-settled='true'] .kh-copy {
+.kh[data-settled='showcase'] .kh-brand-lockup {
   pointer-events: auto;
 }
 
-.kh-title {
+.kh-brand-title {
   margin: 0;
-  font-size: clamp(26px, 3.8vmin, 34px);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.35em;
+  line-height: 1;
 }
 
-.kh-body {
-  margin: 14px auto 0;
-  max-width: 340px;
-  font-size: 16px;
-  line-height: 1.5;
-  color: #c7c7cc;
+.kh-brand-name {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: clamp(34px, 5.2vw, 60px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #ffffff;
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.85);
 }
 
-.kh-actions {
+.kh-brand-ver {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: clamp(34px, 5.2vw, 60px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  background: linear-gradient(135deg, #ffe082 0%, #ffb300 45%, #ff8f00 75%, #ff6f00 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 16px rgba(255, 179, 0, 0.4));
+}
+
+.kh-brand-line {
+  margin: 10px auto 0;
+  max-width: 500px;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: clamp(16px, 2.2vw, 24px);
+  font-weight: 400;
+  letter-spacing: -0.012em;
+  color: rgba(255, 255, 255, 0.94);
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.85);
+}
+
+.kh-brand-actions {
   margin-top: 22px;
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 20px;
+  gap: 16px;
   flex-wrap: wrap;
 }
 
 .kh-pill {
   display: inline-flex;
   align-items: center;
-  height: 40px;
-  padding: 0 22px;
+  justify-content: center;
+  height: 46px;
+  padding: 0 30px;
   border-radius: 999px;
-  background: var(--ink);
-  color: #000;
-  font-size: 15px;
-  font-weight: 500;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 15.5px;
+  font-weight: 600;
   text-decoration: none;
-  transition: transform 0.2s var(--ease), background 0.2s var(--ease);
+  cursor: pointer;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease, border-color 0.2s ease;
 }
 
-.kh-pill:hover {
-  background: #fff;
-  transform: scale(1.03);
+.kh-pill-primary {
+  background: #ffffff;
+  color: #000000;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55), 0 0 20px rgba(255, 255, 255, 0.12);
 }
 
-.kh-link {
-  color: var(--ink);
-  font-size: 15px;
-  text-decoration: none;
+.kh-pill-primary:hover {
+  background: #f0f0f5;
+  transform: scale(1.04);
 }
 
-.kh-link:hover {
-  text-decoration: underline;
+.kh-pill-secondary {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
-/* ------------------------------------------------------------------ smaller */
+.kh-pill-secondary:hover {
+  background: rgba(255, 255, 255, 0.20);
+  border-color: rgba(255, 255, 255, 0.45);
+  transform: scale(1.04);
+}
 
-@media (max-width: 760px) {
-  .kh-dev-top,
-  .kh-dev-far {
-    display: none;
+/* ---------------------------------------------------------------- Responsive */
+
+@media (max-width: 768px) {
+  .kh-devices {
+    /* Match OPPO mobile layout: size stage to 250vw width so the center phone
+       takes ~38% of mobile viewport, and all 4 surrounding devices peek in
+       from the 4 edges exactly matching OPPO's mobile design */
+    width: 250vw;
+    height: calc(250vw * 1294 / 2518);
+    left: 50%;
+    top: 36%;
+    transform: translate(-50%, calc(-50% - var(--dev-lift-e) * 6vh));
   }
 
+  /* All 5 devices remain visible on mobile, fanning out and bleeding off-screen */
   .kh-dev {
-    --w: 34vw !important;
+    display: block !important;
   }
 
-  .kh-dev-wide {
-    --w: 64vw !important;
-    top: 72% !important;
-    left: -18% !important;
+  .kh-plain-num {
+    font-size: clamp(80px, 22vw, 130px);
   }
 
-  .kh-copy {
-    width: min(360px, 100% - 32px);
+  .kh-plain-name {
+    font-size: clamp(30px, 8.5vw, 46px);
+  }
+
+  .kh-plain-line {
+    font-size: clamp(14px, 3.8vw, 18px);
+  }
+
+  .kh-brand-lockup {
+    bottom: clamp(18px, 4.5vh, 36px);
+    width: 92vw;
+  }
+
+  .kh-brand-title {
+    gap: 0.25em;
+  }
+
+  .kh-brand-name {
+    font-size: clamp(28px, 7.5vw, 44px);
+  }
+
+  .kh-brand-ver {
+    font-size: clamp(28px, 7.5vw, 44px);
+  }
+
+  .kh-brand-line {
+    font-size: clamp(14px, 3.8vw, 17px);
+    margin-top: 6px;
+  }
+
+  .kh-brand-actions {
+    margin-top: 16px;
+    gap: 12px;
+  }
+
+  .kh-pill {
+    height: 42px;
+    padding: 0 22px;
+    font-size: 14.5px;
   }
 }
 
-/* Reduced motion: no hold, the settled frame as a plain section. */
+/* Reduced motion */
 .kh[data-static='true'] {
-  height: auto;
+  height: 100vh;
 }
 
-.kh[data-static='true'] .kh-stage {
-  position: relative;
-  height: max(100svh, 720px);
+.kh[data-static='true'] .kh-plain-kv {
+  display: none;
 }
 
-.kh[data-static='true'] .kh-copy {
+.kh[data-static='true'] .kh-devices {
+  transform: translate(-50%, -50%);
+}
+
+.kh[data-static='true'] .kh-dev {
+  transform: none;
+  opacity: 1;
+}
+
+.kh[data-static='true'] .kh-brand-lockup {
+  opacity: 1;
+  transform: translate(-50%, 0);
   pointer-events: auto;
 }

@@ -364,18 +364,20 @@ export default function App() {
       <main>
         <KeyHero
           id="overview"
-          version={LATEST_RELEASE.version.split('.').pop()}
-          fullVersion={LATEST_RELEASE.version}
-          line="Ultra fluid. Knows your music."
+          version="405"
+          fullVersion="1.0.405"
+          line="Silky Smooth. Knows your music."
+
+
           title="Ultra fluid. Knows your music."
           body="Live glass on every surface, lyrics that land on the beat, and color that follows whatever is playing. Open source, for Android 13 and newer."
           primary={
-            <a className="kh-pill" href={APK_URL} target="_blank" rel="noreferrer">
-              Download {LATEST_RELEASE.version}
+            <a className="kh-pill kh-pill-primary" href={APK_URL} target="_blank" rel="noreferrer">
+              Download Exhale
             </a>
           }
           secondary={
-            <Link className="kh-link" to={RELEASE_PATH}>
+            <Link className="kh-pill kh-pill-secondary" to={RELEASE_PATH}>
               What’s new ›
             </Link>
           }
