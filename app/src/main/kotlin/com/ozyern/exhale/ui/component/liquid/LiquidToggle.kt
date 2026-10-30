@@ -1,6 +1,7 @@
 package com.ozyern.exhale.ui.component.liquid
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,8 +45,14 @@ import com.kyant.backdrop.shadow.Shadow
 import kotlinx.coroutines.flow.collectLatest
 
 /**
- * The app's toggle: the iOS switch from the cupertino module, its thumb a drop of liquid glass, its
- * track in the app's own accent rather than system green.
+ * The app's toggle, as ColorOS draws it: a wide pill, ColorOS blue when on and a light grey when
+ * off, with a round white thumb.
+ *
+ * Its motion is ColorOS's own, measured frame by frame from a screen recording of the system
+ * switch: the thumb glides across in about 280 ms on a strong ease-out with no bounce, and the
+ * track's colour follows the thumb the whole way (through a soft grey-blue, as Compose blends
+ * colours in Oklab) rather than flipping at either end. The thumb stays a disc throughout. The
+ * spring and the stretch while held that this used to have were not in the original.
  */
 @Composable
 fun LiquidToggle(
@@ -54,15 +61,58 @@ fun LiquidToggle(
     modifier: Modifier = Modifier,
     @Suppress("UNUSED_PARAMETER") backdrop: Backdrop = rememberInContentBackdrop(),
 ) {
-    com.ozyern.exhale.cupertino.CupertinoSwitch(
-        checked = checked,
-        onCheckedChange = onCheckedChange,
-        modifier = modifier,
-        colors = com.ozyern.exhale.cupertino.CupertinoSwitchDefaults.colors(
-            checkedTrackColor = MaterialTheme.colorScheme.primary,
-        ),
+    val dark = isSystemInDarkTheme()
+    val progress by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (checked) 1f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(ToggleTravelMs, easing = ColorOsSwitchEasing),
+        label = "toggle",
+    )
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    // ColorOS's off track: a light grey that reads on both the dark card and the pressed row.
+    val offTrack = if (dark) Color(0xFF8A8A8E) else Color(0xFFD5D5D8)
+    val track = lerp(offTrack, ColorOsSwitchBlue, progress)
+    Box(
+        modifier = modifier
+            .size(width = 50.dp, height = 28.dp)
+            .toggleable(
+                value = checked,
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Switch,
+                onValueChange = onCheckedChange,
+            )
+            .drawBehind {
+                val radius = size.height / 2f
+                drawRoundRect(track, cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius))
+                val inset = 3.dp.toPx()
+                val thumbHeight = size.height - inset * 2f
+                val thumbWidth = thumbHeight
+                val travel = size.width - inset * 2f - thumbWidth
+                val left = inset + travel * progress
+                drawRoundRect(
+                    color = Color.Black.copy(alpha = 0.12f),
+                    topLeft = androidx.compose.ui.geometry.Offset(left, inset + 1.dp.toPx()),
+                    size = androidx.compose.ui.geometry.Size(thumbWidth, thumbHeight),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(thumbHeight / 2f),
+                )
+                drawRoundRect(
+                    color = Color.White,
+                    topLeft = androidx.compose.ui.geometry.Offset(left, inset),
+                    size = androidx.compose.ui.geometry.Size(thumbWidth, thumbHeight),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(thumbHeight / 2f),
+                )
+            },
     )
 }
+
+/** ColorOS's switch blue. */
+private val ColorOsSwitchBlue = Color(0xFF1F7BFF)
+
+/** How long the thumb takes to cross, from the recording: about eight frames at 30 fps. */
+private const val ToggleTravelMs = 280
+
+/** Quick off the mark and a long gentle landing, with no overshoot. */
+private val ColorOsSwitchEasing = androidx.compose.animation.core.CubicBezierEasing(0.3f, 0f, 0.1f, 1f)
 
 /**
  * The previous toggle: liquid glass with lens refraction and a smooth damped animation.

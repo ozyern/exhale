@@ -22,6 +22,40 @@ import java.util.concurrent.atomic.AtomicReference
  * through it, and a preset's speed is what the clock shows. EXHALE_SMOKE=1 to run (plays muted).
  */
 class SoundEffectsSmokeTest {
+    /** The equalizer's linear-phase FIR: this libmpv accepts it, and the music plays on through it. */
+    @Test
+    fun linearPhaseEqualizerPlays() = runBlocking {
+        assumeTrue("set EXHALE_SMOKE=1 to run", System.getenv("EXHALE_SMOKE") == "1")
+        YouTube.visitorData = YouTube.visitorData().getOrThrow()
+        val song = YouTube.search("Sabrina Carpenter Espresso", YouTube.SearchFilter.FILTER_SONG)
+            .getOrThrow().items.filterIsInstance<SongItem>().first()
+        val stream = StreamResolver.resolve(song.id).getOrThrow()
+
+        val settings = Settings(equalizerEnabled = true, equalizerBands = listOf(4, 3, 1, 0, -1, 0, 1, 2, 3, 2))
+        val chain = AudioEffects.filterChain(settings)
+        println("af: $chain")
+        assertTrue("not the FIR equalizer", "firequalizer" in chain)
+
+        val loaded = CountDownLatch(1)
+        val position = AtomicReference(0.0)
+        Mpv(object : Mpv.Listener {
+            override fun onFileLoaded() = loaded.countDown()
+            override fun onPositionChanged(seconds: Double) = position.set(seconds)
+            override fun onError(message: String) = loaded.countDown()
+        }).use { mpv ->
+            mpv.setVolume(0)
+            assertTrue("mpv refused the FIR equalizer", mpv.setProperty("af", chain))
+            mpv.load(stream.url, stream.headers)
+            assertTrue("file never loaded", loaded.await(30, TimeUnit.SECONDS))
+            Thread.sleep(1_500)
+            val start = position.get()
+            Thread.sleep(5_000)
+            println("af after load: ${mpv.getProperty("af")}")
+            println("stream: ${stream.mimeType} ${stream.bitrate / 1000} kbps")
+            assertTrue("playback stalled under the FIR equalizer", position.get() - start > 3.5)
+        }
+    }
+
     @Test
     fun eightDAndNightcorePlay() = runBlocking {
         assumeTrue("set EXHALE_SMOKE=1 to run", System.getenv("EXHALE_SMOKE") == "1")

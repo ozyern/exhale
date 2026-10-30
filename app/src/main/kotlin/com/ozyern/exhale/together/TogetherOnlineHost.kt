@@ -91,7 +91,15 @@ class TogetherOnlineHost(
 
     var onEvent: ((TogetherServerEvent) -> Unit)? = null
 
-    suspend fun connect(wsUrl: String) {
+    /** The last reason [connect] couldn't get through, for the message shown once retrying stops. */
+    var lastConnectError: String? = null
+        private set
+
+    /**
+     * Connects to the relay and stays until the connection ends. Returns whether it got in at all;
+     * the caller decides whether to try again, since the relay holds the room while the host is away.
+     */
+    suspend fun connect(wsUrl: String): Boolean {
         disconnect()
         hostParticipantId = null
         guests.clear()
@@ -121,15 +129,18 @@ class TogetherOnlineHost(
                             displayName = hostDisplayName.trim(),
                         )
                     send(TogetherJson.json.encodeToString(TogetherMessage.serializer(), hello))
+                    lastConnectError = null
                     runLoop(this, candidate)
                 }
-                return
+                return true
             } catch (t: Throwable) {
+                if (t is kotlinx.coroutines.CancellationException) throw t
                 lastError = t
             }
         }
 
-        onEvent?.invoke(TogetherServerEvent.Error(connectionFailureMessage(lastError), lastError))
+        lastConnectError = connectionFailureMessage(lastError)
+        return false
     }
 
     private fun alternateWebSocketSchemeOrNull(url: String): String? {
@@ -193,7 +204,10 @@ class TogetherOnlineHost(
                     ),
                 )
             }
-            guest.pending = false
+            // The relay sends them away without telling the host, so they leave the list here.
+            // Marking them "not pending" used to show someone just turned away as in the room.
+            guests.remove(participantId)
+            rebuildParticipantsSnapshot()
             return
         }
 
@@ -230,6 +244,8 @@ class TogetherOnlineHost(
                 ),
             )
         }
+        guests.remove(participantId)
+        rebuildParticipantsSnapshot()
     }
 
     suspend fun banParticipant(participantId: String, reason: String?) {
@@ -242,6 +258,8 @@ class TogetherOnlineHost(
                 ),
             )
         }
+        guests.remove(participantId)
+        rebuildParticipantsSnapshot()
     }
 
     suspend fun broadcastRoomState(state: TogetherRoomState) {
@@ -309,7 +327,7 @@ class TogetherOnlineHost(
                         val message =
                             runCatching { TogetherJson.json.decodeFromString(TogetherMessage.serializer(), text) }
                                 .getOrElse {
-                                    onEvent?.invoke(TogetherServerEvent.Error("Failed to decode message", it))
+                                    onEvent?.invoke(TogetherServerEvent.Error("Failed to decode message", it, fatal = false))
                                     continue
                                 }
 
@@ -375,13 +393,15 @@ class TogetherOnlineHost(
                         }
                     }
                 } catch (t: Throwable) {
-                    onEvent?.invoke(TogetherServerEvent.Error("Connection loop failed", t))
+                    if (t !is kotlinx.coroutines.CancellationException) {
+                        onEvent?.invoke(TogetherServerEvent.Error("Connection loop failed", t, fatal = false))
+                    }
                 } finally {
+                    // The relay keeps the guests while the host is away and lists them again on return.
                     hostParticipantId = null
                     guests.clear()
                     lastParticipants = emptyList()
                     runCatching { session.close(CloseReason(CloseReason.Codes.NORMAL, "Disconnected")) }
-                    onEvent?.invoke(TogetherServerEvent.Error("Disconnected", null))
                 }
             }
         loopJob?.join()

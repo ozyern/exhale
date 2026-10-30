@@ -8,6 +8,7 @@
 
 package com.ozyern.exhale.ui.screens.settings
 
+import com.ozyern.exhale.ui.screens.feedIntro
 import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.ui.component.settingsGlassGroup
 import androidx.compose.animation.AnimatedVisibility
@@ -197,6 +198,15 @@ fun AccountSettings(
 
     val hasUpdate = Updater.hasUpdate(latestVersionName, BuildConfig.VERSION_NAME)
 
+    // The sheet's contents settle in one block after another as it opens — the person, then the
+    // numbers, then where to go — on the same short rise the Home feed arrives with, instead of
+    // the whole sheet being there at once under a sliding plate.
+    val intro = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) {
+        intro.animateTo(1f, tween(AccountIntroMillis, easing = androidx.compose.animation.core.LinearOutSlowInEasing))
+    }
+    val introProgress: () -> Float = { intro.value }
+
     Column(
         // Transparent: the host (frosted glass sheet) paints the surface — an opaque
         // background here would kill the translucent iOS look.
@@ -226,7 +236,23 @@ fun AccountSettings(
                         navController.navigate(buildLoginRoute())
                     }
                 },
+                modifier = Modifier.feedIntro(0f, introProgress),
             )
+
+            // Signed out, signing in is the one thing this sheet is for, so it sits right under
+            // "Not signed in" instead of below four rows of places to go. Signed in, the session
+            // action is sign *out*, which stays at the foot where a stray thumb will not find it.
+            if (!isLoggedIn) {
+                AccountSignInOutRow(
+                    isLoggedIn = false,
+                    onSignIn = {
+                        onClose()
+                        navController.navigate(buildLoginRoute())
+                    },
+                    onSignOut = {},
+                    modifier = Modifier.feedIntro(0.6f, introProgress),
+                )
+            }
 
             // What is in the library, as three numbers you can tap.
             //
@@ -240,6 +266,7 @@ fun AccountSettings(
                 artists = libraryArtists,
                 albums = libraryAlbums,
                 onOpen = openLibrary,
+                modifier = Modifier.feedIntro(1.2f, introProgress),
             )
 
             // Where this sheet goes, as a grouped list.
@@ -250,6 +277,7 @@ fun AccountSettings(
             // already is.
             Column(
                 modifier = Modifier
+                    .feedIntro(1.8f, introProgress)
                     .fillMaxWidth()
                     .settingsGlassGroup(RoundedCornerShape(SettingsGroupCornerRadius)),
             ) {
@@ -300,14 +328,14 @@ fun AccountSettings(
             // tile allows — and a destructive, irreversible action was sitting at identical weight
             // to "History", one stray thumb away from ending the session with no confirmation and
             // no undo. It is now a full-width row of its own, and signing out asks first.
-            AccountSignInOutRow(
-                isLoggedIn = isLoggedIn,
-                onSignIn = {
-                    onClose()
-                    navController.navigate(buildLoginRoute())
-                },
-                onSignOut = { showSignOutConfirm = true },
-            )
+            if (isLoggedIn) {
+                AccountSignInOutRow(
+                    isLoggedIn = true,
+                    onSignIn = {},
+                    onSignOut = { showSignOutConfirm = true },
+                    modifier = Modifier.feedIntro(2.4f, introProgress),
+                )
+            }
 
             if (showSignOutConfirm) {
                 // The app's iOS alert rather than Material's: 290dp wide, centred 17sp title,
@@ -624,9 +652,10 @@ private fun AccountIdentityCard(
     accountEmail: String,
     accountImageUrl: String?,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .bounceClick(onClick = onClick, shape = RoundedCornerShape(SettingsGroupCornerRadius))
             .padding(top = 2.dp, bottom = 14.dp),
@@ -709,9 +738,10 @@ private fun AccountLibraryStrip(
     artists: Int,
     albums: Int,
     onOpen: (LibraryFilter) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .liquidGlassSurface(RoundedCornerShape(20.dp)),
         verticalAlignment = Alignment.CenterVertically,
@@ -848,6 +878,7 @@ private fun AccountSignInOutRow(
     isLoggedIn: Boolean,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     // A row in a group of its own, with the label centred - which is how iOS renders the one
     // action that ends or begins a session, in Settings and in Music alike. It was a filled accent
@@ -858,7 +889,7 @@ private fun AccountSignInOutRow(
     val accent =
         if (isLoggedIn) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .bounceClick(
                 onClick = if (isLoggedIn) onSignOut else onSignIn,
@@ -1402,3 +1433,6 @@ private fun PlaylistSelectionDialog(onDismiss: () -> Unit) {
         }
     )
 }
+
+/** How long the account sheet's contents take to settle in after it opens, in ms. */
+private const val AccountIntroMillis = 560

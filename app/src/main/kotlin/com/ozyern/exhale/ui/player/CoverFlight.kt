@@ -124,14 +124,16 @@ class CoverFlight {
     /** Whether the player on screen takes part. Styles without a full-bleed cover keep their morph. */
     var enabled by mutableStateOf(false)
 
-    private class MiniEnd(val rect: Rect, val corner: Dp) {
+    private class MiniEnd(val owner: Any, val rect: Rect, val corner: Dp, val visible: () -> Boolean) {
         /** Gone from the screen, but still the best idea of where the cover lives. */
         var released = false
     }
 
-    // Every mini cover on screen, most recently measured last. More than one exists for a moment
-    // when a song changes (the old one slides out as the new one slides in) or the dock changes
-    // state; the newest is the one on screen.
+    // Every place a mini cover has been seen at rest, by slot: the sheet's pill, the dock's open
+    // pill, the dock's folded row. Kept per slot rather than "the latest" — the latest was often a
+    // pill nobody could see (the dock measures its own while the sheet's shows), or the shape the
+    // dock was in when the player opened rather than the one it is in when it closes, and the cover
+    // flew home to the wrong place. A close aims at the slot on screen now.
     private val minis = LinkedHashMap<Any, MiniEnd>()
 
     private var space: LayoutCoordinates? = null
@@ -151,7 +153,11 @@ class CoverFlight {
     // Where the mini cover was last seen at rest, kept for the life of the process. Coming back to
     // the app builds a new activity, and with the player open the mini cover is never measured at
     // rest before the first close — which without this was a plain slide down, no cover.
-    private fun mini(): MiniEnd? = minis.values.lastOrNull() ?: lastMini
+    private fun mini(): MiniEnd? =
+        minis.values.lastOrNull { it.visible() && !it.released }
+            ?: minis.values.lastOrNull { it.visible() }
+            ?: minis.values.lastOrNull()
+            ?: lastMini
 
     /** True while the travelling cover stands in for both real ones. */
     fun inFlight(): Boolean {
@@ -164,13 +170,21 @@ class CoverFlight {
         return p > REST && p < 1f - REST
     }
 
-    /** A mini player's cover, as it is laid out. Only measured with the player closed. */
-    fun Modifier.reportMini(owner: Any, corner: Dp): Modifier = this
+    /**
+     * A mini player's cover, as it is laid out. Only measured with the player closed. [slot] names
+     * the place it sits (one per place, whatever song is in it), and [visible] says whether that
+     * place is the one showing the song right now.
+     */
+    fun Modifier.reportMini(
+        owner: Any,
+        corner: Dp,
+        slot: Any = owner,
+        visible: () -> Boolean = { true },
+    ): Modifier = this
         .onGloballyPositioned { coordinates ->
             if (progress() <= REST) {
-                minis.values.removeAll { it.released }
-                minis.remove(owner)
-                minis[owner] = MiniEnd(coordinates.windowRect(), corner).also { lastMini = it }
+                minis.remove(slot)
+                minis[slot] = MiniEnd(owner, coordinates.windowRect(), corner, visible).also { lastMini = it }
             }
         }
         .graphicsLayer {
@@ -188,8 +202,8 @@ class CoverFlight {
      * close still has to fly to where it was. The next cover measured at rest replaces it.
      */
     fun releaseMini(owner: Any) {
-        val end = minis[owner] ?: return
-        if (minis.size > 1) minis.remove(owner) else end.released = true
+        // Kept, marked: the slot is still where the cover goes until something replaces it.
+        minis.values.forEach { if (it.owner === owner) it.released = true }
     }
 
     /** The player itself: the frame of reference its cover is measured in. */

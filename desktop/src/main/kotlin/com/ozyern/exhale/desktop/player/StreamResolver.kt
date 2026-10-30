@@ -173,6 +173,11 @@ object StreamResolver {
         }
     }
 
+    /** Drops a cached URL that mpv couldn't play, so the retry asks YouTube for a fresh one. */
+    fun forget(videoId: String) {
+        cached.remove(videoId)
+    }
+
     /** Fills the cache ahead of time; the result is only wanted for the next song's sake. */
     suspend fun warm(videoId: String) {
         resolve(videoId)
@@ -239,7 +244,10 @@ object StreamResolver {
             .filter { it.url != null || it.signatureCipher != null || it.cipher != null }
         // YouTube also serves "stable volume" renditions with the dynamic range squashed. Same codec and
         // bitrate, flatter sound: only ever used when there's nothing else.
-        val formats = playable.filterNot { it.isDynamicRangeCompressed() }.ifEmpty { playable }
+        val ordinary = playable.filterNot { it.isDynamicRangeCompressed() }.ifEmpty { playable }
+        // Eclipsa Audio (IAMF) renditions need an IAMF renderer, which the audio engine doesn't have:
+        // played as they are, only part of the mix would come out. The regular rendition is taken.
+        val formats = ordinary.filterNot { ImmersiveAudio.isEclipsa(it.mimeType) }.ifEmpty { ordinary }
         val ceiling = when (settings.audioQuality) {
             "LOW" -> 70_000
             "HIGH" -> 256_000
@@ -258,6 +266,9 @@ object StreamResolver {
                 }
             }
                 .thenByDescending { if (bitrateFirst) it.bitrate else 0 }
+                // Opus over AAC at the same rate (Premium's 256 kbps pair, say): the newer codec holds
+                // more of the music at any given bitrate, and it decodes through libopus here.
+                .thenByDescending { settings.audioCodec == "AUTO" && "opus" in it.mimeType }
                 .thenByDescending { it.url != null }
                 .thenByDescending { it.bitrate },
         )

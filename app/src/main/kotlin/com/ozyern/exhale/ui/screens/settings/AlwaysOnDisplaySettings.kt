@@ -694,7 +694,7 @@ private fun aodTimeoutLabelRes(seconds: Int): Int = when (seconds) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Sección con título y contenido en una tarjeta M3 con bordes suaves.
+ * A titled section, its content in a soft-edged M3 card.
  */
 @Composable
 private fun AodSettingsSection(
@@ -725,7 +725,7 @@ private fun AodSettingsSection(
 }
 
 /**
- * Fila con switch estilo M3 Expressive.
+ * A row with an M3 Expressive switch.
  */
 @Composable
 private fun AodSwitchRow(
@@ -777,7 +777,7 @@ private fun AodSwitchRow(
 }
 
 /**
- * Fila de slider con etiqueta de valor como pill M3 Expressive.
+ * A slider row, its value in an M3 Expressive pill.
  */
 @Composable
 private fun AodSliderRow(
@@ -830,7 +830,7 @@ private fun AodSliderRow(
 }
 
 /**
- * Pill / chip con color primario — M3 Expressive style.
+ * A pill / chip in the primary colour, M3 Expressive style.
  */
 @Composable
 private fun ExpressivePill(text: String) {
@@ -851,7 +851,7 @@ private fun ExpressivePill(text: String) {
 }
 
 /**
- * Chip de estilo de controles con preview visual.
+ * A controls-style chip with a preview.
  */
 @Composable
 private fun ControlStyleChip(
@@ -895,7 +895,7 @@ private fun ControlStyleChip(
             .padding(horizontal = 12.dp, vertical = 10.dp)
             .width(72.dp)
     ) {
-        // Mini preview del estilo de botón
+        // Small preview of the button style
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
@@ -1023,7 +1023,7 @@ private fun AodStyleCard(
             AodStylePreview(style = style)
         }
 
-        // Nombre + descripción
+        // Name and description
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
@@ -1049,7 +1049,7 @@ private fun AodStyleCard(
 }
 
 /**
- * Preview visual de cada estilo en miniaturas — extraído para limpieza.
+ * A small preview of each style.
  */
 @Composable
 private fun AodStylePreview(style: AodStyle) {
@@ -1355,7 +1355,7 @@ private fun AodStylePreview(style: AodStyle) {
             Box(modifier = Modifier.fillMaxSize()) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val c = Offset(size.width / 2f, size.height * 0.40f)
-                    // Glow exterior con tono violeta/azul para el preview
+                    // Violet/blue outer glow for the preview
                     drawCircle(
                         brush = Brush.radialGradient(
                             colors = listOf(
@@ -1422,7 +1422,7 @@ private fun AodStylePreview(style: AodStyle) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  CARD: Forma de portada
+//  CARD: Artwork shape
 // ═══════════════════════════════════════════════════════════════════════════
 
 @Composable

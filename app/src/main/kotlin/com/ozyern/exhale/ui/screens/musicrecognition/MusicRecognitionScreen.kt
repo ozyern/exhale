@@ -560,7 +560,7 @@ private suspend fun recordMicPcm16Mono(
             minBuffer,
         )
 
-        // Verificar si AudioRecord está inicializado correctamente
+        // Make sure AudioRecord initialised
         if (record.state != AudioRecord.STATE_INITIALIZED) {
             return@withContext ShortArray(0) to sampleRateHz
         }
@@ -572,7 +572,7 @@ private suspend fun recordMicPcm16Mono(
         try {
             record.startRecording()
 
-            // Verificar que está grabando
+            // Make sure it is recording
             if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
                 return@withContext ShortArray(0) to sampleRateHz
             }
@@ -604,7 +604,7 @@ private suspend fun recordMicPcm16Mono(
             runCatching { record.release() }
         }
     } catch (e: SecurityException) {
-        // Permiso denegado en tiempo de ejecución
+        // Permission denied at runtime
         e.printStackTrace()
         ShortArray(0) to sampleRateHz
     }

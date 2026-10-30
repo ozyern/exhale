@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import App from './App.jsx'
 import Release from './pages/Release.jsx'
 import ReleaseColorOS from './pages/ReleaseColorOS.jsx'
+import Release506 from './pages/Release506.jsx'
 import Support from './pages/Support.jsx'
 import { releaseByVersion } from './releases.js'
 import { useRoute } from './router.jsx'
@@ -86,6 +87,8 @@ export default function Site() {
   if (page === 'release') {
     // 1.0.405 onwards are laid out like OPPO's ColorOS release pages; the earlier
     // announcements keep the document they were written as.
+    // 1.0.506 is drawn in the key visual's own language, with its scroll-played stages.
+    if (release.layout === 'aurum') return <Release506 release={release} key={release.version} />
     if (release.layout === 'coloros') return <ReleaseColorOS release={release} key={release.version} />
     return <Release release={release} key={release.version} />
   }

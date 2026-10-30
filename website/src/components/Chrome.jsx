@@ -1,4 +1,5 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import { useScrolled } from '../hooks.js'
 import { Link } from '../router.jsx'
 import { MAINTAINER, RELEASES, REPO, TELEGRAM, TELEGRAM_CHANNEL } from '../content.js'
 import { LATEST_RELEASE as RELEASE } from '../releases.js'
@@ -15,32 +16,62 @@ export const RELEASE_PATH = `/release/${RELEASE.version}`
  */
 
 /**
- * The announcement strip.
+ * The announcement pill / popup.
  *
- * Full width, one sentence, and the only thing on the page above the nav. A
- * release is news exactly once; this is where news goes, and it is a link
- * rather than a banner you have to dismiss, because nothing here interrupts
- * anything.
+ * Floating frosted liquid glass capsule with shimmering New badge,
+ * release highlights, and optional dismissal.
  */
 export function AnnounceBar() {
+  const [dismissed, setDismissed] = useState(false)
+
+  if (dismissed) return null
+
   return (
-    <Link className="announce" to={RELEASE_PATH}>
-      <span className="announce-tag">New</span>
-      <span className="announce-text">
-        Exhale {RELEASE.version} — Liquid glass in every page, music videos over the
-        song’s own sound, and search that knows your music
-      </span>
-      <span className="announce-go" aria-hidden="true">
-        ›
-      </span>
-    </Link>
+    <aside className="announce-wrap" aria-label="Announcement">
+      <Link className="announce" to={RELEASE_PATH}>
+        <span className="announce-glow" aria-hidden="true" />
+        <span className="announce-tag">
+          <svg className="announce-spark" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M8 1l1.8 4.2L14 7l-4.2 1.8L8 13l-1.8-4.2L2 7l4.2-1.8L8 1z" />
+          </svg>
+          New
+        </span>
+        <span className="announce-text">
+          <strong className="announce-ver">Exhale {RELEASE.version}</strong>
+          <span className="announce-sep" aria-hidden="true">—</span>
+          <span className="announce-body">Live glass, word-synced lyrics & now on Windows Desktop</span>
+        </span>
+        <span className="announce-go" aria-hidden="true">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 3.5l4.5 4.5-4.5 4.5" />
+          </svg>
+        </span>
+      </Link>
+      <button
+        type="button"
+        className="announce-close"
+        onClick={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          setDismissed(true)
+        }}
+        aria-label="Dismiss announcement"
+        title="Dismiss announcement"
+      >
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M4 4l8 8M12 4l-8 8" />
+        </svg>
+      </button>
+    </aside>
   )
 }
 
 /** The thin global bar. Deliberately quiet; it is about the project, not the page. */
 export function TopBar() {
+  const scrolled = useScrolled(20)
   return (
-    <div className="topbar">
+    <div className={`topbar ${scrolled ? 'topbar-scrolled' : ''}`}>
+      <div className="topbar-glow" aria-hidden="true" />
       <nav className="topbar-inner" aria-label="Project">
         <Link className="wordmark" to="/" aria-label="Exhale, home">
           <Mark />

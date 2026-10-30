@@ -19,7 +19,12 @@ import kotlinx.coroutines.withContext
 class YouTubeQueue(
     private var endpoint: WatchEndpoint,
     override val preloadItem: MediaMetadata? = null,
+    override val shuffled: Boolean = false,
 ) : Queue {
+    // The playlist it was started from, taken before `next` replaces the endpoint. Radios
+    // ("RD…") are generated per play and are not a collection anyone sets anything on.
+    override val sourceId: String? = endpoint.playlistId?.takeUnless { it.startsWith("RD") }
+
     private var continuation: String? = null
 
     override suspend fun getInitialStatus(): Queue.Status {

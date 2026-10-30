@@ -24,6 +24,31 @@ data class PreferredArtist(val id: String, val name: String, val thumbnail: Stri
 
 data class SavedQueue(val songs: List<SongItem>, val index: Int, val positionSeconds: Double)
 
+/** Something pinned to the sidebar. A song plays when its row is clicked; the rest open their page. */
+data class Pin(val kind: Kind, val id: String, val title: String, val subtitle: String?, val thumbnail: String?) {
+    enum class Kind { Song, Album, Playlist, Artist }
+}
+
+/**
+ * The sidebar as the listener left it. [width] is in dp; [folded] holds the headings whose rows are
+ * tucked away, and [off] the rows switched off under Edit Sidebar.
+ */
+data class SidebarPrefs(
+    val hidden: Boolean = false,
+    val width: Float = DefaultWidth,
+    val folded: Set<String> = emptySet(),
+    val off: Set<String> = emptySet(),
+    val pinsOpen: Boolean = true,
+) {
+    companion object {
+        const val DefaultWidth = 236f
+        /** Earlier defaults, saved along with every sidebar change: not widths anyone chose. */
+        val OldDefaultWidths = setOf(232f, 200f)
+        const val MinWidth = 210f
+        const val MaxWidth = 340f
+    }
+}
+
 /**
  * The desktop app's stored state, in `%APPDATA%\Exhale\settings.properties`: onboarding picks,
  * history, the session, and the raw values behind [AppSettings]. Small enough that every write
@@ -62,7 +87,24 @@ object DesktopPrefs {
     private fun save() {
         runCatching {
             file.parentFile.mkdirs()
-            file.outputStream().use { props.store(it, "Exhale desktop") }
+            // Written beside it and swapped in whole: rewriting the file in place left it empty or half
+            // written for a moment, and anything reading it then (a second Exhale starting, or a crash
+            // mid-save and the next launch) lost every setting.
+            val next = File(file.parentFile, file.name + ".tmp")
+            next.outputStream().use { props.store(it, "Exhale desktop") }
+            try {
+                java.nio.file.Files.move(
+                    next.toPath(),
+                    file.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                )
+            } catch (_: java.io.IOException) {
+                // Windows refuses the swap while something else holds the file open (a virus scan,
+                // say). Written over in place then, rather than the save being lost.
+                next.copyTo(file, overwrite = true)
+                next.delete()
+            }
         }
     }
 
@@ -128,6 +170,57 @@ object DesktopPrefs {
         putRecords("favorites", encodeSongs(updated))
         _favorites.value = updated
     }
+
+    // Pins — the Music app's Pins: songs, albums, playlists and artists kept at the top of the sidebar.
+
+    private val _pins = MutableStateFlow(readPins())
+    val pins: StateFlow<List<Pin>> = _pins.asStateFlow()
+
+    fun isPinned(id: String): Boolean = _pins.value.any { it.id == id }
+
+    fun togglePin(pin: Pin) {
+        val updated = if (isPinned(pin.id)) _pins.value.filterNot { it.id == pin.id } else _pins.value + pin
+        putRecords("pins", updated.map { listOf(it.kind.name, it.id, it.title, it.subtitle.orEmpty(), it.thumbnail.orEmpty()) })
+        _pins.value = updated
+    }
+
+    private fun readPins(): List<Pin> = records("pins").mapNotNull { f ->
+        val kind = f.getOrNull(0)?.let { name -> Pin.Kind.entries.firstOrNull { it.name == name } } ?: return@mapNotNull null
+        if (f.size < 3) null else Pin(kind, f[1], f[2], f.getOrNull(3)?.ifBlank { null }, f.getOrNull(4)?.ifBlank { null })
+    }
+
+    // The sidebar's own state: hidden or shown, how wide it was dragged, folded sections, rows switched
+    // off under Edit Sidebar, and whether Pins is open.
+
+    private val _sidebar = MutableStateFlow(readSidebar())
+    val sidebar: StateFlow<SidebarPrefs> = _sidebar.asStateFlow()
+
+    fun updateSidebar(change: (SidebarPrefs) -> SidebarPrefs) {
+        val updated = change(_sidebar.value)
+        if (updated == _sidebar.value) return
+        _sidebar.value = updated
+        putAll(
+            mapOf(
+                "sidebar_hidden" to updated.hidden.toString(),
+                "sidebar_width" to updated.width.toString(),
+                "sidebar_folded" to updated.folded.joinToString(","),
+                "sidebar_off" to updated.off.joinToString(","),
+                "sidebar_pins_open" to updated.pinsOpen.toString(),
+            ),
+        )
+    }
+
+    private fun readSidebar() = SidebarPrefs(
+        hidden = props.getProperty("sidebar_hidden") == "true",
+        width = props.getProperty("sidebar_width")?.toFloatOrNull()
+            ?.takeIf { it.isFinite() }
+            ?.takeUnless { it in SidebarPrefs.OldDefaultWidths }
+            ?.coerceIn(SidebarPrefs.MinWidth, SidebarPrefs.MaxWidth)
+            ?: SidebarPrefs.DefaultWidth,
+        folded = props.getProperty("sidebar_folded").orEmpty().split(',').filter { it.isNotBlank() }.toSet(),
+        off = props.getProperty("sidebar_off").orEmpty().split(',').filter { it.isNotBlank() }.toSet(),
+        pinsOpen = props.getProperty("sidebar_pins_open") != "false",
+    )
 
     private val _searchHistory = MutableStateFlow(readSearchHistory())
     val searchHistory: StateFlow<List<String>> = _searchHistory.asStateFlow()
@@ -226,6 +319,8 @@ object DesktopPrefs {
         _artists.value = readArtists()
         _history.value = decodeSongs(records("history"))
         _searchHistory.value = readSearchHistory()
+        _pins.value = readPins()
+        _sidebar.value = readSidebar()
         AppSettings.reload()
     }
 

@@ -13,8 +13,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -49,6 +51,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -78,12 +81,15 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -106,6 +112,8 @@ import com.ozyern.exhale.desktop.ui.account.DiscordLoginWindow
 import com.ozyern.exhale.desktop.ui.account.SignInWindow
 import com.ozyern.exhale.desktop.ui.glass.LocalAppBackdrop
 import com.ozyern.exhale.desktop.ui.glass.PageBackdropHost
+import com.ozyern.exhale.desktop.ui.glass.recordBackdrop
+import com.ozyern.exhale.desktop.data.Graphics
 import com.ozyern.exhale.desktop.ui.home.ChromeInsets
 import com.ozyern.exhale.desktop.ui.home.HomeFeed
 import com.ozyern.exhale.desktop.ui.home.HomeScreen
@@ -132,7 +140,7 @@ import com.ozyern.exhale.desktop.ui.shell.AppSidebar
 import com.ozyern.exhale.desktop.ui.shell.PlayerBar
 import com.ozyern.exhale.desktop.ui.shell.PlayerBarHeight
 import com.ozyern.exhale.desktop.ui.shell.SidebarItem
-import com.ozyern.exhale.desktop.ui.shell.SidebarWidth
+import com.ozyern.exhale.desktop.ui.shell.SidebarInset
 import com.ozyern.exhale.desktop.ui.shell.DockHeight
 import com.ozyern.exhale.desktop.ui.shell.DockMaxWidth
 import com.ozyern.exhale.desktop.ui.shell.DockTab
@@ -222,7 +230,12 @@ private val WideDockMinWidth = 1040.dp
 private val ColorOsPageSpring = spring<Float>(dampingRatio = 0.92f, stiffness = 340f)
 private val ColorOsSlideSpring = spring<IntOffset>(dampingRatio = 0.92f, stiffness = 340f, visibilityThreshold = IntOffset(1, 1))
 
-private fun initialRoute(): Route = when (AppSettings.current.defaultTab.uppercase()) {
+// Development aid: EXHALE_START=search (or any default tab) starts there, whatever Settings says.
+private fun initialRoute(): Route = when (val start = (System.getenv("EXHALE_START") ?: AppSettings.current.defaultTab).uppercase()) {
+    // A sidebar section by name, for the development aid: EXHALE_START=section:Albums, section:New…
+    in LibrarySection.entries.map { "SECTION:" + it.name.uppercase() } ->
+        Route.Collection(LibrarySection.entries.first { "SECTION:" + it.name.uppercase() == start })
+    "SETTINGS" -> Route.Settings
     "MOOD", "NEW", "RADIO" -> Route.Mood
     "LIBRARY", "RECENT", "ARTISTS" -> Route.Library
     "SEARCH" -> Route.Search
@@ -304,7 +317,11 @@ fun ExhaleApp(player: DesktopPlayer) {
     if (discordLogin) DiscordLoginWindow(onClose = { discordLogin = false })
 
     if (onboarding || editingTaste) {
-        SideEffect { ChromeNav.back = if (editingTaste) ({ editingTaste = false }) else null }
+        SideEffect {
+            ChromeNav.back = if (editingTaste) ({ editingTaste = false }) else null
+            ChromeNav.sidebarToggle = null
+            ChromeNav.sidebarEnd = 0.dp
+        }
         Box(Modifier.fillMaxSize().padding(top = LocalTitleBarHeight.current)) {
         OnboardingScreen(
             initialLanguages = DesktopPrefs.languages,
@@ -336,6 +353,10 @@ fun ExhaleApp(player: DesktopPlayer) {
 
     val hasSong = state.current != null
     val appBackdrop = rememberLayerBackdrop()
+    // The page's ground alone — the moving artwork, the glow — without the page drawn over it. The
+    // sidebar only ever has the ground behind it, and this doesn't change while a page scrolls, so its
+    // glass isn't re-blurred on every frame of a scroll as it was off the whole window's recording.
+    val groundBackdrop = rememberLayerBackdrop()
     val saveable = rememberSaveableStateHolder()
     val density = LocalDensity.current
 
@@ -382,6 +403,10 @@ fun ExhaleApp(player: DesktopPlayer) {
     val playerShown by remember { derivedStateOf { playerOpen || morph.value > 0.001f } }
     // The player fills the window: whatever animates behind it can stop.
     val playerCovering by remember { derivedStateOf { morph.value >= 0.999f } }
+    // The player comes alive — its clocks, lookups and live readouts — as the open lands, not on its first
+    // frame: waking it all at once in the middle of the morph was most of the first open's stall.
+    // On the way down it stays alive until it's gone, so a closing player doesn't reset under the fold.
+    val playerSettled by remember { derivedStateOf { if (playerOpen) morph.value >= 0.85f else morph.value > 0.001f } }
 
     fun openPlayer(panel: PlayerPanel) {
         requestedPanel = panel
@@ -440,6 +465,20 @@ fun ExhaleApp(player: DesktopPlayer) {
         if (item != null) navigator.open(item, player)
     }
 
+    // Development aid: EXHALE_PLAYER=open (or lyrics / queue) opens the full player once a song is loaded.
+    LaunchedEffect(hasSong) {
+        val want = System.getenv("EXHALE_PLAYER")?.lowercase() ?: return@LaunchedEffect
+        if (!hasSong) return@LaunchedEffect
+        delay(1_500)
+        openPlayer(
+            when (want) {
+                "lyrics" -> PlayerPanel.Lyrics
+                "queue" -> PlayerPanel.Queue
+                else -> PlayerPanel.None
+            },
+        )
+    }
+
     BenchRunner(
         openArtist = {
             val artist = DesktopPrefs.artists.value.firstOrNull()
@@ -466,7 +505,7 @@ fun ExhaleApp(player: DesktopPlayer) {
     // The title bar's back button: close the player first, then pages.
     SideEffect {
         ChromeNav.back = when {
-            playerOpen -> ({ playerOpen = false })
+            playerOpen -> null // The player has its own chevron, as the Music app's Now Playing does.
             stack.size > 1 -> ({ pop() })
             else -> null
         }
@@ -497,6 +536,11 @@ fun ExhaleApp(player: DesktopPlayer) {
                     event.key == Key.MediaPrevious -> { player.previous(); true }
                     event.isCtrlPressed && (event.key == Key.F || event.key == Key.K) -> { openSearch(); true }
                     event.isCtrlPressed && event.key == Key.P -> { player.togglePlayPause(); true }
+                    // The Music app's Ctrl-Cmd-S: show or hide the sidebar.
+                    event.isCtrlPressed && event.isAltPressed && event.key == Key.S && latestWide -> {
+                        DesktopPrefs.updateSidebar { it.copy(hidden = !it.hidden) }
+                        true
+                    }
                     event.isCtrlPressed && event.key == Key.L && player.state.value.current != null -> { openPlayer(PlayerPanel.Lyrics); true }
                     else -> false
                 }
@@ -527,9 +571,41 @@ fun ExhaleApp(player: DesktopPlayer) {
             }
         }
 
+        // The sidebar: dragged to a width, and slid away and back by its button (or Ctrl+Alt+S).
+        val sidebarPrefs by DesktopPrefs.sidebar.collectAsState()
+        var sidebarWidth by remember { mutableStateOf(sidebarPrefs.width.dp) }
+        // Read only where it's drawn or placed (never here, in composition): read here, every frame of the
+        // slide recomposed the whole window and laid every page out again at a new width.
+        val sidebarAnim = animateFloatAsState(
+            if (sidebarPrefs.hidden) 0f else 1f,
+            if (AppSettings.current.reducedMotion) tween(120) else spring(dampingRatio = 1f, stiffness = 340f),
+            label = "sidebar_shown",
+        )
+        val sidebarFull = SidebarInset + sidebarWidth
+        // How far out the pages are laid out for: once, at the start of the slide, and at the wider of the
+        // two widths — at once when the sidebar goes, only after it has arrived when it comes back. The
+        // slide itself is a translation of the laid-out page, which the GPU does for free; the part laid
+        // out beyond the window's edge meanwhile is clipped, so no edge ever jumps.
+        val sidebarLaidOut by remember {
+            derivedStateOf { if (sidebarPrefs.hidden || sidebarAnim.value < 0.999f) 0f else 1f }
+        }
+        val sidebarSpace = sidebarFull * sidebarLaidOut
+        // Where the visible page is offset from where it's laid out, this frame.
+        val sidebarSlide: androidx.compose.ui.unit.Density.() -> Float = { (sidebarFull * (sidebarAnim.value - sidebarLaidOut)).toPx() }
+        SideEffect {
+            ChromeNav.sidebarToggle = if (wide && !playerOpen) ({ DesktopPrefs.updateSidebar { it.copy(hidden = !it.hidden) } }) else null
+        }
+        // The sidebar button rides the pane's edge; set from the animation itself, outside composition.
+        LaunchedEffect(wide, playerOpen, sidebarFull) {
+            snapshotFlow { sidebarAnim.value }.collect { shown ->
+                ChromeNav.sidebarEnd = if (wide && !playerOpen) sidebarFull * shown else 0.dp
+            }
+        }
+        val sidebarVisible by remember { derivedStateOf { sidebarAnim.value > 0.001f } }
+
         // Content clears the dock — and on narrow windows the mini player stacked above it too.
         val insets = if (wide) {
-            ChromeInsets(start = SidebarWidth + 8.dp, bottom = PlayerBarHeight + 40.dp)
+            ChromeInsets(start = sidebarSpace + 8.dp, bottom = PlayerBarHeight + 40.dp)
         } else {
             ChromeInsets(start = 20.dp, bottom = DockHeight + 28.dp + if (hasSong) DockHeight + 10.dp else 0.dp)
         }
@@ -540,9 +616,14 @@ fun ExhaleApp(player: DesktopPlayer) {
         // on its first open; this pays it while nobody is waiting, one page at a time, and only while
         // nothing is scrolling or changing page.
         var warming by remember { mutableStateOf<Route?>(null) }
+        var warmingPlayer by remember { mutableStateOf(false) }
         LaunchedEffect(Unit) {
             delay(6_000)
-            val pages = listOf(
+            // An artist's page too, one of yours: its hero photo, title logo and blend layers were the
+            // biggest first-open freeze (~300 ms), all of it the GPU meeting them for the first time.
+            val artist = DesktopPrefs.artists.value.firstOrNull()?.let { Route.Artist(it.id, it.name, it.thumbnail) }
+            val pages = listOfNotNull(
+                artist,
                 Route.Settings,
                 Route.Collection(LibrarySection.New),
                 Route.Search,
@@ -551,21 +632,36 @@ fun ExhaleApp(player: DesktopPlayer) {
                 Route.Collection(LibrarySection.Songs),
                 Route.Collection(LibrarySection.Artists),
             )
+            // The player too: kept composed, but never drawn until its first open, which paid for its
+            // blur, lyrics and artwork layers on the spot. Drawn once, fully grown and all but
+            // transparent, while nobody is waiting.
+            if (player.state.value.current != null) {
+                while (UiMotion.busy) delay(400)
+                warmingPlayer = true
+                delay(900)
+                warmingPlayer = false
+                delay(1_200)
+            }
             for (page in pages) {
                 while (UiMotion.busy) delay(400)
                 warming = page
-                delay(700)
+                // Long enough for the artist's page to load and draw its photo, not just its skeleton.
+                delay(if (page is Route.Artist) 3_500 else 700)
                 warming = null
                 delay(1_500)
             }
         }
         warming?.takeIf { it != route }?.let { page ->
-            Box(Modifier.fillMaxSize()) {
+            // Drawn as a page is mid-transition — half faded, nudged sideways — so the GPU also meets a
+            // whole page inside a translucent layer before the first real fade or back needs it. The
+            // page on screen covers it either way.
+            Box(Modifier.fillMaxSize().graphicsLayer { alpha = 0.5f; translationX = 12f }) {
                 when (page) {
                     Route.Settings -> SettingsScreen(insets = insets, onBack = {}, onSignIn = {}, onEditTaste = {}, onHomeInputsChanged = {}, onDiscordLogin = {})
                     Route.Search -> SearchScreen(remember { SearchModel(scope) }, player, state, insets, showField = false)
                     Route.Flac -> FlacScreen(insets, onBack = null)
                     is Route.Collection -> LibrarySectionScreen(page.section, home, player, state, insets)
+                    is Route.Artist -> ArtistScreen(page.browseId, page.name, page.thumbnail, player, state, insets, onBack = {})
                     else -> Unit
                 }
             }
@@ -579,19 +675,20 @@ fun ExhaleApp(player: DesktopPlayer) {
                 // Once the player covers the window, the page under it isn't drawn at all: no glass, no
                 // moving background, nothing redrawn behind a player that hides it anyway.
                 .drawWithContent { if (morph.value < 0.999f) drawContent() }
-                .then(if (Bench.off("backdrop")) Modifier else Modifier.layerBackdrop(appBackdrop)),
+                .then(if (Bench.off("backdrop")) Modifier else Modifier.recordBackdrop(appBackdrop)),
         ) {
             PageBackdropHost(
                 modifier = Modifier.fillMaxSize(),
+                backdrop = groundBackdrop,
                 background = {
                     val ground = MaterialTheme.colorScheme.background
                     Box(Modifier.fillMaxSize().background(ground))
-                    if (settings.animatedBackground && settings.ambientGlow && fluidBackgroundAvailable && hasSong && !Bench.off("fluid")) {
+                    if (settings.animatedBackground && settings.ambientGlow && fluidBackgroundAvailable && hasSong && !Graphics.lite && !Bench.off("fluid")) {
                         // What's playing, moving slowly under every page — and under the glass, which bends it.
                         FluidArtwork(state.current?.thumbnail?.resizedThumbnail(120), Modifier.fillMaxSize(), brightness = 0.5f, paused = playerCovering)
                         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(ground.copy(alpha = 0.3f), ground.copy(alpha = 0.72f)))))
                     } else {
-                        AmbientGlow(ambientColors, Modifier.fillMaxSize(), paused = playerCovering)
+                        AmbientGlow(ambientColors, Modifier.fillMaxSize(), paused = playerCovering || Graphics.lite)
                     }
                 },
             ) {
@@ -604,25 +701,28 @@ fun ExhaleApp(player: DesktopPlayer) {
                         if (AppSettings.current.reducedMotion) {
                             fadeIn(tween(150)) togetherWith fadeOut(tween(100))
                         } else {
-                            // ColorOS 17's page motion, sized for a pointer: both pages move at once and from the
-                            // first frame — nothing waits for the old page to leave — on springs that land soft,
-                            // with the page behind receding a little and dimming rather than just vanishing.
+                            // The Music app's page motion on the Mac: brief, and never a zoom. Scaling a whole page
+                            // made every frame of the switch redraw its text and glass at a new size — the GPU
+                            // spent 150–290 ms on a single frame of it — so pages only fade and slide.
                             when (navKind) {
-                                // Switching sections: the new one grows up out of 94% as it fades in, the old one
-                                // sinks back to 96% and fades under it.
-                                NavKind.Tab -> (fadeIn(tween(180, easing = LinearOutSlowInEasing)) + scaleIn(ColorOsPageSpring, initialScale = 0.94f)) togetherWith
-                                    (fadeOut(tween(140)) + scaleOut(ColorOsPageSpring, targetScale = 0.96f))
-                                // Opening a page: it comes in from the right with a little growth, the page under it
-                                // drifts left a third as far and recedes — the parallax that makes it read as depth.
-                                NavKind.Push -> ((slideInHorizontally(ColorOsSlideSpring) { (it * 0.16f).toInt() } + scaleIn(ColorOsPageSpring, initialScale = 0.97f) + fadeIn(tween(160))) togetherWith
-                                    (slideOutHorizontally(ColorOsSlideSpring) { -(it * 0.05f).toInt() } + scaleOut(ColorOsPageSpring, targetScale = 0.95f) + fadeOut(tween(220)))).apply { targetContentZIndex = 1f }
-                                // Going back: the same, reversed — the page underneath comes forward out of its depth.
-                                NavKind.Pop -> ((slideInHorizontally(ColorOsSlideSpring) { -(it * 0.05f).toInt() } + scaleIn(ColorOsPageSpring, initialScale = 0.95f) + fadeIn(tween(200))) togetherWith
-                                    (slideOutHorizontally(ColorOsSlideSpring) { (it * 0.16f).toInt() } + scaleOut(ColorOsPageSpring, targetScale = 0.97f) + fadeOut(tween(160)))).apply { targetContentZIndex = -1f }
+                                // Switching sections in the sidebar: a quick crossfade, the new page in first.
+                                // The page left goes at once, so only one page is ever in a translucent layer: a
+                                // crossfade drew both, each with its glass, through every frame of the switch.
+                                NavKind.Tab -> fadeIn(tween(170, easing = LinearOutSlowInEasing)) togetherWith fadeOut(snap())
+                                // Opening a page: it slides in a short way from the right as it fades up.
+                                NavKind.Push -> ((slideInHorizontally(ColorOsSlideSpring) { (it * 0.04f).toInt() } + fadeIn(tween(150))) togetherWith
+                                    fadeOut(tween(110))).apply { targetContentZIndex = 1f }
+                                // Going back: the page underneath fades back in while this one slides off a little.
+                                NavKind.Pop -> (fadeIn(tween(150)) togetherWith
+                                    (slideOutHorizontally(ColorOsSlideSpring) { (it * 0.04f).toInt() } + fadeOut(tween(110)))).apply { targetContentZIndex = -1f }
                             }
                         }
                     },
-                    modifier = Modifier.fillMaxSize().padding(top = LocalTitleBarHeight.current).nestedScroll(dockScroll),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { translationX = sidebarSlide() }
+                        .padding(top = LocalTitleBarHeight.current)
+                        .nestedScroll(dockScroll),
                     label = "route",
                 ) { current ->
                     CompositionLocalProvider(LocalSharedScopes provides SharedScopes(this@SharedTransitionLayout, this@AnimatedContent)) {
@@ -683,9 +783,19 @@ fun ExhaleApp(player: DesktopPlayer) {
                     else -> null
                 }
                 val sidebarItem = itemFor(route) ?: itemFor(stack.first())
-                AppSidebar(
+                if (sidebarVisible) AppSidebar(
                     selected = sidebarItem,
-                    selectedPlaylist = (route as? Route.Playlist)?.playlistId,
+                    selectedPage = when (route) {
+                        is Route.Playlist -> route.playlistId
+                        is Route.Album -> route.browseId
+                        is Route.Artist -> route.browseId
+                        else -> null
+                    },
+                    player = player,
+                    glassBackdrop = groundBackdrop,
+                    width = sidebarWidth,
+                    onResize = { sidebarWidth = it },
+                    onSignIn = { signingIn = true },
                     onSelect = { item ->
                         focusManager.clearFocus()
                         playerOpen = false
@@ -700,16 +810,22 @@ fun ExhaleApp(player: DesktopPlayer) {
                     },
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .fillMaxHeight(),
+                        .fillMaxHeight()
+                        // Slides out past the window's left edge; placement only, so the glass keeps sampling true.
+                        .offset { IntOffset(-((SidebarInset + sidebarWidth + 24.dp).toPx() * (1f - sidebarAnim.value)).toInt(), 0) },
                 )
                 Box(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        // Fades as the player grows out of it, and returns as the player folds away.
+                        // Stays as it is while the player grows over it, and is put away once it's covered. It
+                        // used to fade, which put its glass inside a translucent layer for the first frames
+                        // of every open — the one moment that combination was ever drawn, and the GPU paid
+                        // for meeting it there, mid-animation.
                         .drawWithContent { if (morph.value < 0.3f) drawContent() }
-                        .graphicsLayer { alpha = 1f - (morph.value / 0.3f).coerceIn(0f, 1f) }
-                        .padding(start = SidebarWidth + 24.dp, end = 24.dp, bottom = 16.dp),
+                        .padding(start = sidebarSpace + 16.dp, end = 24.dp, bottom = 20.dp)
+                        // Centred in what the pages have: it moves half as far as they do.
+                        .graphicsLayer { translationX = sidebarSlide() / 2f },
                     contentAlignment = Alignment.BottomCenter,
                 ) {
                     PlayerBar(
@@ -719,7 +835,7 @@ fun ExhaleApp(player: DesktopPlayer) {
                         onBarBounds = { islandBounds = it },
                         onArtBounds = { dockArtBounds = it },
                         artAlpha = { if (morph.value > 0.001f) 0f else 1f },
-                        modifier = Modifier.widthIn(max = 720.dp).fillMaxWidth(),
+                        modifier = Modifier.widthIn(max = 760.dp).fillMaxWidth(),
                     )
                 }
             } else {
@@ -774,13 +890,28 @@ fun ExhaleApp(player: DesktopPlayer) {
             // The player stays composed for as long as there's a song: building it at the start of the
             // morph, and tearing it down at the end of the fold, were the hitches either side of every
             // open. Closed, it isn't drawn and sits off the window, where no click can reach it.
+            // Warming: drawn in place, fully grown, at 1% — invisible, but every layer meets the GPU — and
+            // deaf to the pointer, so a click in that moment still lands on the page.
+            val warmDraw = warmingPlayer && !playerShown
             Box(
                 Modifier
                     .fillMaxSize()
-                    .offset { if (playerShown) IntOffset.Zero else IntOffset(0, rootHeight.toInt() * 4) }
-                    .drawWithContent { if (playerShown) drawContent() },
+                    .offset { if (playerShown || warmDraw) IntOffset.Zero else IntOffset(0, rootHeight.toInt() * 4) }
+                    .drawWithContent { if (playerShown || warmDraw) drawContent() }
+                    .graphicsLayer { alpha = if (warmDraw) 0.01f else 1f }
+                    .then(
+                        if (warmDraw) {
+                            Modifier.pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+                                }
+                            }
+                        } else {
+                            Modifier
+                        },
+                    ),
             ) {
-            PlayerMorph(progress = { morph.value }, origin = { if (latestWide) islandBounds else pillBounds }) {
+            PlayerMorph(progress = { if (warmDraw) 1f else morph.value }, origin = { if (latestWide) islandBounds else pillBounds }) {
                 FullPlayer(
                     state = state,
                     player = player,
@@ -797,8 +928,8 @@ fun ExhaleApp(player: DesktopPlayer) {
                     },
                     initialPanel = requestedPanel,
                     onArtworkBounds = { playerArtBounds = it },
-                    artworkAlpha = { if (latestWide && dockArtBounds != null && morph.value < 0.999f) 0f else 1f },
-                    active = playerShown,
+                    artworkAlpha = { if (latestWide && dockArtBounds != null && morph.value < 0.999f && !warmDraw) 0f else 1f },
+                    active = (playerShown && playerSettled) || warmDraw,
                 )
             }
             }
@@ -809,6 +940,17 @@ fun ExhaleApp(player: DesktopPlayer) {
                     to = { playerArtBounds },
                     progress = { morph.value },
                 )
+            } else if (wide && warmingPlayer && dockArtBounds != null) {
+                // Warmed with the player: the cover in mid-flight, all but transparent. Its large copy of the
+                // artwork was being decoded and sent to the GPU in the first frames of the first open.
+                Box(Modifier.fillMaxSize().graphicsLayer { alpha = 0.01f }) {
+                    FlyingArtwork(
+                        url = state.current!!.thumbnail,
+                        from = { dockArtBounds },
+                        to = { dockArtBounds?.let { Rect(it.left, it.top - 300f, it.left + 300f, it.top) } },
+                        progress = { 0.5f },
+                    )
+                }
             }
         }
 
@@ -816,7 +958,23 @@ fun ExhaleApp(player: DesktopPlayer) {
         // to the player: fold the player away and it shrinks to a speck and keeps playing, rather than
         // being destroyed and having to start the song over to come back.
         val watching by player.videoMode.collectAsState()
-        if (watching) VideoSurfaceHost(player)
+        if (watching) {
+            VideoSurfaceHost(
+                player,
+                // On a wide window the dock shows the picture in place of its artwork; a narrow one has no room.
+                dockArt = { if (wide) dockArtBounds else null },
+                morph = { morph.value },
+                onOpen = { playerOpen = true },
+            )
+        }
+
+        // A newer Windows release, found at launch: offered here, as the Android app offers its
+        // updates, rather than only inside Settings where nobody saw it.
+        com.ozyern.exhale.desktop.ui.shell.UpdatePrompt(
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = LocalTitleBarHeight.current + 8.dp, end = 16.dp),
+        )
     }
     }
 }
@@ -862,7 +1020,7 @@ private fun PlayerMorph(progress: () -> Float, origin: () -> Rect?, content: @Co
                 val corner = lerp(maxOf(o.height / 2f, minCorner), 0f, sqrt(p))
                 shape = GenericShape { _, _ -> addRoundRect(RoundRect(left, top, right, bottom, CornerRadius(corner))) }
                 clip = true
-                shadowElevation = 30.dp.toPx() * (1f - p)
+                shadowElevation = if (Bench.off("morphshadow")) 0f else 30.dp.toPx() * (1f - p)
             },
     ) {
         Box(

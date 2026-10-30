@@ -145,16 +145,71 @@ object DockIcons {
     }
 }
 
+/**
+ * The Music app's player symbols, drawn after SF Symbols rather than Material: solid shapes with softly
+ * rounded corners for the transport (play.fill, pause.fill, backward.fill, forward.fill), and an even,
+ * round-capped line for the rest (shuffle, repeat, quote.bubble, list.bullet, the speaker's waves).
+ */
 object TransportIcons {
-    val Repeat by lazy { materialIcon("Exhale.Repeat", "M7,7h10v3l4,-4 -4,-4v3H5v6h2V7zM17,17H7v-3l-4,4 4,4v-3h12v-6h-2v4z") }
-    val RepeatOne by lazy { materialIcon("Exhale.RepeatOne", "M7,7h10v3l4,-4 -4,-4v3H5v6h2V7zM17,17H7v-3l-4,4 4,4v-3h12v-6h-2v4zM13,15V9h-1l-2,1v1h1.5v4H13z") }
-    val Play by lazy { materialIcon("Exhale.Play", "M8,5v14l11,-7z") }
-    val Pause by lazy { materialIcon("Exhale.Pause", "M6,19h4V5H6v14zm8,-14v14h4V5h-4z") }
-    val Next by lazy { materialIcon("Exhale.Next", "M6,18l8.5,-6L6,6v12zM16,6v12h2V6h-2z") }
-    val Previous by lazy { materialIcon("Exhale.Previous", "M6,6h2v12H6zm3.5,6l8.5,6V6z") }
-    /** The Music app's back and forward: two solid wedges each, no bar. */
-    val Backward by lazy { materialIcon("Exhale.Backward", "M11,18V6l-8.5,6 8.5,6zM11.5,12l8.5,6V6l-8.5,6z") }
-    val Forward by lazy { materialIcon("Exhale.Forward", "M4,18l8.5,-6L4,6v12zM13,6v12l8.5,-6L13,6z") }
+    // repeat: a rounded loop, an arrowhead at each end.
+    val Repeat by lazy {
+        dockIcon(
+            "Exhale.Repeat", 24f,
+            Stroke("M4.5,11.6V9.7a2.7,2.7 0 0 1 2.7,-2.7h12 M16.9,4.4l2.6,2.6l-2.6,2.6", 1.8f),
+            Stroke("M19.5,12.4v1.9a2.7,2.7 0 0 1 -2.7,2.7h-12 M7.1,19.6l-2.6,-2.6l2.6,-2.6", 1.8f),
+        )
+    }
+
+    // repeat.1: the same loop with a small 1 in it.
+    val RepeatOne by lazy {
+        dockIcon(
+            "Exhale.RepeatOne", 24f,
+            Stroke("M4.5,11.6V9.7a2.7,2.7 0 0 1 2.7,-2.7h12 M16.9,4.4l2.6,2.6l-2.6,2.6", 1.8f),
+            Stroke("M19.5,12.4v1.9a2.7,2.7 0 0 1 -2.7,2.7h-12 M7.1,19.6l-2.6,-2.6l2.6,-2.6", 1.8f),
+            Stroke("M11.2,10.3l1.5,-1h1v5.8h-1.25v-4.35l-1.25,0.75z"),
+        )
+    }
+
+    // play.fill: a triangle with its corners rounded off.
+    val Play by lazy { materialIcon("Exhale.Play", "M7.2,5.1c0,-1.15 1.25,-1.85 2.24,-1.25l10.6,6.6c0.95,0.6 0.95,1.95 0,2.55l-10.6,6.6c-0.99,0.6 -2.24,-0.1 -2.24,-1.25z") }
+
+    // pause.fill: two rounded bars.
+    val Pause by lazy {
+        materialIcon(
+            "Exhale.Pause",
+            "M6.6,4h2.7a1.3,1.3 0 0 1 1.3,1.3v13.4a1.3,1.3 0 0 1 -1.3,1.3H6.6a1.3,1.3 0 0 1 -1.3,-1.3V5.3A1.3,1.3 0 0 1 6.6,4z" +
+                "M14.7,4h2.7a1.3,1.3 0 0 1 1.3,1.3v13.4a1.3,1.3 0 0 1 -1.3,1.3h-2.7a1.3,1.3 0 0 1 -1.3,-1.3V5.3A1.3,1.3 0 0 1 14.7,4z",
+        )
+    }
+
+    /** The Music app's back and forward: two solid wedges each, rounded, no bar. */
+    val Backward by lazy {
+        materialIcon(
+            "Exhale.Backward",
+            "M22,7.7c0,-0.95 -1.05,-1.5 -1.8,-0.95l-7.1,4.3c-0.7,0.45 -0.7,1.45 0,1.9l7.1,4.3c0.75,0.55 1.8,0 1.8,-0.95z" +
+                "M12,7.7c0,-0.95 -1.05,-1.5 -1.8,-0.95l-7.1,4.3c-0.7,0.45 -0.7,1.45 0,1.9l7.1,4.3c0.75,0.55 1.8,0 1.8,-0.95z",
+        )
+    }
+    val Forward by lazy {
+        materialIcon(
+            "Exhale.Forward",
+            "M2,7.7c0,-0.95 1.05,-1.5 1.8,-0.95l7.1,4.3c0.7,0.45 0.7,1.45 0,1.9l-7.1,4.3C3.05,17.8 2,17.25 2,16.3z" +
+                "M12,7.7c0,-0.95 1.05,-1.5 1.8,-0.95l7.1,4.3c0.7,0.45 0.7,1.45 0,1.9l-7.1,4.3c-0.75,0.55 -1.8,0 -1.8,-0.95z",
+        )
+    }
+
+    // The Music app uses the same wedges for the previous and next track, not the barred skip glyphs.
+    val Next by lazy { Forward }
+    val Previous by lazy { Backward }
+
+    // airplay.audio: rings opening downward over a solid wedge.
+    val AirPlay by lazy {
+        dockIcon(
+            "Exhale.AirPlay", 24f,
+            Stroke("M6.3,16.6a8,8 0 1 1 11.4,0 M8.9,14.1a4.4,4.4 0 1 1 6.2,0", 1.8f),
+            Stroke("M12,14.4l4.5,5.4c0.35,0.42 0.05,1.05 -0.5,1.05H8c-0.55,0 -0.85,-0.63 -0.5,-1.05z"),
+        )
+    }
 
     /** Ten seconds back and forward, digits and all — the pair every video player has. */
     val Back10 by lazy {
@@ -176,27 +231,73 @@ object TransportIcons {
         )
     }
     val Equalizer by lazy { materialIcon("Exhale.Equalizer", "M10,20h4V4h-4v16zM4,20h4v-8H4v8zM16,9v11h4V9h-4z") }
+    // shuffle: two lines that cross, each ending in an arrowhead on the right.
     val Shuffle by lazy {
-        materialIcon("Exhale.Shuffle", "M10.59,9.17L5.41,4 4,5.41l5.17,5.17 1.42,-1.41zM14.5,4l2.04,2.04L4,18.59 5.41,20 17.96,7.46 20,9.5V4h-5.5zM14.83,13.41l-1.41,1.41 3.13,3.13L14.5,20H20v-5.5l-2.04,2.04 -3.13,-3.13z")
+        dockIcon(
+            "Exhale.Shuffle", 24f,
+            Stroke("M3.5,16.8h2.3c2,0 3.2,-0.9 4.4,-2.7l3.4,-5.2c1.2,-1.8 2.4,-2.7 4.4,-2.7h2.5 M18.1,4l2.4,2.2l-2.4,2.2", 1.8f),
+            Stroke("M3.5,7.2h2.3c2,0 3.2,0.9 4.4,2.7 M13.8,14.1c1.2,1.8 2.4,2.7 4.4,2.7h2.3 M18.1,14.6l2.4,2.2l-2.4,2.2", 1.8f),
+        )
     }
+
+    private const val SPEAKER = "M3.6,9.2h3l4.7,-3.9c0.62,-0.52 1.55,-0.08 1.55,0.73v11.94c0,0.81 -0.93,1.25 -1.55,0.73l-4.7,-3.9h-3a1.1,1.1 0 0 1 -1.1,-1.1v-3.4a1.1,1.1 0 0 1 1.1,-1.1z"
+
+    // speaker.wave.3.fill
     val VolumeUp by lazy {
-        materialIcon("Exhale.VolumeUp", "M3,9v6h4l5,5V4L7,9H3zm13.5,3c0,-1.77 -1.02,-3.29 -2.5,-4.03v8.05c1.48,-0.73 2.5,-2.25 2.5,-4.02zM14,3.23v2.06c2.89,0.86 5,3.54 5,6.71s-2.11,5.85 -5,6.71v2.06c4.01,-0.91 7,-4.49 7,-8.77s-2.99,-7.86 -7,-8.77z")
+        dockIcon(
+            "Exhale.VolumeUp", 24f,
+            Stroke(SPEAKER),
+            Stroke("M15.4,9.3a3.9,3.9 0 0 1 0,5.4 M17.7,7.1a7,7 0 0 1 0,9.8 M20,4.9a10.1,10.1 0 0 1 0,14.2", 1.6f),
+        )
     }
-    val VolumeDown by lazy { materialIcon("Exhale.VolumeDown", "M18.5,12c0,-1.77 -1.02,-3.29 -2.5,-4.03v8.05c1.48,-0.73 2.5,-2.25 2.5,-4.02zM5,9v6h4l5,5V4L9,9H5z") }
-    val VolumeOff by lazy {
-        materialIcon("Exhale.VolumeOff", "M16.5,12c0,-1.77 -1.02,-3.29 -2.5,-4.03v2.21l2.45,2.45c0.03,-0.2 0.05,-0.41 0.05,-0.63zM19,12c0,0.94 -0.2,1.82 -0.54,2.64l1.51,1.51C20.63,14.91 21,13.5 21,12c0,-4.28 -2.99,-7.86 -7,-8.77v2.06c2.89,0.86 5,3.54 5,6.71zM4.27,3L3,4.27 7.73,9H3v6h4l5,5v-6.73l4.25,4.25c-0.67,0.52 -1.42,0.93 -2.25,1.18v2.06c1.38,-0.31 2.63,-0.95 3.69,-1.81L19.73,21 21,19.73l-9,-9L4.27,3zM12,4L9.91,6.09 12,8.18V4z")
+
+    // speaker.fill
+    val VolumeDown by lazy { dockIcon("Exhale.VolumeDown", 24f, Stroke(SPEAKER), Stroke("M15.4,9.3a3.9,3.9 0 0 1 0,5.4", 1.6f)) }
+
+    // speaker.slash.fill
+    val VolumeOff by lazy { dockIcon("Exhale.VolumeOff", 24f, Stroke(SPEAKER), Stroke("M15.4,9.2l5,5.6 M20.4,9.2l-5,5.6", 1.7f)) }
+
+    // quote.bubble: the Music app's lyrics button, as its player capsule draws it — a rounded square
+    // bubble in outline, tail at lower left, two solid quotation marks inside.
+    val Lyrics by lazy {
+        dockIcon(
+            "Exhale.Lyrics", 24f,
+            Stroke(
+                "M7.3,4.4h9.4a3.5,3.5 0 0 1 3.5,3.5v5.4a3.5,3.5 0 0 1 -3.5,3.5h-6.1l-3.6,3c-0.4,0.3 -0.95,0 -0.85,-0.5l0.4,-2.6a3.5,3.5 0 0 1 -2.75,-3.4v-5.4a3.5,3.5 0 0 1 3.5,-3.5z",
+                1.7f,
+            ),
+            Stroke(
+                "M8.6,8.2h2.1v1.9c0,1.35 -0.68,2.2 -1.9,2.6l-0.37,-0.82c0.57,-0.23 0.88,-0.67 0.9,-1.25H8.6z" +
+                    "M13.2,8.2h2.1v1.9c0,1.35 -0.68,2.2 -1.9,2.6l-0.37,-0.82c0.57,-0.23 0.88,-0.67 0.9,-1.25h-0.73z",
+            ),
+        )
     }
-    val Lyrics by lazy { materialIcon("Exhale.Lyrics", "M20,2H4c-1.1,0 -2,0.9 -2,2v18l4,-4h14c1.1,0 2,-0.9 2,-2V4c0,-1.1 -0.9,-2 -2,-2zM20,16H6l-2,2V4h16v12z") }
+
+    // list.bullet: three dots, three lines.
     val Queue by lazy {
-        materialIcon("Exhale.Queue", "M15,6H3v2h12V6zM15,10H3v2h12V10zM3,16h8v-2H3V16zM17,6v8.18C16.69,14.07 16.35,14 16,14c-1.66,0 -3,1.34 -3,3s1.34,3 3,3s3,-1.34 3,-3V8h3V6H17z")
+        dockIcon(
+            "Exhale.Queue", 24f,
+            Stroke("M5,5.2a1.35,1.35 0 1 1 0,2.7a1.35,1.35 0 1 1 0,-2.7z M5,10.65a1.35,1.35 0 1 1 0,2.7a1.35,1.35 0 1 1 0,-2.7z M5,16.1a1.35,1.35 0 1 1 0,2.7a1.35,1.35 0 1 1 0,-2.7z"),
+            Stroke("M9.2,6.55h11 M9.2,12h11 M9.2,17.45h11", 1.8f),
+        )
     }
-    val Collapse by lazy { materialIcon("Exhale.Collapse", "M7.41,8.59L12,13.17l4.59,-4.58L18,10l-6,6 -6,-6 1.41,-1.41z") }
+
+    // chevron.down
+    val Collapse by lazy { dockIcon("Exhale.Collapse", 24f, Stroke("M5.8,9.2l6.2,6.2l6.2,-6.2", 2.2f)) }
 }
 
 object NavIcons {
+    // music.note, for a cover that isn't there.
+    val MusicNote by lazy { materialIcon("Exhale.MusicNote", "M12,3v10.55c-0.59,-0.34 -1.27,-0.55 -2,-0.55 -2.21,0 -4,1.79 -4,4s1.79,4 4,4 4,-1.79 4,-4V7h4V3h-6z") }
     val Back by lazy { materialIcon("Exhale.Back", "M20,11H7.83l5.59,-5.59L12,4l-8,8 8,8 1.41,-1.41L7.83,13H20v-2z") }
+    // ellipsis: SF Symbols' three dots are small and spaced, not Material's heavy 4-unit ones.
     val More by lazy {
-        materialIcon("Exhale.More", "M6,10c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2 -0.9,-2 -2,-2zM18,10c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2 -0.9,-2 -2,-2zM12,10c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2 -0.9,-2 -2,-2z")
+        materialIcon(
+            "Exhale.More",
+            "M5.5,10.4a1.6,1.6 0 1 1 0,3.2a1.6,1.6 0 1 1 0,-3.2z" +
+                "M12,10.4a1.6,1.6 0 1 1 0,3.2a1.6,1.6 0 1 1 0,-3.2z" +
+                "M18.5,10.4a1.6,1.6 0 1 1 0,3.2a1.6,1.6 0 1 1 0,-3.2z",
+        )
     }
     /** A record: a rounded sleeve, the label cut out of it, and the spindle back in the middle. */
     val Library by lazy {

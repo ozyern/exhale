@@ -357,6 +357,7 @@ fun PlaylistMenu(
                             ListQueue(
                                 title = playlist.playlist.name,
                                 items = songs.shuffled().map(Song::toMediaItem),
+                                shuffled = true,
                             ),
                         )
                     }

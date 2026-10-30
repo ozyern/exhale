@@ -247,6 +247,25 @@ fun DiscordAdvanced(navController: NavController) {
                         checked = whenPaused,
                         onCheckedChange = setWhenPaused,
                     )
+                    PreferenceGroupDivider()
+                    // Push it again now, rather than waiting on the next update or toggling the
+                    // presence off and on. A press clears earlier failures, so it is never refused
+                    // for errors the person is trying to get past.
+                    val refreshContext = androidx.compose.ui.platform.LocalContext.current
+                    com.ozyern.exhale.ui.component.PreferenceEntry(
+                        title = { Text("Refresh presence") },
+                        description = "Send it to Discord again now",
+                        icon = { Icon(painterResource(R.drawable.sync), null) },
+                        onClick = {
+                            DiscordPresenceManager.resetFailureCount()
+                            val restarted = DiscordPresenceManager.restart()
+                            android.widget.Toast.makeText(
+                                refreshContext,
+                                if (restarted) "Presence refreshed" else "Couldn't refresh yet: play a song, or try again in a few seconds",
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                        },
+                    )
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(

@@ -11,6 +11,7 @@ package com.ozyern.exhale.ui.component
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -98,7 +99,7 @@ fun <E> ChipsRow(
             .padding(vertical = 8.dp)
             .horizontalScroll(rememberScrollState()),
     ) {
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(16.dp))
 
         chips.forEach { (value, label) ->
             val isSelected = currentValue == value
@@ -111,7 +112,7 @@ fun <E> ChipsRow(
                 onClick = { onValueUpdate(value) },
             )
 
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(10.dp))
         }
     }
 }
@@ -129,14 +130,19 @@ fun <E> ChipsRow(
  * how iOS marks a chosen segment.
  */
 @Composable
-private fun GlassChip(
+internal fun GlassChip(
     label: String,
     selected: Boolean,
     iconRes: Int?,
     onClick: () -> Unit,
 ) {
-    val accent = MaterialTheme.colorScheme.primary
+    // Convx 2.0.4's filter chip (Home's moods, Search's All/Songs/Videos): a solid capsule, not
+    // glass. Off, a faint lift of the page with ConvX's 1dp hairline; on, Apple Music red.
+    val dark = androidx.compose.foundation.isSystemInDarkTheme()
+    val accent = Color(0xFFFA2D48)
     val shape = RoundedCornerShape(percent = 50)
+    val restFill = if (dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.06f)
+    val hairline = if (dark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -145,15 +151,15 @@ private fun GlassChip(
         label = "glassChipPress",
     )
     val fill by animateColorAsState(
-        targetValue = if (selected) accent else Color.Transparent,
+        targetValue = if (selected) accent else restFill,
         animationSpec = tween(200),
         label = "glassChipFill",
     )
     val ink by animateColorAsState(
         targetValue = if (selected) {
-            MaterialTheme.colorScheme.onPrimary
+            Color.White
         } else {
-            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
         },
         animationSpec = tween(200),
         label = "glassChipInk",
@@ -165,17 +171,10 @@ private fun GlassChip(
                 scaleX = scale
                 scaleY = scale
             }
-            .height(38.dp)
-            // In-content glass, NOT `rememberChromeGlassModifier`.
-            //
-            // That one samples `LocalAppBackdrop` - the layer the whole page is drawn into - which
-            // is only legal for chrome composed *outside* the NavHost, like the dock. Used on a
-            // chip that lives inside the page, it makes the backdrop contain something that reads
-            // the backdrop, and hwui walks that render tree until the native stack runs out: the
-            // library tab took the whole process down with a `prepareTreeImpl` overflow.
-            .liquidGlassSurface(shape)
+            .height(36.dp)
             .clip(shape)
             .background(fill)
+            .border(1.dp, if (selected) Color.Transparent else hairline, shape)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -191,8 +190,8 @@ private fun GlassChip(
         }
         Text(
             text = label,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Medium,
             color = ink,
             maxLines = 1,
         )

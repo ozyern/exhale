@@ -7,6 +7,9 @@
 
 package com.ozyern.exhale.ui.screens.search
 
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -78,6 +81,10 @@ import com.ozyern.exhale.innertube.models.PlaylistItem
 import com.ozyern.exhale.innertube.models.SongItem
 import com.ozyern.exhale.innertube.models.WatchEndpoint
 import com.ozyern.exhale.innertube.models.YTItem
+import com.ozyern.exhale.innertube.models.audioTrackFor
+import com.ozyern.exhale.innertube.models.bestSongFor
+import com.ozyern.exhale.innertube.models.isNamedBy
+import com.ozyern.exhale.innertube.models.isMusicVideo
 import com.ozyern.exhale.LocalPlayerAwareWindowInsets
 import com.ozyern.exhale.LocalPlayerConnection
 import com.ozyern.exhale.R
@@ -353,8 +360,49 @@ fun OnlineSearchResult(
                         if (i < fromLyrics.lastIndex) SearchRowDivider()
                     }
                 }
-                allModeSections.forEachIndexed { index, (title, sectionItems, sectionFilter) ->
-                    val hero = if (index == 0 && sectionFilter == null) sectionItems.firstOrNull() else null
+                // The top result is the song that was typed. YouTube's own lead is often its music
+                // video, a remix, an edit or a cover, so the plain track named by the search is found
+                // among the top section and the Songs results (see bestSongFor) and leads instead.
+                // An artist, album or playlist stays on top only when its exact name was typed.
+                val topItems = allModeSections.firstOrNull()?.takeIf { it.third == null }?.second.orEmpty()
+                val topLead = topItems.firstOrNull()
+                val songResults = viewModel.viewStateMap[FILTER_SONG.value]?.items.orEmpty()
+                val topHero = when {
+                    topLead == null -> null
+                    topLead.isNamedBy(viewModel.query) -> topLead
+                    else -> (topItems + songResults).bestSongFor(viewModel.query)
+                        ?: if (topLead.isMusicVideo) songResults.audioTrackFor(topLead) ?: topLead else topLead
+                }
+                // Each thing once. The top section, the Songs, the Videos and the rest are separate
+                // searches that overlap heavily, so the same song turned up three times down the page,
+                // and again under the matches found by link or by lyric. Everything already shown
+                // above is dropped, by id, and a song is also dropped when another upload of the same
+                // title by the same artist is already there. Videos are keyed apart from songs, so the
+                // official video still shows beside the song it is of.
+                val seenIds = HashSet<String>()
+                val seenSongs = HashSet<String>()
+                fun firstShowing(item: YTItem): Boolean {
+                    if (!seenIds.add(item.id)) return false
+                    if (item !is SongItem) return true
+                    val key = (if (item.isMusicVideo) "video|" else "song|") +
+                        item.title.lowercase().trim() + "|" + item.artists.firstOrNull()?.name?.lowercase()?.trim()
+                    return seenSongs.add(key)
+                }
+                viewModel.linkMatch?.let { firstShowing(it) }
+                fromLyrics.forEach { firstShowing(it.song) }
+                topHero?.let { firstShowing(it) }
+                val dedupedSections = allModeSections.mapIndexed { i, (title, sectionItems, sectionFilter) ->
+                    // The hero stays in the top section (it is drawn from there) and nowhere else,
+                    // even when it was borrowed from the Songs results.
+                    val isTop = i == 0 && sectionFilter == null
+                    Triple(
+                        title,
+                        sectionItems.filter { if (it.id == topHero?.id) isTop else firstShowing(it) },
+                        sectionFilter,
+                    )
+                }
+                dedupedSections.forEachIndexed { index, (title, sectionItems, sectionFilter) ->
+                    val hero = if (index == 0 && sectionFilter == null) topHero else null
                     if (hero != null) {
                         item(key = "hero_${hero.id}") {
                             TopResultCard(
@@ -375,7 +423,7 @@ fun OnlineSearchResult(
                             )
                         }
                     }
-                    val rows = if (hero != null) sectionItems.drop(1) else sectionItems
+                    val rows = if (hero != null) sectionItems.filter { it.id != hero.id } else sectionItems
                     if (rows.isNotEmpty()) item(key = "section_header_${title}_$index") {
                         SearchSectionHeader(
                             title = title,
@@ -643,8 +691,9 @@ private fun SearchHeroCard(
 }
 
 /**
- * The search filters: rounded rectangles rather than capsules, the selected one inverted,
- * scrolling sideways so no label is ever squeezed.
+ * The search filters, as the reference sets them: full capsules, the unselected ones a quiet dark
+ * grey with warm off-white words, the chosen one filled in the app's accent with white words —
+ * colour, not inversion, says which is on. Scrolls sideways so no label is ever squeezed.
  */
 @Composable
 private fun SearchFilterPills(
@@ -652,34 +701,22 @@ private fun SearchFilterPills(
     current: com.ozyern.exhale.innertube.YouTube.SearchFilter?,
     onSelect: (com.ozyern.exhale.innertube.YouTube.SearchFilter?) -> Unit,
 ) {
-    val shape = RoundedCornerShape(12.dp)
+    // The same chip as Home's mood row: Convx 2.0.4's, red when chosen.
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(androidx.compose.foundation.rememberScrollState())
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         chips.forEach { (value, label) ->
-            val selected = value == current
-            val bg by androidx.compose.animation.animateColorAsState(
-                if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.surfaceVariant,
-                label = "filterPill",
+            com.ozyern.exhale.ui.component.GlassChip(
+                label = label,
+                selected = value == current,
+                iconRes = null,
+                onClick = { onSelect(value) },
             )
-            val fg by androidx.compose.animation.animateColorAsState(
-                if (selected) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onBackground,
-                label = "filterPillText",
-            )
-            Box(
-                modifier = Modifier
-                    .clip(shape)
-                    .background(bg)
-                    .clickable { onSelect(value) }
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-            ) {
-                Text(text = label, style = MaterialTheme.typography.labelLarge, color = fg, maxLines = 1)
-            }
         }
     }
 }

@@ -232,6 +232,7 @@ private class DatabaseCallback : RoomDatabase.Callback() {
                 db.query("PRAGMA mmap_size = 268435456").close()
                 
                 cleanupDuplicatePlaylistsOnOpen(db)
+                restoreUnsavedLocalPlaylists(db)
                 ensurePlaylistBrowseIdIndex(db)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to set PRAGMA settings", e)
@@ -239,6 +240,29 @@ private class DatabaseCallback : RoomDatabase.Callback() {
         }
     }
     
+    /**
+     * Playlists made on this phone that were never saved to the Library. The Spotify import and the
+     * import dialog made their playlists without saving them, so every import vanished: made, filled,
+     * and never listed. A playlist of this phone's own (no YouTube id) with songs in it is saved
+     * here, dated when it was made.
+     */
+    private fun restoreUnsavedLocalPlaylists(db: SupportSQLiteDatabase) {
+        try {
+            db.execSQL(
+                """
+                UPDATE playlist
+                SET bookmarkedAt = COALESCE(createdAt, lastUpdateTime, CAST(strftime('%s', 'now') AS INTEGER) * 1000)
+                WHERE bookmarkedAt IS NULL
+                AND browseId IS NULL
+                AND isEditable = 1
+                AND EXISTS (SELECT 1 FROM playlist_song_map WHERE playlistId = playlist.id)
+                """,
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to restore unsaved playlists", e)
+        }
+    }
+
     private fun cleanupDuplicatePlaylistsOnOpen(db: SupportSQLiteDatabase) {
         try {
             db.execSQL("""

@@ -47,10 +47,13 @@ import com.kyant.backdrop.effects.vibrancy
  * to be a visible property of the shape before a stack of plates on a grey ground stops looking
  * like a table with borders. This is the single cheapest change that moves the whole of Settings.
  */
-val SettingsGroupCornerRadius = 26.dp
+val SettingsGroupCornerRadius = 24.dp
 
-/** Hairline between rows inside a group. Never drawn at a card's top or bottom edge. */
-val SettingsDividerThickness = 1.dp
+/** How far a grouped row's text sits in from the card's edges, ColorOS's inset; hairlines match it. */
+val SettingsRowInset = 20.dp
+
+/** Hairline between rows inside a group, iOS's separator. Never drawn at a card's top or bottom edge. */
+val SettingsDividerThickness = 0.5.dp
 
 /**
  * Left indent so a divider starts under the row's text, not under its leading icon.
@@ -77,17 +80,30 @@ val SettingsDividerStartIndent = 60.dp
  * now taken from the Material container ramp, so they carry the same tint as the rest of the app
  * and follow the user's palette instead of contradicting it.
  */
+// iOS's `systemGroupedBackground` again: the cells are its solid `secondarySystemGroupedBackground`
+// now, and on the theme's lowest container (near white in light mode) a white cell had no edge.
 @Composable
-fun settingsPageBackgroundColor(): Color = MaterialTheme.colorScheme.surfaceContainerLowest
+fun settingsPageBackgroundColor(): Color =
+    if (isSystemInDarkTheme()) Color.Black else Color(0xFFF2F2F7)
 
 /** The card colour — one step off [settingsPageBackgroundColor], solid, never elevated. */
 @Composable
 fun settingsGroupSurfaceColor(): Color = MaterialTheme.colorScheme.surfaceContainerHigh
 
-/** Low-contrast row separator: enough to divide, not enough to draw a grid. */
+/** iOS's `separator`: rgba(84,84,88,0.6) on dark, rgba(60,60,67,0.29) on light. */
 @Composable
 fun settingsDividerColor(): Color =
-    if (isSystemInDarkTheme()) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.07f)
+    if (isSystemInDarkTheme()) Color(0x99545458) else Color(0x4A3C3C43)
+
+/** iOS's `systemGray4`, the flat fill a grouped row takes while held. */
+@Composable
+fun settingsRowPressedColor(): Color =
+    if (isSystemInDarkTheme()) Color(0xFF3A3A3C) else Color(0xFFD1D1D6)
+
+/** The card, one solid step off the page: ColorOS's dark grey, white in light mode. */
+@Composable
+private fun settingsCellColor(): Color =
+    if (isSystemInDarkTheme()) Color(0xFF1E1E1E) else Color.White
 
 /**
  * Hairline rim for a group card.
@@ -109,76 +125,20 @@ fun settingsGroupBorderBrush(): Brush {
 }
 
 /**
- * The group card itself, as one modifier: a tonal floor, glass over it, and a rim.
+ * The group card itself, as one modifier: iOS's inset grouped cell.
  *
- * The two-tone grouped table above is the *structure* — a solid page colour and a card colour one
- * step off it. This is that structure rendered as glass instead of as flat paint, and the tonal
- * floor is what lets it be both. Settings now has the album-art wash behind it (see
- * `SettingsPage`), so a fully translucent card would work on the landing page; but the same card
- * is drawn on twenty deeper pages that have nothing behind them, and there it would collapse into
- * a smudge. Floating the glass on a floor at 72% keeps the two-tone step intact everywhere, and
- * lets the wash come through the remaining 28% where there is a wash to come through.
- *
- * The three things that make it read as glass rather than as a grey box are all here and all
- * required: a vertical gradient so the top of the card catches more light than the bottom, a
- * diagonal sheen falling off by the middle, and a hairline rim that is bright at the top edge and
- * gone by the bottom. Drop any one and it stops working — no rim and it is a smudge, no gradient
- * and it is a painted panel, no translucency and it is a bevel.
+ * It was glass: a tonal floor under a white gradient, a diagonal sheen, a bright rim and lens
+ * bending at the edge. Each of those is a tell that the surface is imitating something, and
+ * together they read as cheap. iOS Settings draws none of them: the cell is one solid colour a step
+ * off the page, no border, no gradient, no elevation, and the rows' hairlines do the rest. The
+ * name is kept because fourteen files call it.
  */
 @Composable
 fun Modifier.settingsGlassGroup(
     shape: Shape = RoundedCornerShape(SettingsGroupCornerRadius),
-): Modifier {
-    val dark = isSystemInDarkTheme()
-
-    val fill = Brush.verticalGradient(
-        if (dark) {
-            listOf(Color.White.copy(alpha = 0.055f), Color.White.copy(alpha = 0.012f))
-        } else {
-            listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.14f))
-        },
-    )
-    val sheen = Brush.linearGradient(
-        0f to Color.White.copy(alpha = if (dark) 0.05f else 0.30f),
-        0.45f to Color.Transparent,
-        1f to Color.Transparent,
-    )
-
-    val floor = settingsGroupSurfaceColor().copy(alpha = 0.72f)
-    val border = settingsGroupBorderBrush()
-    // Glass of the wash behind it where the page records one: bent at the rim and softened, under
-    // the same tonal floor so dense rows of text stay as legible as on the flat card.
-    val pageBackdrop = com.ozyern.exhale.ui.component.liquid.pageBackdropOrNull
-    val inDialog = androidx.compose.ui.platform.LocalView.current.parent is androidx.compose.ui.window.DialogWindowProvider
-    if (pageBackdrop != null && !inDialog) {
-        return this
-            .drawBackdrop(
-                backdrop = pageBackdrop,
-                shape = { shape },
-                effects = {
-                    vibrancy()
-                    blur(10f.dp.toPx())
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                        lens(16f.dp.toPx(), 32f.dp.toPx(), true)
-                    }
-                },
-                highlight = { com.kyant.backdrop.highlight.Highlight.Default.copy(alpha = 0.45f) },
-                onDrawSurface = {
-                    drawRect(floor)
-                    drawRect(fill)
-                    drawRect(sheen)
-                },
-            )
-            .border(width = 0.8.dp, brush = border, shape = shape)
-    }
-
-    return this
-        .clip(shape)
-        .background(floor)
-        .background(fill)
-        .background(sheen)
-        .border(width = 0.8.dp, brush = border, shape = shape)
-}
+): Modifier = this
+    .clip(shape)
+    .background(settingsCellColor())
 
 /**
  * The rounded-square plate every settings glyph sits on.
@@ -192,23 +152,13 @@ fun Modifier.settingsGlassGroup(
  * plate reads as a small physical object rather than a tinted rectangle. The values are low
  * enough that a row of four different accents still reads as one family.
  */
+// Flat, as iOS's are: the gradient and rim it had were the same imitation-glass tells as the cards.
 fun Modifier.settingsIconPuck(
     accent: Color,
-    shape: Shape = RoundedCornerShape(12.dp),
+    shape: Shape = RoundedCornerShape(8.dp),
 ): Modifier = this
     .clip(shape)
-    .background(
-        Brush.verticalGradient(
-            listOf(accent.copy(alpha = 0.26f), accent.copy(alpha = 0.11f))
-        )
-    )
-    .border(
-        width = 0.7.dp,
-        brush = Brush.verticalGradient(
-            listOf(accent.copy(alpha = 0.38f), accent.copy(alpha = 0.06f))
-        ),
-        shape = shape,
-    )
+    .background(accent.copy(alpha = 0.18f))
 
 /**
  * The colours ColorOS paints its Settings icons in: saturated, warm-leaning, every one strong

@@ -45,6 +45,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -141,6 +142,7 @@ import com.ozyern.exhale.constants.PlayerVolumeKey
 import com.ozyern.exhale.constants.RepeatModeKey
 import com.ozyern.exhale.constants.SkipSilenceKey
 import com.ozyern.exhale.constants.PreferLocalLosslessKey
+import com.ozyern.exhale.constants.SpatialAudioDefaultAppliedKey
 import com.ozyern.exhale.constants.SpatialAudioKey
 import com.ozyern.exhale.constants.SoundBalanceKey
 import com.ozyern.exhale.constants.OutputFloatKey
@@ -356,6 +358,14 @@ class MusicService :
     val outputStatus = MutableStateFlow<OutputStatus?>(null)
 
     private var preferUsbDac = false
+
+    /** Bit-perfect output to a USB DAC is on (see [BitPerfectUsb]). */
+    private var bitPerfectUsb = false
+
+    /** The sample rate of the track being decoded, which a bit-perfect DAC is opened at. */
+    @Volatile
+    private var inputSampleRate = 0
+
     private val usbDeviceCallback = object : android.media.AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out android.media.AudioDeviceInfo>?) = applyUsbPreference()
         override fun onAudioDevicesRemoved(removedDevices: Array<out android.media.AudioDeviceInfo>?) = applyUsbPreference()
@@ -413,7 +423,14 @@ class MusicService :
             }.build()
     }
 
+    /** The album or playlist the queue is playing, for per-collection settings; null for anything else. */
+    val queueSourceId = MutableStateFlow<String?>(null)
+
     private var currentQueue: Queue = EmptyQueue
+        set(value) {
+            field = value
+            queueSourceId.value = value.sourceId
+        }
     var queueTitle: String? = null
     private val persistentStateLock = Any()
     @Volatile
@@ -436,6 +453,10 @@ class MusicService :
         }.flowOn(Dispatchers.IO)
 
     private val normalizeFactor = MutableStateFlow(1f)
+
+    /** The lift for a quiet master, read by the main player's LoudnessBoostProcessor on its audio thread. */
+    @Volatile
+    private var normalizationBoost = 1f
     var playerVolume = MutableStateFlow(1f)
     private val audioFocusVolumeFactor = MutableStateFlow(1f)
     private val playbackFadeFactor = MutableStateFlow(1f)
@@ -483,6 +504,9 @@ class MusicService :
     }
 
     lateinit var sleepTimer: SleepTimer
+
+    /** Loop a stretch of the song playing; driven from the player menu. */
+    lateinit var abRepeat: AbRepeat
 
     @Inject
     @PlayerCache
@@ -607,6 +631,16 @@ class MusicService :
     private var togetherLastRemoteAppliedPlayWhenReady: Boolean? = null
     @Volatile
     private var togetherLastRemoteAppliedIndex: Int = -1
+    /** How far ahead a guest seeks to land in time, learned from how late its seeks have landed. */
+    @Volatile
+    private var togetherSeekLeadMs: Long = 0L
+    @Volatile
+    private var togetherLastCorrectionAtElapsedMs: Long = 0L
+    @Volatile
+    private var togetherAwaitingSeekResidual: Boolean = false
+    /** When a guest's connection dropped, while it tries to get back in; 0 while connected. */
+    @Volatile
+    private var togetherGuestLostAtElapsedMs: Long = 0L
     @Volatile
     private var togetherLastSentControlAtElapsedMs: Long = 0L
     @Volatile
@@ -795,6 +829,7 @@ class MusicService :
                     addListener(this@MusicService)
                     sleepTimer = SleepTimer(scope, this)
                     addListener(sleepTimer)
+                    abRepeat = AbRepeat(this, scope)
                     addAnalyticsListener(PlaybackStatsListener(false, this@MusicService))
                     setOffloadEnabled(false)
                 }
@@ -812,6 +847,20 @@ class MusicService :
                     offload = audioTrackConfig.offload,
                 )
             }
+
+            // Before the track for a new format is opened: a bit-perfect DAC has to be switched to
+            // the song's own rate first, or the track opens on the old one and gets resampled.
+            override fun onAudioInputFormatChanged(
+                eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
+                format: Format,
+                decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
+            ) {
+                val rate = format.sampleRate
+                if (rate > 0 && rate != inputSampleRate) {
+                    inputSampleRate = rate
+                    if (bitPerfectUsb) BitPerfectUsb.update(audioManager, true, rate)
+                }
+            }
         })
         wakeLock = (getSystemService(Context.POWER_SERVICE) as PowerManager)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Exhale:Playback")
@@ -823,6 +872,27 @@ class MusicService :
             toggleStartRadio = ::toggleStartRadio
             toggleLibrary = ::toggleLibrary
             openOutputSwitcher = ::openOutputSwitcher
+            mediaButtonPlayPause = { handlePlayerWidgetAction(PlayerWidgetActions.ACTION_PLAY_PAUSE) }
+            // A headset skip keeps the player as it was: paused, the next song waits paused, as
+            // Media3's own handling did. The widget's skip still starts playback.
+            mediaButtonNext = {
+                val wasPlaying = player.playWhenReady
+                handlePlayerWidgetAction(PlayerWidgetActions.ACTION_NEXT)
+                player.playWhenReady = wasPlaying
+            }
+            mediaButtonPrevious = {
+                val wasPlaying = player.playWhenReady
+                handlePlayerWidgetAction(PlayerWidgetActions.ACTION_PREVIOUS)
+                player.playWhenReady = wasPlaying
+            }
+            mediaButtonRecover = {
+                cancelIdleStop()
+                promoteToStartedService()
+                ensureStartedAsForeground()
+                if (player.playbackState == Player.STATE_ENDED) player.seekToDefaultPosition()
+                player.prepare()
+                player.playWhenReady = true
+            }
         }
         mediaSession =
             MediaLibrarySession
@@ -1059,6 +1129,22 @@ class MusicService :
             }
 
         dataStore.data
+            .map { it[com.ozyern.exhale.constants.SmartShuffleKey] ?: false }
+            .distinctUntilChanged()
+            .collectLatest(scope) {
+                smartShuffle = it
+                contextPlaysSinceSuggestion = 0
+            }
+
+        dataStore.data
+            .map { it[com.ozyern.exhale.constants.BitPerfectUsbKey] ?: false }
+            .distinctUntilChanged()
+            .collectLatest(scope) {
+                bitPerfectUsb = it
+                applyUsbPreference()
+            }
+
+        dataStore.data
             .map { it[PreferLocalLosslessKey] ?: true }
             .distinctUntilChanged()
             .collectLatest(scope) {
@@ -1092,9 +1178,18 @@ class MusicService :
         // the spatial engine spatial-audio upscaler toggle. The flag is a @Volatile static
         // read once per audio buffer, so flipping it is instant and never
         // requires rebuilding the player/sink.
+        // Spatial audio is on by default on every device. A default only reaches fresh installs, so an
+        // install that had it stored off (OnePlus and OPPO started that way) is switched on once,
+        // here; from then on the listener's own choice stands.
+        scope.launch {
+            dataStore.edit { prefs ->
+                if (prefs[SpatialAudioDefaultAppliedKey] != true) {
+                    prefs[SpatialAudioKey] = true
+                    prefs[SpatialAudioDefaultAppliedKey] = true
+                }
+            }
+        }
         dataStore.data
-            // Off by default where the phone already spatialises (OnePlus/OPPO's OReality);
-            // see DeviceAudio.
             .map { it[SpatialAudioKey] ?: com.ozyern.exhale.utils.DeviceAudio.defaultSpatialAudio }
             .distinctUntilChanged()
             .collectLatest(scope) { enabled ->
@@ -1187,17 +1282,44 @@ class MusicService :
                 }
             }
         
-        dataStore.data
-            .map { (it[AudioCrossfadeDurationKey] ?: 0) * 1000 }
+        // Crossfade and AutoMix as they apply right now: the app's settings, unless the album or
+        // playlist playing has its own transition style (see CollectionTransitions).
+        combine(
+            dataStore.data.map { prefs ->
+                Triple(
+                    (prefs[AudioCrossfadeDurationKey] ?: 0) * 1000,
+                    prefs[AutomixEnabledKey] ?: false,
+                    CollectionTransitions.parse(prefs[com.ozyern.exhale.constants.CollectionTransitionsKey]),
+                )
+            },
+            queueSourceId,
+        ) { (globalCrossfadeMs, globalAutomix, modes), sourceId ->
+            CollectionTransitions.effective(
+                mode = sourceId?.let { modes[it] } ?: TransitionMode.DEFAULT,
+                globalCrossfadeMs = globalCrossfadeMs,
+                globalAutomix = globalAutomix,
+            )
+        }
             .distinctUntilChanged()
-            .collectLatest(scope) {
-                crossfadeDurationMs.value = it
+            .collectLatest(scope) { (crossfadeMs, automix) ->
+                crossfadeDurationMs.value = crossfadeMs
+                automixEnabled.value = automix
             }
 
         mixAnalyzer = MixAnalyzer(this) { id, abort -> automixSource(id, abort) }
         // Music-video lyrics: how far into the video its song starts, measured from the two
         // recordings. Nothing to move when music-only is already playing the song's own audio.
-        com.ozyern.exhale.lyrics.VideoLyricsAlignment.aligner = { videoId, songId ->
+        com.ozyern.exhale.lyrics.VideoLyricsAlignment.onLateLyrics = { mediaId, lyrics ->
+            scope.launch {
+                database.query { upsert(LyricsEntity(id = mediaId, lyrics = lyrics)) }
+                if (player.currentMediaItem?.mediaId == mediaId) {
+                    currentMediaMetadata.value?.let { publishLiveLyrics(it, lyrics) }
+                }
+            }
+        }
+        com.ozyern.exhale.lyrics.VideoLyricsAlignment.aligner = aligner@{ videoId, songId ->
+            val pair = "$videoId|$songId"
+            com.ozyern.exhale.lyrics.VideoLyricsAlignment.known[pair]?.let { return@aligner it }
             if (preferMusicOnly && musicOnlyIds[videoId] == songId) {
                 0L
             } else {
@@ -1213,15 +1335,9 @@ class MusicService :
                             com.ozyern.exhale.playback.automix.VersionAligner.offsetMs(video, song)
                         }.getOrNull()
                     }
-                }
+                }?.also { com.ozyern.exhale.lyrics.VideoLyricsAlignment.known[pair] = it }
             }
         }
-        dataStore.data
-            .map { it[AutomixEnabledKey] ?: false }
-            .distinctUntilChanged()
-            .collectLatest(scope) {
-                automixEnabled.value = it
-            }
         dataStore.data
             .map { prefs ->
                 runCatching { AutomixPerformance.valueOf(prefs[AutomixPerformanceKey] ?: "") }
@@ -1254,7 +1370,7 @@ class MusicService :
                     ExoPlayer
                         .Builder(this)
                         .setMediaSourceFactory(createMediaSourceFactory())
-                        .setRenderersFactory(createRenderersFactory(overlapTransitionFilter))
+                        .setRenderersFactory(createRenderersFactory(overlapTransitionFilter, loudnessBoost = { 1f }))
                         .setTrackSelector(createTrackSelector())
                         .setHandleAudioBecomingNoisy(false)
                         .setWakeMode(C.WAKE_MODE_NETWORK)
@@ -1352,19 +1468,23 @@ class MusicService :
                         
                         Timber.tag("AudioNormalization").d("Calculated raw normalization factor: $factor (from loudness: $loudnessDb)")
                         
-                        if (factor > 1f) {
-                            factor = min(factor, maxSafeGainFactor)
-                            Timber.tag("AudioNormalization").d("Factor capped at maxSafeGainFactor: $factor")
-                        }
-                        
-                        Timber.tag("AudioNormalization").i("Applying normalization factor: $factor")
+                        // The player clamps its volume at 1, so a boost there did nothing and quiet
+                        // masters stayed quiet. Cuts stay on the volume; boosts go to the float
+                        // chain, which lifts the song under a limiter (LoudnessBoostProcessor).
+                        normalizationBoost =
+                            if (factor > 1f) min(factor, LoudnessBoostProcessor.MAX_BOOST) else 1f
+                        if (factor > 1f) factor = 1f
+
+                        Timber.tag("AudioNormalization").i("Applying normalization factor: $factor, boost: $normalizationBoost")
                         factor
                     } else {
                         Timber.tag("AudioNormalization").w("Normalization enabled but no loudness data available - no normalization applied")
+                        normalizationBoost = 1f
                         1f
                     }
                 } else {
                     Timber.tag("AudioNormalization").d("Normalization disabled - using factor 1.0")
+                    normalizationBoost = 1f
                     1f
                 }
         }
@@ -3419,7 +3539,36 @@ class MusicService :
             togetherOnlineConnectJob?.cancel()
             togetherOnlineConnectJob =
                 ioScope.launch(SilentHandler) {
-                    onlineHost.connect(wsUrl)
+                    // The relay keeps the room for two minutes after the host drops, so a host that
+                    // loses signal or sleeps keeps trying to get back rather than ending it for everyone.
+                    var everConnected = false
+                    var lostAt = 0L
+                    var attempt = 0
+                    while (togetherOnlineHost === onlineHost) {
+                        val dialledAt = android.os.SystemClock.elapsedRealtime()
+                        val gotIn = onlineHost.connect(wsUrl)
+                        if (togetherOnlineHost !== onlineHost) break
+                        val now = android.os.SystemClock.elapsedRealtime()
+                        if (gotIn) {
+                            // Only a connection that held counts as getting back: a relay that takes the
+                            // socket and closes it at once (the room is gone) reset the window on every
+                            // dial, so the host redialled forever instead of ever giving up.
+                            val held = now - dialledAt >= 10_000L
+                            if (!everConnected || held) {
+                                everConnected = true
+                                lostAt = now
+                                attempt = 0
+                            }
+                            handleTogetherHostEvent(com.ozyern.exhale.together.TogetherServerEvent.Reconnecting) { onlineHost.currentSettings() }
+                        }
+                        if (!everConnected || now - lostAt > TogetherHostReconnectWindowMs) {
+                            val message = onlineHost.lastConnectError ?: getString(R.string.network_unavailable)
+                            handleTogetherHostEvent(com.ozyern.exhale.together.TogetherServerEvent.Error(message)) { onlineHost.currentSettings() }
+                            break
+                        }
+                        attempt++
+                        kotlinx.coroutines.delay((1_000L * attempt).coerceAtMost(5_000L))
+                    }
                 }
 
             togetherBroadcastJob =
@@ -3488,13 +3637,18 @@ class MusicService :
             togetherSelfParticipantId = null
             togetherLastAppliedQueueHash = null
 
+            val guestName = displayName.trim().ifBlank { getString(R.string.together_role_guest) }
+            val reconnect: () -> Unit = { client.connect(joinInfo, guestName) }
             togetherClientEventsJob?.cancel()
             togetherClientEventsJob =
                 ioScope.launch(SilentHandler) {
+                // Set once the session is over for good, so the disconnect that follows a kick isn't retried.
+                var ended = false
                 client.events.collect { event ->
                     when (event) {
                         is com.ozyern.exhale.together.TogetherClientEvent.Welcome -> {
                             togetherSelfParticipantId = event.welcome.participantId
+                            onTogetherGuestWelcomed()
                             scope.launch(SilentHandler) {
                                 val state = togetherSessionState.value
                                 if (state is com.ozyern.exhale.together.TogetherSessionState.Joining) {
@@ -3541,6 +3695,7 @@ class MusicService :
 
                         is com.ozyern.exhale.together.TogetherClientEvent.JoinDecision -> {
                             if (!event.decision.approved) {
+                                ended = true
                                 scope.launch(SilentHandler) {
                                     togetherSessionState.value =
                                         com.ozyern.exhale.together.TogetherSessionState.Error(
@@ -3554,7 +3709,7 @@ class MusicService :
 
                         is com.ozyern.exhale.together.TogetherClientEvent.ServerIssue -> {
                             Timber.tag("Together").w("server issue (lan) code=${event.code.orEmpty()} message=${event.message}")
-                            when (event.code) {
+                            when (event.code?.uppercase()) {
                                 "GUEST_CONTROL_DISABLED" -> {
                                     showTogetherNotice(event.message, key = "GUEST_CONTROL_DISABLED")
                                     val joined =
@@ -3575,6 +3730,7 @@ class MusicService :
                                 }
 
                                 else -> {
+                                    ended = true
                                     scope.launch(SilentHandler) {
                                         togetherSessionState.value =
                                             com.ozyern.exhale.together.TogetherSessionState.Error(
@@ -3597,6 +3753,9 @@ class MusicService :
                         }
 
                         is com.ozyern.exhale.together.TogetherClientEvent.Error -> {
+                            if (ended) return@collect
+                            if (event.retryable && retryTogetherGuest(client, reconnect)) return@collect
+                            ended = true
                             scope.launch(SilentHandler) {
                                 togetherSessionState.value =
                                     com.ozyern.exhale.together.TogetherSessionState.Error(
@@ -3607,9 +3766,12 @@ class MusicService :
                             ioScope.launch(SilentHandler) { stopTogetherInternal() }
                         }
 
-                        com.ozyern.exhale.together.TogetherClientEvent.Disconnected -> {
+                        is com.ozyern.exhale.together.TogetherClientEvent.Disconnected -> {
+                            if (ended) return@collect
                             val current = togetherSessionState.value
                             if (current is com.ozyern.exhale.together.TogetherSessionState.Idle) return@collect
+                            if (!event.closedOnPurpose && retryTogetherGuest(client, reconnect)) return@collect
+                            ended = true
                             scope.launch(SilentHandler) {
                                 val currentState = togetherSessionState.value
                                 togetherSessionState.value =
@@ -3631,7 +3793,7 @@ class MusicService :
                 }
             }
 
-            client.connect(joinInfo, displayName.trim().ifBlank { getString(R.string.together_role_guest) })
+            reconnect()
         }
     }
 
@@ -3701,13 +3863,36 @@ class MusicService :
             togetherSelfParticipantId = null
             togetherLastAppliedQueueHash = null
 
+            val wsUrl =
+                com.ozyern.exhale.together.TogetherOnlineEndpoint.onlineWebSocketUrlOrNull(
+                    rawWsUrl = resolved.wsUrl,
+                    baseUrl = baseUrl,
+                )
+            if (wsUrl == null) {
+                scope.launch(SilentHandler) {
+                    togetherSessionState.value =
+                        com.ozyern.exhale.together.TogetherSessionState.Error(
+                            message = "Connection failed: Invalid server websocket URL",
+                            recoverable = true,
+                        )
+                }
+                ioScope.launch(SilentHandler) { stopTogetherInternal() }
+                return@launch
+            }
+            val guestName = displayName.trim().ifBlank { getString(R.string.together_role_guest) }
+            val reconnect: () -> Unit = {
+                client.connect(wsUrl = wsUrl, sessionId = resolved.sessionId, sessionKey = resolved.guestKey, displayName = guestName)
+            }
+
             togetherClientEventsJob?.cancel()
             togetherClientEventsJob =
                 ioScope.launch(SilentHandler) {
+                    var ended = false
                     client.events.collect { event ->
                         when (event) {
                             is com.ozyern.exhale.together.TogetherClientEvent.Welcome -> {
                                 togetherSelfParticipantId = event.welcome.participantId
+                                onTogetherGuestWelcomed()
                                 scope.launch(SilentHandler) {
                                     val state = togetherSessionState.value
                                     if (state is com.ozyern.exhale.together.TogetherSessionState.JoiningOnline) {
@@ -3754,6 +3939,7 @@ class MusicService :
 
                             is com.ozyern.exhale.together.TogetherClientEvent.JoinDecision -> {
                                 if (!event.decision.approved) {
+                                    ended = true
                                     scope.launch(SilentHandler) {
                                         togetherSessionState.value =
                                             com.ozyern.exhale.together.TogetherSessionState.Error(
@@ -3767,7 +3953,7 @@ class MusicService :
 
                             is com.ozyern.exhale.together.TogetherClientEvent.ServerIssue -> {
                                 Timber.tag("Together").w("server issue (online) code=${event.code.orEmpty()} message=${event.message}")
-                                when (event.code) {
+                                when (event.code?.uppercase()) {
                                     "GUEST_CONTROL_DISABLED" -> {
                                         showTogetherNotice(event.message, key = "GUEST_CONTROL_DISABLED")
                                         val joined =
@@ -3788,6 +3974,7 @@ class MusicService :
                                     }
 
                                     else -> {
+                                        ended = true
                                         scope.launch(SilentHandler) {
                                             togetherSessionState.value =
                                                 com.ozyern.exhale.together.TogetherSessionState.Error(
@@ -3810,6 +3997,9 @@ class MusicService :
                             }
 
                             is com.ozyern.exhale.together.TogetherClientEvent.Error -> {
+                                if (ended) return@collect
+                                if (event.retryable && retryTogetherGuest(client, reconnect)) return@collect
+                                ended = true
                                 scope.launch(SilentHandler) {
                                     togetherSessionState.value =
                                         com.ozyern.exhale.together.TogetherSessionState.Error(
@@ -3820,9 +4010,12 @@ class MusicService :
                                 ioScope.launch(SilentHandler) { stopTogetherInternal() }
                             }
 
-                            com.ozyern.exhale.together.TogetherClientEvent.Disconnected -> {
+                            is com.ozyern.exhale.together.TogetherClientEvent.Disconnected -> {
+                                if (ended) return@collect
                                 val current = togetherSessionState.value
                                 if (current is com.ozyern.exhale.together.TogetherSessionState.Idle) return@collect
+                                if (!event.closedOnPurpose && retryTogetherGuest(client, reconnect)) return@collect
+                                ended = true
                                 scope.launch(SilentHandler) {
                                     val currentState = togetherSessionState.value
                                     togetherSessionState.value =
@@ -3844,29 +4037,7 @@ class MusicService :
                     }
                 }
 
-            val wsUrl =
-                com.ozyern.exhale.together.TogetherOnlineEndpoint.onlineWebSocketUrlOrNull(
-                    rawWsUrl = resolved.wsUrl,
-                    baseUrl = baseUrl,
-                )
-            if (wsUrl == null) {
-                scope.launch(SilentHandler) {
-                    togetherSessionState.value =
-                        com.ozyern.exhale.together.TogetherSessionState.Error(
-                            message = "Connection failed: Invalid server websocket URL",
-                            recoverable = true,
-                        )
-                }
-                ioScope.launch(SilentHandler) { stopTogetherInternal() }
-                return@launch
-            }
-
-            client.connect(
-                wsUrl = wsUrl,
-                sessionId = resolved.sessionId,
-                sessionKey = resolved.guestKey,
-                displayName = displayName.trim().ifBlank { getString(R.string.together_role_guest) },
-            )
+            reconnect()
         }
     }
 
@@ -3993,6 +4164,10 @@ class MusicService :
             }
 
             is com.ozyern.exhale.together.TogetherServerEvent.Error -> {
+                if (!event.fatal) {
+                    Timber.tag("Together").w(event.throwable, "host: ${event.message}")
+                    return
+                }
                 val current = togetherSessionState.value
                 if (current is com.ozyern.exhale.together.TogetherSessionState.Idle) return
                 togetherSessionState.value =
@@ -4002,6 +4177,9 @@ class MusicService :
                     )
                 ioScope.launch(SilentHandler) { stopTogetherInternal() }
             }
+
+            com.ozyern.exhale.together.TogetherServerEvent.Reconnecting ->
+                showTogetherNotice(getString(R.string.together_reconnecting), key = "TOGETHER_RECONNECTING")
 
             else -> Unit
         }
@@ -4159,12 +4337,15 @@ class MusicService :
         val sentAt = state.sentAtElapsedRealtimeMs
         if (sentAt > 0L && lastSentAt > 0L && sentAt <= lastSentAt) return
 
-        val offset = if (togetherIsOnlineSession) 0L else (togetherClock?.snapshot()?.estimatedOffsetMs ?: 0L)
-        val correctedSentAt = sentAt + offset
-        val estimatedOnlineLatency = if (togetherIsOnlineSession) 1200L else 0L
-        val delta = if (togetherIsOnlineSession) estimatedOnlineLatency else (now - correctedSentAt).coerceAtLeast(0L)
-        val targetPos =
-            if (state.isPlaying) (state.positionMs + delta).coerceAtLeast(0L) else state.positionMs.coerceAtLeast(0L)
+        val age = com.ozyern.exhale.together.TogetherSync.ageOfStateMs(
+            sentAtServerMs = sentAt,
+            nowLocalMs = now,
+            clock = togetherClock?.snapshot(),
+            online = togetherIsOnlineSession,
+        )
+        val targetPos = com.ozyern.exhale.together.TogetherSync.targetPositionMs(state.positionMs, state.isPlaying, age)
+        // Where to seek when a seek is needed: a little ahead while playing, by the buffering a seek costs.
+        val seekPos = if (state.isPlaying) targetPos + togetherSeekLeadMs else targetPos
 
         withContext(Dispatchers.Main) {
             togetherApplyingRemote = true
@@ -4191,10 +4372,10 @@ class MusicService :
                             title = getString(R.string.music_player),
                             items = desiredItems,
                             startIndex = startIndex,
-                            position = targetPos,
+                            position = seekPos,
                         )
                     queueTitle = null
-                    player.setMediaItems(desiredItems, startIndex, targetPos)
+                    player.setMediaItems(desiredItems, startIndex, seekPos)
                     player.prepare()
                     player.repeatMode = state.repeatMode
                     player.shuffleModeEnabled = state.shuffleEnabled
@@ -4208,29 +4389,57 @@ class MusicService :
                             player.shuffleModeEnabled != state.shuffleEnabled ||
                             player.playWhenReady != state.isPlaying
 
+                    val mainNow = android.os.SystemClock.elapsedRealtime()
                     if (indexChanged) {
-                        player.seekTo(index.coerceAtMost(player.mediaItemCount - 1), targetPos)
+                        player.seekTo(index.coerceAtMost(player.mediaItemCount - 1), seekPos)
                         player.prepare()
                         player.playWhenReady = state.isPlaying
+                        togetherLastCorrectionAtElapsedMs = mainNow
+                        togetherAwaitingSeekResidual = false
                     } else if (stateChanged) {
                         if (player.repeatMode != state.repeatMode) player.repeatMode = state.repeatMode
                         if (player.shuffleModeEnabled != state.shuffleEnabled) player.shuffleModeEnabled = state.shuffleEnabled
                         if (player.playWhenReady != state.isPlaying) {
                             player.playWhenReady = state.isPlaying
                             val drift = kotlin.math.abs(player.currentPosition - targetPos)
-                            if (drift > 100) {
-                                player.seekTo(targetPos)
+                            if (drift > com.ozyern.exhale.together.TogetherSync.PausedSeekThresholdMs) {
+                                player.seekTo(seekPos)
                                 player.prepare()
+                                togetherLastCorrectionAtElapsedMs = mainNow
                             }
                         }
-                    } else {
-                        val drift = kotlin.math.abs(player.currentPosition - targetPos)
-                        val seekThreshold = if (togetherIsOnlineSession) 4000L else 2000L
-                        val threshold = if (state.isPlaying) seekThreshold else 200L
-                        
-                        if (drift > threshold) {
-                            player.seekTo(targetPos)
-                            player.prepare()
+                    } else if (
+                        state.isPlaying &&
+                        (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) &&
+                        mainNow - togetherLastCorrectionAtElapsedMs >= com.ozyern.exhale.together.TogetherSync.SeekCooldownMs
+                    ) {
+                        // Stopped under a playing room (a stream error, or run off the end): nothing
+                        // below would ever prepare it again, so it would sit silent until the host acted.
+                        player.seekTo(seekPos)
+                        player.prepare()
+                        player.playWhenReady = true
+                        togetherLastCorrectionAtElapsedMs = mainNow
+                        togetherAwaitingSeekResidual = true
+                    } else if (!state.isPlaying || (player.isPlaying && player.playbackState == Player.STATE_READY)) {
+                        // While the guest is still buffering, its position says nothing about drift.
+                        val settling = state.isPlaying &&
+                            mainNow - togetherLastCorrectionAtElapsedMs < com.ozyern.exhale.together.TogetherSync.SeekCooldownMs
+                        if (!settling) {
+                            val drift = player.currentPosition - targetPos
+                            if (state.isPlaying && togetherAwaitingSeekResidual) {
+                                // The first reading after a correction: whatever is left is what the seek cost.
+                                togetherAwaitingSeekResidual = false
+                                if (kotlin.math.abs(drift) < 3_000L) {
+                                    togetherSeekLeadMs = com.ozyern.exhale.together.TogetherSync.nextSeekLeadMs(togetherSeekLeadMs, -drift)
+                                }
+                            }
+                            val threshold = com.ozyern.exhale.together.TogetherSync.seekThresholdMs(state.isPlaying, togetherIsOnlineSession)
+                            if (kotlin.math.abs(drift) > threshold) {
+                                player.seekTo(if (state.isPlaying) targetPos + togetherSeekLeadMs else targetPos)
+                                player.prepare()
+                                togetherLastCorrectionAtElapsedMs = mainNow
+                                togetherAwaitingSeekResidual = state.isPlaying
+                            }
                         }
                     }
                     togetherLastRemoteAppliedIndex = index
@@ -4248,6 +4457,41 @@ class MusicService :
             } finally {
                 togetherApplyingRemote = false
             }
+        }
+    }
+
+    private var togetherGuestReconnectJob: Job? = null
+
+    /**
+     * A guest whose connection dropped tries to get back in for a while before giving up, the way a
+     * call reconnects, so a phone that changes Wi-Fi or sleeps for a moment stays in the room.
+     * Returns false once the window is spent, or if this guest never got in to begin with.
+     */
+    private fun retryTogetherGuest(client: com.ozyern.exhale.together.TogetherClient, reconnect: () -> Unit): Boolean {
+        if (togetherClient !== client) return false
+        if (togetherSessionState.value !is com.ozyern.exhale.together.TogetherSessionState.Joined) return false
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (togetherGuestLostAtElapsedMs == 0L) {
+            togetherGuestLostAtElapsedMs = now
+            showTogetherNotice(getString(R.string.together_reconnecting), key = "TOGETHER_RECONNECTING")
+        }
+        if (now - togetherGuestLostAtElapsedMs > TogetherGuestReconnectWindowMs) return false
+        if (togetherGuestReconnectJob?.isActive == true) return true
+        togetherGuestReconnectJob = ioScope.launch(SilentHandler) {
+            kotlinx.coroutines.delay(1_500)
+            if (togetherClient === client) reconnect()
+        }
+        return true
+    }
+
+    /** A guest back in after a drop: the clock and seek lead are kept, the drop is forgotten. */
+    private fun onTogetherGuestWelcomed() {
+        // Ordering only means something within one connection: a relay that restarted stamps from a
+        // new, lower clock, and the old stamp would have dropped every state it sent as stale.
+        togetherLastAppliedRoomStateSentAtElapsedMs = 0L
+        if (togetherGuestLostAtElapsedMs != 0L) {
+            togetherGuestLostAtElapsedMs = 0L
+            showTogetherNotice(getString(R.string.together_reconnected), key = "TOGETHER_RECONNECTED")
         }
     }
 
@@ -4277,6 +4521,10 @@ class MusicService :
         togetherHeartbeatJob?.cancel()
         togetherHeartbeatJob = null
 
+        // A reconnect still waiting out its delay would otherwise dial back into the room after Leave.
+        togetherGuestReconnectJob?.cancel()
+        togetherGuestReconnectJob = null
+
         togetherClock = null
         togetherSelfParticipantId = null
         togetherLastAppliedQueueHash = null
@@ -4286,6 +4534,10 @@ class MusicService :
         togetherLastAppliedRoomStateSentAtElapsedMs = 0L
         togetherLastRemoteAppliedPlayWhenReady = null
         togetherLastRemoteAppliedIndex = -1
+        togetherSeekLeadMs = 0L
+        togetherLastCorrectionAtElapsedMs = 0L
+        togetherAwaitingSeekResidual = false
+        togetherGuestLostAtElapsedMs = 0L
         togetherLastSentControlAtElapsedMs = 0L
         togetherLastSentControlAction = null
         togetherPendingGuestControl = null
@@ -4614,6 +4866,61 @@ class MusicService :
         )
     }
 
+    /** Smart Shuffle is on (see [maybeSmartShuffle]). */
+    private var smartShuffle = false
+    private var contextPlaysSinceSuggestion = 0
+    private var smartShuffleJob: Job? = null
+
+    /**
+     * Smart Shuffle, as Spotify has it: while an album or playlist plays shuffled, every
+     * [SmartShuffleEvery]th song of it is followed by one that is not in it — related to what is
+     * playing, never already queued — tagged so the queue can show it as a suggestion. Songs the
+     * user queued still play first; the suggestion goes after them.
+     */
+    /** Shuffle mode on, or a queue a Shuffle button started already in shuffled order. */
+    private fun shufflingNow(): Boolean = player.shuffleModeEnabled || currentQueue.shuffled
+
+    private fun maybeSmartShuffle(mediaItem: MediaItem?, reason: Int) {
+        if (!smartShuffle || !shufflingNow() || mediaItem == null) return
+        // Never inside Listen Together, as Automix is held: a guest's queue mirrors the room's, so a
+        // suggestion broke its hash and restarted playback on the next state, and a host's went to
+        // everyone in the room.
+        if (togetherSessionState.value !is com.ozyern.exhale.together.TogetherSessionState.Idle) return
+        if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
+            contextPlaysSinceSuggestion = 0
+            return
+        }
+        if (mediaItem.isSmartSuggestion || mediaItem.queueTier != QueueTier.CONTEXT) return
+        // A handful of songs is not something to shuffle suggestions into.
+        if (player.mediaItemCount < SmartShuffleMinQueue) return
+        if (++contextPlaysSinceSuggestion < SmartShuffleEvery) return
+        contextPlaysSinceSuggestion = 0
+
+        val seed = mediaItem.mediaId
+        smartShuffleJob?.cancel()
+        smartShuffleJob = scope.launch {
+            val hideExplicit = dataStore.get(HideExplicitKey, false)
+            val hideVideo = dataStore.get(HideVideoKey, false)
+            val result = withContext(Dispatchers.IO) { YouTube.next(WatchEndpoint(videoId = seed)) }
+                .getOrNull() ?: return@launch
+            // The answer is for the song that asked; if that has moved on, so has the moment.
+            if (player.currentMediaItem?.mediaId != seed || !shufflingNow()) return@launch
+            val queueIds = (0 until player.mediaItemCount).mapTo(HashSet()) { player.getMediaItemAt(it).mediaId }
+            val pick = result.items
+                .map { it.toMediaItem() }
+                .filter { it.mediaId != seed && it.mediaId !in queueIds }
+                .filterExplicit(hideExplicit)
+                .filterVideo(hideVideo)
+                .take(5)
+                .randomOrNull()
+                ?: return@launch
+            val at = player.userQueueEnd()
+            Timber.tag("SmartShuffle").i("Suggesting ${pick.mediaMetadata.title} after $seed")
+            player.addMediaItem(at, pick.asSmartSuggestion())
+            player.placeInShuffle(at..at, afterQueued = true)
+        }
+    }
+
     override fun onMediaItemTransition(mediaItem: MediaItem?, rawReason: Int) {
     // The crossfade catching up with the song already fading in is that song playing on, not a
     // skip, whatever the player calls it — so the queue, the radio and Together all see it as one.
@@ -4640,6 +4947,8 @@ class MusicService :
     )
 
     crossfadeAudio?.onMediaItemTransition(mediaItem, reason)
+
+    maybeSmartShuffle(mediaItem, reason)
 
     // Resolve the next track's stream URL now, so skipping to it does not block on the network.
     prefetchNextStreamUrl()
@@ -5611,7 +5920,10 @@ class MusicService :
     /** Routes to a USB DAC while one is connected and the setting is on; otherwise, the phone's choice. */
     private fun applyUsbPreference() {
         if (!::player.isInitialized || !::audioManager.isInitialized) return
-        val usb = if (preferUsbDac) {
+        // Bit-perfect follows the DAC in and out: set on it when it is plugged in, cleared when
+        // it goes, so nothing is left pinned to a device that no longer exists.
+        BitPerfectUsb.update(audioManager, bitPerfectUsb, inputSampleRate)
+        val usb = if (preferUsbDac || bitPerfectUsb) {
             audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).firstOrNull {
                 it.type == android.media.AudioDeviceInfo.TYPE_USB_DEVICE ||
                     it.type == android.media.AudioDeviceInfo.TYPE_USB_HEADSET ||
@@ -6282,7 +6594,12 @@ class MusicService :
                     ).build()
         }
 
-    private fun createRenderersFactory(transitionFilter: TransitionFilterProcessor = mainTransitionFilter) =
+    private fun createRenderersFactory(
+        transitionFilter: TransitionFilterProcessor = mainTransitionFilter,
+        // The crossfade's second player plays the other song: it never takes this one's lift.
+        // Bit-perfect promises the source's own samples, so it is never lifted either.
+        loudnessBoost: () -> Float = { if (BitPerfectUsb.activeEncoding != null) 1f else normalizationBoost },
+    ) =
         object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(
                 context: Context,
@@ -6321,10 +6638,20 @@ class MusicService :
                         SpatialAudioProcessor(),
                         // After the stage is built: 8D moves the whole of it round the head.
                         EightDAudioProcessor(),
+                        // Normalisation's lift for a quiet master, limited, after everything that
+                        // adds level (the equaliser included) so nothing past it can clip.
+                        LoudnessBoostProcessor(loudnessBoost),
                         // Last: it only measures what everything before it made.
                         LevelMeterAudioProcessor(),
                     ),
-                    floatAllowed = { dataStore.get(OutputFloatKey, true) && externalOutputActive() },
+                    // A bit-perfect DAC takes exactly the encoding its mixer was opened with;
+                    // otherwise float goes out wherever it is safe to.
+                    floatAllowed = {
+                        BitPerfectUsb.activeEncoding?.let { it == C.ENCODING_PCM_FLOAT }
+                            ?: (dataStore.get(OutputFloatKey, true) && externalOutputActive())
+                    },
+                    // Bit-perfect promises the DAC the source's own samples: no added noise.
+                    ditherAllowed = { BitPerfectUsb.activeEncoding == null },
                 )
             }
         }
@@ -6630,7 +6957,11 @@ class MusicService :
         }
         LockScreenLyrics.unregister(this, lockLyricsReceiver)
         lockLyricsReceiver = null
-        if (::audioManager.isInitialized) runCatching { audioManager.unregisterAudioDeviceCallback(usbDeviceCallback) }
+        if (::audioManager.isInitialized) {
+            runCatching { audioManager.unregisterAudioDeviceCallback(usbDeviceCallback) }
+            // Never leave a DAC pinned to bit-perfect for an app that is no longer playing.
+            BitPerfectUsb.update(audioManager, false, 0)
+        }
         super.onDestroy()
         unregisterBluetoothReceiver()
         try {
@@ -6809,6 +7140,28 @@ class MusicService :
      */
     private fun sessionPlayer(): Player =
         object : androidx.media3.common.ForwardingPlayer(player) {
+            // Play from outside the app — a wired headset's button, Bluetooth, the lock screen —
+            // reaches the player as a bare play(). After a restart the restored song sits IDLE,
+            // unprepared, and play() on an idle player does nothing: the headset button did
+            // nothing until the song had been started once from the screen, whose button
+            // prepares first (see togglePlayPause). Prepared here too, as Exhale's own does.
+            override fun play() {
+                readyForPlay()
+                super.play()
+            }
+
+            override fun setPlayWhenReady(playWhenReady: Boolean) {
+                if (playWhenReady) readyForPlay()
+                super.setPlayWhenReady(playWhenReady)
+            }
+
+            private fun readyForPlay() {
+                if (player.mediaItemCount == 0) return
+                cancelIdleStop()
+                if (player.playbackState == Player.STATE_IDLE) player.prepare()
+                if (player.playbackState == Player.STATE_ENDED) player.seekToDefaultPosition()
+            }
+
             override fun seekToNext() {
                 if (!skipFromAudible(next = true)) super.seekToNext()
             }
@@ -6893,6 +7246,14 @@ class MusicService :
     }
 
     companion object {
+        /** Smart Shuffle: one suggestion after this many songs of the album or playlist. */
+        private const val SmartShuffleEvery = 3
+        /** ...and only in a queue at least this long. */
+        private const val SmartShuffleMinQueue = 8
+        /** How long a Music Together guest keeps trying to get back in after its connection drops. */
+        private const val TogetherGuestReconnectWindowMs = 30_000L
+        /** How long an online host keeps trying to reach the relay; the relay holds the room for 2 minutes. */
+        private const val TogetherHostReconnectWindowMs = 110_000L
         /** [streamSource] marker for a song playing from YouTube. */
         private const val YOUTUBE_SOURCE = "youtube"
         /** How long a JioSaavn lookup may take before the song simply plays from YouTube. */

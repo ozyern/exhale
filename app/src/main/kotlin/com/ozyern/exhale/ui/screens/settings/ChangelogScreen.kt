@@ -52,19 +52,19 @@ fun ChangelogScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    // Estado para el canal actual
+    // The current channel
     var updateChannel by remember { mutableStateOf(UpdateChannel.STABLE) }
 
-    // Estados para releases estables
+    // Stable releases
     var releases by remember { mutableStateOf<List<ReleaseInfo>>(emptyList()) }
 
-    // Estado para nightly
+    // Nightly
     var nightlyInfo by remember { mutableStateOf<NightlyInfo?>(null) }
 
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    // Cargar el canal actual desde DataStore
+    // Load the current channel from DataStore
     LaunchedEffect(Unit) {
         updateChannel = context.dataStore.data.map {
             it[UpdateChannelKey]?.let { value ->
@@ -77,10 +77,10 @@ fun ChangelogScreen(
         }.first()
     }
 
-    // Función para cargar el contenido según el canal
+    // Loads the content for the channel
     suspend fun loadContent() {
         if (updateChannel == UpdateChannel.NIGHTLY) {
-            // Solo para NIGHTLY usar getLatestReleaseInfo
+            // Only NIGHTLY uses getLatestReleaseInfo
             Updater.getLatestReleaseInfo().onSuccess { releaseInfo ->
                 nightlyInfo = NightlyInfo(
                     versionName = releaseInfo.tagName,
@@ -96,7 +96,7 @@ fun ChangelogScreen(
             }
             isLoading = false
         } else {
-            // Para STABLE, NO usar getLatestReleaseInfo, solo getAllReleases
+            // STABLE does NOT use getLatestReleaseInfo, only getAllReleases
             Updater.getAllReleases(forceRefresh = true).onSuccess { result ->
                 releases = result
                 error = null
@@ -121,13 +121,13 @@ fun ChangelogScreen(
         versionNotes = refreshed
     }
 
-    // Cargar datos iniciales cuando el canal cambie
+    // Load again whenever the channel changes
     LaunchedEffect(updateChannel) {
         isLoading = true
         error = null
 
         if (updateChannel == UpdateChannel.STABLE) {
-            // Intentar usar caché primero para releases estables
+            // Stable releases try the cache first
             val cachedReleases = Updater.getCachedReleases()
             if (cachedReleases.isNotEmpty()) {
                 releases = cachedReleases
@@ -223,7 +223,7 @@ fun ChangelogScreen(
                 }
 
                 updateChannel == UpdateChannel.NIGHTLY && nightlyInfo != null -> {
-                    // Mostrar contenido nightly
+                    // Nightly content
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
@@ -274,14 +274,14 @@ fun ChangelogScreen(
 @SuppressLint("NonObservableLocale")
 @Composable
 private fun NightlyChangelogCard(nightlyInfo: NightlyInfo) {
-    // Soporte para formato dd-MM-yyyy (como "30-05-2026")
+    // Accepts dd-MM-yyyy too (as in "30-05-2026")
     val inputDateFormat1 = SimpleDateFormat("dd-MM-yyyy", LocalLocale.current.platformLocale)
     val inputDateFormat2 = SimpleDateFormat("yyyy-MM-dd", LocalLocale.current.platformLocale)
     val displayDateFormat = SimpleDateFormat("MMMM d, yyyy", LocalLocale.current.platformLocale)
 
     val formattedDate = remember(nightlyInfo.publishedAt) {
         try {
-            // Intentar con dd-MM-yyyy primero
+            // Try dd-MM-yyyy first
             val date = inputDateFormat1.parse(nightlyInfo.publishedAt)
                 ?: inputDateFormat2.parse(nightlyInfo.publishedAt)
             date?.let { displayDateFormat.format(it) } ?: nightlyInfo.publishedAt
@@ -320,7 +320,7 @@ private fun NightlyChangelogCard(nightlyInfo: NightlyInfo) {
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Mostrar el changelog con soporte Markdown
+            // The changelog, rendered as Markdown
             if (!nightlyInfo.changelog.isNullOrBlank()) {
                 MarkdownText(
                     markdown = nightlyInfo.changelog,

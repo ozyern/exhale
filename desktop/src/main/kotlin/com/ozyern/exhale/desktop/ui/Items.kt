@@ -68,6 +68,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.ozyern.exhale.desktop.data.LocalSettings
 import com.ozyern.exhale.desktop.ui.glass.glassPlate
@@ -79,6 +80,12 @@ import com.ozyern.exhale.innertube.models.YTItem
 
 /** Seconds for each equalizer bar to rise and fall. */
 private val EqualizerPeriods = floatArrayOf(1.04f, 0.76f, 1.22f)
+
+/**
+ * YouTube's stand-in for a playlist with no cover of its own (a dark square with a stray mark on it).
+ * Drawn as the Music app draws a coverless playlist instead: a grey tile with a note.
+ */
+fun String.isPlaceholderArtwork(): Boolean = "playlist-empty-state" in this
 
 /** YouTube serves thumbnails at whatever size the URL asks for; the feed asks for tiny ones. */
 fun String.resizedThumbnail(px: Int): String =
@@ -176,8 +183,13 @@ fun ItemCard(
                     cameraDistance = 14f * density
                 },
         ) {
+            if (item.thumbnail?.isPlaceholderArtwork() == true) {
+                Box(Modifier.matchParentSize().clip(artShape).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                    Icon(NavIcons.MusicNote, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), modifier = Modifier.fillMaxSize(0.34f))
+                }
+            }
             AsyncImage(
-                model = item.thumbnail?.resizedThumbnail(artPx),
+                model = item.thumbnail?.takeUnless { it.isPlaceholderArtwork() }?.resizedThumbnail(artPx),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -186,10 +198,8 @@ fun ItemCard(
                     // large share of what scrolling a page cost.
                     .then(if (Bench.off("shadow")) Modifier else Modifier.shadow(if (hovered) 18.dp else 0.dp, artShape, clip = false))
                     .clip(artShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .then(
-                        if (isActive) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, artShape) else Modifier,
-                    ),
+                    // No ring round the playing card: the Music app marks it with the disc alone.
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
             )
             if (tiltOn) {
                 Box(
@@ -220,20 +230,24 @@ fun ItemCard(
                 )
             }
         }
-        Spacer(Modifier.height(10.dp))
+        // The Music app's caption under artwork: the title in medium white, the subtitle in plain grey —
+        // never bold, never the accent.
+        Spacer(Modifier.height(8.dp))
         Text(
             item.title,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = 13.sp,
+            lineHeight = 16.sp,
+            fontWeight = FontWeight.Medium,
+            color = Color.White.copy(alpha = 0.95f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         item.subtitle()?.let {
             Text(
                 it,
-                style = MaterialTheme.typography.bodySmall,
-                // The Android grid item's secondary-tinted subtitle ("1.1M views").
-                color = MaterialTheme.colorScheme.secondary,
+                fontSize = 13.sp,
+                lineHeight = 16.sp,
+                color = Color.White.copy(alpha = 0.55f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -302,10 +316,10 @@ fun StationCard(title: String, subtitle: String?, image: String?, onClick: () ->
             )
             if (hovered) PlayDisc(playing = false, modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp))
         }
-        Spacer(Modifier.height(10.dp))
-        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(8.dp))
+        Text(title, fontSize = 13.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, color = Color.White.copy(alpha = 0.95f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         subtitle?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(it, fontSize = 13.sp, lineHeight = 16.sp, color = Color.White.copy(alpha = 0.55f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

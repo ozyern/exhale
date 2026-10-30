@@ -55,13 +55,17 @@ import kotlin.math.roundToInt
 /**
  * What the lyrics' gear opens: the things that change how the words look and read, and nothing
  * else — which layout, how big, how far apart, translated into what, and where they come from.
+ * The classic layout also passes [onFullscreen] and [onHorizontal]: its one gear stands in for
+ * the row of discs it used to have along the foot.
  */
 @Composable
 internal fun LyricsSettingsSheet(
     onOpenSources: () -> Unit,
     onDismiss: () -> Unit,
+    onFullscreen: (() -> Unit)? = null,
+    onHorizontal: (() -> Unit)? = null,
 ) {
-    val (layout, setLayout) = rememberEnumPreference(LyricsLayoutKey, LyricsLayout.GLASS)
+    val (layout, setLayout) = rememberEnumPreference(LyricsLayoutKey, LyricsLayout.CLASSIC)
     val (motion, setMotion) = rememberEnumPreference(
         com.ozyern.exhale.constants.LyricsMotionKey,
         com.ozyern.exhale.constants.LyricsMotion.EXHALE,
@@ -86,6 +90,26 @@ internal fun LyricsSettingsSheet(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 16.dp),
             )
+
+            if (onFullscreen != null || onHorizontal != null) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (onFullscreen != null) {
+                        ActionTile(R.drawable.fullscreen, "Full screen", Modifier.weight(1f)) {
+                            onDismiss()
+                            onFullscreen()
+                        }
+                    }
+                    if (onHorizontal != null) {
+                        ActionTile(R.drawable.screen_rotation, "Sideways", Modifier.weight(1f)) {
+                            onDismiss()
+                            onHorizontal()
+                        }
+                    }
+                }
+            }
 
             SectionLabel("Style")
             Row(
@@ -190,14 +214,30 @@ internal fun LyricsSettingsSheet(
 
 @Composable
 private fun SectionLabel(text: String) {
+    // iOS's group header: Footnote grey in sentence case, quiet — not a tracked uppercase label.
     Text(
-        text.uppercase(),
-        style = MaterialTheme.typography.labelMedium,
-        fontWeight = FontWeight.SemiBold,
-        letterSpacing = 0.8.sp,
+        text,
+        fontSize = 13.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 18.dp, bottom = 8.dp),
+        modifier = Modifier.padding(start = 4.dp, top = 20.dp, bottom = 8.dp),
     )
+}
+
+/** A wide tile that does something at once (full screen, sideways) rather than set something. */
+@Composable
+private fun ActionTile(icon: Int, label: String, modifier: Modifier, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+    ) {
+        Icon(painterResource(icon), null, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(label, fontWeight = FontWeight.SemiBold)
+    }
 }
 
 @Composable

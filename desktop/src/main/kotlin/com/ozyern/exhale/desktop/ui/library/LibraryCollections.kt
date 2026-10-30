@@ -108,6 +108,8 @@ object AccountLibrary {
  */
 @Composable
 fun LibrarySectionScreen(section: LibrarySection, feed: HomeFeed, player: DesktopPlayer, state: PlayerState, insets: ChromeInsets) {
+    // New is laid out like the Music app's, not as a library grid.
+    if (section == LibrarySection.New) return NewScreen(feed, player, state, insets)
     val favorites by DesktopPrefs.favorites.collectAsState()
     val picked by DesktopPrefs.artists.collectAsState()
     val account by AccountSession.account.collectAsState()
@@ -174,7 +176,6 @@ fun LibrarySectionScreen(section: LibrarySection, feed: HomeFeed, player: Deskto
         item(span = { GridItemSpan(maxLineSpan) }) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 LargeTitle(section.title, Modifier.weight(1f))
-                GlassIconButton(NavIcons.Stats, "Your Sound Chem", { navigator?.openSoundChem?.invoke() })
             }
         }
         if (isSongPage && songs.isNotEmpty()) {

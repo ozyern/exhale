@@ -23,10 +23,13 @@ object VersionAligner {
     /** The longest intro a video is assumed to have. */
     private const val MAX_LAG_SECONDS = 100.0
     private const val MIN_CORRELATION = 0.35
+    /** The longest stretch of the song's own intro a video is assumed to cut. */
+    private const val MAX_LEAD_SECONDS = 20.0
 
     /**
      * How many milliseconds into [video] the song in [song] begins, or null when the two cannot be
      * lined up with confidence. Positive: the video plays that long before the song starts.
+     * Negative: the video starts that far into the song (it cuts the song's intro).
      */
     fun offsetMs(video: MediaDataSource, song: MediaDataSource): Long? {
         if (!TrackFeatures.available) return null
@@ -39,17 +42,27 @@ object VersionAligner {
         if (ve.size < 50 || se.size < 50) return null
 
         val maxLag = minOf((MAX_LAG_SECONDS * 1000 / HOP_MS).toInt(), ve.size - se.size / 2)
+        // The other way too: a video that cuts in after the song's own intro starts partway into
+        // the song. Only later starts were searched, so such a video was matched to the wrong place
+        // (or not at all) and its picture and lyrics ran late.
+        val maxLead = (MAX_LEAD_SECONDS * 1000 / HOP_MS).toInt().coerceAtMost(se.size / 2)
         var bestLag = 0
         var best = -1.0
-        for (lag in 0..maxLag.coerceAtLeast(0)) {
-            val n = minOf(se.size, ve.size - lag)
-            if (n < se.size / 2) break
+        for (lag in -maxLead..maxLag.coerceAtLeast(0)) {
+            // lag >= 0: the song's start is [lag] hops into the video. lag < 0: the video's start is
+            // -[lag] hops into the song.
+            val videoStart = maxOf(lag, 0)
+            val songStart = maxOf(-lag, 0)
+            val n = minOf(se.size - songStart, ve.size - videoStart)
+            if (n < se.size / 2) {
+                if (lag >= 0) break else continue
+            }
             var dot = 0.0
             var a = 0.0
             var b = 0.0
             for (i in 0 until n) {
-                val x = ve[lag + i]
-                val y = se[i]
+                val x = ve[videoStart + i]
+                val y = se[songStart + i]
                 dot += x * y
                 a += x * x
                 b += y * y

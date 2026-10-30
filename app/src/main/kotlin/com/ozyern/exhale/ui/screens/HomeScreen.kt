@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -38,12 +39,15 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.pullToRefresh
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator
+import com.ozyern.exhale.ui.component.IosRefreshSpinner
+import com.ozyern.exhale.ui.component.IosRefreshTravel
+import com.ozyern.exhale.ui.component.iosRefreshPull
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
@@ -70,6 +74,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import coil3.compose.AsyncImage
@@ -128,8 +134,8 @@ fun HomeScreen(
 
     val selectedChip by viewModel.selectedChip.collectAsState()
 
-    val isLoading: Boolean by viewModel.isLoading.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
+    val isLoading: Boolean by viewModel.isLoading.collectAsState()
     val pullRefreshState = rememberPullToRefreshState()
 
     val accountName by viewModel.accountName.collectAsState()
@@ -290,46 +296,19 @@ fun HomeScreen(
         ) {
             LazyColumn(
                 state = lazylistState,
-                contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
+                contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+                // Pulled, the feed itself comes down to uncover the spinner, as iOS's does.
+                modifier = Modifier.iosRefreshPull(pullRefreshState),
+                // The refresh pull is this list's rubber-band at the top; see iosRefreshPull.
+                overscrollEffect = null,
             ) {
-                // the iOS music app's large title: the weekday as a quiet eyebrow over a heavy
-                // display-size "Home". It lives *inside* the scroll content rather than in the app
-                // bar, which is the whole point of the pattern — it scrolls away under the bar as
-                // you move down, leaving the compact chrome behind.
-                item(key = "home_large_title", contentType = "large_title") {
-                    HomeLargeTitle(
-                        // iOS's large title does not simply scroll off — it drifts slower than
-                        // the list under it and dissolves as it goes, which is what makes the
-                        // compact bar feel like the same title rather than a replacement for it.
-                        //
-                        // Read in the draw phase, so a scroll frame costs a layer invalidation
-                        // and nothing else.
-                        modifier = Modifier.graphicsLayer {
-                            val height = size.height.coerceAtLeast(1f)
-                            val scrolled = if (lazylistState.firstVisibleItemIndex == 0) {
-                                lazylistState.firstVisibleItemScrollOffset.toFloat()
-                            } else {
-                                height
-                            }
-                            val t = (scrolled / height).coerceIn(0f, 1f)
-
-                            alpha = 1f - t
-                            translationY = scrolled * LargeTitleParallax
-
-                            // And it shrinks on its way out, toward the size the compact bar's
-                            // title already is. Fading alone leaves a display-size word sitting
-                            // still while a small one appears somewhere above it; shrinking is
-                            // what makes the eye read the two as one title changing state.
-                            //
-                            // Anchored bottom-left, because that is the corner the two titles
-                            // share -- scaling about the centre would walk the word inward off
-                            // the margin every other element on the page lines up on.
-                            val shrink = 1f - LargeTitleShrink * t
-                            scaleX = shrink
-                            scaleY = shrink
-                            transformOrigin = TransformOrigin(0f, 1f)
-                        },
-                    )
+                // The title no longer lives in the feed: it is pinned over it (PinnedPageHeader),
+                // and the first shelf starts right under the status bar so the title sits on its
+                // artwork, as the reference has it.
+                // Everything starts below the pinned title: the cards have a heading of their own
+                // now, and a heading under "Home" would be two titles stacked.
+                item(key = "home_top_gap", contentType = "top_gap") {
+                    Spacer(Modifier.size(com.ozyern.exhale.ui.component.PinnedPageHeaderHeight))
                 }
 
                 // No internet, or offline mode on: what the phone can play by itself, first.
@@ -406,21 +385,6 @@ fun HomeScreen(
                             },
                             onPlayNext = { song -> playerConnection.playNext(song.toMediaItem()) },
                             modifier = Modifier.animateItem(),
-                        )
-                    }
-                }
-
-                keepListening?.takeIf { it.isNotEmpty() }?.let { items ->
-                    item(key = "home_shortcuts", contentType = "shortcuts") {
-                        // the iOS music app's "Top Picks for You": tall cards coloured by their own artwork.
-                        HomeTopPicks(
-                            items = items.take(10),
-                            onItemClick = onShortcutClick,
-                            onItemLongClick = onShortcutLongClick,
-                            modifier = Modifier.animateItem(),
-                            activeId = mediaMetadata?.id,
-                            isPlaying = isPlaying,
-                            // The first cards on screen arrive in a short cascade rather than as one block.
                             cardIntro = { index ->
                                 Modifier.feedIntro(index.coerceAtMost(3) * ShortcutTileStagger, introProgress)
                             },
@@ -462,6 +426,38 @@ fun HomeScreen(
                         menuState = menuState,
                         haptic = haptic,
                         metadataMap = allItemsMetadata
+                    )
+                }
+            }
+
+            // New here: the artists picked in setup, right under the cards and Quick picks, so the
+            // top of Home is built from those choices until listening history can take over.
+            SimilarRecommendationsContainer(
+                viewModel = viewModel,
+                mediaMetadata = mediaMetadata,
+                isPlaying = isPlaying,
+                navController = navController,
+                playerConnection = playerConnection,
+                menuState = menuState,
+                haptic = haptic,
+                scope = scope,
+                fromSetupPicks = true,
+            )
+
+            // Recents follow Quick picks: the reference leads with the cards and the song list.
+            keepListening?.takeIf { it.isNotEmpty() }?.let { items ->
+                item(key = "home_shortcuts", contentType = "shortcuts") {
+                    HomeTopPicks(
+                        items = items.take(10),
+                        onItemClick = onShortcutClick,
+                        onItemLongClick = onShortcutLongClick,
+                        modifier = Modifier.animateItem(),
+                        activeId = mediaMetadata?.id,
+                        isPlaying = isPlaying,
+                        // The first cards on screen arrive in a short cascade rather than as one block.
+                        cardIntro = { index ->
+                            Modifier.feedIntro(1.5f + index.coerceAtMost(3) * ShortcutTileStagger, introProgress)
+                        },
                     )
                 }
             }
@@ -564,62 +560,25 @@ fun HomeScreen(
             }
             }
 
-            Indicator(
-                isRefreshing = isRefreshing,
+            // In the gap the pull opens above the feed, centred in it.
+            IosRefreshSpinner(
                 state = pullRefreshState,
+                isRefreshing = isRefreshing,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(LocalPlayerAwareWindowInsets.current.asPaddingValues()),
+                    .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
+                    .padding(top = (IosRefreshTravel - 26.dp) / 2),
+            )
+
+            com.ozyern.exhale.ui.component.PinnedPageHeader(
+                title = "Home",
+                scrolled = { lazylistState.firstVisibleItemIndex > 0 || lazylistState.firstVisibleItemScrollOffset > 0 },
+                modifier = Modifier.align(Alignment.TopStart),
             )
         }
     }
 }
 
-/**
- * The the iOS music app large title.
- *
- * Two lines: the weekday, quiet and small, over the section name at display weight. Apple leads
- * Home with the day rather than a greeting because it is the one piece of context that is always
- * true and never has to guess at the hour or the mood.
- *
- * Horizontal insets are applied the same way [com.ozyern.exhale.ui.component.NavigationTitle] does
- * them, so the title's left edge lands exactly on the section headers below it.
- *
- * No account button here. It briefly had one, on the reasoning that the iOS music app puts the avatar
- * level with the large title — but this app already has one in the app bar directly above, so the
- * result was two account circles stacked twenty pixels apart. The app bar's is the original and
- * the one that is present on every tab; this is a title, and titles do not carry controls.
- */
-
-@Composable
-private fun HomeLargeTitle(
-    modifier: Modifier = Modifier,
-) {
-    val weekday = remember {
-        DateTimeFormatter.ofPattern("EEEE", Locale.getDefault()).format(LocalDate.now())
-    }
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
-            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 2.dp),
-    ) {
-        // The eyebrow steps back: semibold at label size, not bold at title size. It was
-        // competing with the line under it, and an eyebrow that competes with its own headline
-        // is just a two-line heading.
-        // The "Listen Now": a heavy system face, tight, not a display font.
-        Text(
-            text = "Listen Now",
-            style = MaterialTheme.typography.headlineLarge.copy(
-                fontSize = 32.sp,
-                letterSpacing = (-0.6).sp,
-            ),
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-    }
-}
 
 /**
  * What Home says when the feed came back with nothing.
@@ -726,46 +685,110 @@ private fun HomeEmptyAction(
     )
 }
 
+/**
+ * The colours the reference's sign-in card drifts through, read off its screen recording: each is
+ * a dark corner and a lit one, and the card eases from one pair to the next.
+ */
+private val SignInWashes = listOf(
+    Color(0xFF5B1F7A) to Color(0xFF9B2F6B), // violet into magenta
+    Color(0xFF8A3A1C) to Color(0xFFC0263F), // amber into red
+    Color(0xFF4B1A6E) to Color(0xFFB0305A), // purple into rose
+    Color(0xFF1C2F7A) to Color(0xFF3A4FB0), // deep blue
+    Color(0xFF0E4E6A) to Color(0xFF2B45A8), // teal into blue
+    Color(0xFF3A1F8C) to Color(0xFF6A2BC0), // indigo into violet
+    Color(0xFF6A1E5E) to Color(0xFFB03A52), // plum into rose
+)
+
+/** One trip through every wash, as slow as the reference's: about half a minute. */
+private const val SignInWashCycleMs = 30_000
+
+/**
+ * Signed out: the reference design's card — slim, the line in white, a compact white "Sign in with
+ * Google" capsule — on a living wash that drifts through [SignInWashes], with a soft light wandering
+ * across it.
+ */
 @Composable
 private fun HomeSignInCard(onSignIn: () -> Unit) {
-    val shape = RoundedCornerShape(16.dp)
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    val shape = RoundedCornerShape(24.dp)
+    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "signInWash")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = SignInWashes.size.toFloat(),
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            androidx.compose.animation.core.tween(SignInWashCycleMs, easing = androidx.compose.animation.core.LinearEasing),
+        ),
+        label = "signInWashPhase",
+    )
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
             .clip(shape)
-            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f))
-            .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+            .drawBehind {
+                // Eased between neighbouring washes, so each colour holds a moment before moving on.
+                val i = phase.toInt() % SignInWashes.size
+                val f = phase - phase.toInt()
+                val t = f * f * (3f - 2f * f)
+                val (a0, b0) = SignInWashes[i]
+                val (a1, b1) = SignInWashes[(i + 1) % SignInWashes.size]
+                val dark = androidx.compose.ui.graphics.lerp(a0, a1, t)
+                val lit = androidx.compose.ui.graphics.lerp(b0, b1, t)
+                drawRect(
+                    androidx.compose.ui.graphics.Brush.linearGradient(
+                        listOf(dark, lit),
+                        start = androidx.compose.ui.geometry.Offset(0f, size.height),
+                        end = androidx.compose.ui.geometry.Offset(size.width, 0f),
+                    ),
+                )
+                // A soft light wandering across the card, so the wash reads as moving, not swapping.
+                val angle = phase / SignInWashes.size * 2f * Math.PI.toFloat()
+                val center = androidx.compose.ui.geometry.Offset(
+                    size.width * (0.5f + 0.35f * kotlin.math.cos(angle)),
+                    size.height * (0.5f + 0.45f * kotlin.math.sin(angle * 2f)),
+                )
+                drawRect(
+                    androidx.compose.ui.graphics.Brush.radialGradient(
+                        listOf(Color.White.copy(alpha = 0.16f), Color.Transparent),
+                        center = center,
+                        radius = size.width * 0.55f,
+                    ),
+                )
+            }
+            .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 18.dp),
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = "Sign in to YouTube Music",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = "Get personalised recommendations and your library",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-            )
-        }
-        Spacer(Modifier.size(10.dp))
         Text(
-            text = "Sign in",
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = Color.Black,
+            text = "Sign in to Exhale",
+            fontSize = 20.sp,
+            lineHeight = 24.sp,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            letterSpacing = (-0.3).sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
+        )
+        Spacer(Modifier.size(12.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .clip(CircleShape)
                 .background(Color.White)
                 .clickable(onClick = onSignIn)
-                .padding(horizontal = 16.dp, vertical = 9.dp),
-        )
+                .padding(start = 14.dp, end = 18.dp, top = 9.dp, bottom = 9.dp),
+        ) {
+            androidx.compose.foundation.Image(
+                painter = painterResource(R.drawable.google_g),
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = "Sign in with Google",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.Black,
+            )
+        }
     }
 }
 
@@ -777,7 +800,7 @@ private fun HomeSignInCard(onSignIn: () -> Unit) {
  * How long the whole page takes to arrive. Long enough that the stagger is legible as one motion,
  * short enough that it is over before anyone could want to scroll.
  */
-private const val FeedIntroDurationMs = 620
+private const val FeedIntroDurationMs = 760
 
 /** A shelf's head start over the one below it, as a fraction of [FeedIntroDurationMs]. */
 private const val FeedIntroStagger = 0.07f
@@ -788,20 +811,11 @@ private const val FeedIntroSlice = 0.55f
 /** How far apart two shortcut tiles arrive, in stagger slots. */
 private const val ShortcutTileStagger = 0.34f
 
-/** How far a shelf travels on its way in. Small: this is a settle, not an entrance. */
-private val FeedIntroRise = 16.dp
+/** How far a shelf travels on its way in: enough to read as an entrance, as the reference does. */
+private val FeedIntroRise = 28.dp
 
-/**
- * How much slower the large title drifts than the list it is in. 0 would scroll it away with
- * everything else; 1 would pin it. A third is enough for the eye to read the two planes apart.
- */
-private const val LargeTitleParallax = 0.35f
-
-/** How much of itself the large title gives up on the way out. */
-private const val LargeTitleShrink = 0.16f
-
-/** How far under full size a shelf starts. Two percent: felt, never seen. */
-private const val FeedIntroScale = 0.02f
+/** How far under full size a shelf starts. Under four percent, so it never reads as a zoom. */
+private const val FeedIntroScale = 0.035f
 
 /**
  * One shelf's share of the feed's arrival: rise and fade, offset by its position on the page.
@@ -823,12 +837,12 @@ internal fun Modifier.feedIntro(order: Float, progress: () -> Float): Modifier =
         alpha = eased
         translationY = (1f - eased) * FeedIntroRise.toPx()
 
-        // A shelf grows the last two percent into place as it rises. On its own the rise is a
+        // A shelf grows the last few percent into place as it rises. On its own the rise is a
         // sheet of content sliding up a track; with the scale it is an object coming to rest at
         // its own distance, which is the difference between a transition that has been applied to
         // the page and one the page appears to be doing.
         //
-        // Two percent because the effect has to survive being read at a glance and never be
+        // Kept under four percent because the effect has to survive being read at a glance and never be
         // legible as zooming. Anything past about four reads as a card being thrown at you.
         val grown = 1f - FeedIntroScale * (1f - eased)
         scaleX = grown

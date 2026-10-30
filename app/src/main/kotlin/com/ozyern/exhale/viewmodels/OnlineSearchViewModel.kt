@@ -43,7 +43,13 @@ constructor(
     // CRASH FIX: never force-unwrap a nav argument. A malformed deep link (or a process
     // restore racing navigation) can hand us a SavedStateHandle without "query" — fall back
     // to an empty query instead of NPE-ing the whole Activity.
-    val query = savedStateHandle.get<String>("query").orEmpty()
+    private val rawQuery = savedStateHandle.get<String>("query").orEmpty()
+
+    // The search bar hands the query over form-encoded, spaces as '+', and navigation decodes only
+    // the %-escapes. Every search was sent to YouTube as "say+you+cant+sleep", which it ranks as
+    // one odd token rather than four words: much of why results read as if the engine were dumb.
+    // A link keeps its '+', which can be part of the URL.
+    val query = if (com.ozyern.exhale.utils.MusicLinks.isLink(rawQuery)) rawQuery else rawQuery.replace('+', ' ').trim()
     val filter = MutableStateFlow<YouTube.SearchFilter?>(null)
     var summaryPage by mutableStateOf<SearchSummaryPage?>(null)
     val viewStateMap = mutableStateMapOf<String, ItemsPage?>()
@@ -59,9 +65,7 @@ constructor(
     var spotifyPlaylistLink by mutableStateOf<String?>(null)
 
     init {
-        // The search bar hands the query over form-encoded, spaces as '+', and navigation decodes
-        // only the %-escapes: "say+you+cant+sleep" would be one word, never a line of a song.
-        val words = query.replace('+', ' ')
+        val words = query
         if (com.ozyern.exhale.spotify.SpotifyImport.playlistId(query) != null) {
             // A whole playlist: offered as an import, not looked up as a song.
             spotifyPlaylistLink = query

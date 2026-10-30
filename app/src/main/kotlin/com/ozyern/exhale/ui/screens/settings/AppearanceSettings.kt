@@ -175,19 +175,11 @@ fun AppearanceSettings(
     )
     val (dockStyle, onDockStyleChange) = rememberEnumPreference(
         com.ozyern.exhale.constants.DockStyleKey,
-        defaultValue = com.ozyern.exhale.constants.DockStyle.LIQUID
+        defaultValue = com.ozyern.exhale.constants.DockStyle.CONVX
     )
-    val (dockLabels, onDockLabelsChange) = rememberPreference(
-        com.ozyern.exhale.constants.DockLabelsKey,
-        defaultValue = true
-    )
-    val (dockCompact, onDockCompactChange) = rememberPreference(
-        com.ozyern.exhale.constants.DockCompactKey,
+    val (settingsShortcut, onSettingsShortcutChange) = rememberPreference(
+        com.ozyern.exhale.constants.SettingsShortcutKey,
         defaultValue = false
-    )
-    val (dockGlow, onDockGlowChange) = rememberPreference(
-        com.ozyern.exhale.constants.DockGlowKey,
-        defaultValue = true
     )
     val (playerDesignStyle, onPlayerDesignStyleChange) = rememberEnumPreference(
         PlayerDesignStyleKey,
@@ -252,7 +244,7 @@ fun AppearanceSettings(
     defaultValue = LyricsAnimationStyle.APPLE
     )
     val (lyricsClick, onLyricsClickChange) = rememberPreference(LyricsClickKey, defaultValue = true)
-    val (lyricsLayout, onLyricsLayoutChange) = rememberEnumPreference(LyricsLayoutKey, defaultValue = LyricsLayout.GLASS)
+    val (lyricsLayout, onLyricsLayoutChange) = rememberEnumPreference(LyricsLayoutKey, defaultValue = LyricsLayout.CLASSIC)
     val (artistNameFontName, onArtistNameFontChange) = rememberPreference(ArtistNameFontKey, defaultValue = ArtistNameFont.CLASSIC.name)
     val artistNameFont = ArtistNameFont.of(artistNameFontName) ?: ArtistNameFont.CLASSIC
     val (lyricsScroll, onLyricsScrollChange) = rememberPreference(LyricsScrollKey, defaultValue = true)
@@ -751,44 +743,19 @@ fun AppearanceSettings(
                 onValueSelected = onDockStyleChange,
                 valueText = {
                     when (it) {
-                        com.ozyern.exhale.constants.DockStyle.LIQUID -> "Liquid glass"
-                        com.ozyern.exhale.constants.DockStyle.JELLY -> "Jelly"
+                        com.ozyern.exhale.constants.DockStyle.CONVX -> "Floating"
+                        com.ozyern.exhale.constants.DockStyle.LIQUID -> "Classic"
                     }
                 },
             )
-
-            // The rest belong to the jelly dock, and are hidden rather than left inert under the
-            // liquid one.
-            AnimatedVisibility(dockStyle == com.ozyern.exhale.constants.DockStyle.JELLY) {
-                Column {
-                    PreferenceGroupDivider()
-                    SwitchPreference(
-                        title = { Text("Tab labels") },
-                        description = "Names under the icons",
-                        icon = { Icon(painterResource(R.drawable.tab), null) },
-                        checked = dockLabels,
-                        onCheckedChange = onDockLabelsChange,
-                    )
-
-                    PreferenceGroupDivider()
-                    SwitchPreference(
-                        title = { Text("Compact dock") },
-                        description = "A shorter dock with smaller icons",
-                        icon = { Icon(painterResource(R.drawable.nav_bar), null) },
-                        checked = dockCompact,
-                        onCheckedChange = onDockCompactChange,
-                    )
-
-                    PreferenceGroupDivider()
-                    SwitchPreference(
-                        title = { Text("Touch glow") },
-                        description = "A light under your finger while you drag between tabs",
-                        icon = { Icon(painterResource(R.drawable.palette), null) },
-                        checked = dockGlow,
-                        onCheckedChange = onDockGlowChange,
-                    )
-                }
-            }
+            PreferenceGroupDivider()
+            SwitchPreference(
+                title = { Text("Settings shortcut") },
+                description = "A gear beside your account picture at the top of Home, Library and Mood & Genres",
+                icon = { Icon(painterResource(R.drawable.settings), null) },
+                checked = settingsShortcut,
+                onCheckedChange = onSettingsShortcutChange,
+            )
         }
 
         // Where the Search page's field sits, browsing, typing and on results.

@@ -22,6 +22,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import com.ozyern.exhale.ui.utils.fadingMarquee
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -243,7 +244,7 @@ fun BottomSheetPlayer(
     // classic design. It used to be gated to portrait here, which left the landscape layout
     // unreachable — the `else` branch below that chooses it never ran in landscape.
     val nowPlaying = !classicPlayer
-    val landscapeNowPlaying = nowPlaying && !FullscreenVideoState.active && !FullscreenVideoState.watching &&
+    val landscapeNowPlaying = nowPlaying && !FullscreenVideoState.active && !FullscreenVideoState.watching && !FullscreenVideoState.requested &&
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val coverFlight = LocalCoverFlight.current
     // A tablet or an unfolded foldable opens the player as a card growing out of the dock, as
@@ -308,8 +309,8 @@ fun BottomSheetPlayer(
             delay(100L)
             while (isActive) {
                 com.ozyern.exhale.utils.awaitAppVisible()
-                delay(100L)  // ← Cambiado de 500ms a 100ms (más suave)
-                val elapsedSeconds = (System.currentTimeMillis() - lastInteractionTime) / 1000f  // ← Usar Float
+                delay(100L)
+                val elapsedSeconds = (System.currentTimeMillis() - lastInteractionTime) / 1000f
                 if (elapsedSeconds >= aodAutoTimeoutSeconds) {
                     isAodActive = true
                     navController.navigate("always_on_display") {
@@ -1099,7 +1100,7 @@ fun BottomSheetPlayer(
                         // switch to the landscape player took the video's own screen away.
                         val landscapeWindow = androidx.compose.ui.platform.LocalConfiguration.current.let {
                             it.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-                        } && !FullscreenVideoState.active && !FullscreenVideoState.watching
+                        } && !FullscreenVideoState.active && !FullscreenVideoState.watching && !FullscreenVideoState.requested
                         if (landscapeWindow) LandscapeNowPlaying(
                             playerSheetState = state,
                             navController = navController,
@@ -1609,7 +1610,7 @@ private fun LittlePlayerContent(
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.basicMarquee(),
+                            modifier = Modifier.fadingMarquee(),
                         )
                     }
 
@@ -1627,7 +1628,7 @@ private fun LittlePlayerContent(
                                 style = MaterialTheme.typography.bodyMedium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.basicMarquee(),
+                                modifier = Modifier.fadingMarquee(),
                             )
                         }
                     }
@@ -1644,7 +1645,7 @@ private fun LittlePlayerContent(
                                 style = MaterialTheme.typography.bodyMedium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.basicMarquee(),
+                                modifier = Modifier.fadingMarquee(),
                             )
                         }
                     }

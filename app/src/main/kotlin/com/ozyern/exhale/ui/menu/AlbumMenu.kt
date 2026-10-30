@@ -388,7 +388,8 @@ fun AlbumMenu(
                                 playerConnection.playQueue(
                                     ListQueue(
                                         title = album.album.title,
-                                        items = songs.shuffled().map(Song::toMediaItem)
+                                        items = songs.shuffled().map(Song::toMediaItem),
+                                        shuffled = true,
                                     )
                                 )
                             }

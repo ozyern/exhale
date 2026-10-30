@@ -17,6 +17,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -28,6 +30,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -53,9 +56,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -74,7 +80,10 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.ozyern.exhale.LocalPlayerConnection
 import com.ozyern.exhale.R
+import com.ozyern.exhale.constants.MusicVideoFillKey
+import com.ozyern.exhale.constants.MusicVideoQualityKey
 import com.ozyern.exhale.utils.YTPlayerUtils
+import com.ozyern.exhale.utils.rememberPreference
 import kotlinx.coroutines.delay
 
 /**
@@ -99,12 +108,21 @@ object FullscreenVideoState {
      * which has no video in it and left the person watching with the cover.
      */
     var watching by androidx.compose.runtime.mutableStateOf(false)
+
+    /**
+     * The landscape or tablet player's Video button was pressed. That player has no video of its
+     * own, so this hands over to the Now Playing screen with its video on — which, on its side,
+     * goes straight to the full-screen video — until the video is put away again.
+     */
+    var requested by androidx.compose.runtime.mutableStateOf(false)
 }
 
 @Composable
 internal fun FullscreenMusicVideo(
     stream: YTPlayerUtils.VideoStream,
     onExit: () -> Unit,
+    /** Where the song starts inside the video; see MusicVideo.aligned. */
+    offsetMs: Long = 0L,
 ) {
     val activity = LocalContext.current as? android.app.Activity
 
@@ -120,7 +138,7 @@ internal fun FullscreenMusicVideo(
     ) {
         FullscreenWindow()
         BackHandler(onBack = onExit)
-        FullscreenVideoBody(stream, onExit)
+        FullscreenVideoBody(stream, onExit, offsetMs)
     }
 }
 
@@ -177,18 +195,23 @@ internal fun FullscreenWindow() {
 }
 
 @Composable
-private fun FullscreenVideoBody(stream: YTPlayerUtils.VideoStream, onExit: () -> Unit) {
+private fun FullscreenVideoBody(stream: YTPlayerUtils.VideoStream, onExit: () -> Unit, offsetMs: Long) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val player = playerConnection.player
     val isPlaying by playerConnection.isPlaying.collectAsState()
     val metadata by playerConnection.mediaMetadata.collectAsState()
     val canSkipNext by playerConnection.canSkipNext.collectAsState()
+    // Zoomed to fill the display (the edges cropped) or fitted inside it; and the quality, which
+    // the Now Playing screen re-fetches the video at. Both kept for next time.
+    var fill by rememberPreference(MusicVideoFillKey, false)
+    var quality by rememberPreference(MusicVideoQualityKey, 0)
+    var qualityMenu by remember { mutableStateOf(false) }
     run {
         // Shown on arrival and on any tap; gone three seconds after the last one while it plays.
         var controls by remember { mutableStateOf(true) }
         var touched by remember { mutableIntStateOf(0) }
-        LaunchedEffect(controls, touched, isPlaying) {
-            if (controls && isPlaying) {
+        LaunchedEffect(controls, touched, isPlaying, qualityMenu) {
+            if (controls && isPlaying && !qualityMenu) {
                 delay(3_000)
                 controls = false
             }
@@ -201,9 +224,37 @@ private fun FullscreenVideoBody(stream: YTPlayerUtils.VideoStream, onExit: () ->
             Modifier
                 .fillMaxSize()
                 .background(Color.Black)
+                // Pinch out to fill the display, in to fit the whole picture, as video players do.
+                // Read ahead of the tap detector, and the fingers taken, so a pinch isn't also a tap.
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                        var startSpan = 0f
+                        var decided = false
+                        do {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val down = event.changes.filter { it.pressed }
+                            if (down.size >= 2) {
+                                val span = (down[0].position - down[1].position).getDistance()
+                                if (startSpan == 0f) startSpan = span
+                                if (!decided && startSpan > 0f) {
+                                    val ratio = span / startSpan
+                                    if (ratio > PINCH_RATIO || ratio < 1f / PINCH_RATIO) {
+                                        fill = ratio > 1f
+                                        decided = true
+                                    }
+                                }
+                            }
+                            if (startSpan > 0f) event.changes.forEach { it.consume() }
+                        } while (event.changes.any { it.pressed })
+                    }
+                }
                 .pointerInput(Unit) {
                     detectTapGestures(
-                        onTap = { controls = !controls; touched++ },
+                        onTap = {
+                            if (qualityMenu) qualityMenu = false else controls = !controls
+                            touched++
+                        },
                         // Double-tap either half to skip ten seconds, as video players do.
                         onDoubleTap = { at ->
                             val back = at.x < size.width / 2f
@@ -216,14 +267,44 @@ private fun FullscreenVideoBody(stream: YTPlayerUtils.VideoStream, onExit: () ->
                 },
             contentAlignment = Alignment.Center,
         ) {
-            Box(Modifier.fillMaxSize().layerBackdrop(videoBackdrop), contentAlignment = Alignment.Center) {
+            // Fill is a zoom, not a new layout: the picture stays laid out fitted and is scaled up
+            // just enough to cover the screen, so the change glides. Switching the layout instead
+            // resized the video's view mid-play, which jumped and flickered on every switch.
+            var boxSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+            val videoAspect = if (stream.width > 0 && stream.height > 0) stream.width.toFloat() / stream.height else 16f / 9f
+            val coverScale = if (boxSize.width > 0 && boxSize.height > 0) {
+                val boxAspect = boxSize.width.toFloat() / boxSize.height
+                if (boxAspect > videoAspect) boxAspect / videoAspect else videoAspect / boxAspect
+            } else {
+                1f
+            }
+            val zoom by androidx.compose.animation.core.animateFloatAsState(
+                if (fill) coverScale else 1f,
+                androidx.compose.animation.core.spring(dampingRatio = 0.9f, stiffness = 320f),
+                label = "videoZoom",
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .onSizeChanged { boxSize = it }
+                    .clipToBounds()
+                    .layerBackdrop(videoBackdrop),
+                contentAlignment = Alignment.Center,
+            ) {
                 MusicVideoSurface(
                     stream = stream,
-                    positionMs = { player.currentPosition },
+                    positionMs = { player.currentPosition + offsetMs },
                     isPlaying = isPlaying,
                     fitInside = true,
                     onError = onExit,
-                    modifier = Modifier.fillMaxSize(),
+                    // Over the inline video still mounted beneath it.
+                    priority = 2,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = zoom
+                            scaleY = zoom
+                        },
                 )
             }
 
@@ -250,6 +331,51 @@ private fun FullscreenVideoBody(stream: YTPlayerUtils.VideoStream, onExit: () ->
                         modifier = Modifier.align(Alignment.TopStart),
                         onClick = onExit,
                     )
+
+                    // Top right: the quality, and fit or fill.
+                    Column(
+                        modifier = Modifier.align(Alignment.TopEnd),
+                        horizontalAlignment = Alignment.End,
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            VideoGlassPill(
+                                text = qualityLabel(quality, stream.height),
+                                backdrop = videoBackdrop,
+                            ) { qualityMenu = !qualityMenu; touched++ }
+                            VideoGlassButton(
+                                icon = if (fill) R.drawable.fullscreen_exit else R.drawable.fullscreen,
+                                diameter = 44.dp,
+                                iconSize = 22.dp,
+                                backdrop = videoBackdrop,
+                            ) { fill = !fill; touched++ }
+                        }
+                        AnimatedVisibility(
+                            visible = qualityMenu,
+                            enter = fadeIn(tween(160)) + androidx.compose.animation.scaleIn(
+                                tween(220),
+                                initialScale = 0.9f,
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0f),
+                            ),
+                            exit = fadeOut(tween(160)) + androidx.compose.animation.scaleOut(
+                                tween(160),
+                                targetScale = 0.95f,
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0f),
+                            ),
+                        ) {
+                            VideoQualityMenu(
+                                selected = quality,
+                                backdrop = videoBackdrop,
+                                modifier = Modifier.padding(top = 10.dp),
+                            ) { picked ->
+                                quality = picked
+                                qualityMenu = false
+                                touched++
+                            }
+                        }
+                    }
 
                     // Centre: ten seconds back, play or pause, ten seconds on — each a clear disc.
                     Row(
@@ -373,6 +499,111 @@ private fun VideoGlassButton(
         }
     }
 }
+/** How far two fingers must spread apart (or close together) before a pinch switches fill or fit. */
+private const val PINCH_RATIO = 1.18f
+
+/** "Auto · 720p" while Auto, so the person can see what Auto chose; otherwise the quality chosen. */
+private fun qualityLabel(quality: Int, playingHeight: Int): String = when {
+    quality > 0 -> "${quality}p"
+    playingHeight > 0 -> "Auto · ${playingHeight}p"
+    else -> "Auto"
+}
+
+/** A capsule of the same clear glass as [VideoGlassButton], holding a short label. */
+@Composable
+private fun VideoGlassPill(
+    text: String,
+    backdrop: com.kyant.backdrop.Backdrop,
+    onClick: () -> Unit,
+) {
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val squeeze by androidx.compose.animation.core.animateFloatAsState(
+        if (pressed) 0.94f else 1f,
+        androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 600f),
+        label = "videoGlassPillPress",
+    )
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .height(44.dp)
+            .graphicsLayer { scaleX = squeeze; scaleY = squeeze }
+            .then(
+                com.ozyern.exhale.ui.component.rememberChromeGlassModifier(
+                    shape = CircleShape,
+                    dark = true,
+                    tintAlpha = 0.14f,
+                    blurRadius = 16.dp,
+                    backdrop = backdrop,
+                ),
+            )
+            .clickable(interactionSource = source, indication = null, onClick = onClick)
+            .padding(horizontal = 16.dp),
+    ) {
+        Text(
+            text = text,
+            style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold),
+            color = Color.White,
+            maxLines = 1,
+        )
+    }
+}
+
+/** The qualities on offer, as a glass list under the quality pill; the one in use is ticked. */
+@Composable
+private fun VideoQualityMenu(
+    selected: Int,
+    backdrop: com.kyant.backdrop.Backdrop,
+    modifier: Modifier = Modifier,
+    onPick: (Int) -> Unit,
+) {
+    Column(
+        modifier
+            .width(184.dp)
+            .then(
+                com.ozyern.exhale.ui.component.rememberChromeGlassModifier(
+                    shape = RoundedCornerShape(20.dp),
+                    dark = true,
+                    tintAlpha = 0.28f,
+                    blurRadius = 24.dp,
+                    backdrop = backdrop,
+                ),
+            )
+            .padding(vertical = 6.dp),
+    ) {
+        Text(
+            text = "Quality",
+            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium),
+            color = Color.White.copy(alpha = 0.6f),
+            modifier = Modifier.padding(start = 16.dp, top = 6.dp, bottom = 4.dp),
+        )
+        com.ozyern.exhale.playback.MusicVideo.QUALITIES.forEach { option ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onPick(option) }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+            ) {
+                Text(
+                    text = if (option == 0) "Auto" else "${option}p",
+                    style = TextStyle(fontSize = 15.sp),
+                    color = Color.White,
+                    modifier = Modifier.weight(1f),
+                )
+                if (option == selected) {
+                    Icon(
+                        painter = painterResource(R.drawable.check),
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
 /**
  * iOS's scrubber: a thin line that thickens under the finger, the elapsed time under its left end
  * and what is left under its right. Tap anywhere on it to jump, or drag.

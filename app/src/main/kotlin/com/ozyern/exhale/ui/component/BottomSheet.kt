@@ -31,6 +31,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.layout.layout
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -79,6 +83,16 @@ import androidx.compose.ui.util.fastRoundToInt
 // crossfade below now holds the content visible longer, which makes those frames matter more, not
 // less.
 private const val PILL_VERTICAL_SQUASH = 0.5f
+
+/** How long the sheet sits collapsed before its expanded content is built in the background. */
+private const val PrewarmDelayMs = 1_200L
+
+/**
+ * Whether the sheet's expanded content is on screen. False while it is only pre-built (see
+ * BottomSheet): anything in it that runs every frame — a lyric clock, an animated backdrop —
+ * should hold still, or the app renders frames for a player nobody can see.
+ */
+val LocalPlayerShown = androidx.compose.runtime.compositionLocalOf { true }
 
 // The window over which the full player and the mini pill trade places, as a fraction of the
 // progress range (0→1). Geometry still carries the gesture - this is a hand-off, not a
@@ -207,7 +221,21 @@ fun BottomSheet(
             BackHandler(onBack = state::collapseSoft)
         }
 
-        if (!state.isCollapsed) {
+        // Built ahead of time. The expanded content used to be composed on the frame the sheet
+        // left its collapsed bound, and composing a whole player in one frame cost 50-60 ms on
+        // every open — three dropped frames at the start of the motion, exactly where they show.
+        // Once the sheet has sat collapsed for a moment the content is composed in the
+        // background and kept, but not placed: not drawn, not touchable, and told through
+        // [LocalPlayerShown] that it is hidden so nothing in it animates for no one.
+        var warm by remember { mutableStateOf(false) }
+        LaunchedEffect(state.isCollapsed, state.isDismissed) {
+            if (state.isCollapsed && !state.isDismissed && !warm) {
+                delay(PrewarmDelayMs)
+                warm = true
+            }
+        }
+        val shown = !state.isCollapsed
+        if (shown || (warm && !state.isDismissed)) {
             // Two stacked layers, deliberately separate:
             //
             //  * the OUTER layer is the morph *window* — an animated hardware outline clip that
@@ -369,8 +397,22 @@ fun BottomSheet(
                             // screen on every frame of the gesture, which is what made it drop frames.
                             renderEffect = null
                         },
-                    content = content,
-                )
+                ) {
+                    androidx.compose.runtime.CompositionLocalProvider(LocalPlayerShown provides shown) {
+                        // Composed and measured while pre-built, but only placed once the sheet
+                        // is off its collapsed bound: an unplaced node is neither drawn nor hit.
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .layout { measurable, constraints ->
+                                    val placeable = measurable.measure(constraints)
+                                    layout(placeable.width, placeable.height) {
+                                        if (shown) placeable.place(0, 0)
+                                    }
+                                },
+                        ) { content() }
+                    }
+                }
             }
         }
 
@@ -461,26 +503,44 @@ class BottomSheetState(
         1f - (animatable.upperBound!! - animatable.value) / (animatable.upperBound!! - collapsedBound)
     }
 
+    // Bumped by every move the sheet is told to make, so an expand still waiting out its warm-up
+    // frames can tell it has been overtaken. Without it, a tap open followed at once by a swipe
+    // down closed the sheet, then the stale expand woke up and threw it open again.
+    private var motionGeneration = 0
+
+    /**
+     * The speed to start a spring with: the caller's, or — told to turn round while already moving,
+     * as a quick open-then-close is — the sheet's own, so it reverses in one motion instead of
+     * stopping dead and setting off again.
+     */
+    private fun carriedVelocity(initialVelocity: Dp): Dp =
+        if (initialVelocity == 0.dp && animatable.isRunning) animatable.velocity else initialVelocity
+
     fun collapse(animationSpec: AnimationSpec<Dp>, initialVelocity: Dp = 0.dp) {
         onAnchorChanged(COLLAPSED_ANCHOR)
+        motionGeneration++
+        val velocity = carriedVelocity(initialVelocity)
         coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            animatable.animateTo(collapsedBound, animationSpec, initialVelocity)
+            animatable.animateTo(collapsedBound, animationSpec, velocity)
         }
     }
 
     fun expand(animationSpec: AnimationSpec<Dp>, initialVelocity: Dp = 0.dp) {
         onAnchorChanged(EXPANDED_ANCHOR)
+        val generation = ++motionGeneration
+        val velocity = carriedVelocity(initialVelocity)
         coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
             // Built before it moves. The sheet's content is only composed once it leaves the
             // collapsed bound, and composing the whole player is one long frame — measured at 200 ms.
             // The spring runs on the frame clock, so it came out of that frame already a third of
             // the way up and the opening was a jump. Nudged off the bound by a hair (nothing on
             // screen moves) the player is composed first, and the spring starts from rest after it.
-            if (animatable.value == collapsedBound && initialVelocity == 0.dp) {
+            if (animatable.value == collapsedBound && velocity == 0.dp) {
                 animatable.snapTo(collapsedBound + 0.01.dp)
                 repeat(3) { androidx.compose.runtime.withFrameNanos { } }
+                if (generation != motionGeneration) return@launch
             }
-            animatable.animateTo(animatable.upperBound!!, animationSpec, initialVelocity)
+            animatable.animateTo(animatable.upperBound!!, animationSpec, velocity)
         }
     }
 
@@ -502,12 +562,14 @@ class BottomSheetState(
 
     fun dismiss() {
         onAnchorChanged(DISMISSED_ANCHOR)
+        motionGeneration++
         coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
             animatable.animateTo(animatable.lowerBound!!)
         }
     }
 
     fun snapTo(value: Dp) {
+        motionGeneration++
         coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
             animatable.snapTo(value)
         }

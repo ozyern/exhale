@@ -100,6 +100,8 @@ data class Settings(
     val playerBackground: String = "ARTWORK",
     val reducedMotion: Boolean = false,
     val animatedBackground: Boolean = true,
+    /** AUTO (judged from the PC, see Graphics), FULL or LITE. */
+    val graphics: String = "AUTO",
     /** Apple Music's moving covers in the player, where a song has one. */
     val motionCovers: Boolean = true,
     /** Exhale's icon in the notification area, with the song and its controls. */
@@ -136,6 +138,8 @@ data class Settings(
     /** OFF, SURROUND_51 or SURROUND_71: stereo upmixed for Dolby Atmos / Windows Sonic to place. */
     val spatialAudio: String = "OFF",
     val exclusiveAudio: Boolean = false,
+    /** Dolby tracks go to the receiver or soundbar undecoded, for it to render (Atmos included). */
+    val dolbyPassthrough: Boolean = false,
     val hqResampler: Boolean = true,
     /** Play a lossless copy from your own sources when one matches what's playing. */
     val preferLossless: Boolean = true,
@@ -201,12 +205,14 @@ private fun Settings.toProps(): Map<String, String?> = mapOf(
     "player_background" to playerBackground,
     "reduced_motion" to reducedMotion.toString(),
     "animated_background" to animatedBackground.toString(),
+    "graphics" to graphics,
     "motion_covers" to motionCovers.toString(),
     "tray_icon" to trayIcon.toString(),
     "close_to_tray" to closeToTray.toString(),
     "card_tilt" to cardTilt.toString(),
     "spatial_audio" to spatialAudio,
     "exclusive_audio" to exclusiveAudio.toString(),
+    "dolby_passthrough" to dolbyPassthrough.toString(),
     "hq_resampler" to hqResampler.toString(),
     "prefer_lossless" to preferLossless.toString(),
     "media_keys" to mediaKeys.toString(),
@@ -307,12 +313,14 @@ private fun settingsFrom(get: (String) -> String?): Settings {
         playerBackground = s("player_background", d.playerBackground),
         reducedMotion = b("reduced_motion", d.reducedMotion),
         animatedBackground = b("animated_background", d.animatedBackground),
+        graphics = s("graphics", d.graphics),
         motionCovers = b("motion_covers", d.motionCovers),
         trayIcon = b("tray_icon", d.trayIcon),
         closeToTray = b("close_to_tray", d.closeToTray),
         cardTilt = b("card_tilt", d.cardTilt),
         spatialAudio = s("spatial_audio", d.spatialAudio),
         exclusiveAudio = b("exclusive_audio", d.exclusiveAudio),
+        dolbyPassthrough = b("dolby_passthrough", d.dolbyPassthrough),
         hqResampler = b("hq_resampler", d.hqResampler),
         preferLossless = b("prefer_lossless", d.preferLossless),
         mediaKeys = b("media_keys", d.mediaKeys),

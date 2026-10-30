@@ -37,7 +37,12 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
 import com.ozyern.exhale.playback.queueTier
+import com.ozyern.exhale.playback.isSmartSuggestion
 import com.ozyern.exhale.playback.QueueTier
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -105,6 +110,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -200,6 +206,7 @@ import com.ozyern.exhale.LocalPlayerConnection
 import com.ozyern.exhale.R
 import com.ozyern.exhale.constants.LyricsLayout
 import com.ozyern.exhale.constants.LyricsLayoutKey
+import com.ozyern.exhale.constants.MusicVideoQualityKey
 import com.ozyern.exhale.constants.AutoLoadMoreKey
 import com.ozyern.exhale.constants.CanvasSource
 import com.ozyern.exhale.constants.CanvasSourceKey
@@ -378,7 +385,12 @@ internal fun NowPlayingScreen(
     val playerVolume by playerConnection.service.playerVolume.collectAsState()
 
     var panel by rememberSaveable { mutableStateOf(NowPlayingPanel.None) }
-    BackHandler(enabled = panel != NowPlayingPanel.None) { panel = NowPlayingPanel.None }
+    // Closed behind the dock, the player is kept built; it reopens on the song, as it always did.
+    val panelPlayerShown = com.ozyern.exhale.ui.component.LocalPlayerShown.current
+    LaunchedEffect(panelPlayerShown) { if (!panelPlayerShown) panel = NowPlayingPanel.None }
+    // Only while the player is on screen: it is kept built behind the dock (see BottomSheet), and
+    // a hidden player catching back swallowed every back press in the app.
+    BackHandler(enabled = panel != NowPlayingPanel.None && com.ozyern.exhale.ui.component.LocalPlayerShown.current) { panel = NowPlayingPanel.None }
 
     // White status and navigation bar glyphs while the player is mostly up, whatever the app's
     // theme: the top of the screen is the cover, and a light theme's dark glyphs vanish into it.
@@ -479,6 +491,10 @@ internal fun NowPlayingScreen(
     // until the same disc brings them back. Not undone by a scroll, as the idle hide is.
     var lyricsFullscreen by remember { mutableStateOf(false) }
     LaunchedEffect(panel) { if (panel != NowPlayingPanel.Lyrics) lyricsFullscreen = false }
+    // Back steps out of full screen first, rather than out of the lyrics altogether.
+    BackHandler(enabled = lyricsFullscreen && panel == NowPlayingPanel.Lyrics && com.ozyern.exhale.ui.component.LocalPlayerShown.current) {
+        lyricsFullscreen = false
+    }
     val lyricsFull = animateFloatAsState(
         targetValue = if (lyricsFullscreen && panel == NowPlayingPanel.Lyrics) 1f else 0f,
         animationSpec = tween(320, easing = FastOutSlowInEasing),
@@ -511,7 +527,7 @@ internal fun NowPlayingScreen(
         }
     }
     // ---- the iOS music app's glass lyrics, when chosen: a screen of their own over the mesh ----
-    val lyricsLayout by rememberEnumPreference(LyricsLayoutKey, LyricsLayout.GLASS)
+    val lyricsLayout by rememberEnumPreference(LyricsLayoutKey, LyricsLayout.CLASSIC)
     val glassLayout = lyricsLayout == LyricsLayout.GLASS
     val glassLyrics = glassLayout && panel == NowPlayingPanel.Lyrics
     val glassFade = animateFloatAsState(
@@ -572,7 +588,15 @@ internal fun NowPlayingScreen(
 
     // ---- The cover is never quite still: a slow zoom and pan while the song plays ----
     val coverDrift = remember { mutableFloatStateOf(0f) }
-    val driftPlaying by rememberUpdatedState(isPlaying)
+    // Held still while the player is only pre-built behind the dock: nobody can see it drift.
+    // Held, too, while the sheet is opening or closing: the cover is the backdrop every glass control
+    // refracts, so a drifting cover re-blurred all of them on every frame of the spring - the open
+    // and close lag. A drift this slow stopping is invisible; it eases back in once the player lands.
+    val sheetSettled by remember { derivedStateOf { playerSheetState.progress >= 0.999f } }
+    val sheetMoving by rememberUpdatedState(!sheetSettled)
+    val driftPlaying by rememberUpdatedState(
+        isPlaying && com.ozyern.exhale.ui.component.LocalPlayerShown.current && sheetSettled,
+    )
     LaunchedEffect(Unit) {
         var last = System.nanoTime()
         var speed = 0f
@@ -580,7 +604,7 @@ internal fun NowPlayingScreen(
             // Paused and come to rest: wait for the music instead of redrawing a still cover on
             // every frame for as long as the player is open.
             // 0.02 of full speed is still: waiting for 0.001 kept every frame drawing ~8 s after a pause.
-            if (!driftPlaying && speed < 0.02f) {
+            if (sheetMoving || (!driftPlaying && speed < 0.02f)) {
                 speed = 0f
                 snapshotFlow { driftPlaying }.first { it }
                 last = System.nanoTime()
@@ -612,34 +636,7 @@ internal fun NowPlayingScreen(
     )
 
     // ---- Animated cover ----
-    val canvasEnabled by rememberPreference(ExhaleCanvasKey, defaultValue = true)
-    val canvasSource by rememberEnumPreference(CanvasSourceKey, CanvasSource.AUTO)
-    var canvas by remember(mediaMetadata.id) { mutableStateOf<com.ozyern.exhale.canvas.CanvasArtwork?>(null) }
-    LaunchedEffect(mediaMetadata.id, canvasEnabled, canvasSource) {
-        canvas = null
-        if (!canvasEnabled) return@LaunchedEffect
-        CanvasArtworkPlaybackCache.get(mediaMetadata.id)?.let { cached ->
-            canvas = cached.toResolverArtwork()
-            return@LaunchedEffect
-        }
-        val storefront = Locale.getDefault().country
-            .takeIf { it.length == 2 }?.lowercase(Locale.ROOT) ?: "us"
-        val fetched = withContext(Dispatchers.IO) {
-            runCatching {
-                fetchCanvasArtworkForPlayback(
-                    songTitleRaw = mediaMetadata.title,
-                    artistNameRaw = mediaMetadata.artists.firstOrNull()?.name.orEmpty(),
-                    albumName = mediaMetadata.album?.title,
-                    storefront = storefront,
-                    source = canvasSource,
-                )
-            }.getOrNull()
-        }
-        if (fetched != null && (fetched.animated != null || fetched.videoUrl != null)) {
-            CanvasArtworkPlaybackCache.put(mediaMetadata.id, fetched.toPlaybackArtwork())
-            canvas = fetched
-        }
-    }
+    val canvas = rememberPlayerCanvas(mediaMetadata)
     val heroClip = canvas?.takeIf { !collapsePastHalf && heroHeight > 0.dp }
     // How much of the banner the clip is covering: gone by the half-way point of the collapse,
     // where the still frame takes over from it.
@@ -672,17 +669,61 @@ internal fun NowPlayingScreen(
     var showLyricsSettings by remember { mutableStateOf(false) }
 
     // ---- The music video, over the cover, when the song has one ----
-    var videoMode by rememberSaveable { mutableStateOf(false) }
+    // On when the landscape player handed over for its video (see FullscreenVideoState.requested).
+    var videoMode by rememberSaveable { mutableStateOf(FullscreenVideoState.requested) }
+    val requestedVideo = FullscreenVideoState.requested
+    LaunchedEffect(requestedVideo) { if (requestedVideo) videoMode = true }
+    // The player is kept built behind the dock now (see BottomSheet), so closing it no longer
+    // throws this state away: put the video down on close, as rebuilding the player always did,
+    // or it would go on decoding off screen.
+    val playerShown = com.ozyern.exhale.ui.component.LocalPlayerShown.current
+    // Put away — or never found — the hand-over is done, and the landscape player comes back. Only
+    // on the way from on to off, so a restored "off" can't cancel a request before it lands.
+    val videoWasOn = remember { booleanArrayOf(false) }
+    LaunchedEffect(videoMode) {
+        if (!videoMode && videoWasOn[0]) FullscreenVideoState.requested = false
+        videoWasOn[0] = videoMode
+    }
     var musicVideo by remember(mediaMetadata.id) { mutableStateOf<com.ozyern.exhale.playback.MusicVideo.Found?>(null) }
     var videoLoading by remember(mediaMetadata.id) { mutableStateOf(false) }
     var videoShown by remember(mediaMetadata.id) { mutableStateOf(false) }
+    // Closing the player with the video showing hands it to the dock's mini player, which carries
+    // on with it; opening the player again takes it back, still playing, rather than the cover.
+    LaunchedEffect(playerShown) {
+        val docked = SharedMusicVideo.docked
+        if (!playerShown) {
+            // Only ever set here: the sheet reports "closed" more than once as it settles, and the
+            // second pass, with the video already put down, mustn't take it back off the dock.
+            // Reopening the player is what takes it back.
+            val found = musicVideo
+            if (videoMode && videoShown && found != null) {
+                SharedMusicVideo.docked = SharedMusicVideo.DockedVideo(mediaMetadata.id, found)
+            }
+            videoMode = FullscreenVideoState.requested
+        } else if (docked != null && docked.songId == mediaMetadata.id) {
+            musicVideo = docked.found
+            videoMode = true
+            SharedMusicVideo.docked = null
+        }
+    }
+    // A new song isn't the video the dock was showing.
+    LaunchedEffect(mediaMetadata.id) {
+        if (SharedMusicVideo.docked?.songId != mediaMetadata.id) SharedMusicVideo.docked = null
+    }
     LaunchedEffect(videoMode) { if (!videoMode) videoShown = false }
+    // The cover steps aside once the video's picture is up, so nothing of it shows around the picture.
+    val videoCoverFade = androidx.compose.animation.core.animateFloatAsState(
+        if (videoMode && videoShown) 1f else 0f,
+        androidx.compose.animation.core.tween(350),
+        label = "videoCoverFade",
+    )
     var videoMissing by remember(mediaMetadata.id) { mutableStateOf(com.ozyern.exhale.playback.MusicVideo.knownMissing(mediaMetadata.id)) }
     // Offered only once a video is known to exist: a switch on every song, most of which turned out
     // to have none, was a promise the player kept breaking.
     var videoFound by remember(mediaMetadata.id) { mutableStateOf(com.ozyern.exhale.playback.MusicVideo.knownPresent(mediaMetadata.id)) }
-    LaunchedEffect(mediaMetadata.id) {
-        if (videoMissing) return@LaunchedEffect
+    // Looked up while the player is open, as before — not for every song played behind the dock.
+    LaunchedEffect(mediaMetadata.id, playerShown) {
+        if (videoMissing || !playerShown) return@LaunchedEffect
         if (!videoFound) {
             // After the song has its stream: this is one search, and it can wait a moment.
             kotlinx.coroutines.delay(1_200)
@@ -693,9 +734,22 @@ internal fun NowPlayingScreen(
         }
         // Its stream too, while the player is open: fetched only on the tap, it was most of the wait
         // between pressing Video and seeing a picture. Kept for hours, so a second tap is instant.
-        if (!videoMode) runCatching { com.ozyern.exhale.playback.MusicVideo.find(mediaMetadata) }
+        if (videoMode) return@LaunchedEffect
+        com.ozyern.exhale.playback.MusicVideo.refreshNetwork(context)
+        val ready = runCatching { com.ozyern.exhale.playback.MusicVideo.find(mediaMetadata) }.getOrNull()
+            ?: return@LaunchedEffect
+        // And the video itself, buffered where the song is, so tapping Video shows it at once (see
+        // SharedMusicVideo.prewarm). Kept up with the song while the player stays open.
+        while (isActive) {
+            val offset = com.ozyern.exhale.playback.MusicVideo.knownOffset(ready.videoId, mediaMetadata.id)
+            SharedMusicVideo.prewarm(context, ready.stream, playerConnection.player.currentPosition + offset)
+            delay(15_000)
+        }
     }
     var videoFullscreen by remember { mutableStateOf(false) }
+    // How full screen was entered: by turning the phone (issue #6) or by the button. Only the first
+    // should put the video down on the way out — see the exit below.
+    var fullscreenByRotation by remember { mutableStateOf(false) }
     // Issue #6: a video playing over the cover, and the device turns on its side — the video goes
     // full screen, as YouTube's does, instead of the landscape player taking it away.
     val watchingVideo = videoMode && videoShown && musicVideo != null
@@ -703,7 +757,10 @@ internal fun NowPlayingScreen(
     SideEffect { FullscreenVideoState.watching = watchingVideo }
     DisposableEffect(Unit) { onDispose { FullscreenVideoState.watching = false } }
     LaunchedEffect(landscape, watchingVideo) {
-        if (landscape && watchingVideo) videoFullscreen = true
+        if (landscape && watchingVideo && !videoFullscreen) {
+            fullscreenByRotation = true
+            videoFullscreen = true
+        }
     }
     var horizontalLyrics by remember { mutableStateOf(false) }
     // One fresh try when a stream dies mid-play, as the Windows app re-asks for its URL: a stale link
@@ -713,6 +770,7 @@ internal fun NowPlayingScreen(
     LaunchedEffect(mediaMetadata.id, videoMode, videoRetry) {
         if (!videoMode || musicVideo != null || videoMissing) return@LaunchedEffect
         videoLoading = true
+        com.ozyern.exhale.playback.MusicVideo.refreshNetwork(context)
         val found = com.ozyern.exhale.playback.MusicVideo.find(mediaMetadata)
         videoLoading = false
         if (found == null && com.ozyern.exhale.playback.MusicVideo.knownPresent(mediaMetadata.id)) {
@@ -722,10 +780,54 @@ internal fun NowPlayingScreen(
             android.widget.Toast.makeText(context, "Couldn't load the video, try again", android.widget.Toast.LENGTH_SHORT).show()
         } else if (found == null) {
             videoMissing = true
+            // Off too, so a hand-over from the landscape player goes back to it rather than
+            // leaving the portrait screen stretched across a wide window.
+            videoMode = false
             android.widget.Toast.makeText(context, "No music video for this song", android.widget.Toast.LENGTH_SHORT).show()
         } else {
             musicVideo = found
         }
+    }
+    // The quality chosen in the full-screen player. A change re-fetches the video playing now at the
+    // new height; the shared player picks up the new stream where the song is.
+    val videoQuality by rememberPreference(MusicVideoQualityKey, 0)
+    SideEffect { com.ozyern.exhale.playback.MusicVideo.preferredHeight = videoQuality }
+    val appliedQuality = remember { intArrayOf(videoQuality) }
+    LaunchedEffect(videoQuality) {
+        if (appliedQuality[0] == videoQuality) return@LaunchedEffect
+        appliedQuality[0] = videoQuality
+        val current = musicVideo ?: return@LaunchedEffect
+        val found = runCatching { com.ozyern.exhale.playback.MusicVideo.find(mediaMetadata) }.getOrNull()
+        if (found == null) {
+            android.widget.Toast.makeText(context, "Couldn't load that quality", android.widget.Toast.LENGTH_SHORT).show()
+            return@LaunchedEffect
+        }
+        if (musicVideo?.videoId == found.videoId) musicVideo = found.copy(offsetMs = current.offsetMs)
+    }
+    // On Auto, a picture that keeps running dry is at more than the connection holds: twice in 20
+    // seconds and it drops a quality (720p, 480p, 360p) and carries on from where it was, as a
+    // streaming player does. On mobile data that was the lag: a stall every few seconds at 720p.
+    val recentStalls = remember { ArrayDeque<Long>() }
+    val stallCount = SharedMusicVideo.stalls
+    LaunchedEffect(stallCount) {
+        val current = musicVideo
+        if (stallCount == 0 || current == null || !videoMode) return@LaunchedEffect
+        val now = android.os.SystemClock.uptimeMillis()
+        recentStalls.addLast(now)
+        while (recentStalls.isNotEmpty() && now - recentStalls.first() > StallWindowMs) recentStalls.removeFirst()
+        if (recentStalls.size < 2) return@LaunchedEffect
+        recentStalls.clear()
+        if (!com.ozyern.exhale.playback.MusicVideo.stepDownAuto()) return@LaunchedEffect
+        val lower = runCatching { com.ozyern.exhale.playback.MusicVideo.find(mediaMetadata) }.getOrNull() ?: return@LaunchedEffect
+        if (musicVideo?.videoId == lower.videoId) musicVideo = lower.copy(offsetMs = current.offsetMs)
+    }
+    // Lined up with the song once found: measured in the background, and the picture slides into
+    // step through its own drift correction rather than jumping (see MusicVideo.aligned).
+    LaunchedEffect(musicVideo?.videoId, mediaMetadata.id) {
+        val video = musicVideo ?: return@LaunchedEffect
+        if (video.offsetMs != 0L) return@LaunchedEffect
+        val aligned = com.ozyern.exhale.playback.MusicVideo.aligned(video, mediaMetadata.id)
+        if (musicVideo?.videoId == aligned.videoId) musicVideo = aligned
     }
 
     // The "…" button's centre, in root coordinates: where the pop-out menu grows from.
@@ -815,7 +917,7 @@ internal fun NowPlayingScreen(
                     }
                     .then(flight?.run { Modifier.reportFull(heroLook) } ?: Modifier)
                     .graphicsLayer {
-                        alpha = heroVisible() * (1f - clipCover())
+                        alpha = heroVisible() * (1f - clipCover()) * (1f - videoCoverFade.value)
                         compositingStrategy = CompositingStrategy.Offscreen
                         val landing = g()
                         if (landing > 0.001f) {
@@ -890,7 +992,7 @@ internal fun NowPlayingScreen(
                 bottomFade = HERO_FADE_FRACTION,
                 alpha = {
                     if (canvasRendered && !flying()) {
-                        (1f - 2f * g()).coerceIn(0f, 1f) * (1f - 0.3f * pauseDepth.value)
+                        (1f - 2f * g()).coerceIn(0f, 1f) * (1f - 0.3f * pauseDepth.value) * (1f - videoCoverFade.value)
                     } else {
                         0f
                     }
@@ -925,10 +1027,18 @@ internal fun NowPlayingScreen(
                         compositingStrategy = CompositingStrategy.Offscreen
                     }
                     .drawWithContent {
-                        // Black only once the picture is there; until then the cover shows through.
-                        if (videoShown) drawRect(Color.Black)
-                        drawContent()
                         val pictureBottom = pictureBottomPx - screenOrigin.y
+                        // Black only behind the picture itself, and only once it is there. It used to
+                        // fill the whole hero, so the strip above the picture (under the status bar and
+                        // "Playing from") was a black band; with the cover faded away (see
+                        // videoCoverFade) that strip now shows the player's own background.
+                        if (videoShown) {
+                            val pictureTop = (statusBarTop + TOP_STRIP_HEIGHT).toPx()
+                            if (pictureBottom > pictureTop) {
+                                drawRect(Color.Black, topLeft = Offset(0f, pictureTop), size = Size(size.width, pictureBottom - pictureTop))
+                            }
+                        }
+                        drawContent()
                         val start = maxOf(pictureBottom, size.height * (1f - HERO_FADE_FRACTION))
                         if (start < size.height) {
                             drawRect(
@@ -944,8 +1054,12 @@ internal fun NowPlayingScreen(
             ) {
                 MusicVideoSurface(
                     stream = video.stream,
-                    positionMs = positionProvider,
-                    isPlaying = isPlaying && !collapseStarted,
+                    // The song's own clock, read live — the provider is a copy refreshed every
+                    // 100 ms to a second — moved by where the song starts inside the video.
+                    positionMs = { playerConnection.player.currentPosition + (musicVideo?.offsetMs ?: 0L) },
+                    // Not held still on the way down: the video carries on into the dock's pill,
+                    // and a pause for the length of the collapse was a stop in the middle of it.
+                    isPlaying = isPlaying,
                     onFirstFrame = {
                         videoShown = true
                         videoFailures = 0
@@ -976,11 +1090,18 @@ internal fun NowPlayingScreen(
         if (videoFullscreen && video != null) {
             FullscreenMusicVideo(
                 stream = video.stream,
+                offsetMs = video.offsetMs,
                 onExit = {
                     videoFullscreen = false
-                    // Leaving it with the device still on its side: back to the song, so the
-                    // landscape player takes over rather than this portrait screen stretched wide.
-                    if (landscape) videoMode = false
+                    // Entered by turning the phone and left with it still on its side: back to the
+                    // song, so the landscape player takes over rather than this portrait screen
+                    // stretched wide (and the turn doesn't send it straight back to full screen).
+                    //
+                    // Not on any exit while the screen is landscape: full screen turns the screen
+                    // landscape itself, so that was true on every exit, and leaving full screen
+                    // from the button stopped the video instead of carrying on in the player.
+                    if (fullscreenByRotation && landscape) videoMode = false
+                    fullscreenByRotation = false
                 },
             )
         }
@@ -1405,6 +1526,22 @@ internal fun NowPlayingScreen(
                                 playerConnection.toggleLike()
                             },
                         )
+                        // The classic lyrics' one gear: full screen, sideways, translation, size and
+                        // source all live in its sheet instead of a row of discs over the words.
+                        AnimatedVisibility(
+                            visible = !glassLayout && panel == NowPlayingPanel.Lyrics,
+                            enter = fadeIn(tween(180)) + expandHorizontally(
+                                spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow),
+                            ),
+                            exit = fadeOut(tween(120)) + shrinkHorizontally(
+                                spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
+                            ),
+                        ) {
+                            Row {
+                                Spacer(Modifier.width(8.dp))
+                                CircleGlyph(icon = R.drawable.settings, onClick = { showLyricsSettings = true })
+                            }
+                        }
                         Spacer(Modifier.width(8.dp))
                         Box(
                             Modifier.onGloballyPositioned {
@@ -1427,76 +1564,40 @@ internal fun NowPlayingScreen(
                         ) {
                             LyricsV2(
                                 sliderPositionProvider = sliderPositionProvider,
+                                // Pronunciation and translation are switched in the gear's sheet.
+                                cornerButtons = false,
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .padding(horizontal = 16.dp),
                             )
-                            // Which source these came from, and the way to another — along the foot,
-                            // between the pronunciation and translation discs.
-                            LyricsSourceChip(
-                                mediaId = mediaMetadata.id,
-                                onClick = { showLyricsSources = true },
+                            // The header and its gear step aside in full screen, so the one way back
+                            // stays on the words — and only there.
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = lyricsFullscreen,
+                                enter = fadeIn(tween(220, delayMillis = 120)) + scaleIn(initialScale = 0.86f),
+                                exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.9f),
                                 modifier = Modifier
                                     .align(Alignment.BottomStart)
                                     .padding(start = 20.dp, bottom = 30.dp),
-                            )
-                            // Full screen, and back.
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .padding(start = 74.dp, bottom = 30.dp)
-                                    .size(44.dp)
-                                    .playerGlass(CircleShape, lit = lyricsFullscreen)
-                                    .clip(CircleShape)
-                                    .clickable {
-                                        lyricsFullscreen = !lyricsFullscreen
-                                        if (!lyricsFullscreen) lyricsControlsOpen = true
-                                    },
                             ) {
-                                Icon(
-                                    painter = painterResource(if (lyricsFullscreen) R.drawable.expand_more else R.drawable.fullscreen),
-                                    contentDescription = if (lyricsFullscreen) "Exit full-screen lyrics" else "Full-screen lyrics",
-                                    tint = Color.White.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            }
-                            // The lyric settings, here as well as in the glass layout — without it,
-                            // switching to Classic left no way back.
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .padding(start = 128.dp, bottom = 30.dp)
-                                    .size(44.dp)
-                                    .playerGlass(CircleShape)
-                                    .clip(CircleShape)
-                                    .clickable { showLyricsSettings = true },
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.settings),
-                                    contentDescription = "Lyrics settings",
-                                    tint = Color.White.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            }
-                            // Horizontal lyrics: the phone turned on its side, cover on the left.
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .padding(start = 182.dp, bottom = 30.dp)
-                                    .size(44.dp)
-                                    .playerGlass(CircleShape)
-                                    .clip(CircleShape)
-                                    .clickable { horizontalLyrics = true },
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.screen_rotation),
-                                    contentDescription = "Horizontal lyrics",
-                                    tint = Color.White.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(21.dp),
-                                )
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .playerGlass(CircleShape, lit = true)
+                                        .clip(CircleShape)
+                                        .clickable {
+                                            lyricsFullscreen = false
+                                            lyricsControlsOpen = true
+                                        },
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.expand_more),
+                                        contentDescription = "Exit full-screen lyrics",
+                                        tint = Color.White.copy(alpha = 0.85f),
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
                             }
                         }
                     }
@@ -1685,6 +1786,8 @@ internal fun NowPlayingScreen(
                     showLyricsSources = true
                 },
                 onDismiss = { showLyricsSettings = false },
+                onFullscreen = if (glassLayout) null else ({ lyricsFullscreen = true }),
+                onHorizontal = if (glassLayout) null else ({ horizontalLyrics = true }),
             )
         }
 
@@ -1902,8 +2005,12 @@ private fun PlayerScrubber(
             onValueChange = { f -> if (latestDuration > 0L) onScrub((f * latestDuration).toLong()) },
             onValueChangeFinished = onScrubFinished,
             onDraggingChange = onScrubbingChange,
-            // Mostly white, carrying the cover's colour: a tint, not a new colour for the bar.
-            activeColor = androidx.compose.ui.graphics.lerp(Color.White, accent, 0.55f).copy(alpha = 0.95f),
+            // The cover's own colour. The accent is already lifted into a light pastel that reads on
+            // the dark lower half (see accentOf), and it fades with the song, so the bar changes
+            // colour with the album rather than staying white with a hint of it.
+            activeColor = accent,
+            // The rest of the track carries a wash of the same colour, so the two read as one bar.
+            inactiveColor = androidx.compose.ui.graphics.lerp(Color.White, accent, 0.5f).copy(alpha = 0.24f),
         )
         Box(
             modifier = Modifier
@@ -2224,17 +2331,33 @@ private fun ActionRow(
                         )
                     }
                 } else {
+                    // 8D sits with where the sound goes: it is a choice about how the song is
+                    // heard, one tap from the song, lit while it is on.
+                    val (eightD, onEightDChange) = com.ozyern.exhale.utils.rememberPreference(
+                        com.ozyern.exhale.constants.EightDEnabledKey,
+                        false,
+                    )
                     Pill {
                         PillSegment(
                             icon = R.drawable.headphones,
                             iconSize = 23.dp,
+                            width = PILL_SEGMENT_WIDTH_TRIPLE,
                             onClick = onOutput,
+                        )
+                        PillDivider()
+                        PillSegment(
+                            icon = R.drawable.eight_d,
+                            iconSize = 23.dp,
+                            highlighted = eightD,
+                            width = PILL_SEGMENT_WIDTH_TRIPLE,
+                            onClick = { onEightDChange(!eightD) },
                         )
                         PillDivider()
                         PillSegment(
                             icon = R.drawable.person,
                             iconSize = 22.dp,
                             highlighted = togetherActive,
+                            width = PILL_SEGMENT_WIDTH_TRIPLE,
                             onClick = onTogether,
                         )
                     }
@@ -2510,7 +2633,7 @@ private fun PlayerSoundLine(format: com.ozyern.exhale.db.entities.FormatEntity?)
             SoundTag(iconRes = R.drawable.waves, label = badge.label)
         }
         AnimatedVisibility(visible = spatial, enter = fadeIn(), exit = fadeOut()) {
-            SoundTag(iconRes = R.drawable.ic_spatial_audio, label = "Spatial Audio")
+            SoundTag(iconRes = R.drawable.ic_dolby, label = "Spatial Audio")
         }
     }
 }
@@ -2544,7 +2667,11 @@ private fun SoundTag(iconRes: Int, label: String) {
 private fun OutputCaption(onClick: () -> Unit) {
     val context = LocalContext.current
     val devices = rememberOutputDevices()
-    val name = remember(devices.active) { outputName(context, devices.active) }
+    // Blank on the phone's own speaker, as iOS leaves it: a caption naming the phone you are
+    // holding says nothing. Elsewhere it names the headphones, the car, or the TV being cast to.
+    val castName = com.ozyern.exhale.playback.cast.CastController.state.collectAsState().value.connectedName
+    val speaker = devices.active == null || devices.active.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+    val name = castName ?: if (speaker) "" else remember(devices.active) { outputName(context, devices.active) }
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -2581,6 +2708,23 @@ private sealed interface StripLyrics {
     class Synced(val lines: List<LyricsEntry>) : StripLyrics
 }
 
+/**
+ * The lyrics as the strip needs them, parsed off the main thread. Parsing a word-timed TTML file
+ * on the UI thread, in composition, was a visible hitch the moment lyrics arrived — and the status
+ * row re-parsed the whole file on every recomposition. Until the parse lands the strip shows its
+ * loading line, which is what it was showing anyway.
+ */
+@Composable
+private fun rememberStripLyrics(raw: String?): StripLyrics {
+    val parsed by androidx.compose.runtime.produceState<StripLyrics>(
+        initialValue = if (raw == null || raw == LYRICS_NOT_FOUND || raw.isBlank()) stripLyricsOf(raw) else StripLyrics.Loading,
+        raw,
+    ) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { stripLyricsOf(raw) }
+    }
+    return parsed
+}
+
 private fun stripLyricsOf(raw: String?): StripLyrics = when {
     raw == null -> StripLyrics.Loading
     raw == LYRICS_NOT_FOUND || raw.isBlank() -> StripLyrics.Unavailable
@@ -2606,7 +2750,7 @@ private fun CurrentLyricStrip(
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val lyricsEntity by playerConnection.currentLyrics.collectAsState(initial = null)
-    val lyrics = remember(lyricsEntity?.lyrics) { stripLyricsOf(lyricsEntity?.lyrics) }
+    val lyrics = rememberStripLyrics(lyricsEntity?.lyrics)
 
     Box(
         modifier = Modifier
@@ -2660,25 +2804,74 @@ private fun CurrentLyricStrip(
 }
 
 /** How early the strip changes line: the length of its line transition. */
-private const val STRIP_LINE_LEAD_MS = 340L
+private const val STRIP_LINE_LEAD_MS = 240L
+
+/** Two stalls of the music video within this long and Auto drops a quality. */
+private const val StallWindowMs = 20_000L
 
 /** How far ahead of the playhead the word sweep runs, as the full lyrics' does. */
 private const val STRIP_SWEEP_LEAD_MS = 200L
 
+/** Past this the playhead jumps to the player's position: a seek or a stall, not jitter. */
+private const val PLAYHEAD_SNAP_MS = 400.0
+
+/** How quickly a small difference from the player's position is closed: about this long. */
+private const val PLAYHEAD_SLEW_MS = 250.0
+
+/**
+ * The playhead, advanced by the frame clock and eased towards the player's position. The player's
+ * own position arrives in uneven steps. Following it directly made the strip stutter, and so did
+ * re-anchoring on it whenever the two were 80 ms apart, which ordinary jitter kept crossing: every
+ * re-anchor was a jump in the sweep. Small differences are now closed gradually and the playhead
+ * never steps back; only a real jump (a seek, a stall) moves it at once. Hidden or paused, it is
+ * a slow poll instead of a frame loop.
+ */
+@Composable
+private fun rememberSmoothPlayhead(isPlaying: Boolean, active: Boolean): androidx.compose.runtime.LongState {
+    val player = LocalPlayerConnection.current?.player
+    val clock = remember { androidx.compose.runtime.mutableLongStateOf(player?.currentPosition ?: 0L) }
+    LaunchedEffect(player, isPlaying, active) {
+        if (player == null) return@LaunchedEffect
+        if (!isPlaying || !active) {
+            while (isActive) {
+                com.ozyern.exhale.utils.awaitAppVisible()
+                clock.longValue = player.currentPosition
+                delay(250L)
+            }
+        }
+        var shownMs = player.currentPosition.toDouble()
+        var lastNanos = -1L
+        while (isActive) {
+            androidx.compose.runtime.withFrameNanos { now ->
+                val frameMs = if (lastNanos < 0L) 0.0 else (now - lastNanos) / 1_000_000.0
+                lastNanos = now
+                val advanced = shownMs + frameMs * player.playbackParameters.speed
+                val error = player.currentPosition - advanced
+                shownMs = if (kotlin.math.abs(error) > PLAYHEAD_SNAP_MS) {
+                    player.currentPosition.toDouble()
+                } else {
+                    // A share of the difference each frame, so it is gone in about a quarter of a
+                    // second; held rather than stepped back when the player reports a little behind.
+                    maxOf(shownMs, advanced + error * (frameMs / PLAYHEAD_SLEW_MS).coerceAtMost(1.0))
+                }
+                clock.longValue = shownMs.toLong()
+            }
+        }
+    }
+    return clock
+}
+
 @Composable
 private fun SyncedStripLine(lines: List<LyricsEntry>, trackKey: String, isPlaying: Boolean) {
-    val playerConnection = LocalPlayerConnection.current ?: return
-    var index by remember(trackKey, lines) { mutableIntStateOf(-1) }
-    LaunchedEffect(trackKey, lines, isPlaying) {
-        while (isActive) {
-            com.ozyern.exhale.utils.awaitAppVisible()
-            // Early by the length of the line change, so the new line has *finished* arriving
-            // when it is sung. With no lead it began its 340 ms slide on the timestamp and
-            // landed a third of a second late on every line — the strip's lag.
-            val position = playerConnection.player.currentPosition + STRIP_LINE_LEAD_MS
-            index = if (lines.isEmpty() || position < lines.first().time) -1
+    val shown = com.ozyern.exhale.ui.component.LocalPlayerShown.current
+    val playhead = rememberSmoothPlayhead(isPlaying, shown)
+    // Early by the length of the line change, so the new line has *finished* arriving when it is
+    // sung. Derived, so the strip recomposes only when the line actually changes.
+    val index by remember(trackKey, lines) {
+        androidx.compose.runtime.derivedStateOf {
+            val position = playhead.longValue + STRIP_LINE_LEAD_MS
+            if (lines.isEmpty() || position < lines.first().time) -1
             else findCurrentLineIndex(lines, position, 0L)
-            if (isPlaying) androidx.compose.runtime.withFrameMillis { } else delay(300L)
         }
     }
     val current = lines.getOrNull(index)
@@ -2696,14 +2889,19 @@ private fun SyncedStripLine(lines: List<LyricsEntry>, trackKey: String, isPlayin
     Row(verticalAlignment = Alignment.CenterVertically) {
         AnimatedContent(
             targetState = index to text,
+            // The old line is gone before the new one is halfway in, so the two are never legible
+            // on top of each other; and the size is snapped, not animated — re-measuring a
+            // full-width line every frame of the change was the strip's dropped frames.
             transitionSpec = {
                 (
-                    fadeIn(tween(340, easing = FastOutSlowInEasing)) +
-                        slideInVertically(tween(340, easing = FastOutSlowInEasing)) { (it * 0.35f).toInt() }
+                    // No delay before it: the old line is already fading, and waiting left a blank
+                    // beat between the two that read as the strip catching up.
+                    fadeIn(tween(STRIP_LINE_LEAD_MS.toInt(), easing = FastOutSlowInEasing)) +
+                        slideInVertically(tween(STRIP_LINE_LEAD_MS.toInt(), easing = FastOutSlowInEasing)) { (it * 0.30f).toInt() }
                     ).togetherWith(
-                    fadeOut(tween(340, easing = FastOutSlowInEasing)) +
-                        slideOutVertically(tween(340, easing = FastOutSlowInEasing)) { -(it * 0.35f).toInt() },
-                ).using(SizeTransform(clip = false))
+                    fadeOut(tween(120, easing = FastOutSlowInEasing)) +
+                        slideOutVertically(tween(160, easing = FastOutSlowInEasing)) { -(it * 0.30f).toInt() },
+                ).using(SizeTransform(clip = false) { _, _ -> androidx.compose.animation.core.snap() })
             },
             label = "npCurrentLyric",
             modifier = Modifier.weight(1f, fill = false),
@@ -2722,7 +2920,7 @@ private fun SyncedStripLine(lines: List<LyricsEntry>, trackKey: String, isPlayin
                 SweptStripText(
                     entry = entry,
                     lineEndMs = lines.getOrNull(lineIndex + 1)?.time,
-                    isPlaying = isPlaying,
+                    playhead = playhead,
                 )
             }
         }
@@ -2737,22 +2935,10 @@ private fun SyncedStripLine(lines: List<LyricsEntry>, trackKey: String, isPlayin
  * across its words by length. The edge moves in the draw pass every frame, never recomposing.
  */
 @Composable
-private fun SweptStripText(entry: LyricsEntry, lineEndMs: Long?, isPlaying: Boolean) {
-    val playerConnection = LocalPlayerConnection.current ?: return
+private fun SweptStripText(entry: LyricsEntry, lineEndMs: Long?, playhead: androidx.compose.runtime.LongState) {
     val text = entry.text
     // Each word as (first char, end char, start ms, end ms).
     val spans = remember(entry, lineEndMs) { stripWordSpans(entry, lineEndMs) }
-    val clock = remember { androidx.compose.runtime.mutableLongStateOf(playerConnection.player.currentPosition) }
-    LaunchedEffect(entry, isPlaying) {
-        while (isActive) {
-            com.ozyern.exhale.utils.awaitAppVisible()
-            // The full lyrics' lead: the frame and the eye take a moment to catch up with the voice.
-            androidx.compose.runtime.withFrameMillis {
-                clock.longValue = playerConnection.player.currentPosition + STRIP_SWEEP_LEAD_MS
-            }
-            if (!isPlaying) delay(250L)
-        }
-    }
     var layout by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
     val feather = with(androidx.compose.ui.platform.LocalDensity.current) { 18.dp.toPx() }
     Box {
@@ -2775,9 +2961,12 @@ private fun SweptStripText(entry: LyricsEntry, lineEndMs: Long?, isPlaying: Bool
             modifier = Modifier
                 .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
                 .drawWithContent {
-                    drawContent()
+                    // Nothing until the dim copy has laid out: drawn unmasked, the new line flashed
+                    // fully lit for a frame at every line change.
                     val measured = layout ?: return@drawWithContent
-                    val x = stripFillX(measured, spans, clock.longValue, size.width)
+                    drawContent()
+                    // The full lyrics' lead: the frame and the eye take a moment to catch up with the voice.
+                    val x = stripFillX(measured, spans, playhead.longValue + STRIP_SWEEP_LEAD_MS, size.width)
                     drawRect(
                         brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
                             listOf(Color.Black, Color.Transparent),
@@ -2858,7 +3047,7 @@ private fun StripChevron() {
 private fun LyricsStatusRow(onChange: () -> Unit) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val lyricsEntity by playerConnection.currentLyrics.collectAsState(initial = null)
-    val status = when (val lyrics = stripLyricsOf(lyricsEntity?.lyrics)) {
+    val status = when (val lyrics = rememberStripLyrics(lyricsEntity?.lyrics)) {
         StripLyrics.Loading -> "Looking for lyrics…"
         StripLyrics.Unavailable -> "No lyrics found"
         StripLyrics.Unsynced -> "Lyrics"
@@ -3212,6 +3401,7 @@ internal fun NowPlayingQueue(
                                     handle = if (editable) Modifier.draggableHandle() else Modifier,
                                     onClick = onRowClick,
                                     onLongClick = onRowLongClick,
+                                    smartSuggestion = window.mediaItem.isSmartSuggestion,
                                     onRemove = if (guest || entry.heard) null else {
                                         {
                                             haptic.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -3424,6 +3614,8 @@ private fun NpQueueRow(
     modifier: Modifier = Modifier,
     /** An Autoplay suggestion not yet in the queue: drawn a step back from the songs that are. */
     suggestion: Boolean = false,
+    /** Put in by Smart Shuffle rather than part of the album or playlist: labelled as such. */
+    smartSuggestion: Boolean = false,
     /** Takes the song out of the queue; null where it can't be (a guest, or a song already heard). */
     onRemove: (() -> Unit)? = null,
 ) {
@@ -3484,13 +3676,28 @@ private fun NpQueueRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(
-                text = metadata.artists.joinToString(", ") { it.name },
-                fontSize = 14.sp,
-                color = Color.White.copy(alpha = 0.55f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (smartSuggestion) {
+                    Text(
+                        text = "Suggested",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(Color.White.copy(alpha = 0.14f))
+                            .padding(horizontal = 6.dp, vertical = 1.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text(
+                    text = metadata.artists.joinToString(", ") { it.name },
+                    fontSize = 14.sp,
+                    color = Color.White.copy(alpha = 0.55f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         if (current) {
             Icon(
@@ -3912,8 +4119,13 @@ internal fun LandscapeNowPlaying(
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
     val liked = currentSong?.song?.liked == true
     var panel by rememberSaveable { mutableStateOf(NowPlayingPanel.None) }
+    // Closed behind the dock, the player is kept built; it reopens on the song, as it always did.
+    val panelPlayerShown = com.ozyern.exhale.ui.component.LocalPlayerShown.current
+    LaunchedEffect(panelPlayerShown) { if (!panelPlayerShown) panel = NowPlayingPanel.None }
     val tabletopHinge = com.ozyern.exhale.ui.utils.rememberTabletopHinge()
-    BackHandler(enabled = panel != NowPlayingPanel.None) { panel = NowPlayingPanel.None }
+    // Only while the player is on screen: it is kept built behind the dock (see BottomSheet), and
+    // a hidden player catching back swallowed every back press in the app.
+    BackHandler(enabled = panel != NowPlayingPanel.None && com.ozyern.exhale.ui.component.LocalPlayerShown.current) { panel = NowPlayingPanel.None }
     val artUrl = mediaMetadata.thumbnailUrl?.highRes()
     val palette = rememberArtworkPalette(artUrl)
     // The same glass as the portrait player: everything under the controls is recorded into this
@@ -3925,6 +4137,28 @@ internal fun LandscapeNowPlaying(
         animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessLow),
         label = "landscapeSleeve",
     )
+    // The animated cover, on the tablet and foldable sleeve as on the phone's banner.
+    val canvas = rememberPlayerCanvas(mediaMetadata)
+    // The music video, offered here as in portrait — once the song is known to have one. On its
+    // side the video is the whole screen, so the button hands over to the full-screen video.
+    val videoFound by produceState(
+        com.ozyern.exhale.playback.MusicVideo.knownPresent(mediaMetadata.id),
+        mediaMetadata.id,
+    ) {
+        if (!value && !com.ozyern.exhale.playback.MusicVideo.knownMissing(mediaMetadata.id)) {
+            kotlinx.coroutines.delay(1_200)
+            value = com.ozyern.exhale.playback.MusicVideo.has(mediaMetadata)
+        }
+    }
+    val videoToggle: @Composable () -> Unit = {
+        if (videoFound) {
+            LandscapeToggle(
+                icon = R.drawable.music_video,
+                active = false,
+                onClick = { FullscreenVideoState.requested = true },
+            )
+        }
+    }
 
     Box(modifier.fillMaxSize().background(Color.Black)) {
         // The cover is the room the two columns sit in: the lock-screen ground the portrait player
@@ -3948,10 +4182,7 @@ internal fun LandscapeNowPlaying(
             // ---- Pieces shared by both arrangements ----
             val sleeve: @Composable (androidx.compose.ui.unit.Dp) -> Unit = { side ->
                 val sleeveShape = RoundedCornerShape(14.dp)
-                AsyncImage(
-                    model = artUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
+                Box(
                     modifier = Modifier
                         .size(side)
                         .graphicsLayer {
@@ -3962,7 +4193,28 @@ internal fun LandscapeNowPlaying(
                         .clip(sleeveShape)
                         .border(0.5.dp, Color.White.copy(alpha = 0.12f), sleeveShape)
                         .background(Color.White.copy(alpha = 0.06f)),
-                )
+                ) {
+                    AsyncImage(
+                        model = artUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    // The animated cover, as the phone player plays it: over the still one, which
+                    // stays underneath until the clip's first frame is up.
+                    canvas?.let { clip ->
+                        var clipRendered by remember(clip) { mutableStateOf(false) }
+                        CanvasHeroVideo(
+                            primaryUrl = clip.animated,
+                            fallbackUrl = clip.videoUrl,
+                            isPlaying = isPlaying,
+                            bottomFade = 0f,
+                            alpha = { if (clipRendered) 1f else 0f },
+                            onRenderedChanged = { clipRendered = it },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
             }
             // No volume here: a phone on its side has no room for it, and the tablet layout carries
             // it in its bottom row, between the toggles.
@@ -4126,6 +4378,7 @@ internal fun LandscapeNowPlaying(
                                     panel = if (panel == NowPlayingPanel.Queue) NowPlayingPanel.None else NowPlayingPanel.Queue
                                 },
                             )
+                            videoToggle()
                         }
                     }
                 }
@@ -4186,6 +4439,7 @@ internal fun LandscapeNowPlaying(
                                     panel = if (panel == NowPlayingPanel.Queue) NowPlayingPanel.None else NowPlayingPanel.Queue
                                 },
                             )
+                            videoToggle()
                         }
                     }
                     Box(
@@ -4278,6 +4532,7 @@ internal fun LandscapeNowPlaying(
                             active = panel == NowPlayingPanel.Queue,
                             onClick = { panel = if (panel == NowPlayingPanel.Queue) NowPlayingPanel.None else NowPlayingPanel.Queue },
                         )
+                        videoToggle()
                     }
                 }
             }
@@ -4303,4 +4558,42 @@ private fun LandscapeToggle(icon: Int, active: Boolean, onClick: () -> Unit) {
             modifier = Modifier.size(22.dp),
         )
     }
+}
+
+/**
+ * The song's animated cover, when it has one and the setting is on: from the cache when it has been
+ * seen, fetched otherwise. Shared by the phone player and the landscape and tablet one, so a
+ * cover found by either plays in both.
+ */
+@Composable
+private fun rememberPlayerCanvas(mediaMetadata: MediaMetadata): com.ozyern.exhale.canvas.CanvasArtwork? {
+    val canvasEnabled by rememberPreference(ExhaleCanvasKey, defaultValue = true)
+    val canvasSource by rememberEnumPreference(CanvasSourceKey, CanvasSource.AUTO)
+    var canvas by remember(mediaMetadata.id) { mutableStateOf<com.ozyern.exhale.canvas.CanvasArtwork?>(null) }
+    LaunchedEffect(mediaMetadata.id, canvasEnabled, canvasSource) {
+        canvas = null
+        if (!canvasEnabled) return@LaunchedEffect
+        CanvasArtworkPlaybackCache.get(mediaMetadata.id)?.let { cached ->
+            canvas = cached.toResolverArtwork()
+            return@LaunchedEffect
+        }
+        val storefront = Locale.getDefault().country
+            .takeIf { it.length == 2 }?.lowercase(Locale.ROOT) ?: "us"
+        val fetched = withContext(Dispatchers.IO) {
+            runCatching {
+                fetchCanvasArtworkForPlayback(
+                    songTitleRaw = mediaMetadata.title,
+                    artistNameRaw = mediaMetadata.artists.firstOrNull()?.name.orEmpty(),
+                    albumName = mediaMetadata.album?.title,
+                    storefront = storefront,
+                    source = canvasSource,
+                )
+            }.getOrNull()
+        }
+        if (fetched != null && (fetched.animated != null || fetched.videoUrl != null)) {
+            CanvasArtworkPlaybackCache.put(mediaMetadata.id, fetched.toPlaybackArtwork())
+            canvas = fetched
+        }
+    }
+    return canvas
 }

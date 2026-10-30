@@ -135,6 +135,14 @@ fun ContentSettings(
         LyricsRomanizeKoreanKey,
         defaultValue = true
     )
+    val (lyricsRomanizeHindi, onLyricsRomanizeHindiChange) = rememberPreference(
+        com.ozyern.exhale.constants.LyricsRomanizeHindiKey,
+        defaultValue = true
+    )
+    val (lyricsRomanizeOther, onLyricsRomanizeOtherChange) = rememberPreference(
+        com.ozyern.exhale.constants.LyricsRomanizeOtherKey,
+        defaultValue = true
+    )
     val (preloadQueueLyricsEnabled, onPreloadQueueLyricsEnabledChange) = rememberPreference(
         PreloadQueueLyricsEnabledKey,
         defaultValue = true
@@ -364,6 +372,22 @@ fun ContentSettings(
                 icon = { Icon(painterResource(R.drawable.lyrics), null) },
                 checked = lyricsRomanizeKorean,
                 onCheckedChange = onLyricsRomanizeKoreanChange,
+            )
+
+            PreferenceGroupDivider()
+            SwitchPreference(
+                title = { Text(stringResource(R.string.lyrics_romanize_hindi)) },
+                icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                checked = lyricsRomanizeHindi,
+                onCheckedChange = onLyricsRomanizeHindiChange,
+            )
+
+            PreferenceGroupDivider()
+            SwitchPreference(
+                title = { Text(stringResource(R.string.lyrics_romanize_other)) },
+                icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                checked = lyricsRomanizeOther,
+                onCheckedChange = onLyricsRomanizeOtherChange,
             )
 
             PreferenceGroupDivider()

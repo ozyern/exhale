@@ -101,7 +101,8 @@ object SpotifyImport {
         // In the playlist's own order, once each.
         val songs = matches.filterNotNull().distinctBy { it.id }
         val metadata = songs.map { it.toMediaMetadata() }
-        val playlist = PlaylistEntity(name = source.name)
+        // Saved, so it is in the Library: unsaved, the import made it and the Library never listed it.
+        val playlist = PlaylistEntity(name = source.name, bookmarkedAt = java.time.LocalDateTime.now())
         database.transaction {
             metadata.forEach(::insert)
             insert(playlist)

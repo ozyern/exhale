@@ -72,8 +72,16 @@ class SpatialAudioProcessor : BaseAudioProcessor() {
             CROSSFEED = crossfeed
             AIR = air
         }
-        private const val MAKEUP = 0.82f         // headroom so widening never clips
         private const val CROSSFEED_CUTOFF_HZ = 700f
+
+        /** Below this the stereo width is left as mixed: bass stays together in both ears. */
+        private const val WIDTH_FLOOR_HZ = 200f
+
+        /** Switching the effect fades over this long. */
+        private const val RAMP_MS = 80f
+
+        /** The limiter's ceiling, just under full scale. */
+        private const val LIMIT = 0.97f
         private const val AIR_CUTOFF_HZ = 7_000f
         private const val HAAS_DELAY_SECONDS = 0.00035f
 
@@ -98,6 +106,13 @@ class SpatialAudioProcessor : BaseAudioProcessor() {
     private var airStateR = 0f
     private var lpAlpha = 0f
     private var airAlpha = 0f
+    private var sideLowAlpha = 0f
+    private var sideLowState = 0f
+
+    /** How much of the effect is in, 0..1, ramped toward on or off. */
+    private var wet = 0f
+    private var limiterGain = 1f
+    private var limiterRelease = 0f
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         inputIsFloat = when (inputAudioFormat.encoding) {
@@ -120,7 +135,13 @@ class SpatialAudioProcessor : BaseAudioProcessor() {
         val twoPi = 2f * Math.PI.toFloat()
         lpAlpha = 1f - exp(-twoPi * CROSSFEED_CUTOFF_HZ / sampleRate)
         airAlpha = 1f - exp(-twoPi * AIR_CUTOFF_HZ / sampleRate)
+        sideLowAlpha = 1f - exp(-twoPi * WIDTH_FLOOR_HZ / sampleRate)
         lpStateL = 0f; lpStateR = 0f; airStateL = 0f; airStateR = 0f
+        sideLowState = 0f
+        limiterGain = 1f
+        // Lets go over about 80 ms.
+        limiterRelease = 1f - exp(-1f / (0.08f * sampleRate))
+        wet = if (globalEnabled) 1f else 0f
 
         // Same rate, same encoding: see the class doc.
         return inputAudioFormat
@@ -131,14 +152,16 @@ class SpatialAudioProcessor : BaseAudioProcessor() {
         if (remaining == 0) return
         val outputBuffer = replaceOutputBuffer(remaining)
 
-        if (!globalEnabled) {
-            // Bit-exact: no conversion to float and back.
+        val target = if (globalEnabled) 1f else 0f
+        if (target == 0f && wet == 0f) {
+            // Off and faded out: bit-exact, no conversion to float and back.
             outputBuffer.put(inputBuffer)
             outputBuffer.flip()
             return
         }
 
         val frameBytes = if (inputIsFloat) 8 else 4
+        val rampStep = 1f / (sampleRate * RAMP_MS / 1000f).coerceAtLeast(1f)
 
         // Local copies of hot state for the tight loop.
         var pos = delayPos
@@ -146,9 +169,15 @@ class SpatialAudioProcessor : BaseAudioProcessor() {
         var lpR = lpStateR
         var airL = airStateL
         var airR = airStateR
+        var sideLow = sideLowState
+        var mix = wet
+        var gain = limiterGain
         val dL = delayL
         val dR = delayR
         val delayLen = delaySamples
+        val width = WIDTH
+        val crossfeed = CROSSFEED
+        val air = AIR
 
         while (inputBuffer.remaining() >= frameBytes) {
             val inL: Float
@@ -160,35 +189,53 @@ class SpatialAudioProcessor : BaseAudioProcessor() {
                 inL = inputBuffer.short / INT16_SCALE
                 inR = inputBuffer.short / INT16_SCALE
             }
+            mix = when {
+                mix < target -> (mix + rampStep).coerceAtMost(target)
+                mix > target -> (mix - rampStep).coerceAtLeast(target)
+                else -> mix
+            }
 
-            // 2. Crossfeed: low-pass each channel, feed it (delayed) to the
-            // opposite ear — the spatial engine's interaural time+level difference cues.
+            // 1. Width, above the bass only. Widening the low end too put the bass partly out of
+            // phase between the ears, which reads as a hollow, smeared bottom rather than space.
+            val mid = (inL + inR) * 0.5f
+            val side = (inL - inR) * 0.5f
+            sideLow += sideLowAlpha * (side - sideLow)
+            val wideSide = sideLow + (side - sideLow) * width
+            val wideL = mid + wideSide
+            val wideR = mid - wideSide
+
+            // 2. Crossfeed, Bauer/BS2B style: each ear gets the other's lows, late, and gives up
+            // the same amount of its own. It used to only add, so everything below 700 Hz came out
+            // about 2.5 dB heavier with the effect on; now a centred sound stays level.
             val delayedR = dR[pos]
             val delayedL = dL[pos]
-            lpL += lpAlpha * (inL - lpL)
-            lpR += lpAlpha * (inR - lpR)
+            lpL += lpAlpha * (wideL - lpL)
+            lpR += lpAlpha * (wideR - lpR)
             dL[pos] = lpL
             dR[pos] = lpR
             pos++
             if (pos >= delayLen) pos = 0
-
-            // 1. Mid/side width expansion.
-            val mid = (inL + inR) * 0.5f
-            val side = (inL - inR) * 0.5f * WIDTH
-            var outL = mid + side + CROSSFEED * delayedR
-            var outR = mid - side + CROSSFEED * delayedL
+            var outL = wideL - crossfeed * lpL + crossfeed * delayedR
+            var outR = wideR - crossfeed * lpR + crossfeed * delayedL
 
             // 3. Height/air shelf: boost the band above the pole (out - lowpass).
             airL += airAlpha * (outL - airL)
             airR += airAlpha * (outR - airR)
-            outL += AIR * (outL - airL)
-            outR += AIR * (outR - airR)
+            outL += air * (outL - airL)
+            outR += air * (outR - airR)
 
-            outL *= MAKEUP
-            outR *= MAKEUP
+            // Faded in and out rather than switched, so turning it on or off never clicks.
+            outL = inL + (outL - inL) * mix
+            outR = inR + (outR - inR) * mix
+
+            // A peak limiter where a fixed -1.7 dB used to be: the effect no longer sounds quieter
+            // than the song without it, and a wide loud master is turned down only when it peaks.
+            val peak = max(kotlin.math.abs(outL), kotlin.math.abs(outR)) * gain
+            if (peak > LIMIT) gain *= LIMIT / peak else gain += (1f - gain) * limiterRelease
+            outL *= gain
+            outR *= gain
 
             if (inputIsFloat) {
-                // Float has the headroom; the mixer limits at the very end.
                 outputBuffer.putFloat(outL)
                 outputBuffer.putFloat(outR)
             } else {
@@ -202,6 +249,9 @@ class SpatialAudioProcessor : BaseAudioProcessor() {
         lpStateR = lpR
         airStateL = airL
         airStateR = airR
+        sideLowState = sideLow
+        wet = mix
+        limiterGain = gain
 
         outputBuffer.flip()
     }
@@ -211,6 +261,10 @@ class SpatialAudioProcessor : BaseAudioProcessor() {
         delayR.fill(0f)
         delayPos = 0
         lpStateL = 0f; lpStateR = 0f; airStateL = 0f; airStateR = 0f
+        sideLowState = 0f
+        limiterGain = 1f
+        // A seek lands with the effect already in place: no fade-in on every seek.
+        wet = if (globalEnabled) 1f else 0f
     }
 
     override fun onReset() {

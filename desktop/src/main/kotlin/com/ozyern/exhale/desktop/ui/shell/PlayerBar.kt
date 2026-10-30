@@ -16,7 +16,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -77,7 +79,7 @@ import com.ozyern.exhale.desktop.ui.rememberPosition
 import com.ozyern.exhale.desktop.ui.resizedThumbnail
 import kotlin.math.roundToInt
 
-val PlayerBarHeight = 50.dp
+val PlayerBarHeight = 58.dp
 
 /**
  * The Music app's player bar: one glass capsule floating over the foot of the page. Transport on the
@@ -105,20 +107,24 @@ fun PlayerBar(
             .height(PlayerBarHeight)
             .onGloballyPositioned { onBarBounds(it.boundsInRoot()) }
             .volumeWheel(player)
-            .liquidGlass(shape, backdrop, tintAlpha = 0.34f, blurRadius = 56.dp)
-            .padding(horizontal = 10.dp),
+            // Frosted as the Music app's capsule is: covers passing under it smear to their colours. At 56 dp
+            // (14 of real blur) they showed through nearly sharp.
+            .liquidGlass(shape, backdrop, tintAlpha = 0.34f, blurRadius = 128.dp)
+            // The same hairline rim as the sidebar's glass, so the two read as one material.
+            .border(0.75.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.05f))), shape)
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         BarToggle(TransportIcons.Shuffle, "Shuffle", active = state.shuffle, enabled = hasSong, onClick = player::toggleShuffle)
-        BarButton(TransportIcons.Backward, "Previous", enabled = hasSong, iconSize = 20, onClick = player::previous)
+        BarButton(TransportIcons.Backward, "Previous", enabled = hasSong, iconSize = 26, onClick = player::previous)
         BarButton(
             if (state.isPlaying) TransportIcons.Pause else TransportIcons.Play,
             if (state.isPlaying) "Pause" else "Play",
             enabled = hasSong,
-            iconSize = 25,
+            iconSize = 32,
             onClick = player::togglePlayPause,
         )
-        BarButton(TransportIcons.Forward, "Next", enabled = hasSong && state.hasNext, iconSize = 20, onClick = player::next)
+        BarButton(TransportIcons.Forward, "Next", enabled = hasSong && state.hasNext, iconSize = 26, onClick = player::next)
         BarToggle(
             if (state.repeat == RepeatMode.ONE) TransportIcons.RepeatOne else TransportIcons.Repeat,
             "Repeat",
@@ -137,12 +143,7 @@ fun PlayerBar(
             modifier = Modifier.weight(1f).fillMaxHeight(),
         )
 
-        Box {
-            var menu by remember { mutableStateOf(false) }
-            BarButton(NavIcons.More, "More", enabled = hasSong) { menu = true }
-            if (song != null) SongActionsMenu(song, player, expanded = menu, onDismiss = { menu = false })
-        }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(8.dp))
         BarButton(TransportIcons.Lyrics, "Lyrics", enabled = hasSong) { onExpandPlayer(PlayerPanel.Lyrics) }
         BarButton(TransportIcons.Queue, "Up next", enabled = hasSong) { onExpandPlayer(PlayerPanel.Queue) }
         OutputButton(player)
@@ -174,11 +175,11 @@ private fun NowPlayingSlot(
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, enabled = song != null, onClick = onOpen),
     ) {
-        Row(Modifier.fillMaxSize().padding(start = 4.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            val artShape = RoundedCornerShape(5.dp)
+        Row(Modifier.fillMaxSize().padding(start = 4.dp, end = 0.dp), verticalAlignment = Alignment.CenterVertically) {
+            val artShape = RoundedCornerShape(6.dp)
             Box(
                 Modifier
-                    .size(34.dp)
+                    .size(42.dp)
                     .onGloballyPositioned { onArtBounds(it.boundsInRoot()) }
                     .graphicsLayer { alpha = artAlpha() }
                     .clip(artShape)
@@ -208,21 +209,27 @@ private fun NowPlayingSlot(
                     if (current == null) {
                         Text("Not Playing", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
-                        Text(current.title, fontSize = 13.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(current.title, fontSize = 15.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         val line = listOfNotNull(
                             current.artists.joinToString { it.name }.takeIf { it.isNotBlank() },
                             current.album?.name?.takeIf { it.isNotBlank() },
                         ).joinToString(" — ")
                         Text(
                             state.error ?: line,
-                            fontSize = 12.sp,
-                            lineHeight = 15.sp,
-                            color = if (state.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 14.sp,
+                            lineHeight = 17.sp,
+                            // In the label's own colour, a step softer than the title, as the Music app sets it.
+                            color = if (state.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.82f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
+            }
+            Box {
+                var menu by remember { mutableStateOf(false) }
+                BarButton(NavIcons.More, "More", enabled = song != null) { menu = true }
+                if (song != null) SongActionsMenu(song, player, expanded = menu, onDismiss = { menu = false })
             }
         }
         if (song != null) {
@@ -230,11 +237,12 @@ private fun NowPlayingSlot(
                 fraction = { if (duration > 0) (position.value / duration).toFloat().coerceIn(0f, 1f) else 0f },
                 duration = duration,
                 onSeek = { if (duration > 0) player.seekTo(it * duration) },
+                fillColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()
-                    .padding(start = 48.dp, end = 10.dp)
-                    .offset(y = 3.dp),
+                    .padding(start = 4.dp, end = 6.dp)
+                    .offset(y = 5.dp),
             )
         }
     }
@@ -246,7 +254,7 @@ private fun OutputButton(player: DesktopPlayer) {
     var open by remember { mutableStateOf(false) }
     var outputs by remember { mutableStateOf(emptyList<DesktopPlayer.AudioOutput>()) }
     Box {
-        BarButton(NavIcons.Output, "Audio output") {
+        BarButton(TransportIcons.AirPlay, "Audio output") {
             outputs = player.audioOutputs()
             open = true
         }
@@ -297,7 +305,7 @@ private fun VolumeButton(state: PlayerState, player: DesktopPlayer) {
 }
 
 @Composable
-private fun BarButton(icon: ImageVector, description: String, enabled: Boolean = true, iconSize: Int = 18, onClick: () -> Unit) {
+private fun BarButton(icon: ImageVector, description: String, enabled: Boolean = true, iconSize: Int = 22, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val hovered by interaction.collectIsHoveredAsState()
@@ -305,7 +313,7 @@ private fun BarButton(icon: ImageVector, description: String, enabled: Boolean =
     val wash by animateFloatAsState(if (hovered && enabled) 0.08f else 0f, tween(140), label = "bar_button_wash")
     Box(
         Modifier
-            .size(34.dp)
+            .size(38.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -323,18 +331,19 @@ private fun BarButton(icon: ImageVector, description: String, enabled: Boolean =
 /** Shuffle and repeat: the accent, on a soft disc of it, while they're on. */
 @Composable
 private fun BarToggle(icon: ImageVector, description: String, active: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    val accent = MaterialTheme.colorScheme.primary
+    val accent = com.ozyern.exhale.desktop.ui.AppleColors.Accent
     val lit by animateFloatAsState(if (active) 1f else 0f, tween(180), label = "bar_toggle")
     Box(
         Modifier
-            .size(34.dp)
+            .size(40.dp)
             .padding(3.dp)
             .clip(CircleShape)
             .background(accent.copy(alpha = 0.16f * lit))
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        val rest = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.75f else 0.3f)
-        Icon(icon, description, tint = androidx.compose.ui.graphics.lerp(rest, accent, lit), modifier = Modifier.size(16.dp))
+        // Off, they recede to a quiet grey, as the Music app's; on, they take the accent.
+        val rest = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.38f else 0.2f)
+        Icon(icon, description, tint = androidx.compose.ui.graphics.lerp(rest, accent, lit), modifier = Modifier.size(17.dp))
     }
 }

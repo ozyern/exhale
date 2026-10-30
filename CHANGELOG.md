@@ -7,6 +7,59 @@ Release notes for the build you are running are also bundled into the app itself
 **Settings → Updates → Changelog**. Every later version's notes are pulled from this repository's
 [GitHub releases](https://github.com/ozyern/Exhale/releases).
 
+## [1.0.506] — 2026-10-31
+
+Silky smooth. Hear it all around you. Spatial audio on every phone, lyrics that flow a letter at a
+time and follow the music video, a dock that folds like glass, a FLAC store, and — for the first
+time — Exhale for Windows.
+
+### Added
+
+**Spatial Audio, on from the first song.** Exhale's spatial stage now starts on, on every phone,
+OnePlus and OPPO included. Switch it off once and it stays off.
+
+**A dock that folds.** Scroll down and the dock gathers into your page, the song and search; scroll
+up and it opens again. On the search pages it becomes the search field itself, with a magnifier,
+the prompt and a microphone. Slide along it to change page.
+
+**The FLAC store.** Concert tapes, netlabels, 78s, Creative Commons and classical recordings,
+streamed as FLAC and never through YouTube. It has its own tile at the top of Search.
+
+**Also new**
+
+- Lyrics follow the music video: Exhale finds where the song starts inside its video, so a long
+  intro no longer throws them off.
+- Landscape lyrics over the cover itself, blended into its wash.
+- Album and playlist pages open out of their tile.
+- A pop-out player menu and an iOS-style controls module.
+- A new launch intro, and colour-washed Liked and Offline pages.
+- An Apple-style settings button in the top bar.
+- Imported playlists stay in the Library.
+
+### Changed
+
+- Lyrics flow letter by letter again, with 1.0.405's timing, the next line drawing in on its run-up.
+- Search leads with the song you typed rather than a cover, a live cut or a lyric video.
+- The Search page is rebuilt: Explore, suggestions and albums under one switch, swipeable.
+- No forced resampling and no drop to 16-bit on the way out; a USB DAC gets the source's own samples.
+- "Sign in to Exhale" at the top of Home.
+
+### Fixed
+
+- Bluetooth play and pause answer the first press.
+- The OnePlus game sidebar's media controls work again.
+- The dock keeps the tab an album or artist page was opened from lit, its swipe settles quickly,
+  and tapping the lit tab on such a page takes you back to it.
+- Lyrics from the wrong song are turned away: a source has to match the title and the artist.
+- Lock-screen lyrics survive metadata refreshes.
+
+### Exhale for Windows
+
+1.0.506 is the first release of Exhale for Windows, published separately as **1.0.506-windows**:
+Apple Music's shape on the PC — a glass sidebar, a floating player capsule, music videos up to
+2160p with their lyrics, Dolby passthrough, lossless copies from your own folders, and updates
+that install themselves.
+
 ## [1.0.304] — 2026-09-26
 
 The whole app in Apple Music's shape, music that plays without a network, updates that install

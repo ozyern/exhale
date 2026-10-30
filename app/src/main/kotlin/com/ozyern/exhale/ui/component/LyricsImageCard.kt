@@ -20,8 +20,8 @@ import com.ozyern.exhale.models.MediaMetadata
 // rememberAdjustedFontSize
 //
 // Utilidad compartida — package-internal, accesible desde LyricsCardLayouts.
-// Calcula el tamaño de fuente óptimo mediante búsqueda binaria para que
-// el texto quepa dentro de maxWidth × maxHeight sin desbordarse.
+// Finds, by binary search, the largest text size at which
+// the text fits within maxWidth × maxHeight.
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -56,7 +56,7 @@ fun rememberAdjustedFontSize(
             return@LaunchedEffect
         }
 
-        // Intenta un tamaño mayor para textos muy cortos
+        // Very short text tries a larger size
         when {
             text.length < 20 -> {
                 val largerSize = (initialFontSize.value * 1.1f).sp
@@ -82,7 +82,7 @@ fun rememberAdjustedFontSize(
             }
         }
 
-        // Búsqueda binaria
+        // Binary search
         var minSize  = minFontSize.value
         var maxSize  = initialFontSize.value
         var bestFit  = minSize
@@ -113,9 +113,9 @@ fun rememberAdjustedFontSize(
 // ─────────────────────────────────────────────────────────────────────────────
 // LyricsImageCard — thin wrapper (backward-compatible)
 //
-// Todos los callers existentes siguen funcionando sin cambios.
-// Internamente delega a GlassCardLayout con un LyricsCardConfig derivado.
-// Para usar el nuevo sistema con múltiples layouts, usa LyricsShareCarouselSheet
+// Every existing caller works unchanged.
+// It hands over to GlassCardLayout with a LyricsCardConfig made from its arguments.
+// For the choice of layouts, use LyricsShareCarouselSheet
 // o LyricsCardByLayout directamente.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -125,12 +125,12 @@ fun LyricsImageCard(
     lyricText: String,
     mediaMetadata: MediaMetadata,
     glassStyle: LyricsGlassStyle = LyricsGlassStyle.FrostedDark,
-    darkBackground: Boolean = true,       // mantenido por compatibilidad; actualmente no usado por GlassCardLayout
-    backgroundColor: Color? = null,       // mantenido por compatibilidad
+    darkBackground: Boolean = true,       // kept for compatibility; GlassCardLayout ignores it
+    backgroundColor: Color? = null,       // kept for compatibility
     textColor: Color? = null,
     secondaryTextColor: Color? = null,
 ) {
-    // Si se proveen overrides de color, se aplican sobre una copia del estilo
+    // Colour overrides, when given, go onto a copy of the style
     val effectiveStyle = remember(glassStyle, textColor, secondaryTextColor) {
         glassStyle.copy(
             textColor          = textColor          ?: glassStyle.textColor,

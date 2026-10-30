@@ -25,10 +25,12 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import com.ozyern.exhale.ui.utils.fadingMarquee
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -57,6 +59,7 @@ import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
+import com.ozyern.exhale.LocalPlayerConnection
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -80,6 +83,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import androidx.navigation.NavController
@@ -91,6 +95,7 @@ import com.ozyern.exhale.R
 import com.ozyern.exhale.constants.EnableHapticFeedbackKey
 import com.ozyern.exhale.constants.MiniPlayerHeight
 import com.ozyern.exhale.constants.MiniPlayerPillHorizontalInset
+import com.ozyern.exhale.constants.ConvxChromeExtraInset
 import com.ozyern.exhale.extensions.togglePlayPause
 import com.ozyern.exhale.ui.component.pressScaleContainer
 import com.ozyern.exhale.ui.component.rememberPinnedArtworkRequest
@@ -160,7 +165,8 @@ fun SwipeableMiniPlayerBox(
                     // shrinks into a rectangle that doesn't line up with this pill. The host
                     // composes the morph target from exactly these two terms.
                     baseModifier.padding(
-                        horizontal = safeChromeInset + MiniPlayerPillHorizontalInset,
+                        horizontal = safeChromeInset + MiniPlayerPillHorizontalInset +
+                            if (com.ozyern.exhale.ui.component.LocalConvxChrome.current) ConvxChromeExtraInset else 0.dp,
                     )
                 }
             }
@@ -273,6 +279,7 @@ fun RowScope.MiniPlayerInfo(
     // Drops one type step so two lines still fit the slim pill without the artist clipping.
     compact: Boolean = false,
 ) {
+    val convx = com.ozyern.exhale.ui.component.LocalConvxChrome.current
     Column(
         modifier = Modifier
             .weight(1f)
@@ -284,15 +291,20 @@ fun RowScope.MiniPlayerInfo(
             transitionSpec = { fadeIn() togetherWith fadeOut() },
             label = "title"
         ) { title ->
+            // Convx's pill: the title bold at reading size, the artist under it in the regular
+            // weight — the two told apart by weight, not by shrinking the artist to a caption.
             Text(
                 text = title,
-                style = if (compact) MaterialTheme.typography.bodyMedium
-                else MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
+                fontSize = if (convx) 17.sp else 16.sp,
+                lineHeight = if (convx) 21.sp else 20.sp,
+                fontWeight = if (convx) FontWeight.SemiBold else FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
+                // The glass is nearly clear, as Convx's is; a faint shadow keeps the line off a bright
+                // cover passing beneath without reading as an effect.
+                style = androidx.compose.ui.text.TextStyle(shadow = MiniTextShadow),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.basicMarquee()
+                modifier = Modifier.fadingMarquee()
             )
         }
 
@@ -305,9 +317,11 @@ fun RowScope.MiniPlayerInfo(
         ) { artists ->
             Text(
                 text = artists.joinToString { it.name },
-                style = if (compact) MaterialTheme.typography.labelSmall
-                else MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = if (convx) 13.sp else 14.sp,
+                lineHeight = if (convx) 16.sp else 17.sp,
+                fontWeight = FontWeight.Normal,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                style = androidx.compose.ui.text.TextStyle(shadow = MiniTextShadow),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 // Ellipsis, not marquee. Two independently scrolling lines 1dp apart is two
@@ -327,6 +341,34 @@ fun RowScope.MiniPlayerInfo(
     }
 }
 
+/**
+ * The music video the person was watching when they closed the player, small, over the cover:
+ * the video carries on in the dock rather than stopping when the player goes away. It fades in on
+ * its first frame, so until then (or with no video) the cover underneath is what shows.
+ */
+@Composable
+internal fun DockedVideo(songId: String?, modifier: Modifier = Modifier, visible: () -> Boolean = { true }) {
+    val docked = SharedMusicVideo.docked ?: return
+    if (songId == null || docked.songId != songId) return
+    // Several pills carry the song (the sheet's and the dock's, open and inline) and only one is on
+    // screen at a time. Only that one takes the picture; a hidden one would take it and show nothing.
+    val isVisible by androidx.compose.runtime.rememberUpdatedState(visible)
+    val shown by androidx.compose.runtime.remember { androidx.compose.runtime.derivedStateOf { isVisible() } }
+    if (!shown) return
+    val playerConnection = LocalPlayerConnection.current ?: return
+    val isPlaying by playerConnection.isPlaying.collectAsState()
+    MusicVideoSurface(
+        stream = docked.found.stream,
+        positionMs = { playerConnection.player.currentPosition + docked.found.offsetMs },
+        isPlaying = isPlaying,
+        cropToFill = true,
+        // A dead link in the dock just goes back to the cover.
+        onError = { SharedMusicVideo.docked = null },
+        priority = 0,
+        modifier = modifier,
+    )
+}
+
 @Composable
 private fun MiniPlayerArtwork(
     mediaMetadata: MediaMetadata?,
@@ -341,7 +383,8 @@ private fun MiniPlayerArtwork(
     // itself fully round, a disc reads as a second, smaller pill rather than as artwork - and the
     // pill now appears over settings pages too, where there is no dock of round glyphs for it to
     // play off. Apple shows the cover as the cover.
-    val shape = RoundedCornerShape(10.dp)
+    // Convx rounds its cover at 22% of its size; the classic pill keeps 10dp.
+    val shape = RoundedCornerShape(if (com.ozyern.exhale.ui.component.LocalConvxChrome.current) size * 0.22f else 10.dp)
     // This is where the cover is lifted from when the player opens, and where it lands on close.
     val flight = LocalCoverFlight.current
     val flightOwner = remember { Any() }
@@ -351,7 +394,17 @@ private fun MiniPlayerArtwork(
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
-            .then(flight?.run { Modifier.reportMini(flightOwner, corner = 10.dp) } ?: Modifier)
+            .then(
+                flight?.run {
+                    // The sheet's pill: on screen whenever the dock isn't drawing the song itself.
+                    Modifier.reportMini(
+                        flightOwner,
+                        corner = 10.dp,
+                        slot = "sheetPill",
+                        visible = { com.ozyern.exhale.ui.component.foldingdock.FoldingDockMotion.fold < 0.5f },
+                    )
+                } ?: Modifier,
+            )
             .size(size)
             // A real shadow under the art. The pill is a pane of glass and the row on it was
             // uniformly flat — every element sitting at exactly the same depth is what made the
@@ -395,6 +448,12 @@ private fun MiniPlayerArtwork(
                 modifier = Modifier.size(size * 0.5f)
             )
         }
+
+        DockedVideo(
+            mediaMetadata?.id,
+            Modifier.fillMaxSize(),
+            visible = { com.ozyern.exhale.ui.component.foldingdock.FoldingDockMotion.fold < 0.5f },
+        )
 
         // Buffering veil over the art rather than a ring around it: the state belongs to the
         // track, so it reads better sitting on the track than orbiting it.
@@ -452,15 +511,15 @@ fun NewMiniPlayerContent(
     val playbackState by playerConnection.playbackState.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val togetherSessionState by playerConnection.service.togetherSessionState.collectAsState()
-    val currentSong by playerConnection.currentSong.collectAsState(initial = null)
-    val isLiked = currentSong?.song?.liked == true
 
     val isLoading = playbackState == Player.STATE_BUFFERING
 
     val progressColor = MaterialTheme.colorScheme.primary
     val progressTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)
 
-    val artworkSize = if (compact) 38.dp else 48.dp
+    // Convx 2.0.4: a 38dp cover in a 52dp pill (measured off its debug build).
+    val convx = com.ozyern.exhale.ui.component.LocalConvxChrome.current
+    val artworkSize = if (convx) 38.dp else if (compact) 42.dp else 48.dp
     // 34dp, not 40. In a 56dp pill a 40dp button is over two thirds of the height, filled with a
     // solid accent — it stopped being the loudest thing in the row and became the only thing in
     // it. The wide pill keeps 48dp because it has 64dp to spend and a like button to out-rank.
@@ -493,7 +552,7 @@ fun NewMiniPlayerContent(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = if (convx) 12.dp else 8.dp),
         ) {
             if (wideTransport) {
                 val transportLatestPosition by rememberUpdatedState(position)
@@ -527,7 +586,7 @@ fun NewMiniPlayerContent(
                 size = artworkSize,
             )
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(if (convx) 10.dp else 12.dp))
 
             mediaMetadata?.let {
                 MiniPlayerInfo(
@@ -554,68 +613,95 @@ fun NewMiniPlayerContent(
                 }
             }
 
-            // Like. A quiet glyph beside a loud filled button, so the hierarchy in the pill is
-            // unambiguous instead of two same-sized circles competing. Dropped entirely in the
-            // compact layout, where there is not enough width for a second control to be quiet.
-            if (!compact) {
-
-                val heartScale by animateFloatAsState(
-                    targetValue = if (isLiked) 1.2f else 1f,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessMedium,
-                    ),
-                    label = "heartScale",
-                )
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = { playerConnection.toggleLike() },
-                        ),
-                ) {
-                    Icon(
-                        painter = painterResource(
-                            if (isLiked) R.drawable.favorite else R.drawable.favorite_border
-                        ),
-                        contentDescription = null,
-                        tint = if (isLiked) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                        modifier = Modifier
-                            .size(20.dp)
-                            .graphicsLayer {
-                                scaleX = heartScale
-                                scaleY = heartScale
-                            },
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(4.dp))
-
-            // The size was computed above and then never handed over, so this drew at its own
-            // 48dp default in a 56dp pill - a glass button with a press swell and a backdrop that
-            // reaches past its own bounds, in a capsule with 4dp of room above and below it. That
-            // is the button visibly hanging out of the pill on the settings page.
-            // Play and pause in a ring that is the song's progress, as the reference has it.
-            // In the wide transport it already leads the bar.
+            // Convx's pill: play or pause, then forward — solid glyphs straight on the glass, with
+            // no heart, no ring and no disc. Play is the loudest thing in the row by size alone;
+            // forward is a step quieter and takes a little of the accent. The wide transport
+            // already leads with its own controls.
             if (!wideTransport) {
-                val latestPosition by rememberUpdatedState(position)
-                val latestDuration by rememberUpdatedState(duration)
-                com.ozyern.exhale.ui.component.RingPlayPauseButton(
-                    isPlaying = isPlaying,
-                    isLoading = isLoading,
-                    progress = { if (latestDuration > 0) latestPosition.toFloat() / latestDuration else 0f },
+                val ink = MaterialTheme.colorScheme.onSurface
+                // Convx: SF Symbols' play/pause.fill and forward.fill, white, at its control sizes.
+                MiniGlyphButton(
+                    icon = when {
+                        convx && isPlaying -> R.drawable.sf_pause_fill
+                        convx -> R.drawable.sf_play_fill
+                        isPlaying -> R.drawable.pause
+                        else -> R.drawable.play
+                    },
+                    contentDescription = stringResource(if (isPlaying) R.string.pause else R.string.play),
+                    tint = (if (convx) Color.White else ink).copy(alpha = 0.92f),
                     onClick = { playerConnection.player.togglePlayPause() },
-                    size = if (compact) 36.dp else 44.dp,
+                    glyphSize = if (convx) 22.dp else 30.dp,
+                )
+                MiniGlyphButton(
+                    icon = if (convx) R.drawable.sf_forward_fill else R.drawable.forward_fill,
+                    contentDescription = stringResource(R.string.next),
+                    tint = (if (convx) Color.White else androidx.compose.ui.graphics.lerp(ink, MaterialTheme.colorScheme.primary, 0.45f))
+                        .copy(alpha = if (canSkipNext) 0.9f else 0.35f),
+                    onClick = { if (canSkipNext) playerConnection.seekToNext() },
+                    glyphSize = 24.dp,
                 )
             }
         }
 
+    }
+}
+
+/**
+ * A bare transport glyph on the mini player, as Convx's pill draws them: a solid play/pause or
+ * forward with no ring or disc around it, on a full 44dp target. The pill is the surface; a second
+ * shape inside it for each control was what made the row read as a toolbar.
+ */
+@Composable
+internal fun MiniGlyphButton(
+    icon: Int,
+    contentDescription: String?,
+    tint: Color,
+    onClick: () -> Unit,
+    glyphSize: Dp = 26.dp,
+) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    // A press sinks the glyph a little, the only feedback a bare glyph can give.
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.82f else 1f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 900f),
+        label = "miniGlyphPress",
+    )
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = {
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                    onClick()
+                },
+            ),
+    ) {
+        AnimatedContent(
+            targetState = icon,
+            transitionSpec = {
+                (scaleIn(spring(dampingRatio = 0.55f, stiffness = 700f), initialScale = 0.6f) + fadeIn(tween(120))) togetherWith
+                    (scaleOut(tween(120), targetScale = 0.6f) + fadeOut(tween(100)))
+            },
+            label = "miniGlyph",
+        ) { res ->
+            Icon(
+                painter = painterResource(res),
+                contentDescription = contentDescription,
+                tint = tint,
+                modifier = Modifier
+                    .size(glyphSize)
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                    },
+            )
+        }
     }
 }
 
@@ -706,3 +792,10 @@ private fun BoxScope.MiniPlayerProgress(
         }
     }
 }
+
+/** Under the mini player's two lines: soft, low, just enough to hold them off a bright cover. */
+private val MiniTextShadow = androidx.compose.ui.graphics.Shadow(
+    color = Color.Black.copy(alpha = 0.45f),
+    offset = androidx.compose.ui.geometry.Offset(0f, 1f),
+    blurRadius = 6f,
+)

@@ -39,7 +39,7 @@ import kotlin.math.sin
 /**
  * The cold-start intro, drawn over the already-composed app.
  *
- * On black, a gold disc springs in carrying the black Exhale mark, which turns into place. The disc
+ * On black, the neon Exhale mark springs in on its own glow and turns into place. It
  * beats twice — a breath in, a breath out — with a ripple of gold and a haptic tick on each, then
  * the camera rushes through it: the mark outgrows the disc so its strokes sweep past, and a hole
  * opens from the centre onto the live app underneath.
@@ -80,11 +80,11 @@ fun BootSplash(
     }
     if (reducedMotion) return
 
-    // The plain black "E))" on a transparent ground — the launcher's glyph layer, at 62% of its
-    // image. Decoded once; the canvas scales the one bitmap, so nothing is re-rendered as it grows.
+    // The neon "E))" on a transparent ground (splash_logo_gold, cut from assets/icon_dark.png).
+    // Decoded once; the canvas scales the one bitmap, so nothing is re-rendered as it grows.
     val mark = remember {
         runCatching {
-            android.graphics.BitmapFactory.decodeResource(context.resources, R.mipmap.ic_launcher_foreground)
+            android.graphics.BitmapFactory.decodeResource(context.resources, R.drawable.splash_logo_gold)
                 ?.asImageBitmap()
         }.getOrNull()
     }
@@ -125,21 +125,23 @@ fun BootSplash(
             val zoom = inCubic(phase(t, ZOOM_START, ZOOM_END))
             val discIn = outBack(phase(t, 0f, 450f))
             val discR = (r0 * discIn * (1f + 0.09f * beat) + (cover - r0) * zoom).coerceAtLeast(0f)
+            // The neon mark carries its own light, so the gold disc is now its glow: a soft halo that
+            // swells with each beat and spreads through the screen in the rush.
             if (discR > 0f) {
                 drawCircle(
                     brush = Brush.radialGradient(
-                        listOf(GoldLight, GoldDeep),
-                        center = c - Offset(discR * 0.35f, discR * 0.45f),
-                        radius = discR * 1.6f,
+                        listOf(GoldLight.copy(alpha = 0.30f + 0.20f * beat), GoldDeep.copy(alpha = 0.10f), Color.Transparent),
+                        center = c,
+                        radius = discR * 1.8f,
                     ),
-                    radius = discR,
+                    radius = discR * 1.8f,
                     center = c,
                 )
             }
 
             val markIn = phase(t, 100f, 550f)
             // Outgrows the disc in the zoom, so the black strokes sweep past the camera.
-            val markSize = r0 * 2f * 0.64f * outBack(markIn) * (1f + 0.09f * beat) *
+            val markSize = r0 * 2f * 0.95f * outBack(markIn) * (1f + 0.09f * beat) *
                 (1f + 16f * zoom.pow(1.6f))
             val spin = -140f * (1f - outCubic(markIn)) + 35f * zoom
             if (markSize > 0f && mark != null) {
@@ -162,7 +164,7 @@ fun BootSplash(
 }
 
 /** How much of its image the glyph itself fills. */
-private const val MARK_FILL = 0.62f
+private const val MARK_FILL = 0.70f
 
 private val GoldLight = Color(0xFFFFE07A)
 private val GoldDeep = Color(0xFFDEB41A)

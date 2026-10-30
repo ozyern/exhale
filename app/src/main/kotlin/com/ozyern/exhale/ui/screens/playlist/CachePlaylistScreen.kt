@@ -11,6 +11,7 @@ package com.ozyern.exhale.ui.screens.playlist
 import com.ozyern.exhale.ui.component.GradientArtwork
 import com.ozyern.exhale.ui.component.CollectionPlay
 import com.ozyern.exhale.ui.component.CollectionAction
+import com.ozyern.exhale.ui.component.CollectionShuffle
 import com.ozyern.exhale.ui.component.CollectionHero
 import com.ozyern.exhale.ui.component.rememberScrollEdge
 import com.ozyern.exhale.ui.component.scrollEdgeScrim
@@ -279,9 +280,7 @@ fun CachePlaylistScreen(
                                         playerConnection.playQueue(ListQueue(title = "Cache Songs", items = filteredSongs.map { it.item.toMediaItem() }))
                                     },
                                 )
-                                CollectionAction(
-                                    icon = R.drawable.shuffle,
-                                    contentDescription = stringResource(R.string.shuffle),
+                                CollectionShuffle(
                                     onClick = {
                                         playerConnection.playQueue(ListQueue(title = "Cache Songs", items = filteredSongs.shuffled().map { it.item.toMediaItem() }))
                                     },
@@ -504,12 +503,8 @@ fun CachePlaylistScreen(
                         )
                     }
                 } else if (!isSearching) {
-                    androidx.compose.material3.IconButton(onClick = { isSearching = true }) {
-                        Icon(
-                            painter = painterResource(R.drawable.search),
-                            contentDescription = null
-                        )
-                    }
+                    // A glass disc like the back button opposite it, as iOS draws every round bar control.
+                    com.ozyern.exhale.ui.component.LiquidGlassIconButton(onClick = { isSearching = true }, icon = R.drawable.search)
                 }
             }
         )

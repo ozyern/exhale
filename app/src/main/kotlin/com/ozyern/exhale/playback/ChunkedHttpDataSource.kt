@@ -86,7 +86,11 @@ class ChunkedHttpDataSource(
         upstream.close()
     }
 
-    class Factory(private val upstream: DataSource.Factory, private val totalLength: Long?) : DataSource.Factory {
-        override fun createDataSource(): DataSource = ChunkedHttpDataSource(upstream.createDataSource(), totalLength)
+    class Factory(
+        private val upstream: DataSource.Factory,
+        private val totalLength: Long?,
+        private val chunkLength: Long = 2L * 1024 * 1024,
+    ) : DataSource.Factory {
+        override fun createDataSource(): DataSource = ChunkedHttpDataSource(upstream.createDataSource(), totalLength, chunkLength)
     }
 }

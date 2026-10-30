@@ -4,9 +4,9 @@
  * Licensed Under GPL-3.0 | see git history for contributors
  *
  * Crossfade improvements ported from ArchiveTune (github.com/koiverse):
- *  - Equal-power volume curve (sin/cos) — elimina el "dip" perceptual en el punto medio
- *  - Gapless album skip — no hace crossfade entre pistas del mismo álbum
- *  - Buffer check antes de iniciar — evita arranque con rebuffering
+ *  - Equal-power volume curve (sin/cos): no audible dip at the midpoint
+ *  - Gapless albums: no crossfade between tracks of the same album
+ *  - Buffer check before starting, so a fade never opens on a rebuffer
  */
 
 package com.ozyern.exhale.playback
@@ -63,11 +63,11 @@ internal class CrossfadeAudio(
     /** False while Automix mustn't run, such as in a listen-together session. */
     private val automixAllowed: () -> Boolean = { true },
 ) {
-    // ── Estado del loop ───────────────────────────────────────────────────────
+    // ── Loop state ────────────────────────────────────────────────────────────
 
     private var loopJob: Job? = null
 
-    // ── Estado del overlap player ─────────────────────────────────────────────
+    // ── Overlap player state ──────────────────────────────────────────────────
 
     private var overlapPlayer: ExoPlayer? = null
     private var overlapPrimedIndex: Int = C.INDEX_UNSET
@@ -79,7 +79,7 @@ internal class CrossfadeAudio(
     private var crossfadeActiveDurationMs: Int = 0
     private var overlapNormalizeFactor: Float = 1f
 
-    // ── Estado del handoff ────────────────────────────────────────────────────
+    // ── Handoff state ─────────────────────────────────────────────────────────
 
     private var handoffActive = false
     private var handoffStartElapsedMs: Long = 0L
@@ -89,7 +89,7 @@ internal class CrossfadeAudio(
     private var handoffSeekIssued = false
     private var handoffRampStarted = false
 
-    // Constantes de handoff
+    // Handoff constants
     private val handoffReseekMinIntervalMs = 180L
     private val handoffDriftCorrectionThresholdMs = 220L
     private val handoffRampStartDriftToleranceMs = 120L
@@ -98,14 +98,14 @@ internal class CrossfadeAudio(
     /** The longest the overlap will carry a song for a main player that has not started. */
     private val HANDOFF_HARD_TIMEOUT_MS = 15_000L
 
-    // ── Buffer mínimo antes de arrancar el crossfade ──────────────────────────
+    // ── Minimum buffer before a crossfade starts ──────────────────────────────
 
-    /** Cuánto buffer (ms) necesita el overlap player antes de permitir beginOverlapCrossfade.
-     *  Se calcula como fadeMs + 2s, acotado entre 3s y 10s. */
+    /** How much buffer (ms) the overlap player needs before beginOverlapCrossfade may run.
+     *  fadeMs + 2s, held between 3s and 10s. */
     private fun requiredStartBufferMs(fadeMs: Int): Long =
         (fadeMs.toLong() + 2_000L).coerceIn(3_000L, 10_000L)
 
-    // ── API pública ───────────────────────────────────────────────────────────
+    // ── Public API ────────────────────────────────────────────────────────────
 
     fun isCrossfading(): Boolean = crossfadeActive
 
@@ -206,7 +206,7 @@ internal class CrossfadeAudio(
                 continue
             }
 
-            // Durante el handoff solo actualizar volúmenes
+            // During the handoff, only the volumes change
             if (handoffActive) {
                 updateVolumes()
                 delay(50)
@@ -223,7 +223,7 @@ internal class CrossfadeAudio(
             val positionMs = player.currentPosition.coerceAtLeast(0L)
             val nextIndex = player.nextMediaItemIndex
 
-            // No crossfade en repeat-one
+            // No crossfade on repeat-one
             if (player.repeatMode == Player.REPEAT_MODE_ONE) {
                 stopOverlapCrossfade(resetMainFade = true)
                 delay(150)
@@ -236,9 +236,9 @@ internal class CrossfadeAudio(
                 continue
             }
 
-            // ── Skip gapless para álbumes ─────────────────────────────────────
-            // Si la transición es entre pistas del mismo álbum y el crossfade no está
-            // activo todavía, lo omitimos para respetar el gapless del álbum.
+            // ── Gapless albums ────────────────────────────────────────────────
+            // Between two tracks of the same album, with no crossfade under way yet,
+            // it is skipped so the album plays gapless as mastered.
             if (!crossfadeActive && nextIndex != C.INDEX_UNSET) {
                 val currentItem =
                     runCatching { player.getMediaItemAt(player.currentMediaItemIndex) }.getOrNull()
@@ -281,7 +281,11 @@ internal class CrossfadeAudio(
             }
 
             val remainingMs = (durationMs - positionMs).coerceAtLeast(0L)
-            val preloadWindowMs = fadeMs.toLong() + 1200L
+            // Primed well ahead of the fade. 1.2 s was not enough to look the next song up (the
+            // JioSaavn upgrade asks first) and open its stream, so the fade often could not start
+            // in time: the leaving song ran out, the player went to the next song cold, and there
+            // was a gap of silence where the crossfade should have been.
+            val preloadWindowMs = fadeMs.toLong() + CROSSFADE_PRIME_LEAD_MS
 
             if (remainingMs in 1L..preloadWindowMs) {
                 primeOverlapForNext(nextIndex)
@@ -289,14 +293,14 @@ internal class CrossfadeAudio(
                 unprimeOverlap()
             }
 
-            // ── Iniciar crossfade cuando quede tiempo suficiente ──────────────
+            // ── Start the crossfade once enough of the song is left ───────────
             if (overlapPrimedIndex == nextIndex && remainingMs in 1L..fadeMs.toLong()) {
-                // Verificar buffer mínimo ANTES de comenzar — evita arrancar con rebuffering
+                // Check the buffer BEFORE starting, so the fade never opens on a rebuffer
                 val overlap = overlapPlayer
                 if (overlap != null && hasEnoughBuffer(overlap, requiredStartBufferMs(fadeMs))) {
                     beginOverlapCrossfade(fadeMs = fadeMs, remainingMs = remainingMs)
                 }
-                // Si no hay buffer suficiente, el próximo tick lo intentará de nuevo
+                // Not enough buffered yet: the next tick tries again
                 delay(50)
                 continue
             }
@@ -766,6 +770,9 @@ internal class CrossfadeAudio(
     private companion object {
         const val PREVIOUS_RESTART_MS = 3_000L
 
+        /** How long before the fade the arriving song is looked up and buffered (paused). */
+        const val CROSSFADE_PRIME_LEAD_MS = 12_000L
+
         /** How far ahead the player must have buffered before Automix may read the song. */
         private const val ANALYSIS_BUFFER_AHEAD_MS = 30_000L
         const val AUTOMIX_TAG = "ExhaleAutomix"
@@ -799,11 +806,11 @@ internal class CrossfadeAudio(
         const val BLEND_EXIT_LOW_PASS_HZ = 2_200.0
     }
 
-    // ── Helpers de buffer ─────────────────────────────────────────────────────
+    // ── Buffer helpers ────────────────────────────────────────────────────────
 
     /**
-     * Verifica si [targetPlayer] tiene al menos [minMs] de audio bufferizado,
-     * o si el track es tan corto que está prácticamente completo en buffer.
+     * Whether [targetPlayer] has at least [minMs] of audio buffered,
+     * or the track is short enough to be practically all buffered already.
      */
     private fun hasEnoughBuffer(targetPlayer: ExoPlayer, minMs: Long): Boolean {
         if (minMs <= 0L) return true
@@ -813,16 +820,16 @@ internal class CrossfadeAudio(
         val buffered = targetPlayer.totalBufferedDuration.coerceAtLeast(0L)
         if (buffered >= minMs) return true
 
-        // Track corto: aceptar si ya está casi completamente bufferizado
+        // A short track: fine once it is nearly all buffered
         return duration != C.TIME_UNSET &&
                 targetPlayer.bufferedPosition >= duration - 150L
     }
 
-    // ── Detección de transición gapless ───────────────────────────────────────
+    // ── Gapless transitions ───────────────────────────────────────────────────
 
     /**
-     * Devuelve true si [current] y [target] pertenecen al mismo álbum,
-     * indicando que la transición debe ser gapless (sin crossfade).
+     * True when [current] and [target] are from the same album,
+     * so the change between them should be gapless (no crossfade).
      */
     private fun isGaplessAlbumTransition(current: MediaItem, target: MediaItem): Boolean {
         val albumA = current.metadata?.album?.id?.takeIf { it.isNotBlank() }
@@ -836,7 +843,7 @@ internal class CrossfadeAudio(
         return albumA != null && albumA == albumB
     }
 
-    // ── Gestión del overlap player ────────────────────────────────────────────
+    // ── Overlap player ────────────────────────────────────────────────────────
 
     private suspend fun primeOverlapForNext(nextIndex: Int) {
         val nextItem = runCatching { player.getMediaItemAt(nextIndex) }.getOrNull() ?: return
@@ -850,7 +857,10 @@ internal class CrossfadeAudio(
         overlap.clearMediaItems()
         overlap.setMediaItem(nextItem)
         overlap.prepare()
-        overlap.playWhenReady = true
+        // Buffering, not playing: primed to play, it started the moment it was ready and ran
+        // silently until the fade, so the arriving song's opening was lost. It starts from its
+        // first note when the fade begins (see beginOverlapCrossfade).
+        overlap.playWhenReady = false
         overlap.volume = 0f
 
         overlapNormalizeFactor = fetchNormalizeFactorForMediaId(nextMediaId)
@@ -865,7 +875,8 @@ internal class CrossfadeAudio(
     }
 
     private fun beginOverlapCrossfade(fadeMs: Int, remainingMs: Long) {
-        if (overlapPlayer == null) return
+        val overlap = overlapPlayer ?: return
+        overlap.playWhenReady = true
 
         val targetIndex = overlapPrimedIndex
         if (targetIndex != C.INDEX_UNSET && targetIndex < player.mediaItemCount) {
@@ -879,19 +890,19 @@ internal class CrossfadeAudio(
         crossfadeTargetMediaId = overlapPrimedMediaId
     }
 
-    // ── Actualización de volúmenes (equal-power) ──────────────────────────────
+    // ── Volumes (equal-power) ─────────────────────────────────────────────────
 
     /**
-     * Aplica la curva de crossfade equal-power usando sin/cos.
+     * Applies the equal-power crossfade curve, using sin/cos.
      *
-     * Con una curva lineal la suma de potencias cae ~3 dB en t=0.5.
-     * Con sin/cos se mantiene constante (sin²θ + cos²θ = 1),
-     * eliminando el "dip" perceptual en el centro del fundido.
+     * On a linear curve the summed power drops ~3 dB at t=0.5.
+     * On sin/cos it stays constant (sin²θ + cos²θ = 1),
+     * so there is no audible dip in the middle of the fade.
      *
      * @param t          Progreso normalizado [0..1]
-     * @param baseVolume Volumen base del player principal
-     * @param outgoing   Player que está saliendo (volumen decrece: cos)
-     * @param incoming   Player que está entrando  (volumen crece:  sin)
+     * @param baseVolume The main player's base volume
+     * @param outgoing   The player leaving (volume falls: cos)
+     * @param incoming   The player arriving (volume rises: sin)
      */
     private fun applyEqualPowerVolumes(
         t: Float,
@@ -918,7 +929,7 @@ internal class CrossfadeAudio(
             (playerVolume.value * overlapNormalizeFactor * audioFocusVolumeFactor.value)
                 .coerceIn(0f, 1f)
 
-        // ── Fase de handoff ───────────────────────────────────────────────────
+        // ── Handoff phase ─────────────────────────────────────────────────────
         if (handoffActive) {
             val nowElapsedMs = android.os.SystemClock.elapsedRealtime()
 
@@ -988,7 +999,7 @@ internal class CrossfadeAudio(
             val elapsed = (nowElapsedMs - handoffStartElapsedMs).coerceAtLeast(0L)
             val t = (elapsed.toFloat() / denom.toFloat()).coerceIn(0f, 1f)
 
-            // Handoff: ramp lineal corto (450 ms) — suficiente para que no se note
+            // Handoff: a short linear ramp (450 ms), long enough not to be heard
             playbackFadeFactor.value = t
             overlap.volume = (baseOverlapVolume * (1f - t)).coerceIn(0f, 1f)
 
@@ -996,28 +1007,28 @@ internal class CrossfadeAudio(
             return
         }
 
-        // ── Fase de crossfade activo (equal-power) ────────────────────────────
+        // ── Crossfade under way (equal-power) ─────────────────────────────────
         val denom = crossfadeActiveDurationMs.toLong().coerceAtLeast(1L)
         val elapsed = (android.os.SystemClock.elapsedRealtime() - crossfadeStartElapsedMs).coerceAtLeast(0L)
         val t = (elapsed.toFloat() / denom.toFloat()).coerceIn(0f, 1f)
 
-        // Calculamos el factor del player principal a través del flujo playbackFadeFactor
-        // para que el volumen final del player principal sea:
+        // The main player's factor goes through the playbackFadeFactor flow,
+        // so that the main player's final volume is:
         //   player.volume = playerVolume * normalizeFactor * audioFocusFactor * playbackFadeFactor
         //                 = baseMainVolume * cos(t * π/2)
         //
-        // Necesitamos que playbackFadeFactor = cos(t * π/2), ya que los demás factores
-        // se combinan en el collect de MusicService.
+        // playbackFadeFactor has to be cos(t * π/2), since the other factors
+        // are combined in MusicService's collect.
         val radians = t.toDouble() * (PI / 2.0)
         playbackFadeFactor.value = cos(radians).toFloat().coerceIn(0f, 1f)
 
-        // El overlap no pasa por playbackFadeFactor, así que aplicamos el volumen completo
-        // directamente con la curva seno.
+        // The overlap player does not go through playbackFadeFactor, so it gets the whole
+        // volume directly, on the sine curve.
         overlap.volume =
             (baseOverlapVolume * sin(radians).toFloat()).coerceIn(0f, maxSafeGainFactor)
     }
 
-    // ── Transición de MediaItem ───────────────────────────────────────────────
+    // ── MediaItem transitions ─────────────────────────────────────────────────
 
     private fun handleMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         if (!crossfadeActive) return
@@ -1038,7 +1049,7 @@ internal class CrossfadeAudio(
         stopOverlapCrossfade(resetMainFade = true)
     }
 
-    // ── Handoff: traspaso del overlap al player principal ─────────────────────
+    // ── Handoff: the overlap player passes the song to the main player ────────
 
     private fun beginHandoffFromOverlap(alreadySeeked: Boolean = false) {
         val overlap = overlapPlayer ?: run {

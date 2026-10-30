@@ -6,6 +6,7 @@
 
 package com.ozyern.exhale.ui.component
 
+import com.ozyern.exhale.ui.utils.collectionMorphHero
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -115,15 +117,28 @@ fun ReleaseBackground(
             Modifier
                 .fillMaxWidth()
                 .height(artHeight)
-                .offset { IntOffset(0, listState.releaseHeaderTop(artHeight.toPx()).roundToInt()) },
+                .offset { IntOffset(0, listState.releaseHeaderTop(artHeight.toPx()).roundToInt()) }
+                // Opened from a tile, the sleeve is what flies out of it.
+                .collectionMorphHero()
+                // Under both pictures, so the seed below shows while the full-size one loads.
+                .background(palette.elevated),
         ) {
+            // The tile's own picture, already in memory, under the full-size one: the sleeve flies
+            // out of the tile showing its artwork instead of an empty frame while the big one loads.
+            val seedArt = com.ozyern.exhale.ui.utils.LocalCollectionSeed.current?.thumbnail
+            if (seedArt != null && seedArt != artworkUrl) {
+                AsyncImage(
+                    model = seedArt,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
             AsyncImage(
                 model = artworkUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(palette.elevated),
+                modifier = Modifier.matchParentSize(),
             )
             overlay()
             // A light darkening under the status bar and the back button, whatever the sleeve does there.
@@ -278,7 +293,7 @@ fun ReleaseHeader(
     badges: @Composable () -> Unit = {},
     /** The sleeve, for the two-pane layout, where the header carries its own artwork. */
     artworkUrl: String? = null,
-    actions: @Composable () -> Unit,
+    actions: @Composable RowScope.() -> Unit,
 ) {
     val inPane = publishToCollectionPane {
         CollectionPaneHero(
@@ -299,7 +314,12 @@ fun ReleaseHeader(
             },
             badges = badges,
             wash = true,
-            actions = actions,
+            actions = {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) { actions() }
+            },
         )
     }
     if (inPane) return
@@ -358,7 +378,10 @@ fun ReleaseHeader(
                     .padding(horizontal = ReleaseGutter),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically,
-            ) { actions() }
+            ) {
+                val row = this
+                androidx.compose.runtime.CompositionLocalProvider(LocalReleasePalette provides palette) { row.actions() }
+            }
         }
     }
 }

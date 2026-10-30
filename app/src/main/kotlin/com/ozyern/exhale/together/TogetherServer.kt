@@ -48,10 +48,18 @@ sealed interface TogetherServerEvent {
         val request: AddTrackRequest,
     ) : TogetherServerEvent
 
+    /**
+     * With [fatal] false the room carries on: one guest's dropped socket or garbled frame is that
+     * guest's problem, not a reason to end the session for everyone else.
+     */
     data class Error(
         val message: String,
         val throwable: Throwable? = null,
+        val fatal: Boolean = true,
     ) : TogetherServerEvent
+
+    /** The online host lost the relay and is trying to get back; the relay keeps the room meanwhile. */
+    data object Reconnecting : TogetherServerEvent
 }
 
 class TogetherServer(
@@ -338,7 +346,7 @@ class TogetherServer(
                 val message =
                     runCatching { TogetherJson.json.decodeFromString(TogetherMessage.serializer(), text) }
                         .getOrElse {
-                            onEvent?.invoke(TogetherServerEvent.Error("Failed to decode message", it))
+                            onEvent?.invoke(TogetherServerEvent.Error("Failed to decode message", it, fatal = false))
                             continue
                         }
 
@@ -376,7 +384,10 @@ class TogetherServer(
                 }
             }
         } catch (t: Throwable) {
-            onEvent?.invoke(TogetherServerEvent.Error("Client loop failed", t))
+            // A guest whose phone slept or lost Wi-Fi ends here; the room goes on without them.
+            if (t !is kotlinx.coroutines.CancellationException) {
+                onEvent?.invoke(TogetherServerEvent.Error("Client loop failed", t, fatal = false))
+            }
         } finally {
             clients.remove(participantId)
             onEvent?.invoke(TogetherServerEvent.ParticipantLeft(participantId, "Disconnected"))

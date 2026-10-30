@@ -56,7 +56,10 @@ import kotlin.math.sqrt
  * window as one image: the same picture for a small fraction of the work.
  */
 private const val FluidSide = 48
-private const val FieldWidth = 240
+
+// 160 wide, not 240: the field is soft gradients stretched with bicubic filtering, and the narrower
+// field is 2.25× less work per frame for a picture that looks the same at window size.
+private const val FieldWidth = 160
 
 /** The artwork shrunk to 48×48 and softened, as RGB floats for sampling. */
 private class FluidTexture(val rgb: FloatArray)
@@ -180,8 +183,19 @@ private fun renderField(current: FluidTexture, previous: FluidTexture, blend: Fl
     return Image.makeFromBitmap(bitmap).toComposeImageBitmap()
 }
 
-/** Field time between rendered frames; the GPU blends across each one. */
-private const val FieldStep = 0.05f
+/**
+ * Field time between rendered frames; the GPU blends across each one. A tenth of a second: the drift
+ * is far too slow for the blend between frames to show, and it halves the frames worked out.
+ */
+private const val FieldStep = 0.1f
+
+/**
+ * How often the field's clock moves, and so how often the window redraws for it: 30 times a second.
+ * It used to advance on every displayed frame — on a 240 Hz panel, the whole window and every pane of
+ * glass over it redrawn 240 times a second for as long as a song played, for motion too slow to see
+ * step at 30.
+ */
+private const val FieldTickMs = 33L
 
 /**
  * The artwork at [url] as a slowly moving field of its own colours. A new cover cross-fades in over
@@ -240,10 +254,10 @@ fun FluidArtwork(url: String?, modifier: Modifier = Modifier, brightness: Float 
                 last = now
                 continue
             }
-            withFrameNanos { now ->
-                if (last != 0L) clock.floatValue += ((now - last) / 1_000_000_000f).coerceAtMost(0.1f)
-                last = now
-            }
+            delay(FieldTickMs)
+            val now = System.nanoTime()
+            if (last != 0L) clock.floatValue += ((now - last) / 1_000_000_000f).coerceAtMost(0.1f)
+            last = now
         }
     }
 

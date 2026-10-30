@@ -80,17 +80,17 @@ object CastController {
         override fun onSessionStartFailed(session: CastSession, error: Int) {
             Log.w(TAG, "session start failed: $error")
             update { it.copy(connecting = false) }
-            mirror?.onConnectFailed()
+            safely { mirror?.onConnectFailed() }
         }
 
         override fun onSessionEnding(session: CastSession) {
-            mirror?.onSessionEnding(session)
+            safely { mirror?.onSessionEnding(session) }
         }
 
         override fun onSessionEnded(session: CastSession, error: Int) {
             stopWatching()
             update { it.copy(connecting = false, connectedName = null) }
-            mirror?.onSessionEnded()
+            safely { mirror?.onSessionEnded() }
             publishDevices()
         }
 
@@ -139,7 +139,7 @@ object CastController {
         mirror = target
         castContext?.sessionManager?.currentCastSession
             ?.takeIf { it.isConnected }
-            ?.let { target.onSessionBegan(it, resumed = true) }
+            ?.let { safely { target.onSessionBegan(it, resumed = true) } }
     }
 
     fun detach(target: CastMirror) {
@@ -202,7 +202,7 @@ object CastController {
             )
         }
         publishDevices()
-        mirror?.onSessionBegan(session, resumed)
+        safely { mirror?.onSessionBegan(session, resumed) }
     }
 
     private fun watch(session: CastSession) {
@@ -236,6 +236,18 @@ object CastController {
                 .sortedBy { it.name.lowercase() }
         }
         update { it.copy(devices = devices) }
+    }
+
+    /**
+     * The session listener is the Cast framework's, and it does not catch: a throw from the mirror
+     * in there ended the app a few seconds into casting rather than just the cast.
+     */
+    private inline fun safely(block: () -> Unit) {
+        try {
+            block()
+        } catch (e: Exception) {
+            Log.w(TAG, "cast session step failed", e)
+        }
     }
 
     private inline fun update(change: (State) -> State) {

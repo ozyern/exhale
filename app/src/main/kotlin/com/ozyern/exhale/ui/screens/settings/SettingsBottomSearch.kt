@@ -111,12 +111,14 @@ internal fun SettingsBottomSearch(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp)
-                // ColorOS 17's Settings search: a capsule of frosted grey with a hairline rim,
-                // magnifier and "Search" and nothing else.
-                .shadow(if (dark) 0.dp else 6.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.08f), spotColor = Color.Black.copy(alpha = 0.08f))
+                // The app's liquid glass — the dock's and the search bar's material, lensing and
+                // blurring the page under it — instead of a flat grey that let the rows scrolling
+                // beneath read straight through it. `lightGlass` samples the page's own backdrop,
+                // which is the in-content-safe way to do it. A light film over the glass turns a
+                // row passing under the word "Search" into colour, not a second line of text.
+                .lightGlass(CircleShape)
                 .clip(CircleShape)
-                .background(if (dark) Color(0xFF2A2A2A).copy(alpha = 0.86f) else Color(0xFFF4F4F4).copy(alpha = 0.92f))
-                .border(0.8.dp, if (dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.05f), CircleShape)
+                .background(if (dark) Color.Black.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.40f))
                 .padding(start = 16.dp, end = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

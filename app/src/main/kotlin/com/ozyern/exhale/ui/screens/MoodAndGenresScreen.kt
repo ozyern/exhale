@@ -8,6 +8,8 @@ package com.ozyern.exhale.ui.screens
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -104,6 +106,7 @@ fun MoodAndGenresScreen(
         navController.navigate("youtube_browse/${item.endpoint.browseId}?params=${item.endpoint.params}")
     }
 
+    Box(Modifier.fillMaxSize()) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
         state = gridState,
@@ -111,19 +114,11 @@ fun MoodAndGenresScreen(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // The title is pinned over the grid (see below), as Home's is; this only clears it.
         item(span = { GridItemSpan(maxLineSpan) }, contentType = "title") {
-            Column(Modifier.padding(top = 8.dp, bottom = 6.dp)) {
-                Text(
-                    text = stringResource(R.string.mood_and_genres),
-                    style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.Black,
-                )
-                Text(
-                    text = "Every mood and every genre, each with its own playlists",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            androidx.compose.foundation.layout.Spacer(
+                Modifier.height(com.ozyern.exhale.ui.component.PinnedPageHeaderHeight - 12.dp),
+            )
         }
 
         val loaded = sections
@@ -143,30 +138,35 @@ fun MoodAndGenresScreen(
                 item(span = { GridItemSpan(maxLineSpan) }, key = "title:${section.title}", contentType = "section") {
                     Text(
                         text = section.title,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = if (sectionIndex == 0) 4.dp else 18.dp, bottom = 2.dp),
+                        fontSize = 22.sp,
+                        lineHeight = 26.sp,
+                        letterSpacing = (-0.3).sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = if (sectionIndex == 0) 6.dp else 20.dp, bottom = 2.dp),
                     )
                 }
             }
             if (featured) {
                 item(span = { GridItemSpan(maxLineSpan) }, key = "row:${section.title}", contentType = "featured") {
-                    LazyRow(
-                        // Edge to edge: the row runs under the page margins, the way a carousel does.
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 0.dp),
-                        contentPadding = PaddingValues(end = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        items(section.items, key = { "${it.title}:${it.endpoint.browseId}:${it.endpoint.params}" }) { item ->
-                            CategoryTile(
-                                title = item.title,
-                                stripeColor = item.stripeColor,
-                                covers = rememberCategoryCovers(item.endpoint.browseId, item.endpoint.params),
-                                height = FeaturedTileHeight,
-                                large = true,
-                                onClick = { open(item) },
-                                modifier = Modifier.width(FeaturedTileWidth),
-                            )
+                    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        // One wide card and the edge of the next, whatever the phone.
+                        val cardWidth = minOf(maxWidth * 0.86f, 380.dp)
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(end = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            items(section.items, key = { "${it.title}:${it.endpoint.browseId}:${it.endpoint.params}" }) { item ->
+                                CategoryTile(
+                                    title = item.title,
+                                    stripeColor = item.stripeColor,
+                                    covers = rememberCategoryCovers(item.endpoint.browseId, item.endpoint.params),
+                                    height = cardWidth / 1.6f,
+                                    large = true,
+                                    onClick = { open(item) },
+                                    modifier = Modifier.width(cardWidth),
+                                )
+                            }
                         }
                     }
                 }
@@ -184,6 +184,13 @@ fun MoodAndGenresScreen(
                 }
             }
         }
+    }
+
+    com.ozyern.exhale.ui.component.PinnedPageHeader(
+        title = stringResource(R.string.mood_and_genres),
+        scrolled = { gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 0 },
+        modifier = Modifier.align(Alignment.TopStart),
+    )
     }
 }
 
@@ -205,8 +212,12 @@ internal fun categoryColors(stripeColor: Long): Pair<Color, Color> {
 }
 
 /**
- * One category: a deep tile of its own colour, the name in the corner, and the name again — huge, faint
- * and tilted — bleeding off the far edge, which is what gives a wall of flat colour some texture.
+ * One category, as Apple Music's Browse draws one: the category's own artwork edge to edge, its
+ * colour washed up from the foot so the name — bold, white, bottom left — always has something to
+ * sit on. Until the artwork arrives the tile is that colour alone, so nothing is ever blank.
+ *
+ * It used to stack a huge tilted echo of the name, tilted overlapping covers and an extra-bold label
+ * on one tile; three textures fighting for a 100dp box read as noise, not as a category.
  */
 @Composable
 fun CategoryTile(
@@ -222,7 +233,7 @@ fun CategoryTile(
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.96f else 1f, spring(dampingRatio = 0.6f, stiffness = 700f), label = "categoryPress")
-    val shape = RoundedCornerShape(if (large) 22.dp else 18.dp)
+    val shape = RoundedCornerShape(if (large) 20.dp else 14.dp)
     Box(
         modifier = modifier
             .height(height)
@@ -232,90 +243,46 @@ fun CategoryTile(
             }
             .clip(shape)
             .background(Brush.linearGradient(listOf(top, bottom), start = Offset.Zero, end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)))
-            .drawBehind {
-                // Light falling on the top of the tile.
-                drawRect(
-                    Brush.radialGradient(
-                        listOf(Color.White.copy(alpha = 0.22f), Color.Transparent),
-                        center = Offset(size.width * 0.15f, 0f),
-                        radius = size.width * 0.9f,
-                    ),
-                )
-            }
+            .border(0.5.dp, Color.White.copy(alpha = 0.10f), shape)
             .clickable(interactionSource = source, indication = null, onClick = onClick),
     ) {
-        // The echo: the first word, enormous and tilted, most of it outside the tile.
-        Text(
-            text = title.substringBefore(' ').substringBefore('&').trim(),
-            fontSize = if (large) 92.sp else 70.sp,
-            fontWeight = FontWeight.Black,
-            color = Color.White.copy(alpha = 0.13f),
-            maxLines = 1,
-            softWrap = false,
-            modifier = Modifier
-                .align(if (large) Alignment.BottomEnd else Alignment.TopEnd)
-                .graphicsLayer {
-                    // Away from the label: under it on a large card, above it on a small tile.
-                    rotationZ = -14f
-                    translationX = size.width * 0.18f
-                    translationY = size.height * (if (large) 0.30f else -0.28f)
-                },
-        )
-        // The category's own music, as the iOS music app's Browse tiles carry it: one cover tilted into
-        // the corner of a small tile, three fanned across the foot of a featured one. Faded in
-        // once fetched; until then the tile is colour alone, as before.
-        val artAlpha by animateFloatAsState(if (covers.isEmpty()) 0f else 1f, label = "categoryArt")
-        if (covers.isNotEmpty()) {
-            if (large) {
-                covers.take(3).forEachIndexed { i, url ->
-                    val angle = listOf(-16f, 0f, 16f)[i]
-                    AsyncImage(
-                        model = url,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .offset(x = ((i - 1) * 40).dp, y = if (i == 1) 14.dp else 26.dp)
-                            .size(88.dp)
-                            .graphicsLayer {
-                                alpha = artAlpha
-                                rotationZ = angle
-                                shadowElevation = 10f
-                                this.shape = RoundedCornerShape(10.dp)
-                                clip = true
-                            }
-                            .border(0.5.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(10.dp)),
-                    )
-                }
-            } else {
-                AsyncImage(
-                    model = covers.first(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .offset(x = 14.dp, y = 10.dp)
-                        .size(70.dp)
-                        .graphicsLayer {
-                            alpha = artAlpha
-                            rotationZ = 22f
-                            shadowElevation = 8f
-                            this.shape = RoundedCornerShape(8.dp)
-                            clip = true
-                        },
-                )
-            }
+        // The category's own artwork, edge to edge, faded in once fetched.
+        val artAlpha by animateFloatAsState(if (covers.isEmpty()) 0f else 1f, tween(260), label = "categoryArt")
+        covers.firstOrNull()?.let { url ->
+            AsyncImage(
+                model = url,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = artAlpha },
+            )
         }
+        // The category's colour, washed up from the foot: it ties the picture to its category and
+        // is what the name is legible on, over a bright cover or a dark one.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        0.35f to bottom.copy(alpha = 0.15f),
+                        1f to bottom.copy(alpha = 0.92f),
+                    ),
+                ),
+        )
         Text(
             text = title,
-            style = if (large) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.ExtraBold,
+            fontSize = if (large) 24.sp else 17.sp,
+            lineHeight = if (large) 28.sp else 21.sp,
+            letterSpacing = if (large) (-0.4).sp else 0.sp,
+            fontWeight = FontWeight.Bold,
             color = Color.White,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(start = 14.dp, end = if (large) 14.dp else 56.dp, top = 12.dp, bottom = 12.dp),
+                .align(Alignment.BottomStart)
+                .padding(start = if (large) 18.dp else 12.dp, end = 12.dp, bottom = if (large) 16.dp else 10.dp),
         )
     }
 }
@@ -330,9 +297,7 @@ fun MoodAndGenresButton(
 ) = CategoryTile(title = title, stripeColor = stripeColor, onClick = onClick, modifier = modifier, height = MoodAndGenresButtonHeight)
 
 val MoodAndGenresButtonHeight = 88.dp
-private val GenreTileHeight = 104.dp
-private val FeaturedTileHeight = 188.dp
-private val FeaturedTileWidth = 158.dp
+private val GenreTileHeight = 110.dp
 
 /** Covers for a category, fetched once and kept for the session. */
 private object CategoryCovers {
@@ -348,7 +313,8 @@ private object CategoryCovers {
                 .mapNotNull { it.thumbnail }
                 .distinct()
                 .take(3)
-                .map { it.resize(360, 360) }
+                // Full-bleed now, on a card up to 380dp wide: a 360px thumbnail went soft.
+                .map { it.resize(720, 720) }
         }
         cache[key] = found
         return found

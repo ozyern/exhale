@@ -103,7 +103,6 @@ import com.ozyern.exhale.LocalDatabase
 import com.ozyern.exhale.LocalDownloadUtil
 import com.ozyern.exhale.LocalPlayerConnection
 import com.ozyern.exhale.R
-import com.ozyern.exhale.constants.CropThumbnailToSquareKey
 import com.ozyern.exhale.constants.DisableBlurKey
 import com.ozyern.exhale.constants.GridThumbnailCornerRadius
 import com.ozyern.exhale.constants.GridThumbnailHeight
@@ -122,6 +121,7 @@ import com.ozyern.exhale.innertube.models.ArtistItem
 import com.ozyern.exhale.innertube.models.PlaylistItem
 import com.ozyern.exhale.innertube.models.SongItem
 import com.ozyern.exhale.innertube.models.YTItem
+import com.ozyern.exhale.innertube.models.isOfficialMusicVideo
 import com.ozyern.exhale.models.ItemMetadata
 import com.ozyern.exhale.models.MediaMetadata
 import com.ozyern.exhale.playback.queues.LocalAlbumRadio
@@ -1509,6 +1509,8 @@ fun YouTubeListItem(
             title = item.title,
             subtitle = when (item) {
                 is SongItem -> joinByBullet(
+                    // Said first, so the video is never mistaken for the song it is of.
+                    if (item.isOfficialMusicVideo) "Official music video" else null,
                     item.artists.joinToString { it.name },
                     makeTimeString(item.duration?.times(1000L)),
                     viewCountText
@@ -1582,12 +1584,7 @@ fun YouTubeGridItem(
     isPlaying: Boolean = false,
     fillMaxWidth: Boolean = false,
 ) = GridItem(
-    morphSeed = when (item) {
-        is AlbumItem -> com.ozyern.exhale.ui.utils.CollectionSeed(item.title, item.thumbnail, item.artists?.joinToString { it.name })
-        is PlaylistItem -> com.ozyern.exhale.ui.utils.CollectionSeed(item.title, item.thumbnail, item.author?.name)
-        is ArtistItem -> com.ozyern.exhale.ui.utils.CollectionSeed(item.title, item.thumbnail)
-        else -> null
-    },
+    morphSeed = item.collectionSeed(),
     title = {
         Text(
             text = item.title,
@@ -1796,9 +1793,10 @@ fun ItemThumbnail(
             )
             .clip(shape)
     ) {
-        val (cropThumbnailToSquare, _) = rememberPreference(CropThumbnailToSquareKey, false)
+        // A video's 16:9 frame fills a square tile, as Apple Music's tiles do. Fitted, it sat in
+        // dark bands, and a dark video read as a tile with no artwork at all.
         val isYouTubeThumb = thumbnailUrl?.contains("ytimg.com", ignoreCase = true) == true
-        val shouldApplySquareCrop = cropThumbnailToSquare && isYouTubeThumb && kotlin.math.abs(thumbnailRatio - 1f) < 0.001f
+        val shouldApplySquareCrop = isYouTubeThumb && kotlin.math.abs(thumbnailRatio - 1f) < 0.001f
         val widthPx = if (maxWidth == Dp.Infinity) null else with(density) { maxWidth.roundToPx().coerceAtLeast(1) }
         val heightPx = if (maxHeight == Dp.Infinity) null else with(density) { maxHeight.roundToPx().coerceAtLeast(1) }
 
@@ -1898,9 +1896,10 @@ fun LocalThumbnail(
             .aspectRatio(thumbnailRatio)
             .clip(shape)
     ) {
-        val (cropThumbnailToSquare, _) = rememberPreference(CropThumbnailToSquareKey, false)
+        // A video's 16:9 frame fills a square tile, as Apple Music's tiles do. Fitted, it sat in
+        // dark bands, and a dark video read as a tile with no artwork at all.
         val isYouTubeThumb = thumbnailUrl?.contains("ytimg.com", ignoreCase = true) == true
-        val shouldApplySquareCrop = cropThumbnailToSquare && isYouTubeThumb && kotlin.math.abs(thumbnailRatio - 1f) < 0.001f
+        val shouldApplySquareCrop = isYouTubeThumb && kotlin.math.abs(thumbnailRatio - 1f) < 0.001f
         val widthPx = if (maxWidth == Dp.Infinity) null else with(density) { maxWidth.roundToPx().coerceAtLeast(1) }
         val heightPx = if (maxHeight == Dp.Infinity) null else with(density) { maxHeight.roundToPx().coerceAtLeast(1) }
         val request = remember(thumbnailUrl, widthPx, heightPx) {
@@ -2316,3 +2315,11 @@ private fun String.withoutViewCount(): String? =
         .trim()
         .trim('•', '·', ' ')
         .takeIf { it.isNotBlank() }
+
+/** What a tile for [this] shows of the page it opens, for the page to grow out of; null for a song. */
+fun YTItem.collectionSeed(): com.ozyern.exhale.ui.utils.CollectionSeed? = when (this) {
+    is AlbumItem -> com.ozyern.exhale.ui.utils.CollectionSeed(title, thumbnail, artists?.joinToString { it.name })
+    is PlaylistItem -> com.ozyern.exhale.ui.utils.CollectionSeed(title, thumbnail, author?.name)
+    is ArtistItem -> com.ozyern.exhale.ui.utils.CollectionSeed(title, thumbnail)
+    else -> null
+}

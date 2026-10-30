@@ -98,10 +98,30 @@ const GLYPHS = {
 }
 
 export default function Features({ items }) {
+  const handleCardMouseEnter = (e) => {
+    e.currentTarget._cachedRect = e.currentTarget.getBoundingClientRect()
+  }
+
+  const handleCardSpotlight = (e) => {
+    let rect = e.currentTarget._cachedRect
+    if (!rect) {
+      rect = e.currentTarget.getBoundingClientRect()
+      e.currentTarget._cachedRect = rect
+    }
+    e.currentTarget.style.setProperty('--card-mx', `${(e.clientX - rect.left).toFixed(1)}px`)
+    e.currentTarget.style.setProperty('--card-my', `${(e.clientY - rect.top).toFixed(1)}px`)
+  }
+
   return (
     <ul className="fx-grid">
       {items.map((item, i) => (
-        <li className="fx reveal" key={item.title} style={{ '--d': `${(i % 4) * 60}ms` }}>
+        <li
+          className="fx reveal"
+          key={item.title}
+          style={{ '--d': `${(i % 4) * 60}ms` }}
+          onMouseEnter={handleCardMouseEnter}
+          onMouseMove={handleCardSpotlight}
+        >
           <span className="fx-glyph">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               {GLYPHS[item.glyph]}

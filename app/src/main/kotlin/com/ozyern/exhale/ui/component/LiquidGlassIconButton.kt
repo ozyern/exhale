@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
@@ -76,6 +77,12 @@ import kotlin.math.tanh
  *
  * Everything is a spring, so an interrupted press — tap, drag off, come back — never snaps.
  */
+/** How far the pane follows a dragging finger, as a share of its size, before the band holds it. */
+private const val FollowReach = 0.38f
+
+/** How much white the pane takes on while held. */
+private const val PressLight = 0.14f
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LiquidGlassIconButton(
@@ -117,10 +124,12 @@ fun LiquidGlassIconButton(
                 // Follow the finger, with diminishing return. A linear follow lets the pane slide
                 // out from under the touch on a long drag; tanh keeps the first few pixels honest
                 // and then asymptotes, so the glass always stays under the thumb.
+                // ColorOS's back disc goes about a third of its own width with the finger before
+                // the band takes up the slack (measured from a recording of the system button).
                 val reach = size.minDimension
                 val offset = press.offset
-                translationX = reach * 0.18f * tanh(offset.x / reach)
-                translationY = reach * 0.18f * tanh(offset.y / reach)
+                translationX = reach * FollowReach * tanh(offset.x / reach)
+                translationY = reach * FollowReach * tanh(offset.y / reach)
             },
         )
     } else {
@@ -129,6 +138,9 @@ fun LiquidGlassIconButton(
                 val squish = lerp(1f, 0.92f, press.pressProgress)
                 scaleX = squish
                 scaleY = squish
+                val reach = size.minDimension
+                translationX = reach * FollowReach * tanh(press.offset.x / reach)
+                translationY = reach * FollowReach * tanh(press.offset.y / reach)
             }
             .liquidGlassSurface(
                 shape = CircleShape,
@@ -148,6 +160,13 @@ fun LiquidGlassIconButton(
                 // Clip AFTER the glass so the shadow it casts is not cut off, but BEFORE the
                 // specular so the press bloom is a disc rather than a square flash.
                 .clip(CircleShape)
+                // Held, the disc lights up, as ColorOS's does: a white film over the glass that
+                // comes and goes with the press.
+                .drawWithContent {
+                    drawContent()
+                    val lit = press.pressProgress
+                    if (lit > 0f) drawRect(Color.White.copy(alpha = PressLight * lit))
+                }
                 .then(press.modifier)
                 .then(if (enabled) press.gestureModifier else Modifier)
                 .combinedClickable(

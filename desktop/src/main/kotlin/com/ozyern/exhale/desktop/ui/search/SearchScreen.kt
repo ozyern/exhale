@@ -133,7 +133,12 @@ import com.ozyern.exhale.innertube.models.ArtistItem
 import com.ozyern.exhale.innertube.models.PlaylistItem
 import com.ozyern.exhale.innertube.models.SongItem
 import com.ozyern.exhale.innertube.models.YTItem
+import com.ozyern.exhale.innertube.models.audioTrackFor
+import com.ozyern.exhale.innertube.models.bestSongFor
 import com.ozyern.exhale.innertube.models.filterExplicit
+import com.ozyern.exhale.innertube.models.isMusicVideo
+import com.ozyern.exhale.innertube.models.isNamedBy
+import com.ozyern.exhale.innertube.models.songsFirst
 import com.ozyern.exhale.innertube.models.filterVideo
 import com.ozyern.exhale.innertube.pages.SearchSummary
 import com.ozyern.exhale.innertube.pages.SearchSummaryPage
@@ -144,6 +149,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 /** YouTube Music's own result filters, plus All (its summary page). */
@@ -156,10 +162,19 @@ enum class SearchTab(val label: String, val filter: YouTube.SearchFilter?) {
     Videos("Videos", YouTube.SearchFilter.FILTER_VIDEO),
 }
 
+/** Where a search looks, as the Music app's scope buttons beside its field: the catalogue or your own library. */
+enum class SearchScope(val label: String) {
+    Catalog("YouTube Music"),
+    Library("Library"),
+}
+
 /** State behind the Search tab: recent searches, live suggestions while typing, results per filter on Enter. */
 class SearchModel(private val scope: CoroutineScope) {
     var query by mutableStateOf("")
         private set
+
+    /** The catalogue, or your library (favourites and what you've played), searched as you type. */
+    var where by mutableStateOf(SearchScope.Catalog)
     var suggestions by mutableStateOf<List<String>>(emptyList())
         private set
     /** The query the results belong to; results are stale once the text moves on from it. */
@@ -193,7 +208,8 @@ class SearchModel(private val scope: CoroutineScope) {
         query = value
         suggestJob?.cancel()
         val q = value.trim()
-        if (q.isEmpty()) {
+        // The library is searched locally, on every keystroke, with nothing to ask YouTube.
+        if (q.isEmpty() || where == SearchScope.Library) {
             suggestions = emptyList()
             return
         }
@@ -214,11 +230,23 @@ class SearchModel(private val scope: CoroutineScope) {
         val q = text.trim()
         if (q.isEmpty()) return
         query = text
+        if (where == SearchScope.Library) {
+            DesktopPrefs.recordSearch(q)
+            return
+        }
         suggestJob?.cancel()
         suggestions = emptyList()
         searchedQuery = q
         DesktopPrefs.recordSearch(q)
         run(q)
+    }
+
+    fun selectWhere(value: SearchScope) {
+        if (value == where) return
+        where = value
+        // Back to the catalogue with words already typed: look them up there.
+        searchedQuery = null
+        if (value == SearchScope.Catalog) updateQuery(query)
     }
 
     fun selectTab(value: SearchTab) {
@@ -278,9 +306,15 @@ class SearchModel(private val scope: CoroutineScope) {
                 } else {
                     null
                 }
+                // The Songs search alongside the summary, as the Android app does: YouTube's summary
+                // often leaves the song itself out (a search for "blinding lights" came back with its
+                // video, a live take, an extended edit and two covers, and no Blinding Lights), and
+                // the song can only be put first when it is among the results.
+                val songSearch = async(Dispatchers.IO) { YouTube.search(q, YouTube.SearchFilter.FILTER_SONG).getOrNull()?.items.orEmpty() }
                 withContext(Dispatchers.IO) { YouTube.searchSummary(q) }
                     .onSuccess { page ->
-                        val cleaned = page.filterExplicit(DesktopPrefs.hideExplicit).filterVideo(DesktopPrefs.hideVideos)
+                        val withSongs = withSongResults(page, songSearch.await().filterIsInstance<SongItem>())
+                        val cleaned = smarten(withSongs.filterExplicit(DesktopPrefs.hideExplicit).filterVideo(DesktopPrefs.hideVideos), q)
                         summaries[key] = cleaned
                         summary = cleaned
                     }
@@ -304,6 +338,56 @@ class SearchModel(private val scope: CoroutineScope) {
             }
             searching = false
         }
+    }
+
+    /** The Songs search's results as the page's Songs section, ahead of the summary's own few. */
+    private fun withSongResults(page: SearchSummaryPage, songs: List<SongItem>): SearchSummaryPage {
+        if (songs.isEmpty()) return page
+        val index = page.summaries.indexOfFirst { it.title.equals("Songs", ignoreCase = true) }
+        val merged = (songs + page.summaries.getOrNull(index)?.items.orEmpty()).distinctBy { it.id }
+        val section = SearchSummary("Songs", merged)
+        val summaries = page.summaries.toMutableList()
+        if (index >= 0) {
+            summaries[index] = section
+        } else {
+            // Straight after the top section.
+            val top = summaries.indexOfFirst { it.title.contains("top", ignoreCase = true) }
+            summaries.add((top + 1).coerceIn(0, summaries.size), section)
+        }
+        return SearchSummaryPage(summaries)
+    }
+
+    /**
+     * The results as someone searching means them, the same rules as the Android app:
+     *
+     *  - **The song that was typed leads.** YouTube's own first result is often the song's music
+     *    video, a remix, an edit, a cover or a lyric video. The plain track whose title and artist
+     *    were typed is found among everything returned ([bestSongFor]) and put first; an artist,
+     *    album or playlist stays first only when its exact name was typed ([isNamedBy]).
+     *  - **Each thing once.** The summary's sections are separate searches that overlap, so the
+     *    same song turned up in Top Results, Songs and Videos. It now appears in the first place
+     *    it would show and nowhere after.
+     *  - **Songs before videos** inside each section.
+     */
+    private fun smarten(page: SearchSummaryPage, q: String): SearchSummaryPage {
+        val sections = page.summaries
+        if (sections.isEmpty()) return page
+        val topIndex = sections.indexOfFirst { it.title.contains("top", ignoreCase = true) }.coerceAtLeast(0)
+        val top = sections[topIndex]
+        val lead = top.items.firstOrNull()
+        val everything = sections.flatMap { it.items }
+        val best: YTItem? = when {
+            lead == null -> null
+            lead.isNamedBy(q) -> lead
+            else -> everything.bestSongFor(q) ?: if (lead.isMusicVideo) everything.audioTrackFor(lead) else null
+        }
+        val topItems = if (best != null && best.id != lead?.id) listOf(best) + top.items.filter { it.id != best.id } else top.items
+        val seen = HashSet<String>()
+        val rebuilt = sections.mapIndexed { i, section ->
+            val items = if (i == topIndex) topItems else section.items.songsFirst()
+            SearchSummary(section.title, items.filter { seen.add(it.id) })
+        }
+        return SearchSummaryPage(rebuilt.filter { it.items.isNotEmpty() })
     }
 
     /**
@@ -336,7 +420,7 @@ class SearchModel(private val scope: CoroutineScope) {
     }
 }
 
-private enum class SearchMode { Recent, Suggest, Results }
+private enum class SearchMode { Recent, Suggest, Results, Library }
 
 /**
  * The Search tab, laid out across the whole width: recent searches as pills, suggestions in columns,
@@ -347,30 +431,26 @@ private enum class SearchMode { Recent, Suggest, Results }
 fun SearchScreen(model: SearchModel, player: DesktopPlayer, state: PlayerState, insets: ChromeInsets, showField: Boolean = true) {
     val history by DesktopPrefs.searchHistory.collectAsState()
     val focus = remember { FocusRequester() }
+    var fieldFocused by remember { mutableStateOf(false) }
     LaunchedEffect(showField) { if (showField) runCatching { focus.requestFocus() } }
     val start = insets.start + 20.dp
+    val library = model.where == SearchScope.Library
 
-    Column(Modifier.fillMaxSize().padding(start = start, end = 28.dp, top = 30.dp)) {
-        LargeTitle(if (showField || model.query.isBlank()) "Search" else "“${model.query.trim()}”")
+    Box(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().padding(start = start, end = 28.dp, top = 6.dp)) {
+        // The Music app's toolbar: the field in the middle of the page, its scope buttons beside it.
         if (showField) {
-            Spacer(Modifier.height(18.dp))
-            SearchField(
-                query = model.query,
-                onChange = model::updateQuery,
-                onSearch = { model.search() },
-                onClear = model::clear,
-                focus = focus,
-                modifier = Modifier.widthIn(max = 680.dp).fillMaxWidth(),
-            )
+            SearchToolbar(model, focus, onFocus = { fieldFocused = it })
+            Spacer(Modifier.height(22.dp))
         }
 
         val mode = when {
+            library -> SearchMode.Library
             model.showingResults -> SearchMode.Results
             model.query.isNotBlank() -> SearchMode.Suggest
             else -> SearchMode.Recent
         }
         if (mode == SearchMode.Results) {
-            Spacer(Modifier.height(16.dp))
             com.ozyern.exhale.desktop.ui.glass.LiquidSegmented(
                 labels = SearchTab.entries.map { it.label },
                 selected = model.tab.ordinal,
@@ -393,7 +473,8 @@ fun SearchScreen(model: SearchModel, player: DesktopPlayer, state: PlayerState, 
         ) { target ->
             val bottom = PaddingValues(bottom = insets.bottom + 16.dp)
             when {
-                target == SearchMode.Recent.name -> RecentSearches(history, bottom, onPick = { model.search(it) })
+                target == SearchMode.Library.name -> LibraryResults(model.query, player, state, bottom)
+                target == SearchMode.Recent.name -> BrowseCategories(bottom)
                 target == SearchMode.Suggest.name -> Suggestions(model.suggestions, model.query, bottom, onPick = { model.search(it) })
                 // Live results keep the last ones up while the next arrive; a spinner only when there are none.
                 model.searching && model.summary == null && model.items.isEmpty() -> Box(Modifier.fillMaxSize().padding(top = 60.dp), contentAlignment = Alignment.TopCenter) { CircularProgressIndicator() }
@@ -403,59 +484,219 @@ fun SearchScreen(model: SearchModel, player: DesktopPlayer, state: PlayerState, 
             }
         }
     }
+
+    // Clicking into the empty field drops your recent searches under it, as the Music app does.
+    androidx.compose.animation.AnimatedVisibility(
+        visible = showField && fieldFocused && model.query.isEmpty() && history.isNotEmpty(),
+        enter = fadeIn(tween(140)) + androidx.compose.animation.expandVertically(spring(1f, 700f), expandFrom = Alignment.Top),
+        exit = fadeOut(tween(100)),
+        modifier = Modifier.align(Alignment.TopCenter).padding(start = insets.start, top = 6.dp + ToolbarHeight + 6.dp),
+    ) {
+        RecentDropdown(history, onPick = { model.search(it) })
+    }
+    }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+private val ToolbarHeight = 36.dp
+private val FieldWidth = 340.dp
+private val MusicAccent = com.ozyern.exhale.desktop.ui.AppleColors.Accent
+
 /**
- * Search before anything is typed, as the Music app on the Mac lays it out: what you searched lately
- * as a short list, then Browse Categories — every mood and genre as a big colour tile, FLAC first.
+ * The toolbar over Search: the field centred on the page, a capsule of glass with the scope as its
+ * placeholder, ringed in red while you type; and to its right the scope buttons that pick where it looks.
  */
 @Composable
-private fun RecentSearches(history: List<String>, padding: PaddingValues, onPick: (String) -> Unit) {
+private fun SearchToolbar(model: SearchModel, focus: FocusRequester, onFocus: (Boolean) -> Unit) {
+    Box(Modifier.fillMaxWidth().height(ToolbarHeight)) {
+        SearchField(
+            query = model.query,
+            placeholder = model.where.label,
+            onChange = model::updateQuery,
+            onSearch = { model.search() },
+            onClear = model::clear,
+            focus = focus,
+            onFocus = onFocus,
+            modifier = Modifier.align(Alignment.Center).width(FieldWidth),
+        )
+        ScopeButtons(model.where, onSelect = model::selectWhere, modifier = Modifier.align(Alignment.CenterEnd))
+    }
+}
+
+/** The scope buttons: small capsules, the chosen one on a grey plate, the rest plain text. */
+@Composable
+private fun ScopeButtons(selected: SearchScope, onSelect: (SearchScope) -> Unit, modifier: Modifier = Modifier) {
+    val ink = Color.White
+    Row(
+        modifier
+            .clip(CircleShape)
+            .background(ink.copy(alpha = 0.06f))
+            .border(0.75.dp, ink.copy(alpha = 0.08f), CircleShape)
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        SearchScope.entries.forEach { scope ->
+            val on = scope == selected
+            val interaction = remember { MutableInteractionSource() }
+            val hovered by interaction.collectIsHoveredAsState()
+            val fill by animateFloatAsState(if (on) 0.16f else if (hovered) 0.07f else 0f, tween(120), label = "scope_fill")
+            Text(
+                scope.label,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = ink.copy(alpha = if (on) 1f else 0.72f),
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(ink.copy(alpha = fill))
+                    .hoverable(interaction)
+                    .clickable(interactionSource = interaction, indication = null) { onSelect(scope) }
+                    .padding(horizontal = 11.dp, vertical = 5.dp),
+            )
+        }
+    }
+}
+
+/** Recent searches under the field: a frosted card of rows, newest first, with Clear at its foot. */
+@Composable
+private fun RecentDropdown(history: List<String>, onPick: (String) -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        Modifier
+            .width(FieldWidth)
+            .shadow(24.dp, shape)
+            .clip(shape)
+            .background(Color(0xF2262628))
+            .border(0.75.dp, Color.White.copy(alpha = 0.1f), shape)
+            .padding(6.dp),
+    ) {
+        Text(
+            "Recently Searched",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White.copy(alpha = 0.48f),
+            modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
+        )
+        history.take(8).forEach { q -> RecentRow(q, onClick = { onPick(q) }, onRemove = { DesktopPrefs.removeSearch(q) }) }
+        Text(
+            "Clear Recent Searches",
+            fontSize = 12.sp,
+            color = MusicAccent,
+            modifier = Modifier
+                .padding(top = 2.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .clickable { DesktopPrefs.clearSearchHistory() }
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+        )
+    }
+}
+
+/**
+ * Searching your library: favourites and what you've played, matched on title, artist and album as
+ * you type. Nothing leaves the PC.
+ */
+@Composable
+private fun LibraryResults(query: String, player: DesktopPlayer, state: PlayerState, padding: PaddingValues) {
+    val favorites by DesktopPrefs.favorites.collectAsState()
+    val history by DesktopPrefs.history.collectAsState()
+    val q = query.trim()
+    val songs = remember(q, favorites, history) {
+        val all = (favorites + history).distinctBy { it.id }
+        if (q.isEmpty()) {
+            all
+        } else {
+            all.filter { song ->
+                song.title.contains(q, ignoreCase = true) ||
+                    song.artists.any { it.name.contains(q, ignoreCase = true) } ||
+                    song.album?.name?.contains(q, ignoreCase = true) == true
+            }
+        }
+    }
+    if (songs.isEmpty()) {
+        Hint(if (q.isEmpty()) "Songs you favourite or play show up here." else "Nothing in your library matches “$q”.")
+        return
+    }
+    LazyColumn(contentPadding = padding, modifier = Modifier.fillMaxSize()) {
+        item(key = "library-h") { ResultsHeader(if (q.isEmpty()) "Your Library" else "Songs") }
+        itemsIndexed(songs, key = { _, song -> "library:${song.id}" }) { i, song ->
+            SongRow(song, isActive = song.id == state.current?.id, onClick = { player.play(songs, i) }, player = player)
+        }
+    }
+}
+
+/**
+ * Search before anything is typed, as the Music app on the Mac lays it out: Browse Categories — every
+ * mood and genre as a wide tile of a photo washed in its colour, five across, FLAC first.
+ */
+@Composable
+private fun BrowseCategories(padding: PaddingValues) {
     val navigator = LocalNavigator.current
-    val groups by produceState<List<MoodAndGenres>?>(initialValue = null) {
-        value = withContext(Dispatchers.IO) { YouTube.moodAndGenres().getOrNull() }.orEmpty()
+    val groups by produceState(CategoryArt.groups) {
+        if (value == null) value = withContext(Dispatchers.IO) { YouTube.moodAndGenres().getOrNull() }.orEmpty().also { CategoryArt.groups = it }
     }
     val categories = remember(groups) { groups.orEmpty().flatMap { it.items }.distinctBy { it.title } }
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(200.dp),
+        columns = GridCells.Adaptive(176.dp),
         contentPadding = padding,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        if (history.isNotEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Recently Searched", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Text(
-                        "Clear",
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.clip(CircleShape).clickable { DesktopPrefs.clearSearchHistory() }.padding(horizontal = 10.dp, vertical = 6.dp),
-                    )
-                }
-            }
-            items(history.take(8), key = { "recent:$it" }) { q ->
-                RecentRow(q, onClick = { onPick(q) }, onRemove = { DesktopPrefs.removeSearch(q) })
-            }
-        }
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Text("Browse Categories", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = if (history.isEmpty()) 6.dp else 22.dp))
+            Text("Browse Categories", fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 2.dp))
         }
         item(key = "category:flac") {
-            CategoryTile("FLAC", Color(0xFF1F6FEB), subtitle = "Lossless, free to stream") { navigator?.openFlac?.invoke() }
+            CategoryTile("FLAC", Color(0xFF2F6FE0), art = null) { navigator?.openFlac?.invoke() }
         }
         if (groups == null) {
-            items(11) { Box(Modifier.fillMaxWidth().aspectRatio(1.75f).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))) }
+            items(14) { Box(Modifier.fillMaxWidth().aspectRatio(CategoryAspect).clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha = 0.06f))) }
         } else {
             items(categories, key = { "category:${it.title}:${it.endpoint.browseId}:${it.endpoint.params}" }) { category ->
-                CategoryTile(category.title, Color(category.stripeColor)) {
+                val art by produceState(CategoryArt.cached(category)) { if (value == null) value = CategoryArt.load(category) }
+                CategoryTile(category.title, Color(category.stripeColor), art) {
                     navigator?.openBrowse?.invoke(category.endpoint.browseId, category.endpoint.params, category.title)
                 }
             }
         }
     }
+}
+
+private const val CategoryAspect = 1.62f
+
+/**
+ * A photo for each category tile: the cover of the first playlist on the category's own page, asked
+ * for only when its tile comes on screen, a few at a time, and kept for the session.
+ */
+private object CategoryArt {
+    @Volatile var groups: List<MoodAndGenres>? = null
+    private val art = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val gate = kotlinx.coroutines.sync.Semaphore(4)
+
+    private fun key(item: MoodAndGenres.Item) = "${item.endpoint.browseId}|${item.endpoint.params}"
+
+    fun cached(item: MoodAndGenres.Item): String? = art[key(item)]
+
+    suspend fun load(item: MoodAndGenres.Item): String? {
+        cached(item)?.let { return it }
+        return gate.withPermit {
+            withContext(Dispatchers.IO) { YouTube.browse(item.endpoint.browseId, item.endpoint.params).getOrNull() }
+                ?.items?.flatMap { it.items }?.firstNotNullOfOrNull { it.thumbnail }
+                ?.resizedThumbnail(360)
+                ?.also { art[key(item)] = it }
+        }
+    }
+}
+
+/**
+ * The Music app's duotone: the photo's light and shade remapped onto two tones of one colour, so a
+ * tile reads as its colour first and its picture second. Black lands on [shade], white on [light].
+ */
+private fun duotone(shade: Color, light: Color): androidx.compose.ui.graphics.ColorFilter {
+    fun row(s: Float, l: Float) = floatArrayOf(0.299f * (l - s), 0.587f * (l - s), 0.114f * (l - s), 0f, s * 255f)
+    val r = row(shade.red, light.red)
+    val g = row(shade.green, light.green)
+    val b = row(shade.blue, light.blue)
+    return androidx.compose.ui.graphics.ColorFilter.colorMatrix(
+        androidx.compose.ui.graphics.ColorMatrix(r + g + b + floatArrayOf(0f, 0f, 0f, 1f, 0f)),
+    )
 }
 
 /** [color]'s hue at a saturation and brightness white text reads on; greys stay grey. */
@@ -496,39 +737,53 @@ private fun RecentRow(text: String, onClick: () -> Unit, onRemove: () -> Unit) {
 }
 
 /**
- * A category as the Music app draws one: a wide tile in the category's colour, lit from its top
- * corner and deepening away from it, the name in white at its foot. It lifts a little under the pointer.
+ * A category as the Music app draws one: a wide tile of a photo washed in the category's colour, the
+ * name in white at its foot over a soft shade. The pointer brightens it a touch; nothing jumps.
  */
 @Composable
-private fun CategoryTile(title: String, color: Color, subtitle: String? = null, onClick: () -> Unit) {
+private fun CategoryTile(title: String, color: Color, art: String?, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val pressed by interaction.collectIsPressedAsState()
-    val scale by pressScale(pressed, hovered, pressedScale = 0.97f, hoverScale = 1.02f)
+    val scale by pressScale(pressed, false, pressedScale = 0.97f)
     // YouTube's category colours are pastels, too pale for white lettering: deepen them into the
     // rich, saturated colours the Music app's tiles have, keeping each one's hue.
     val rich = remember(color) { richer(color) }
-    val light = lerp(rich, Color.White, 0.12f)
-    val deep = lerp(rich, Color.Black, 0.4f)
+    val filter = remember(rich) { duotone(lerp(rich, Color.Black, 0.58f), lerp(rich, Color.White, 0.16f)) }
+    val glow by animateFloatAsState(if (hovered) 0.08f else 0f, tween(140), label = "category_hover")
+    val shape = RoundedCornerShape(10.dp)
     Box(
         Modifier
             .fillMaxWidth()
-            .aspectRatio(1.75f)
+            .aspectRatio(CategoryAspect)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
             }
-            .clip(RoundedCornerShape(12.dp))
-            .background(Brush.linearGradient(listOf(light, rich, deep), start = Offset.Zero, end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)))
+            .clip(shape)
+            .background(rich)
             .hoverable(interaction)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .padding(14.dp),
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.BottomStart,
     ) {
-        Column {
-            Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 21.sp)
-            subtitle?.let { Text(it, fontSize = 12.sp, color = Color.White.copy(alpha = 0.8f), modifier = Modifier.padding(top = 2.dp)) }
+        if (art != null) {
+            AsyncImage(art, contentDescription = null, contentScale = ContentScale.Crop, colorFilter = filter, modifier = Modifier.matchParentSize())
+        } else {
+            Box(Modifier.matchParentSize().background(Brush.linearGradient(listOf(lerp(rich, Color.White, 0.14f), rich, lerp(rich, Color.Black, 0.3f)), start = Offset.Zero, end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY))))
         }
+        // Enough shade under the name to read it on any photo, and no more.
+        Box(Modifier.matchParentSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.32f))))
+        Box(Modifier.matchParentSize().background(Color.White.copy(alpha = glow)))
+        Text(
+            title,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            lineHeight = 17.sp,
+            modifier = Modifier.padding(start = 11.dp, end = 11.dp, bottom = 10.dp),
+        )
     }
 }
 
@@ -825,7 +1080,7 @@ private fun HeaderAction(label: String, onClick: () -> Unit) {
 }
 
 private fun typeLabel(item: YTItem): String = when (item) {
-    is SongItem -> "Song"
+    is SongItem -> if (item.isMusicVideo) "Music Video" else "Song"
     is ArtistItem -> "Artist"
     is AlbumItem -> "Album"
     is PlaylistItem -> "Playlist"
@@ -910,10 +1165,12 @@ private fun TopResultCard(item: YTItem, active: Boolean, playing: Boolean, onPla
 @Composable
 private fun SearchField(
     query: String,
+    placeholder: String,
     onChange: (String) -> Unit,
     onSearch: () -> Unit,
     onClear: () -> Unit,
     focus: FocusRequester,
+    onFocus: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -921,47 +1178,41 @@ private fun SearchField(
     val hovered by interaction.collectIsHoveredAsState()
     val ink = Color.White
     val shape = CircleShape
-    val lift by pressScale(pressed = false, hovered = focused, hoverScale = 1.012f)
-    val rim by animateFloatAsState(
-        when {
-            focused -> 0.42f
-            hovered -> 0.26f
-            else -> 0.14f
-        },
-        tween(180),
-        label = "search_rim",
-    )
+    // macOS's focus ring: the accent around the field while it has the keyboard, nothing otherwise.
+    val ring by animateFloatAsState(if (focused) 1f else 0f, tween(160), label = "search_ring")
+    val rim by animateFloatAsState(if (hovered) 0.16f else 0.1f, tween(160), label = "search_rim")
     val backdrop = LocalPageBackdrop.current
     Row(
         modifier
-            .height(52.dp)
-            .graphicsLayer {
-                scaleX = lift
-                scaleY = lift
-            }
-            .then(if (backdrop != null) Modifier.liquidGlass(shape, backdrop, tintAlpha = 0.26f) else Modifier.glassPlate(shape))
-            .border(1.dp, ink.copy(alpha = rim), shape)
+            .height(ToolbarHeight - 4.dp)
+            .then(if (ring > 0.01f) Modifier.border(2.dp, MusicAccent.copy(alpha = 0.7f * ring), shape) else Modifier)
+            .padding(if (ring > 0.01f) 2.dp else 0.dp)
+            .then(if (backdrop != null) Modifier.liquidGlass(shape, backdrop, tintAlpha = 0.3f, blurRadius = 32.dp) else Modifier.glassPlate(shape))
+            .border(0.75.dp, ink.copy(alpha = rim), shape)
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null) { runCatching { focus.requestFocus() } }
-            .padding(start = 18.dp, end = 10.dp),
+            .padding(start = 12.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(NavIcons.Search, contentDescription = null, tint = ink.copy(alpha = if (focused) 0.9f else 0.6f), modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(12.dp))
+        Icon(NavIcons.Search, contentDescription = null, tint = ink.copy(alpha = 0.6f), modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(7.dp))
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             if (query.isEmpty()) {
-                Text("Artists, Songs, Lyrics, and More", fontSize = 17.sp, color = ink.copy(alpha = 0.45f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(placeholder, fontSize = 13.sp, color = ink.copy(alpha = 0.45f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             BasicTextField(
                 value = query,
                 onValueChange = onChange,
                 singleLine = true,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp, color = ink),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, color = ink),
+                cursorBrush = SolidColor(MusicAccent),
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focus)
-                    .onFocusChanged { focused = it.isFocused }
+                    .onFocusChanged {
+                        focused = it.isFocused
+                        onFocus(it.isFocused)
+                    }
                     .typingField()
                     .onPreviewKeyEvent {
                         when {
@@ -991,7 +1242,7 @@ private fun SearchField(
                 val clearScale by pressScale(clearPressed, pressedScale = 0.85f)
                 Box(
                     Modifier
-                        .size(32.dp)
+                        .size(22.dp)
                         .graphicsLayer {
                             scaleX = clearScale
                             scaleY = clearScale
@@ -1000,7 +1251,7 @@ private fun SearchField(
                         .clickable(interactionSource = clear, indication = null, onClick = onClear),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Canvas(Modifier.size(20.dp)) {
+                    Canvas(Modifier.size(15.dp)) {
                         drawCircle(ink.copy(alpha = 0.28f))
                         val arm = size.minDimension * 0.18f
                         val c = center
@@ -1022,7 +1273,7 @@ private fun SearchField(
                         .padding(horizontal = 7.dp, vertical = 3.dp),
                 )
             } else {
-                Spacer(Modifier.size(32.dp))
+                Spacer(Modifier.size(22.dp))
             }
         }
     }

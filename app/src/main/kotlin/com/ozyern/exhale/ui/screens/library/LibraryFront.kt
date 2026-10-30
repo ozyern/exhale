@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -226,8 +227,10 @@ internal fun LibraryCollectionsHero(
 }
 
 /**
- * The places in the library, as one glass group of rows: a coloured disc with its glyph, the
- * name, a chevron, hairlines inset to the text between them.
+ * The places in the library, as Apple Music lists them: a plain list on the page, each row an
+ * accent-coloured glyph, the name at Title 3, a grey chevron, and hairlines inset to the text and
+ * running to the screen's edge. No card around them, and no coloured tiles behind the glyphs;
+ * those are Settings' idiom, not Music's.
  */
 @Composable
 internal fun LibraryDestinationList(destinations: List<LibraryDestination>, gutter: Dp) {
@@ -255,48 +258,38 @@ internal fun LibraryDestinationList(destinations: List<LibraryDestination>, gutt
 
 @Composable
 private fun DestinationGroup(destinations: List<LibraryDestination>) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .liquidGlassSurface(RoundedCornerShape(22.dp)),
-    ) {
+    val accent = MaterialTheme.colorScheme.primary
+    Column(Modifier.fillMaxWidth()) {
         destinations.forEachIndexed { i, d ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(min = 52.dp)
                     .clickable(onClick = d.onClick)
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                    .padding(vertical = 12.dp),
             ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Brush.verticalGradient(listOf(d.color, d.color.copy(red = d.color.red * 0.8f, green = d.color.green * 0.8f, blue = d.color.blue * 0.8f)))),
-                ) {
-                    Icon(painterResource(d.icon), null, tint = Color.White, modifier = Modifier.size(18.dp))
-                }
-                Spacer(Modifier.width(14.dp))
+                Icon(painterResource(d.icon), null, tint = accent, modifier = Modifier.size(26.dp))
+                Spacer(Modifier.width(16.dp))
                 Text(
                     text = d.title,
-                    style = MaterialTheme.typography.titleMedium.copy(letterSpacing = (-0.01).em),
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 20.sp,
+                    letterSpacing = (-0.01).em,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
                 )
                 Icon(
                     painter = painterResource(R.drawable.chevron_right),
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.size(20.dp),
                 )
             }
             if (i < destinations.lastIndex) {
                 HorizontalDivider(
                     thickness = 0.5.dp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f),
-                    modifier = Modifier.padding(start = 60.dp),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f),
+                    modifier = Modifier.padding(start = 42.dp),
                 )
             }
         }

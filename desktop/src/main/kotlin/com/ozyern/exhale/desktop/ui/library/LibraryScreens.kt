@@ -163,7 +163,6 @@ fun BrowseScreen(
     val rowPadding = PaddingValues(start = start, end = 40.dp)
     val open = rememberItemOpener(player)
     LazyColumn(contentPadding = PaddingValues(top = 16.dp, bottom = insets.bottom + 16.dp), modifier = Modifier.fillMaxSize()) {
-        item { GlassIconButton(NavIcons.Back, "Back", onBack, Modifier.padding(start = start, bottom = 16.dp)) }
         item { LargeTitle(result?.title ?: title, Modifier.padding(start = start, end = 40.dp)) }
         val loaded = result
         if (loaded == null) {

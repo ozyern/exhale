@@ -151,12 +151,15 @@ fun PreferenceEntry(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                // Grouped rows bounce individually; standalone rows bounce via the Card.
-                // Instant (ACTION_DOWN) observer — avoids the ~100ms scroll tap-delay.
-                .then(if (inGroup) Modifier.pressScaleContainer() else Modifier)
+                // A grouped row pressed is iOS's: the row fills edge to edge with a flat grey and
+                // neither moves nor ripples. Standalone rows bounce via the Card.
+                .then(
+                    if (inGroup && isPressed) Modifier.background(settingsRowPressedColor())
+                    else Modifier,
+                )
                 .clickable(
                     interactionSource = interactionSource,
-                    indication = if (inGroup) LocalIndication.current else null,
+                    indication = null,
                     enabled = isEnabled && onClick != null,
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -166,9 +169,12 @@ fun PreferenceEntry(
                 .alpha(if (isEnabled) 1f else 0.45f)
                 // The rows breathe: taller, and the title a size up.
                 .heightIn(min = 60.dp)
-                .padding(horizontal = 18.dp, vertical = 15.dp),
+                // ColorOS's inset inside a card; the hairlines stop the same distance from each edge.
+                .padding(horizontal = if (inGroup) SettingsRowInset else 16.dp, vertical = 16.dp),
         ) {
-            if (icon != null) {
+            // Inside a card the row is its words alone, as ColorOS's sub-pages set them: the glyph
+            // discs stay on the Settings index, where they help find a page.
+            if (icon != null && !inGroup) {
                 // The same puck the top-level Settings list uses: a solid iOS system colour with a
                 // white glyph on it, picked from the row's own key so a row keeps its colour
                 // between visits. Sub-pages used to draw the glyph in the brand accent on a 12%
@@ -262,7 +268,8 @@ fun PreferenceEntry(
         // whether it is the first in its group, so it can rule itself.
         if (slot != null && slot > 0) {
             HorizontalDivider(
-                modifier = Modifier.padding(start = SettingsDividerStartIndent),
+                // Inset from both edges, as ColorOS rules its cards: under the words, short of the rim.
+                modifier = Modifier.padding(horizontal = SettingsRowInset),
                 thickness = SettingsDividerThickness,
                 color = settingsDividerColor(),
             )
@@ -505,7 +512,7 @@ fun CrossfadeSliderPreference(
     var showDialog by remember { mutableStateOf(false) }
     var localValue by remember { mutableFloatStateOf(value.toFloat()) }
 
-    // Actualizar localValue cuando value cambia desde fuera
+    // Follow value when it changes from outside
     androidx.compose.runtime.LaunchedEffect(value) {
         localValue = value.toFloat()
     }
@@ -539,7 +546,7 @@ fun CrossfadeSliderPreference(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    // Valor actual
+                    // Current value
                     Text(
                         text = if (displayValue == 0) {
                             stringResource(R.string.dark_theme_off)
@@ -570,7 +577,7 @@ fun CrossfadeSliderPreference(
 
                     Spacer(Modifier.height(8.dp))
 
-                    // Marcas del slider
+                    // Slider ticks
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
@@ -720,12 +727,7 @@ fun PreferenceGroup(
 ) {
     Column(modifier = modifier.padding(horizontal = 16.dp)) {
         if (title != null) {
-            Text(
-                text = title.uppercase(java.util.Locale.getDefault()),
-                style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 0.7.sp, fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 30.dp, bottom = 10.dp),
-            )
+            SettingsSectionHeader(title, Modifier.padding(start = SettingsRowInset, end = SettingsRowInset, top = 28.dp, bottom = 7.dp))
         }
         // The same plate the Settings page floats its groups on - `settingsGlassGroup`, not a
         // 5% wash of onSurface behind a 16dp clip. Two cards claiming to be the same grouped
@@ -771,11 +773,17 @@ fun PreferenceGroupTitle(
     // At headlineSmall/Bold this was larger and heavier than the row titles underneath it, so a
     // sub-page read as a stack of competing headlines with the settings squeezed between them,
     // and nothing on the page matched the page that linked to it.
-    // The section caption: small capitals over the card, set in from its edge.
+    // The section caption: set in to line up with the rows' text, as the card's own header does.
+    SettingsSectionHeader(title, modifier.padding(start = 16.dp + SettingsRowInset, end = 16.dp + SettingsRowInset, top = 28.dp, bottom = 7.dp))
+}
+
+/** iOS's grouped-table header: Footnote, grey, sentence case, quiet. Never capitals, never bold. */
+@Composable
+private fun SettingsSectionHeader(title: String, modifier: Modifier) {
     Text(
-        text = title.uppercase(java.util.Locale.getDefault()),
-        style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 0.7.sp, fontWeight = FontWeight.SemiBold),
+        text = title,
+        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Normal),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier.padding(start = 24.dp, end = 24.dp, top = 30.dp, bottom = 10.dp),
+        modifier = modifier,
     )
 }

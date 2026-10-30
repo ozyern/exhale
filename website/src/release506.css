@@ -1,0 +1,1335 @@
+/* ==========================================================================
+   Exhale 1.0.506 — the release page, in the key visual's language.
+   Scroll-linked values (--p, --v, --c) are written by Release506.jsx.
+   ========================================================================== */
+
+.a6 {
+  --gold-1: #fff3c4;
+  --gold-2: #ffd36e;
+  --gold-3: #ffb300;
+  --gold-4: #ff8f00;
+  --ink: #f5f5f7;
+  --ink-2: rgba(245, 245, 247, 0.62);
+  --ink-3: rgba(245, 245, 247, 0.38);
+  --glass: rgba(255, 255, 255, 0.06);
+  --glass-rim: rgba(255, 255, 255, 0.12);
+  --display: 'DisplaySans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #000;
+  color: var(--ink);
+  font-family: var(--display);
+  overflow-x: clip;
+}
+
+.a6 main {
+  position: relative;
+}
+
+.a6-eyebrow {
+  margin: 0 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold-2);
+}
+
+.a6-gold {
+  background: linear-gradient(115deg, var(--gold-1) 0%, var(--gold-2) 35%, var(--gold-3) 65%, var(--gold-4) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: a6Sheen 7s ease-in-out infinite alternate;
+}
+
+@keyframes a6Sheen {
+  from { background-position: 0% 50%; }
+  to { background-position: 100% 50%; }
+}
+
+/* ----------------------------------------------------------------- header */
+
+/* A capsule of glass floating over the page, inset from the window's edges. Light and clear over
+   the key visual; deeper frost and a shadow once the page passes under it. */
+.a6-head {
+  position: fixed;
+  z-index: 60;
+  top: 12px;
+  left: 50%;
+  width: min(1120px, calc(100% - 24px));
+  height: 54px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(30, 28, 26, 0.28);
+  backdrop-filter: blur(18px) saturate(1.6);
+  -webkit-backdrop-filter: blur(18px) saturate(1.6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 10px 30px rgba(0, 0, 0, 0.25);
+  transform: translateX(-50%);
+  transition: background 0.35s ease, box-shadow 0.35s ease, border-color 0.35s ease, top 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.a6-head.is-scrolled {
+  top: 10px;
+  background: rgba(18, 18, 20, 0.72);
+  border-color: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(30px) saturate(1.8);
+  -webkit-backdrop-filter: blur(30px) saturate(1.8);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 18px 50px rgba(0, 0, 0, 0.55);
+}
+
+.a6-head-inner {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  height: 100%;
+  padding: 0 8px 0 16px;
+}
+
+.a6-head-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  flex: 0 0 auto;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.a6-head-brand img {
+  border-radius: 7px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+.a6-head-brand span {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.a6-head-brand b {
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1a1200;
+  background: linear-gradient(135deg, var(--gold-1), var(--gold-2) 55%, var(--gold-3));
+}
+
+.a6-head-links {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.a6-head-links::-webkit-scrollbar {
+  display: none;
+}
+
+.a6-head-links a {
+  position: relative;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(245, 245, 247, 0.72);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.2s ease;
+}
+
+.a6-head-links a:hover {
+  color: var(--ink);
+}
+
+/* the chapter being read: full white, a short gold line under it */
+.a6-head-links a.is-active {
+  color: var(--ink);
+}
+
+.a6-head-links a::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--gold-2), var(--gold-3));
+  transform: translateX(-50%) scaleX(0);
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.a6-head-links a.is-active::after {
+  transform: translateX(-50%) scaleX(1);
+}
+
+.a6-head-cta {
+  flex: 0 0 auto;
+  padding: 8px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1200;
+  text-decoration: none;
+  background: linear-gradient(135deg, var(--gold-1), var(--gold-2) 50%, var(--gold-3));
+  box-shadow: 0 6px 22px rgba(255, 179, 0, 0.3);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+}
+
+.a6-head-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 28px rgba(255, 179, 0, 0.45);
+}
+
+/* ------------------------------------------------------------------ phone */
+
+/* The phone is the key visual's own render (/hero/phone-frame.png: the home page phone, screen cut
+   out). The capture sits behind it in exactly the hole that screen left, measured off the render:
+   6.16% in, 1.98% down, 87.26% by 95.68%, its corners 10.36% / 5.05%. */
+.a6-phone {
+  position: relative;
+  aspect-ratio: 1095 / 2049;
+  filter: drop-shadow(0 20px 45px rgba(0, 0, 0, 0.85));
+}
+
+.a6-phone-shot {
+  position: absolute;
+  left: 6.16%;
+  top: 1.98%;
+  width: 87.26%;
+  height: 95.68%;
+  border-radius: 10.36% / 5.05%;
+  overflow: hidden;
+  object-fit: cover;
+  object-position: 50% 0;
+  background: #000;
+}
+
+.a6-phone-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* drawn in the screen hole, positioned by .a6-phone-shot */
+.a6-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  text-align: center;
+  background:
+    radial-gradient(120% 70% at 30% 20%, rgba(255, 179, 0, 0.45), transparent 60%),
+    radial-gradient(90% 60% at 80% 85%, rgba(255, 112, 67, 0.35), transparent 65%),
+    #0b0906;
+}
+
+.a6-placeholder-mark {
+  font-size: clamp(30px, 4vw, 56px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  background: linear-gradient(115deg, var(--gold-1), var(--gold-3));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.a6-placeholder-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.a6-placeholder-note {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.a6-window {
+  margin: 0;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #111;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 40px 100px rgba(0, 0, 0, 0.7);
+}
+
+.a6-window img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* ------------------------------------------------------------------- hero */
+
+.a6-hero {
+  --p: 0;
+  /* As the home page's key visual plays: the 506 dissolves into a phone that starts close and huge
+     (0..0.16); the phone settles to its showcase size (0.04..0.52); the side phones sweep in from
+     off-screen, each on its own quartic ease (0.30..0.66); the lockup lands (0.56..0.76). */
+  --kv: clamp(0, calc(var(--p) / 0.16), 1);
+  --kv-e: calc(var(--kv) * var(--kv) * (3 - 2 * var(--kv)));
+  --mid-in: clamp(0, calc(var(--p) / 0.10), 1);
+  --settle: clamp(0, calc((var(--p) - 0.04) / 0.48), 1);
+  --settle-e: calc(1 - (1 - var(--settle)) * (1 - var(--settle)) * (1 - var(--settle)));
+  --fl: clamp(0, calc((var(--p) - 0.30) / 0.32), 1);
+  --fl-e: calc(1 - (1 - var(--fl)) * (1 - var(--fl)) * (1 - var(--fl)) * (1 - var(--fl)));
+  --fr: clamp(0, calc((var(--p) - 0.34) / 0.32), 1);
+  --fr-e: calc(1 - (1 - var(--fr)) * (1 - var(--fr)) * (1 - var(--fr)) * (1 - var(--fr)));
+  --lock: clamp(0, calc((var(--p) - 0.56) / 0.20), 1);
+  --lock-e: calc(var(--lock) * var(--lock) * (3 - 2 * var(--lock)));
+  --dark: clamp(0, calc((var(--p) - 0.50) / 0.40), 1);
+  position: relative;
+  height: 340vh;
+}
+
+.a6-hero-stage {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.a6-hero-bg {
+  position: absolute;
+  inset: -8% -4%;
+  background: #000 url('/hero/banner-bg.png') center / cover no-repeat;
+  transform: scale(calc(1.06 + var(--p) * 0.12)) translate3d(0, calc(var(--p) * -4%), 0);
+  filter: saturate(calc(1.1 - var(--dark) * 0.4)) brightness(calc(1 - var(--dark) * 0.55));
+  z-index: 0;
+}
+
+.a6-hero-vignette {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(70% 60% at 50% 45%, transparent 0%, rgba(0, 0, 0, 0.55) 80%, #000 100%),
+    linear-gradient(to bottom, transparent 55%, rgba(0, 0, 0, calc(0.4 + var(--dark) * 0.55)) 100%);
+  z-index: 1;
+}
+
+.a6-hero-kv {
+  position: absolute;
+  left: 50%;
+  top: 47%;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  /* shrinks into the phone's screen as the phone comes forward, as the key visual's mark does */
+  transform: translate(-50%, calc(-50% + var(--kv-e) * 4vh)) scale(calc(1 - var(--kv-e) * 0.42));
+  opacity: clamp(0, calc(1 - var(--kv-e) * 1.5), 1);
+  filter: blur(calc(var(--kv-e) * 10px));
+  pointer-events: none;
+}
+
+.a6-hero-num {
+  font-size: clamp(120px, 22vw, 300px) !important;
+}
+
+.a6-hero-devices {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  z-index: 3;
+  width: min(1100px, 92vw);
+  height: min(62vh, 640px);
+  /* lifts and steps back as the lockup lands, so the words sit under the phones, never on them */
+  transform:
+    translate(calc(-50% + var(--mx, 0px) * 0.3), calc(-50% - var(--lock-e) * 15vh + var(--my, 0px) * 0.3))
+    scale(calc(1 - var(--lock-e) * 0.2));
+  perspective: 1600px;
+}
+
+.a6-hero-phone {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: auto;
+  will-change: transform, opacity;
+}
+
+/* starts close and huge, framing the ribbons, then settles to its showcase size */
+.a6-hero-mid {
+  left: 50%;
+  z-index: 3;
+  opacity: var(--mid-in);
+  transform:
+    translateX(-50%)
+    translateY(calc((1 - var(--settle-e)) * 10vh))
+    scale(calc(2.1 - var(--settle-e) * 1.1));
+}
+
+/* the side phones sweep in from beyond the screen's edges, turning to face the middle */
+.a6-hero-right {
+  z-index: 2;
+  height: 86%;
+  top: 7%;
+  left: 50%;
+}
+
+/* the laptop, 578 : 431, standing to the left of the phone and a little behind it */
+.a6-hero-laptop {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 20%;
+  height: 74%;
+  aspect-ratio: 578 / 431;
+  will-change: transform, opacity;
+}
+
+.a6-hero-laptop img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 24px 50px rgba(0, 0, 0, 0.85));
+}
+
+.a6-hero-left {
+  opacity: clamp(0, calc(var(--fl) * 3), 1);
+  transform:
+    translateX(calc(-50% - min(400px, 31vw) - (1 - var(--fl-e)) * 70vw))
+    rotateY(calc(14deg + (1 - var(--fl-e)) * 30deg))
+    rotateZ(calc((1 - var(--fl-e)) * -8deg));
+}
+
+.a6-hero-right {
+  opacity: clamp(0, calc(var(--fr) * 3), 1);
+  transform:
+    translateX(calc(-50% + min(340px, 30vw) + (1 - var(--fr-e)) * 70vw))
+    rotateY(calc(-18deg - (1 - var(--fr-e)) * 30deg))
+    rotateZ(calc((1 - var(--fr-e)) * 8deg));
+}
+
+.a6-hero-lockup {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(20px, 5vh, 56px);
+  z-index: 5;
+  width: min(820px, 92vw);
+  text-align: center;
+  transform: translate(-50%, calc((1 - var(--lock-e)) * 40px));
+  opacity: var(--lock-e);
+  pointer-events: none;
+}
+
+.a6-hero[data-done='true'] .a6-hero-lockup,
+.a6[data-static='true'] .a6-hero-lockup {
+  pointer-events: auto;
+}
+
+.a6-hero-title {
+  margin: 0;
+  font-size: clamp(30px, 4.8vw, 64px);
+  font-weight: 700;
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  text-shadow: 0 6px 40px rgba(0, 0, 0, 0.7);
+}
+
+.a6-hero-dek {
+  margin: 14px auto 0;
+  max-width: 640px;
+  font-size: clamp(15px, 1.6vw, 19px);
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+.a6-hero-actions {
+  margin-top: 22px;
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.a6-scroll-cue {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  z-index: 6;
+  width: 26px;
+  height: 42px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.5);
+  transform: translateX(-50%);
+  opacity: calc(1 - var(--kv) * 3);
+}
+
+.a6-scroll-cue span {
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  width: 4px;
+  height: 8px;
+  border-radius: 2px;
+  background: #fff;
+  transform: translateX(-50%);
+  animation: a6Cue 1.8s ease-in-out infinite;
+}
+
+@keyframes a6Cue {
+  0% { transform: translate(-50%, 0); opacity: 1; }
+  80% { transform: translate(-50%, 16px); opacity: 0; }
+  100% { opacity: 0; }
+}
+
+/* ------------------------------------------------------------ highlights */
+
+.a6-highlights {
+  padding: 140px 0 60px;
+}
+
+.a6-section-title {
+  margin: 0 auto 40px;
+  width: min(1180px, 100% - 48px);
+  font-size: clamp(40px, 6vw, 80px);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.a6-rail {
+  display: flex;
+  gap: 20px;
+  padding: 0 max(24px, calc((100vw - 1180px) / 2)) 30px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-padding: 0 max(24px, calc((100vw - 1180px) / 2));
+  scrollbar-width: none;
+}
+
+.a6-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.a6-card {
+  position: relative;
+  flex: 0 0 min(400px, 82vw);
+  height: min(640px, 82vh);
+  padding: 34px 32px 0;
+  border-radius: 30px;
+  overflow: hidden;
+  scroll-snap-align: start;
+  background:
+    radial-gradient(120% 70% at 50% 110%, color-mix(in srgb, var(--tint) 55%, transparent), transparent 70%),
+    linear-gradient(180deg, #141414, #0a0a0a);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.a6-card-kicker {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--tint);
+}
+
+.a6-card-title {
+  margin: 0;
+  font-size: clamp(24px, 2.4vw, 30px);
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+}
+
+.a6-card-phone {
+  position: absolute;
+  left: 50%;
+  bottom: -18%;
+  width: 62%;
+  transform: translateX(-50%);
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.a6-card:hover .a6-card-phone {
+  transform: translateX(-50%) translateY(-4%);
+}
+
+.a6-rail-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: min(1180px, 100% - 48px);
+  margin: 10px auto 0;
+}
+
+.a6-dots {
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 999px;
+  background: var(--glass);
+  border: 1px solid var(--glass-rim);
+}
+
+.a6-dots button {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s ease;
+}
+
+.a6-dots button.is-on {
+  width: 32px;
+  background: var(--gold-2);
+}
+
+.a6-paddles {
+  display: flex;
+  gap: 12px;
+}
+
+.a6-paddles button {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--glass-rim);
+  background: var(--glass);
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  backdrop-filter: blur(16px);
+  transition: background 0.2s ease, opacity 0.2s ease;
+}
+
+.a6-paddles button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.a6-paddles button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* --------------------------------------------------------------- chapters */
+
+.a6-chapter {
+  position: relative;
+  padding: 120px 0 80px;
+}
+
+.a6-bigline {
+  --c: 0;
+  width: min(1100px, 100% - 48px);
+  margin: 0 auto 70px;
+  text-align: center;
+}
+
+.a6-bigline h2 {
+  margin: 0;
+  font-size: clamp(44px, 8vw, 120px);
+  font-weight: 700;
+  line-height: 0.98;
+  letter-spacing: -0.045em;
+  background: linear-gradient(115deg, #fff 0%, var(--gold-1) 30%, var(--gold-2) 55%, var(--gold-3) 80%, var(--gold-4) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  opacity: calc(0.18 + var(--c) * 0.82);
+  transform: scale(calc(0.94 + var(--c) * 0.06));
+  filter: drop-shadow(0 0 calc(var(--c) * 40px) rgba(255, 179, 0, calc(var(--c) * 0.35)));
+}
+
+.a6-beats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+  width: min(1180px, 100% - 48px);
+  margin: 60px auto 0;
+}
+
+.a6-beat {
+  padding: 28px 26px;
+  border-radius: 26px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  backdrop-filter: blur(20px);
+}
+
+.a6-beat-k {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gold-2);
+}
+
+.a6-beat h3 {
+  margin: 0 0 10px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.a6-beat p:last-child {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* sound: a phone at the centre of rings of sound */
+
+.a6-split {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) 1.1fr;
+  align-items: center;
+  gap: 60px;
+  width: min(1180px, 100% - 48px);
+  margin: 0 auto;
+}
+
+.a6-split .a6-beats {
+  grid-template-columns: 1fr 1fr;
+  width: 100%;
+  margin: 0;
+}
+
+.a6-split-device {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 40px 0;
+}
+
+.a6-split-phone {
+  position: relative;
+  z-index: 1;
+  width: min(300px, 70vw);
+}
+
+.a6-rings {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.a6-rings span {
+  position: absolute;
+  width: 120%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 196, 0, 0.5);
+  box-shadow: 0 0 40px rgba(255, 179, 0, 0.25), inset 0 0 40px rgba(255, 179, 0, 0.15);
+  animation: a6Ring 4.8s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+  opacity: 0;
+}
+
+.a6-rings span:nth-child(2) { animation-delay: 1.2s; }
+.a6-rings span:nth-child(3) { animation-delay: 2.4s; }
+.a6-rings span:nth-child(4) { animation-delay: 3.6s; }
+
+@keyframes a6Ring {
+  0% { transform: scale(0.35); opacity: 0; }
+  15% { opacity: 0.9; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
+
+/* pinned chapters */
+
+.a6-pin {
+  --p: 0;
+  position: relative;
+  height: 260vh;
+}
+
+.a6-pin-stage {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100svh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 84px 24px 24px;
+  text-align: center;
+}
+
+/* Light behind every stage, as the key visual is never on plain black: a gold bloom that drifts
+   across as the stage plays, and a faint second one answering it. */
+.a6-pin-stage::before {
+  content: '';
+  position: absolute;
+  inset: -20%;
+  z-index: -1;
+  background:
+    radial-gradient(38% 34% at calc(30% + var(--p) * 40%) 62%, rgba(255, 170, 0, 0.22), transparent 70%),
+    radial-gradient(30% 28% at calc(78% - var(--p) * 30%) 30%, rgba(255, 120, 60, 0.12), transparent 70%);
+  filter: blur(20px);
+  pointer-events: none;
+}
+
+.a6-pin-stage {
+  isolation: isolate;
+}
+
+.a6-pin-title {
+  margin: 0;
+  font-size: clamp(36px, 6vw, 84px);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+/* lyrics: the line lights a word at a time as you scroll */
+
+.a6-lyric-line {
+  margin: 0 auto;
+  max-width: 1100px;
+  font-size: clamp(38px, 6.4vw, 96px);
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+}
+
+.a6-word {
+  --lit: clamp(0, calc((var(--p) * 1.35 * var(--n) - var(--i)) * 1), 1);
+  display: inline-block;
+  margin: 0 0.12em;
+  color: rgba(255, 255, 255, calc(0.16 + var(--lit) * 0.84));
+  transform: translateY(calc((1 - var(--lit)) * 6px)) scale(calc(0.98 + var(--lit) * 0.02));
+  text-shadow: 0 0 calc(var(--lit) * 30px) rgba(255, 196, 0, calc(var(--lit) * 0.5));
+  transition: color 0.18s linear;
+}
+
+.a6-lyrics-devices {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 28px;
+  width: min(1100px, 100%);
+  height: min(46vh, 480px);
+  margin-top: 40px;
+}
+
+.a6-lyrics-phone {
+  height: 100%;
+  width: auto;
+  transform: translateY(calc((1 - clamp(0, var(--p) * 2.2, 1)) * 40vh));
+}
+
+.a6-lyrics-window {
+  width: min(640px, 58%);
+  align-self: center;
+  transform:
+    translateX(calc((1 - clamp(0, (var(--p) - 0.15) * 2.4, 1)) * 60vw))
+    rotate(calc((1 - clamp(0, (var(--p) - 0.15) * 2.4, 1)) * 4deg));
+}
+
+/* dock: two real screens. The folded dock rises in; then the player opens out of the song pill,
+   its screen growing from a sliver at the foot of the display, as the dock unfolds into it. */
+
+.a6-dock-scene {
+  --rise: clamp(0, calc(var(--p) / 0.30), 1);
+  --rise-e: calc(1 - (1 - var(--rise)) * (1 - var(--rise)) * (1 - var(--rise)));
+  --rise2: clamp(0, calc((var(--p) - 0.12) / 0.30), 1);
+  --rise2-e: calc(1 - (1 - var(--rise2)) * (1 - var(--rise2)) * (1 - var(--rise2)));
+  --u: clamp(0, calc((var(--p) - 0.38) / 0.38), 1);
+  --u-e: calc(var(--u) * var(--u) * (3 - 2 * var(--u)));
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: clamp(28px, 7vw, 120px);
+  width: min(1000px, 100%);
+  margin-top: 34px;
+}
+
+.a6-dock-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  margin: 0;
+  will-change: transform, opacity;
+}
+
+.a6-dock-phone {
+  height: min(56vh, 580px);
+  width: auto;
+}
+
+.a6-dock-fold {
+  opacity: var(--rise-e);
+  transform: translateY(calc((1 - var(--rise-e)) * 26vh)) rotate(calc((1 - var(--rise-e)) * -3deg));
+}
+
+.a6-dock-unfold {
+  opacity: var(--rise2-e);
+  transform: translateY(calc((1 - var(--rise2-e)) * 26vh)) rotate(calc((1 - var(--rise2-e)) * 3deg));
+}
+
+/* the player's screen opens out of a pill at the foot of the display */
+.a6-dock-unfold .a6-phone-shot {
+  clip-path: inset(
+    calc((1 - var(--u-e)) * 88%)
+    calc((1 - var(--u-e)) * 7%)
+    calc((1 - var(--u-e)) * 2.4%)
+    calc((1 - var(--u-e)) * 7%)
+    /* a pill's round ends while it is a sliver, the screen's own corners once it is full */
+    round calc(22px + (1 - var(--u-e)) * 18px)
+  );
+  transform: scale(calc(1.06 - var(--u-e) * 0.06));
+  transform-origin: 50% 96%;
+}
+
+/* the dark screen the player opens over */
+.a6-dock-unfold .a6-phone::before {
+  content: '';
+  position: absolute;
+  left: 6.16%;
+  top: 1.98%;
+  width: 87.26%;
+  height: 95.68%;
+  border-radius: 10.36% / 5.05%;
+  background:
+    radial-gradient(80% 40% at 50% 100%, rgba(255, 179, 0, calc(0.25 * (1 - var(--u-e)))), transparent 70%),
+    #0a0806;
+}
+
+.a6-dock-step figcaption {
+  max-width: 260px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  text-align: center;
+}
+
+.a6-dock-step figcaption b {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.a6-dock-fold figcaption {
+  opacity: calc(1 - var(--u-e) * 0.45);
+}
+
+.a6-dock-unfold figcaption {
+  opacity: calc(0.35 + var(--u-e) * 0.65);
+}
+
+/* search: bento */
+
+.a6-bento {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr;
+  grid-template-rows: auto auto;
+  gap: 18px;
+  width: min(1180px, 100% - 48px);
+  margin: 0 auto;
+}
+
+.a6-tile {
+  padding: 32px 28px;
+  border-radius: 30px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.a6-tile-shot {
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  padding: 30px;
+  background:
+    radial-gradient(90% 60% at 50% 100%, rgba(77, 208, 225, 0.35), transparent 70%),
+    linear-gradient(160deg, #101418, #07090b);
+}
+
+.a6-tile-phone {
+  width: min(260px, 80%);
+}
+
+.a6-tile-stat {
+  margin: 0 0 14px;
+  font-size: clamp(48px, 6vw, 76px);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  background: linear-gradient(115deg, var(--gold-1), var(--gold-3));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.a6-tile h3 {
+  margin: 0 0 10px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.a6-tile p:last-child {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* windows: the lid opens as you scroll */
+
+.a6-laptop {
+  --open: clamp(0, calc(var(--p) / 0.55), 1);
+  --open-e: calc(1 - (1 - var(--open)) * (1 - var(--open)) * (1 - var(--open)));
+  position: relative;
+  /* whatever height the words above leave (about 330px), at the render's own 1.46 : 1 */
+  width: min(940px, 86vw, calc((100vh - 340px) * 1.46));
+  margin-top: 22px;
+  transform:
+    translateY(calc((1 - var(--open-e)) * 22vh))
+    scale(calc(0.78 + var(--open-e) * 0.22))
+    rotateX(calc((1 - var(--open-e)) * 14deg));
+  transform-origin: 50% 100%;
+  opacity: calc(0.2 + var(--open-e) * 0.8);
+}
+
+.a6-laptop img {
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 30px 70px rgba(0, 0, 0, 0.85));
+}
+
+/* light pooling under the laptop as it arrives */
+.a6-laptop::after {
+  content: '';
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: -6%;
+  height: 22%;
+  z-index: -1;
+  background: radial-gradient(50% 50% at 50% 50%, rgba(255, 179, 0, calc(var(--open-e) * 0.35)), transparent 70%);
+  filter: blur(18px);
+}
+
+.a6-win-pin {
+  height: 240vh;
+}
+
+.a6-win-intro {
+  margin: 0 0 10px;
+  font-size: clamp(20px, 2.4vw, 30px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  background: linear-gradient(115deg, var(--gold-1), var(--gold-3));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.a6-win-lede {
+  max-width: 720px;
+  margin: 16px auto 0;
+  font-size: clamp(15px, 1.5vw, 18px);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.a6-win .a6-beats {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+/* a highlight card carrying a window rather than a phone */
+.a6-card-window {
+  position: absolute;
+  left: 32px;
+  right: -40px;
+  bottom: 34px;
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.a6-card:hover .a6-card-window {
+  transform: translateY(-6px);
+}
+
+.a6-win-gallery {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+  width: min(1180px, 100% - 48px);
+  margin: 40px auto 0;
+}
+
+/* -------------------------------------------------------------------- get */
+
+.a6-get-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  width: min(1000px, 100% - 48px);
+  margin: 0 auto;
+}
+
+.a6-get-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 34px 32px;
+  border-radius: 30px;
+  color: inherit;
+  text-decoration: none;
+  background:
+    radial-gradient(100% 80% at 100% 0%, rgba(255, 179, 0, 0.22), transparent 60%),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease;
+}
+
+.a6-get-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(255, 211, 110, 0.45);
+}
+
+.a6-get-card h3 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.a6-get-card p:not(.a6-eyebrow) {
+  margin: 8px 0 22px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.a6-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  width: min(1000px, 100% - 48px);
+  margin: 40px auto 0;
+  border-radius: 22px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.a6-facts div {
+  padding: 18px 20px;
+  background: #0b0b0c;
+}
+
+.a6-facts dt {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.a6-facts dd {
+  margin: 4px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.a6-all {
+  width: min(1000px, 100% - 48px);
+  margin: 80px auto 0;
+}
+
+.a6-all-h {
+  margin: 0 0 30px;
+  font-size: clamp(28px, 3.4vw, 40px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.a6-all-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 30px 40px;
+}
+
+.a6-all-grid ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.a6-all-grid li {
+  position: relative;
+  padding: 9px 0 9px 18px;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--ink-2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.a6-all-grid li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 16px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold-3);
+}
+
+.a6-more {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  width: min(1000px, 100% - 48px);
+  margin: 70px auto 0;
+}
+
+.a6-more-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 22px;
+  border-radius: 20px;
+  color: inherit;
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: background 0.2s ease;
+}
+
+.a6-more-card:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.a6-more-card span {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.a6-more-card b {
+  font-size: 17px;
+}
+
+.a6-more-card i {
+  font-style: normal;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+/* ---------------------------------------------------------------- responsive */
+
+@media (max-width: 900px) {
+  .a6-split {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .a6-split .a6-beats {
+    grid-template-columns: 1fr;
+  }
+
+  .a6-bento {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .a6-tile-shot {
+    grid-column: span 2;
+    grid-row: auto;
+  }
+
+  .a6-win-gallery,
+  .a6-get-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .a6-head-links {
+    justify-content: flex-start;
+    mask-image: linear-gradient(90deg, #000 80%, transparent);
+    -webkit-mask-image: linear-gradient(90deg, #000 80%, transparent);
+  }
+
+  .a6-head-inner {
+    gap: 10px;
+    padding: 0 6px 0 12px;
+  }
+
+  .a6-head-brand span {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .a6-hero-devices {
+    height: 54vh;
+  }
+
+  .a6-hero-left,
+  .a6-hero-right {
+    display: none;
+  }
+
+  .a6-lyrics-devices {
+    height: 34vh;
+  }
+
+  .a6-lyrics-window {
+    display: none;
+  }
+
+  .a6-dock-phone {
+    height: 44vh;
+  }
+
+  .a6-dock-fold {
+    display: none;
+  }
+
+  .a6-bento {
+    grid-template-columns: 1fr;
+  }
+
+  .a6-tile-shot {
+    grid-column: auto;
+  }
+
+  .a6-highlights {
+    padding-top: 90px;
+  }
+}
+
+/* ------------------------------------------------------------ reduced motion */
+
+.a6[data-static='true'] .a6-hero,
+.a6[data-static='true'] .a6-pin {
+  height: auto;
+}
+
+.a6[data-static='true'] .a6-hero-stage,
+.a6[data-static='true'] .a6-pin-stage {
+  position: relative;
+  min-height: 100vh;
+}
+
+.a6[data-static='true'] .a6-hero-kv,
+.a6[data-static='true'] .a6-scroll-cue {
+  display: none;
+}
+
+.a6[data-static='true'] *,
+.a6[data-static='true'] *::before,
+.a6[data-static='true'] *::after {
+  animation: none !important;
+  transition: none !important;
+}

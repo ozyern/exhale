@@ -136,7 +136,9 @@
     <string name="together_role_guest">Guest</string>
     <string name="together_pending_approval">Pending approval</string>
     <string name="together_waiting_approval">Waiting Approval</string>
-    <string name="together_host_left_session">Host Leaved Sessions</string>
+    <string name="together_host_left_session">The host ended the session</string>
+    <string name="together_reconnecting">Connection lost. Reconnecting…</string>
+    <string name="together_reconnected">Back in the session</string>
     <string name="together_kick">Kick</string>
     <string name="together_ban">Ban</string>
     <string name="together_kick_confirm">Kick %1$s?</string>
@@ -542,7 +544,7 @@
     <string name="clear_listen_history">Clear listen history</string>
     <string name="clear_listen_history_confirm">Are you sure you want to clear all listen history?</string>
     <string name="search_history">Search history</string>
-    <string name="search_recent">Recent</string>
+    <string name="search_recent">Recently Searched</string>
     <string name="search_suggestions">Suggestions</string>
     <string name="pause_search_history">Pause search history</string>
     <string name="clear_search_history">Clear search history</string>

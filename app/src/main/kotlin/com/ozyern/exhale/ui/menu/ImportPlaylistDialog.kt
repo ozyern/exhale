@@ -129,6 +129,8 @@ fun ImportPlaylistDialog(
                         val newPlaylist = PlaylistEntity(
                             name = finalName,
                             browseId = browseId,
+                            // Saved, so the Library lists it; without this it was made and never shown.
+                            bookmarkedAt = java.time.LocalDateTime.now(),
                         )
                         database.query { insert(newPlaylist) }
 
@@ -258,7 +260,8 @@ fun ImportPlaylistDialog(
 
                                 val newPlaylist = PlaylistEntity(
                                     name = currentPlaylistName,
-                                    browseId = null
+                                    browseId = null,
+                                    bookmarkedAt = java.time.LocalDateTime.now(),
                                 )
                                 database.query { insert(newPlaylist) }
 

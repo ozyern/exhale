@@ -12,11 +12,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,8 +35,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -45,6 +49,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -92,9 +97,35 @@ internal fun HorizontalLyrics(
 
         // The cover's wash, recorded so the round buttons are glass over it.
         val backdrop = rememberLayerBackdrop()
-        Box(Modifier.fillMaxSize().background(Color.Black)) {
+        BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
+            // The cover fills the left of the screen, edge to edge and the full height, and melts into
+            // its own blurred wash toward the lyrics: one picture, no card and no border, as the lock
+            // screen lays a cover under its lyrics.
+            val coverWidth = min(maxHeight, maxWidth * 0.62f)
             Box(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
                 AppleLyricsBackground(mediaMetadata = media)
+                AsyncImage(
+                    model = media.thumbnailUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(coverWidth)
+                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        .drawWithContent {
+                            drawContent()
+                            // Whole on the left, gone by the right edge: the wash takes over gradually.
+                            drawRect(
+                                Brush.horizontalGradient(
+                                    0f to Color.Black,
+                                    0.5f to Color.Black,
+                                    0.8f to Color.Black.copy(alpha = 0.45f),
+                                    1f to Color.Transparent,
+                                ),
+                                blendMode = BlendMode.DstIn,
+                            )
+                        },
+                )
             }
             CompositionLocalProvider(LocalPlayerBackdrop provides backdrop) {
                 Row(
@@ -102,20 +133,10 @@ internal fun HorizontalLyrics(
                     modifier = Modifier
                         .fillMaxSize()
                         .windowInsetsPadding(WindowInsets.displayCutout)
-                        .padding(start = 36.dp, end = 28.dp, top = 22.dp, bottom = 22.dp),
+                        .padding(end = 28.dp, top = 22.dp, bottom = 22.dp),
                 ) {
-                    // The cover, as large as the height allows, square, softly rounded.
-                    AsyncImage(
-                        model = media.thumbnailUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .aspectRatio(1f)
-                            .shadow(24.dp, RoundedCornerShape(14.dp))
-                            .clip(RoundedCornerShape(14.dp)),
-                    )
-                    Spacer(Modifier.width(36.dp))
+                    // The lyrics begin where the cover has mostly faded.
+                    Spacer(Modifier.width(coverWidth * 0.8f))
                     Column(Modifier.weight(1f).fillMaxHeight()) {
                         // A grabber across the top, as on iOS's sheet: tap it to put the lyrics back.
                         Box(

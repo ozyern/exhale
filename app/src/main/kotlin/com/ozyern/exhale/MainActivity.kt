@@ -945,8 +945,15 @@ class MainActivity : ComponentActivity() {
                     // has to land on them — see `safeHorizontalChromeInset` for why it is a single
                     // symmetric value rather than a per-edge pair.
                     val safeChromeInset = safeHorizontalChromeInset()
+                    // Convx 2.0.4 sets its dock and player 20dp in from each edge (measured off its
+                    // debug build on the same emulator); the classic dock keeps its 16dp.
+                    val convxChrome = rememberEnumPreference(
+                        com.ozyern.exhale.constants.DockStyleKey,
+                        com.ozyern.exhale.constants.DockStyle.CONVX,
+                    ).value == com.ozyern.exhale.constants.DockStyle.CONVX
                     val chromeHorizontalPadding =
-                        FloatingToolbarHorizontalPadding + safeChromeInset
+                        FloatingToolbarHorizontalPadding + safeChromeInset +
+                            if (convxChrome) com.ozyern.exhale.constants.ConvxChromeExtraInset else 0.dp
 
                     // A side rail only where Apple Music has one: a large window that is also wide
                     // (`wideChrome`). A foldable opened in portrait and a phone on its side keep the
@@ -1157,14 +1164,6 @@ class MainActivity : ComponentActivity() {
                     // as iPad's does.
                     val searchFieldAtTop = wideChrome ||
                         searchFieldPosition == com.ozyern.exhale.constants.SettingsSearchPosition.TOP
-                    // The jelly dock is the folding tab bar: it carries the mini player through its own
-                    // fold and turns into the search row on the search pages.
-                    val jellyDock = rememberEnumPreference(
-                        com.ozyern.exhale.constants.DockStyleKey,
-                        com.ozyern.exhale.constants.DockStyle.LIQUID,
-                    ).value.let {
-                        it == com.ozyern.exhale.constants.DockStyle.JELLY || it == com.ozyern.exhale.constants.DockStyle.LIQUID
-                    }
                     // True while the folding dock is anywhere but open, when it draws the player pill itself.
                     val foldingDockAway by remember {
                         derivedStateOf { com.ozyern.exhale.ui.component.foldingdock.FoldingDockMotion.fold > 0.001f }
@@ -1229,7 +1228,8 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    val floatingBarsBottomPadding = FloatingToolbarBottomPadding
+                    // Convx sits its bar 4dp lower than ours (measured off its debug build).
+                    val floatingBarsBottomPadding = if (convxChrome) FloatingToolbarBottomPadding - 4.dp else FloatingToolbarBottomPadding
                     val navVisibleHeight = if (slimNav) SlimFloatingToolbarHeight else FloatingToolbarHeight
 
                     val bottomNavigationBarHeight by animateDpAsState(
@@ -1381,6 +1381,7 @@ class MainActivity : ComponentActivity() {
                             dockOnPage,
                             onSettingsRoute,
                             wideChrome,
+                            isTabRoute,
                         ) {
                             var bottom = bottomInset
                             if (shouldShowNavigationBar) bottom += getBottomNavPadding()
@@ -1399,7 +1400,10 @@ class MainActivity : ComponentActivity() {
                                 .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)
                                 .add(
                                     WindowInsets(
-                                        top = AppBarHeight,
+                                        // The tabs have no bar above them any more — their large
+                                        // titles start just under the status bar, as the iOS music
+                                        // app's do. Every other page still has its bar.
+                                        top = if (isTabRoute) 8.dp else AppBarHeight,
                                         bottom = bottom,
                                     ),
                                 )
@@ -1542,9 +1546,11 @@ class MainActivity : ComponentActivity() {
 
                     var shouldShowTopBar by rememberSaveable { mutableStateOf(false) }
 
+                    // The logo-and-account bar over the tabs is gone: the account button sits beside
+                    // Home's large title instead, as the iOS music app has it, and the pages run up
+                    // to the status bar. The bar's code is kept behind this flag for now.
                     LaunchedEffect(navBackStackEntry) {
-                        shouldShowTopBar =
-                            !active && navBackStackEntry?.destination?.route in topLevelScreens && navBackStackEntry?.destination?.route != "settings"
+                        shouldShowTopBar = false
                     }
 
                     val coroutineScope = rememberCoroutineScope()
@@ -1651,6 +1657,7 @@ class MainActivity : ComponentActivity() {
                         LocalContentColor provides if (pureBlack) Color.White else contentColorFor(MaterialTheme.colorScheme.surface),
                         LocalHapticFeedback provides customHaptic,
                         LocalPlayerConnection provides playerConnection,
+                        com.ozyern.exhale.ui.component.LocalConvxChrome provides convxChrome,
                         LocalPlayerAwareWindowInsets provides playerAwareWindowInsets,
                         com.ozyern.exhale.ui.component.LocalWideChrome provides wideChrome,
                         com.ozyern.exhale.ui.component.LocalRailBack provides railBack,
@@ -1665,6 +1672,7 @@ class MainActivity : ComponentActivity() {
                                 fieldAtTop = searchFieldAtTop,
                                 openSearch = { onActiveChange(true) },
                                 openAccount = { showAccountDialog = true },
+                                openSettings = { navController.navigate("settings") },
                             ),
                         com.ozyern.exhale.ui.player.LocalCoverFlight provides coverFlight,
                     ) {
@@ -1959,9 +1967,9 @@ class MainActivity : ComponentActivity() {
                                                     // plain "Search" — never the verbose
                                                     // "Search YouTube Music…" service string.
                                                     text = if (active && !searchFieldAtTop) {
-                                                        // Typing, it says where it searches, as the
-                                                        // reference's field does.
-                                                        if (searchSource == SearchSource.ONLINE) "Search YouTube Music…" else "Search your library…"
+                                                        // Typing, the same words as the dock's field
+                                                        // (or where it searches, in the library).
+                                                        if (searchSource == SearchSource.ONLINE) "Artists, Songs, Lyrics and More" else "Your Library"
                                                     } else {
                                                         stringResource(R.string.search)
                                                     },
@@ -1977,7 +1985,7 @@ class MainActivity : ComponentActivity() {
                                                     // the arrow at its leading end, inside the pill.
                                                     androidx.compose.material3.IconButton(onClick = { onActiveChange(false) }) {
                                                         Icon(
-                                                            painterResource(R.drawable.arrow_back),
+                                                            painterResource(R.drawable.chevron_back),
                                                             contentDescription = stringResource(R.string.action_cancel),
                                                             tint = MaterialTheme.colorScheme.onSurface,
                                                         )
@@ -2366,8 +2374,16 @@ class MainActivity : ComponentActivity() {
                                         // that lands mid-transition is held and replayed the moment the
                                         // page settles, so fast taps still arrive - just in order.
                                         var pendingDockTab by remember { mutableStateOf<Screens?>(null) }
-                                        val dockNavigate: (Screens, Boolean) -> Unit = { screen, isSelected ->
-                                                if (screen.route == Screens.Search.route && isSelected) {
+                                        val dockNavigate: (Screens, Boolean) -> Unit = { screen, isSelectedTab ->
+                                                // The dock lights the tab a page was opened from (see lastDockTab),
+                                                // so "selected" can mean an album above that tab. Tapping it there
+                                                // goes back down to the tab, as iOS does; only on the tab itself does
+                                                // it scroll to the top. It used to scroll the album page instead,
+                                                // which read as the button doing nothing.
+                                                val onThatTab = navController.currentBackStackEntry?.destination
+                                                    ?.hierarchy?.any { it.route == screen.route } == true
+                                                val isSelected = isSelectedTab && onThatTab
+                                                if (screen.route == Screens.Search.route && isSelectedTab && onThatTab) {
                                                     // Already on the Search tab: open the type-in field.
                                                     onActiveChange(true)
                                                 } else if (isSelected) {
@@ -2411,14 +2427,40 @@ class MainActivity : ComponentActivity() {
                                             val here = entry.destination.hierarchy.any { it.route == waiting.route }
                                             dockNavigate(waiting, here)
                                         }
+                                        // A tab tap from the dock or the rail: now if the page has settled,
+                                        // otherwise held until it does (see above). Held only for so long,
+                                        // though. A page whose transition was interrupted can stay short of
+                                        // RESUMED with nothing left moving, and the effect above, already
+                                        // done for that page, never replayed the tap: Home did nothing there.
+                                        val requestDockTab: (Screens, Boolean) -> Unit = { screen, isSelected ->
+                                            val entry = navController.currentBackStackEntry
+                                            val settled = entry?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) != false
+                                            if (settled || isSelected || entry == null) {
+                                                pendingDockTab = null
+                                                dockNavigate(screen, isSelected)
+                                            } else {
+                                                pendingDockTab = screen
+                                                coroutineScope.launch {
+                                                    kotlinx.coroutines.withTimeoutOrNull(DockTabSettleTimeoutMs) {
+                                                        entry.lifecycle.currentStateFlow.first { it.isAtLeast(Lifecycle.State.RESUMED) }
+                                                    }
+                                                    // Replayed already, or replaced by a later tap.
+                                                    if (pendingDockTab != screen) return@launch
+                                                    pendingDockTab = null
+                                                    val here = navController.currentBackStackEntry?.destination
+                                                        ?.hierarchy?.any { it.route == screen.route } == true
+                                                    dockNavigate(screen, here)
+                                                }
+                                            }
+                                        }
                                         if (!active) {
                                             BottomSheetPlayer(
                                                 state = playerBottomSheetState,
                                                 navController = navController,
                                                 pureBlack = pureBlack,
                                                 lyricsSyncOffset = lyricsSyncOffset,
-                                                hideMiniPlayer = mergeIntoNavBar || (jellyDock && dockHasSong && foldingDockAway),
-                                                instantMiniPlayerSwap = jellyDock,
+                                                hideMiniPlayer = mergeIntoNavBar || (dockHasSong && foldingDockAway),
+                                                instantMiniPlayerSwap = true,
                                                 // The drawn pill keeps its slim layout through the fold:
                                                 // switching it off with the merge made it swell to the
                                                 // tall layout (heart and all) for the frames it fades out.
@@ -2438,7 +2480,8 @@ class MainActivity : ComponentActivity() {
                                                     mergeIntoNavBar ->
                                                         safeChromeInset + NavBarPillSideSlot
                                                     else ->
-                                                        safeChromeInset + MiniPlayerPillHorizontalInset
+                                                        safeChromeInset + MiniPlayerPillHorizontalInset +
+                                                            if (convxChrome) com.ozyern.exhale.constants.ConvxChromeExtraInset else 0.dp
                                                 },
                                                 morphPillCornerRadius = when {
                                                     mergeIntoNavBar -> NavBarPillCornerRadius
@@ -2495,14 +2538,7 @@ class MainActivity : ComponentActivity() {
                                                 },
                                                 onItemClick = { screen, isSelected ->
                                                     // As the dock does: a tap mid-transition waits for the page.
-                                                    val settled = navController.currentBackStackEntry?.lifecycle
-                                                        ?.currentState?.isAtLeast(Lifecycle.State.RESUMED) != false
-                                                    if (settled || isSelected) {
-                                                        pendingDockTab = null
-                                                        dockNavigate(screen, isSelected)
-                                                    } else {
-                                                        pendingDockTab = screen
-                                                    }
+                                                    requestDockTab(screen, isSelected)
                                                 },
                                                 modifier = Modifier
                                                     .align(androidx.compose.ui.AbsoluteAlignment.BottomRight)
@@ -2522,7 +2558,7 @@ class MainActivity : ComponentActivity() {
                                         val navSlideDistance =
                                             bottomInset + floatingBarsBottomPadding + navVisibleHeight
                                         val typingInDockSearch =
-                                            jellyDock && active && (isSearchScreen || isSearchResultsRoute) && !searchFieldAtTop
+                                            active && (isSearchScreen || isSearchResultsRoute) && !searchFieldAtTop
 
                                         Box(
                                             modifier =
@@ -2598,100 +2634,10 @@ class MainActivity : ComponentActivity() {
                                                         // most expensive thing drawn in the transition; it is fading out anyway.
                                                     },
                                         ) {
-                                            if ((isSearchScreen || isSearchResultsRoute) && !active && !searchFieldAtTop && !jellyDock) {
-                                                // ---- SEARCH LAYOUT: fixed frosted bar row ----
-                                                // Leading circle in its OWN round pill + search
-                                                // input in its own capsule; NO A/B morphing. The
-                                                // mini-player (BottomSheetPlayer above) floats
-                                                // directly over this row.
-                                                //
-                                                // Used on the Search tab AND on committed result
-                                                // pages, so the field stays under the thumb for the
-                                                // whole search flow instead of relocating to the
-                                                // top bar the moment results arrive.
-                                                // Decoded, because the route argument is what
-                                                // `URLEncoder.encode` produced when the search was
-                                                // committed — and that encodes a space as `+`. The
-                                                // field was showing people `Sabrina+carpenter+`
-                                                // and then handing the same string back as the
-                                                // starting text when they tapped it to refine.
-                                                // Navigation percent-decodes `%XX` on the way out
-                                                // but leaves `+` alone, so this is the only place
-                                                // it can be undone.
-                                                val committed = if (isSearchResultsRoute) {
-                                                    navBackStackEntry?.arguments
-                                                        ?.getString("query")
-                                                        ?.takeIf { it.isNotEmpty() }
-                                                        ?.let {
-                                                            runCatching {
-                                                                URLDecoder.decode(it, "UTF-8")
-                                                            }.getOrDefault(it)
-                                                        }
-                                                } else {
-                                                    null
-                                                }
-                                                SearchBottomBar(
-                                                    pureBlack = pureBlack,
-                                                    placeholder = "Artists, Songs, Lyrics and More",
-                                                    committedQuery = committed,
-                                                    leadingIsBack = isSearchResultsRoute,
-                                                    onHomeClick = {
-                                                        if (isSearchResultsRoute) {
-                                                            navController.navigateUp()
-                                                        } else if (!navController.popBackStack(Screens.Home.route, inclusive = false)) {
-                                                            navController.navigate(Screens.Home.route) {
-                                                                popUpTo(navController.graph.startDestinationId) {
-                                                                    saveState = true
-                                                                }
-                                                                launchSingleTop = true
-                                                                restoreState = true
-                                                            }
-                                                        }
-                                                    },
-                                                    onSearchClick = {
-                                                        // Re-opening the field from a results page
-                                                        // pre-fills it with the query that produced
-                                                        // them, caret at the end, so refining a
-                                                        // search is an edit and not a retype.
-                                                        if (committed != null) {
-                                                            onQueryChange(
-                                                                TextFieldValue(
-                                                                    text = committed,
-                                                                    selection = TextRange(committed.length),
-                                                                ),
-                                                            )
-                                                        }
-                                                        onActiveChange(true)
-                                                    },
-                                                    // The same band the dock occupies on every
-                                                    // other route, not a shorter row resting at
-                                                    // the bottom of it.
-                                                    //
-                                                    // The sheet's collapsed bound reserves a full
-                                                    // `getBottomNavPadding()` of chrome, and it is
-                                                    // captured once — it cannot be re-derived per
-                                                    // route without resetting the sheet. So a 48dp
-                                                    // row pinned to the bottom of a 64dp reservation
-                                                    // left the surplus as a band of dead space
-                                                    // *above* it, and the mini player floated over
-                                                    // the search field with a visible hole between
-                                                    // the two. Filling the band and centring in it
-                                                    // splits that surplus in half and puts the row
-                                                    // where the eye expects the dock to be.
-                                                    modifier = Modifier
-                                                        .align(Alignment.BottomCenter)
-                                                        .padding(
-                                                            start = chromeHorizontalPadding,
-                                                            end = chromeHorizontalPadding,
-                                                            bottom = bottomInset + floatingBarsBottomPadding,
-                                                        )
-                                                        .height(navVisibleHeight),
-                                                )
-                                            } else {
                                             // The jelly dock is the search row itself on the search pages: the
                                             // tabs fold onto the page you came from and search widens into the field.
                                             val dockSearch = if (
-                                                jellyDock && (isSearchScreen || isSearchResultsRoute) && !searchFieldAtTop
+                                                (isSearchScreen || isSearchResultsRoute) && !searchFieldAtTop
                                             ) {
                                                 // Decoded: the route argument encodes a space as `+`.
                                                 val committed = if (isSearchResultsRoute) {
@@ -2729,6 +2675,16 @@ class MainActivity : ComponentActivity() {
                                             } else {
                                                 null
                                             }
+                                            // The tab the current page belongs to. On a tab it is that tab; on a
+                                            // page above one (an album, an artist) it is the tab it was opened
+                                            // from. Matching the route alone lit nothing there, and the dock's
+                                            // slot slid off to the first tab and back as pages changed.
+                                            var lastDockTab by rememberSaveable { mutableStateOf<String?>(null) }
+                                            val currentDockTab = navigationItems.firstOrNull { item ->
+                                                navBackStackEntry?.destination?.hierarchy?.any { it.route == item.route } == true
+                                            }?.route
+                                            LaunchedEffect(currentDockTab) { if (currentDockTab != null) lastDockTab = currentDockTab }
+                                            val litDockTab = currentDockTab ?: lastDockTab
                                             if (!wideChrome) LiquidGlassBottomBar(
                                                 items = navigationItems,
                                                 search = dockSearch,
@@ -2755,22 +2711,11 @@ class MainActivity : ComponentActivity() {
                                                         end = chromeHorizontalPadding,
                                                         bottom = bottomInset + floatingBarsBottomPadding,
                                                     ),
-                                                isSelected = { screen ->
-                                                    navBackStackEntry?.destination?.hierarchy?.any { it.route == screen.route } ==
-                                                            true
-                                                },
+                                                isSelected = { screen -> screen.route == litDockTab },
                                                 onItemClick = { screen, isSelected ->
-                                                    val settled = navController.currentBackStackEntry?.lifecycle
-                                                        ?.currentState?.isAtLeast(Lifecycle.State.RESUMED) != false
-                                                    if (settled || isSelected) {
-                                                        pendingDockTab = null
-                                                        dockNavigate(screen, isSelected)
-                                                    } else {
-                                                        pendingDockTab = screen
-                                                    }
+                                                    requestDockTab(screen, isSelected)
                                                 },
                                             )
-                                            }
                                         }
                                     }
                                     }
@@ -2961,14 +2906,22 @@ class MainActivity : ComponentActivity() {
                                         )
                                         // The tabs' content fades out under the logo and the
                                         // account disc rather than colliding with them.
+                                        // Not on Settings: it is in topLevelScreens but has no logo
+                                        // bar, and the fade — driven by the tabs' scroll, not its
+                                        // own — cut its back button and title out of the top of the
+                                        // page, leaving a black band.
                                         .then(
-                                            if (navBackStackEntry?.destination?.route in topLevelScreens && !com.ozyern.exhale.utils.PerfFlags.noFade) {
+                                            if (navBackStackEntry?.destination?.route in topLevelScreens &&
+                                                navBackStackEntry?.destination?.route != "settings" &&
+                                                !com.ozyern.exhale.utils.PerfFlags.noFade
+                                            ) {
                                                 Modifier.topEdgeFade(
                                                     // Only once content is under the bar: the
                                                     // page's own scroll, as the dock's fold reads it.
                                                     active = { searchBarScrollBehavior.state.contentOffset < -1f },
                                                 ) {
-                                                    windowsInsets.getTop(density).toFloat() + with(density) { AppBarHeight.toPx() }
+                                                    // Only the status bar now: there is no bar under it.
+                                                    windowsInsets.getTop(density).toFloat()
                                                 }
                                             } else {
                                                 Modifier
@@ -3362,8 +3315,13 @@ private val TabEnter =fadeIn(tween(200, delayMillis = 40, easing = androidx.comp
     slideInVertically(spring(dampingRatio = 0.86f, stiffness = 520f)) { it / 60 }
 private val TabExit = fadeOut(tween(90, easing = androidx.compose.animation.core.FastOutLinearInEasing))
 
-private const val PushMillis = 460
-private val PushEasing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f)
+// UIKit's push is a critically damped spring of about half a second: the same curve the artwork
+// pages land on, so every page in the app moves the one way.
+private const val PushMillis = 500
+
+/** Longest a tab tap waits for the page under it to settle: past the push, so only a stuck page hits it. */
+private const val DockTabSettleTimeoutMs = 700L
+private val PushEasing = com.ozyern.exhale.ui.utils.ArtworkMotion.Easing
 private const val PushParallax = 0.30f
 private const val PushDimAlpha = 0.85f
 

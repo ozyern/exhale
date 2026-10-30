@@ -49,9 +49,11 @@ sealed interface TogetherClientEvent {
         val code: String? = null,
     ) : TogetherClientEvent
 
+    /** [retryable]: the network failed, so trying again may work; a kick, ban or refusal is final. */
     data class Error(
         val message: String,
         val throwable: Throwable? = null,
+        val retryable: Boolean = false,
     ) : TogetherClientEvent
 
     data class HeartbeatPong(
@@ -59,7 +61,8 @@ sealed interface TogetherClientEvent {
         val receivedAtElapsedRealtimeMs: Long,
     ) : TogetherClientEvent
 
-    data object Disconnected : TogetherClientEvent
+    /** [closedOnPurpose]: the host or relay closed the socket cleanly, so there is nothing to reconnect to. */
+    data class Disconnected(val closedOnPurpose: Boolean = false) : TogetherClientEvent
 }
 
 @Immutable
@@ -160,7 +163,7 @@ class TogetherClient(
                 }
             }
 
-            _events.tryEmit(TogetherClientEvent.Error(connectionFailureMessage(lastError), lastError))
+            _events.tryEmit(TogetherClientEvent.Error(connectionFailureMessage(lastError), lastError, retryable = true))
             _state.value = TogetherClientState.Idle
         }
     }
@@ -207,7 +210,7 @@ class TogetherClient(
                 }
             }
 
-            _events.tryEmit(TogetherClientEvent.Error(connectionFailureMessage(lastError), lastError))
+            _events.tryEmit(TogetherClientEvent.Error(connectionFailureMessage(lastError), lastError, retryable = true))
             _state.value = TogetherClientState.Idle
         }
     }
@@ -291,12 +294,18 @@ class TogetherClient(
     private suspend fun runLoop(session: WebSocketSession, sessionId: String) {
         loopJob =
             scope.launch {
+                var closedOnPurpose = false
                 try {
                     while (true) {
                         val frame =
                             try {
                                 session.incoming.receive()
                             } catch (_: ClosedReceiveChannelException) {
+                                // A clean close is the other side ending things; anything else is the network.
+                                val reason = (session as? io.ktor.websocket.DefaultWebSocketSession)?.let {
+                                    kotlinx.coroutines.withTimeoutOrNull(500) { it.closeReason.await() }
+                                }
+                                closedOnPurpose = reason?.code == CloseReason.Codes.NORMAL.code
                                 break
                             }
 
@@ -304,7 +313,7 @@ class TogetherClient(
                         val message =
                             runCatching { TogetherJson.json.decodeFromString(TogetherMessage.serializer(), text) }
                                 .getOrElse {
-                                    _events.tryEmit(TogetherClientEvent.Error("Failed to decode message", it))
+                                    // A message this version doesn't know (a newer host) is skipped, not a reason to leave the room.
                                     continue
                                 }
 
@@ -363,9 +372,11 @@ class TogetherClient(
                         }
                     }
                 } catch (t: Throwable) {
-                    _events.tryEmit(TogetherClientEvent.Error("Connection loop failed", t))
+                    if (t !is kotlinx.coroutines.CancellationException) {
+                        _events.tryEmit(TogetherClientEvent.Error("Connection loop failed", t, retryable = true))
+                    }
                 } finally {
-                    _events.tryEmit(TogetherClientEvent.Disconnected)
+                    _events.tryEmit(TogetherClientEvent.Disconnected(closedOnPurpose))
                     _state.value = TogetherClientState.Idle
                 }
             }

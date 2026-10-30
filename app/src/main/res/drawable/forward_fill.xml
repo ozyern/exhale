@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960">
+    <!-- Two solid, softly rounded triangles: the mini player's skip, as iOS draws forward.fill. -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M120,668L120,292Q120,262 146,248Q172,234 197,251L455,431Q477,446 477,480Q477,514 455,529L197,709Q172,726 146,712Q120,698 120,668ZM503,668L503,292Q503,262 529,248Q555,234 580,251L838,431Q860,446 860,480Q860,514 838,529L580,709Q555,726 529,712Q503,698 503,668Z" />
+</vector>

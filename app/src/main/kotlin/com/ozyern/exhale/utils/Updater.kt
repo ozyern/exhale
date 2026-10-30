@@ -66,14 +66,14 @@ data class NightlyInfo(
 )
 
 /**
- * Resultado de [Updater.checkForUpdate].
+ * What [Updater.checkForUpdate] found.
  *
- * @param tagName        Tag del release en GitHub (ej. "v1.4.2")
- * @param versionName    Versión normalizada sin prefijo "v" (ej. "1.4.2")
+ * @param tagName        The release's tag on GitHub (e.g. "v1.4.2")
+ * @param versionName    The version without its "v" (e.g. "1.4.2")
  * @param downloadUrl    Direct URL to the release's universal APK
- * @param releasePageUrl URL de la página HTML del release en GitHub
- * @param releaseNotes   Changelog / body del release (puede ser null)
- * @param publishedAt    Fecha de publicación en ISO 8601
+ * @param releasePageUrl The release's page on GitHub
+ * @param releaseNotes   The release's changelog / body (may be null)
+ * @param publishedAt    When it was published, in ISO 8601
  */
 data class UpdateInfo(
     val tagName: String,
@@ -308,6 +308,8 @@ object Updater {
         val releases = ArrayList<ReleaseInfo>(jsonArray.length())
         for (i in 0 until jsonArray.length()) {
             val item = jsonArray.getJSONObject(i)
+            // v1.0.xxx-windows releases carry the Windows setup, not an APK.
+            if (item.optString("tag_name", "").endsWith("-windows", ignoreCase = true)) continue
             releases.add(
                 ReleaseInfo(
                     tagName = item.optString("tag_name", ""),
@@ -379,7 +381,7 @@ object Updater {
         }.bodyAsText()
         val json = JSONObject(response)
 
-        // El JSON está en /nightly/update.json pero el APK debe servirse sin /nightly/
+        // The JSON lives at /nightly/update.json, but the APK is served without /nightly/
         val rawApkUrl = json.optString("apkUrl", "")
         val fixedApkUrl = rawApkUrl.replace(
             "https://pub-2218e6bbd5b948e1b5d882cf4d92086d.r2.dev/",
@@ -396,7 +398,7 @@ object Updater {
         )
     }
 
-    // ─── Funciones públicas (compatibilidad obligatoria) ───────────────────────
+    // ─── Public functions (kept for compatibility) ─────────────────────────────
 
     suspend fun getCachedReleases(): List<ReleaseInfo> {
         if (getCurrentUpdateChannel() == UpdateChannel.NIGHTLY) return emptyList()
@@ -449,16 +451,16 @@ object Updater {
         }
     }
 
-    // ─── Comprobación de actualización ─────────────────────────────────────────
+    // ─── Checking for an update ────────────────────────────────────────────────
 
     /**
-     * Comprueba si hay una versión más reciente que [currentVersionName].
+     * Checks for a version newer than [currentVersionName].
      *
-     * - Detecta el canal activo automáticamente.
-     * - STABLE: Reutiliza la caché existente (ETag / DataStore).
-     * - NIGHTLY: Consulta el JSON remoto de Cloudflare R2.
-     * - Devuelve `null` dentro del [Result] cuando ya se tiene la versión más
-     *   reciente instalada.
+     * - Works out the active channel by itself.
+     * - STABLE: reuses the existing cache (ETag / DataStore).
+     * - NIGHTLY: asks the remote JSON on Cloudflare R2.
+     * - Returns `null` inside the [Result] when the newest version is
+     *   already installed.
      *
      * [forceRefresh] skips the six-hour release cache. A check someone asked for
      * has to ask GitHub: answered from the cache, a release published after the

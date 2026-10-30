@@ -170,9 +170,9 @@ internal fun TogetherOrb(active: Boolean, error: Boolean, busy: Boolean, modifie
     val liveness by androidx.compose.animation.core.animateFloatAsState(
         if (active) 1f else 0f, tween(600), label = "orbLive",
     )
-    Box(modifier.size(164.dp), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.size(164.dp)) {
-            val core = 52.dp.toPx()
+    Box(modifier.size(132.dp), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.size(132.dp)) {
+            val core = 42.dp.toPx()
             val reach = size.minDimension / 2f
             // A soft halo of the orb's own colour, so it sits in light rather than on the page.
             drawCircle(
@@ -197,7 +197,7 @@ internal fun TogetherOrb(active: Boolean, error: Boolean, busy: Boolean, modifie
         }
         Box(
             Modifier
-                .size(104.dp)
+                .size(84.dp)
                 .graphicsLayer {
                     val s = 1f + (0.012f + 0.03f * liveness) * breath
                     scaleX = s
@@ -239,7 +239,7 @@ internal fun TogetherOrb(active: Boolean, error: Boolean, busy: Boolean, modifie
                         painterResource(if (g == 1) R.drawable.error else R.drawable.group),
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(48.dp),
+                        modifier = Modifier.size(40.dp),
                     )
                 }
             }

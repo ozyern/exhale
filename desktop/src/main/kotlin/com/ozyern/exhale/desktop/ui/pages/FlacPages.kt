@@ -105,7 +105,6 @@ fun FlacScreen(insets: ChromeInsets, onBack: (() -> Unit)?) {
             contentPadding = PaddingValues(start = insets.start + 20.dp, end = 40.dp, top = 16.dp, bottom = insets.bottom + 24.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            if (onBack != null) item(key = "back") { GlassIconButton(NavIcons.Back, "Back", onBack, Modifier.padding(bottom = 18.dp)) }
             item(key = "title") {
                 LargeTitle("FLAC")
                 Text(
@@ -147,7 +146,6 @@ fun FlacReleaseScreen(key: String, player: DesktopPlayer, state: PlayerState, in
             contentPadding = PaddingValues(start = insets.start + 20.dp, end = 40.dp, top = 16.dp, bottom = insets.bottom + 24.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            item(key = "back") { GlassIconButton(NavIcons.Back, "Back", onBack, Modifier.padding(bottom = 18.dp)) }
             val tracks = result?.getOrNull()
             when {
                 result == null -> item(key = "loading") { Box(Modifier.fillMaxWidth().height(240.dp).glassPlate(RoundedCornerShape(16.dp))) }

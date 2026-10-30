@@ -56,7 +56,7 @@ val UseNewMiniPlayerDesignKey = booleanPreferencesKey("useNewMiniPlayerDesign")
 val HidePlayerThumbnailKey = booleanPreferencesKey("hidePlayerThumbnail")
 val ExhaleCanvasKey = booleanPreferencesKey("ExhaleCanvas")
 
-// Fuente del canvas: AUTO, APPLE_MUSIC, OPENTUNE, TIDAL
+// Where animated artwork comes from: AUTO, APPLE_MUSIC, OPENTUNE, TIDAL
 val CanvasSourceKey = stringPreferencesKey("canvasSource")
 /**
  * App-wide interface scale, as a multiplier on the device's density. 1f is the system size.
@@ -285,9 +285,10 @@ enum class AudioQuality {
  * account is 128 kbps, which is *lower* than the Opus it replaces, and Opus is the more
  * efficient codec at that rate besides.
  *
- * It defaults to [AAC] anyway. AAC-LC decoding is mandatory on every Android device and gets
- * hardware offload where Opus is decoded in software, so it is the safer, cheaper stream; and
- * on a Premium account it is the one that unlocks 256 kbps. [AUTO] is the setting for anyone
+ * It defaults to [AAC], which now means the *good* AAC: the 256 kbps Premium rendition is preferred
+ * where it is offered, and the 128 kbps one is given no preference, so a free account plays its
+ * Opus instead (see `YTPlayerUtils.codecPriority`). AAC-LC decoding is mandatory on every Android
+ * device and gets hardware offload where Opus is decoded in software. [AUTO] is the setting for anyone
  * who would rather have the highest bitrate on offer whatever the codec.
  */
 val AudioCodecKey = stringPreferencesKey("audioCodec")
@@ -320,6 +321,8 @@ val EightDEnabledKey = booleanPreferencesKey("eightDEnabled")
 val EightDRotationHzKey = floatPreferencesKey("eightDRotationHz")
 val EightDDepthKey = floatPreferencesKey("eightDDepth")
 val SpatialAudioKey = booleanPreferencesKey("spatialAudio") // the spatial engine-style Atmos/spatial upscaling
+/** Set once spatial audio has been switched on for an existing install (see MusicService). */
+val SpatialAudioDefaultAppliedKey = booleanPreferencesKey("spatialAudioDefaultApplied")
 
 /**
  * How wide the spatial stage is.
@@ -372,6 +375,9 @@ val PreferMusicOnlyKey = booleanPreferencesKey("preferMusicOnly")
 val OutputFloatKey = booleanPreferencesKey("outputFloat")
 /** Send audio to a USB DAC whenever one is connected, over whatever the phone would choose. */
 val PreferUsbDacKey = booleanPreferencesKey("preferUsbDac")
+val BitPerfectUsbKey = booleanPreferencesKey("bitPerfectUsb")
+val SmartShuffleKey = booleanPreferencesKey("smartShuffle")
+val CollectionTransitionsKey = stringPreferencesKey("collectionTransitions")
 /** Automix: transitions timed and blended from the songs themselves. */
 /** Save to device writes an MP3 (converted, 320 kbps) instead of the stream's own M4A. */
 val SaveAsMp3Key = booleanPreferencesKey("saveAsMp3")
@@ -700,7 +706,8 @@ enum class LyricsAnimationStyle {
  */
 // A new key, so everyone starts again on the 1.0.405 motion: the ported panel had been the
 // default and was saved as a choice nobody made.
-val LyricsMotionKey = stringPreferencesKey("lyricsMotion405")
+// Moved again with the layout's key, so everyone lands on Exhale with Classic.
+val LyricsMotionKey = stringPreferencesKey("lyricsMotion406")
 enum class LyricsMotion {
     EXHALE,
     APPLE_MUSIC,
@@ -709,7 +716,9 @@ enum class LyricsMotion {
 }
 
 /** Which full-screen lyrics view the player opens: the classic one, or the the iOS music app glass one. */
-val LyricsLayoutKey = stringPreferencesKey("lyricsLayout")
+// A new key, so everyone starts again on Classic: Glass had been the default and was saved as a
+// choice nobody made.
+val LyricsLayoutKey = stringPreferencesKey("lyricsLayout2")
 enum class LyricsLayout {
     CLASSIC,
     GLASS,
@@ -732,6 +741,10 @@ val LyricsClickKey = booleanPreferencesKey("lyricsClick")
 val LyricsScrollKey = booleanPreferencesKey("lyricsScrollKey")
 val LyricsRomanizeJapaneseKey = booleanPreferencesKey("lyricsRomanizeJapanese")
 val LyricsRomanizeKoreanKey = booleanPreferencesKey("lyricsRomanizeKorean")
+/** Hindi written in Devanagari, shown in Latin letters under each line (see DevanagariRomanizer). */
+val LyricsRomanizeHindiKey = booleanPreferencesKey("lyricsRomanizeHindi")
+/** Every other non-Latin script (Chinese, Cyrillic, Arabic, Thai…) in Latin letters (see LyricsRomanizer). */
+val LyricsRomanizeOtherKey = booleanPreferencesKey("lyricsRomanizeOther")
 /** The globe in the lyrics: pronunciation under lines in another script. On by default. */
 val LyricsShowPronunciationKey = booleanPreferencesKey("lyricsShowPronunciation")
 /** The translate button in the lyrics: each line in the phone's language beneath it. */
@@ -1056,9 +1069,15 @@ val ShowSpotifyPlaylistsKey = booleanPreferencesKey("show_spotify_playlists")
 val SpotifyLibraryPlaylistsCacheKey = stringPreferencesKey("spotify_library_playlists_cache")
 /** How the open dock (state A) draws its tabs. The folded dock is the same in every style. */
 val DockStyleKey = stringPreferencesKey("dockStyle")
-val DockLabelsKey = booleanPreferencesKey("dockLabels")
-val DockCompactKey = booleanPreferencesKey("dockCompact")
-val DockGlowKey = booleanPreferencesKey("dockGlow")
+
+/** A gear beside the account picture at the top of Home, Library and Mood & Genres. Off by default. */
+val SettingsShortcutKey = booleanPreferencesKey("settingsShortcut")
+
+/** The tallest music video picture to fetch, in lines (1080, 720, ...); 0 is Auto. */
+val MusicVideoQualityKey = intPreferencesKey("musicVideoQuality")
+
+/** Full-screen music video zoomed to fill the display, cropping the edges, rather than fitted inside it. */
+val MusicVideoFillKey = booleanPreferencesKey("musicVideoFill")
 
 /** Where the Settings page keeps its search bar. */
 val SettingsSearchPositionKey = stringPreferencesKey("settingsSearchPosition")
@@ -1072,9 +1091,9 @@ enum class SettingsSearchPosition {
 }
 
 enum class DockStyle {
-    /** The glass capsule riding on the selected tab. */
-    LIQUID,
+    /** Convx 2.0.4's dock: its fold, glass, glyphs and red, ported from its own code. The default. */
+    CONVX,
 
-    /** A soft pill that stretches between tabs and can be dragged. */
-    JELLY,
+    /** The glass capsule riding on the selected tab. (The classic dock, as it was before Convx.) */
+    LIQUID,
 }

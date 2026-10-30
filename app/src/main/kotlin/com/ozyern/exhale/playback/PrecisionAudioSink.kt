@@ -38,20 +38,28 @@ import java.nio.ByteBuffer
  *
  * ### What float means now
  *
- * [floatAllowed] decides, per track, whether the decoder is told float is welcome. When it is, the
- * decoder's float output goes through the processors in float and reaches the AudioTrack in float,
- * with no quantisation anywhere between the codec and the mixer. When it is not, the decoder
- * produces 16-bit and the whole chain runs as it always did. The built-in speaker is kept on
- * 16-bit: OEM speaker mixers are where float has caused distortion.
+ * The decoder is always welcome to hand over float, and the processors always run on it in float.
+ * [floatAllowed] decides, per track, only what reaches the AudioTrack: float, with no quantisation
+ * anywhere between the codec and the mixer, or 16-bit made once at the very end of the chain by
+ * [DitheredPcm16Processor]. The built-in speaker is kept on 16-bit — OEM speaker mixers are where
+ * float has caused distortion — but it no longer pays for that with a rounding at every stage.
  */
 @UnstableApi
 class PrecisionAudioSink(
     private val delegate: AudioSink,
     processors: List<AudioProcessor>,
     private val floatAllowed: () -> Boolean,
+    /** False where the 16-bit output must stay bit-perfect: rounded, never dithered. */
+    private val ditherAllowed: () -> Boolean = { true },
 ) : ForwardingAudioSink(delegate) {
 
-    private val pipeline = AudioProcessingPipeline(ImmutableList.copyOf(processors))
+    private val pipeline = AudioProcessingPipeline(
+        ImmutableList.builder<AudioProcessor>()
+            .addAll(processors)
+            // Last, after everything that shapes or measures the sound.
+            .add(DitheredPcm16Processor(active = { !floatAllowed() }, dither = ditherAllowed))
+            .build(),
+    )
 
     /** Whether the configured stream goes through [pipeline], or straight to [delegate]. */
     private var processing = false
@@ -61,14 +69,10 @@ class PrecisionAudioSink(
     private var pendingTimeUs = C.TIME_UNSET
     private var endOfStreamQueued = false
 
-    override fun getFormatSupport(format: Format): Int {
-        // The renderer asks this about float PCM to decide whether to request float from the
-        // decoder at all. "Directly" only where float will really reach the track.
-        if (MimeTypes.AUDIO_RAW == format.sampleMimeType && format.pcmEncoding == C.ENCODING_PCM_FLOAT && !floatAllowed()) {
-            return AudioSink.SINK_FORMAT_SUPPORTED_WITH_TRANSCODING
-        }
-        return delegate.getFormatSupport(format)
-    }
+    // The renderer asks this about float PCM to decide whether to request float from the decoder.
+    // Always "directly" now: float is what the processors want, and where the track has to get
+    // 16-bit the dither stage at the end of the chain makes it.
+    override fun getFormatSupport(format: Format): Int = delegate.getFormatSupport(format)
 
     override fun supportsFormat(format: Format): Boolean =
         getFormatSupport(format) != AudioSink.SINK_FORMAT_UNSUPPORTED

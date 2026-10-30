@@ -37,8 +37,10 @@ object ClassWarmup {
 
     fun start() {
         thread(name = "exhale-class-warmup", isDaemon = true, priority = Thread.MIN_PRIORITY) {
-            // The window, Home and the player come first; this is for what's opened after.
-            Thread.sleep(3_000)
+            // The window, Home and the player come first; this is for what's opened after. Not at 3 s:
+            // timed, that was exactly when Home was building its first page and decoding its artwork,
+            // and loading every class of Compose's jars beside it held Home up by seconds.
+            Thread.sleep(15_000)
             val loader = ClassWarmup::class.java.classLoader
             val jars = anchors.mapNotNull { name ->
                 runCatching { Class.forName(name, false, loader).protectionDomain?.codeSource?.location?.toURI()?.let(::File) }.getOrNull()

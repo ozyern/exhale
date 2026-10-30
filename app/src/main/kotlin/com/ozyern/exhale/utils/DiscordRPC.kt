@@ -34,7 +34,7 @@ class DiscordRPC(
         private const val PAUSE_IMAGE_URL =
             "https://raw.githubusercontent.com/koiverse/ArchiveTune/main/fastlane/metadata/android/en-US/images/RPC/pause_icon.png"
         private const val APP_ICON_URL = 
-            "https://raw.githubusercontent.com/ozyern/Exhale/refs/heads/master/assets/icon.png"
+            "https://raw.githubusercontent.com/ozyern/Exhale/refs/heads/master/assets/icon_dark.png"
         private const val logtag = "DiscordRPC"
     }
 

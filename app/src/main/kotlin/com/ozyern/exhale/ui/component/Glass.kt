@@ -6,6 +6,7 @@
 
 package com.ozyern.exhale.ui.component
 
+import com.ozyern.exhale.ui.component.foldingdock.foldingDockGlass
 import android.os.Build
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
@@ -184,11 +185,9 @@ fun Modifier.miniPlayerGlass(
     backdrop: Backdrop = LocalAppBackdrop.current,
     dark: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
 ): Modifier {
-    // the reference design's mini player is the same liquid glass as its dock, and so is ours now. It was a
-    // lighter grey film (#3A3A3E) with a lens that had no depth and no colour fringing: next to
-    // the reference design's it read as a flat grey bar rather than a dark glossy slab bending the page's
-    // colour at its rim.
-    return dockGlass(shape, backdrop, dark)
+    // Convx 2.0.4: the mini player is the same liquid glass as its nav bar (FloatingNavBar hands the
+    // bar's tabBarContentModifier to it), so it is the dock's glass, recipe and all.
+    return foldingDockGlass(shape, backdrop)
 }
 
 /**

@@ -182,6 +182,8 @@ fun PlayerSettings(
     val (outputFloat, onOutputFloatChange) = rememberPreference(com.ozyern.exhale.constants.OutputFloatKey, true)
     val (jioSaavn, onJioSaavnChange) = rememberPreference(com.ozyern.exhale.constants.JioSaavnUpgradeKey, true)
     val (preferUsbDac, onPreferUsbDacChange) = rememberPreference(com.ozyern.exhale.constants.PreferUsbDacKey, false)
+    val (bitPerfectUsb, onBitPerfectUsbChange) = rememberPreference(com.ozyern.exhale.constants.BitPerfectUsbKey, false)
+    val (smartShuffle, onSmartShuffleChange) = rememberPreference(com.ozyern.exhale.constants.SmartShuffleKey, false)
     val outputStatus by (playerConnection?.service?.outputStatus
         ?: remember { kotlinx.coroutines.flow.MutableStateFlow<com.ozyern.exhale.playback.OutputStatus?>(null) }).collectAsState()
     val usbConnected = remember(outputStatus) {
@@ -490,6 +492,19 @@ fun PlayerSettings(
                 checked = preferUsbDac,
                 onCheckedChange = onPreferUsbDacChange,
             )
+            // Android 14 and later only: older versions have no bit-perfect mixer to ask for.
+            if (com.ozyern.exhale.playback.BitPerfectUsb.supported) {
+                PreferenceGroupDivider()
+                SwitchPreference(
+                    title = { Text("Bit-perfect USB output") },
+                    description = "Sends songs to a USB DAC untouched, at their own sample rate, skipping Android's mixer. " +
+                        "Volume is then set on the DAC itself, and other apps' sounds won't play through it — " +
+                        "turn the DAC down before you start.",
+                    icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                    checked = bitPerfectUsb,
+                    onCheckedChange = onBitPerfectUsbChange,
+                )
+            }
         }
 
         PreferenceGroupTitle(title = "Sound")
@@ -676,6 +691,15 @@ fun PlayerSettings(
                 icon = { Icon(painterResource(R.drawable.shuffle), null) },
                 checked = permanentShuffle,
                 onCheckedChange = onPermanentShuffleChange
+            )
+
+            PreferenceGroupDivider()
+            SwitchPreference(
+                title = { Text("Smart Shuffle") },
+                description = "While an album or playlist plays shuffled, slips in a related song every few tracks — marked Suggested in the queue",
+                icon = { Icon(painterResource(R.drawable.shuffle), null) },
+                checked = smartShuffle,
+                onCheckedChange = onSmartShuffleChange,
             )
 
             PreferenceGroupDivider()

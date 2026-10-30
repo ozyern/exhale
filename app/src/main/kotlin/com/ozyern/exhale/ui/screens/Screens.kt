@@ -33,22 +33,22 @@ sealed class Screens(
         // the reference design's Home, one solid glyph in both states, as their dock draws it: the capsule
         // behind it, not an outline/fill swap, says which tab is open.
         // The reference 2.0.4 dock's house.fill.
-        iconIdInactive = R.drawable.home_house_fill,
-        iconIdActive = R.drawable.home_house_fill,
+        iconIdInactive = R.drawable.sf_house_fill,
+        iconIdActive = R.drawable.sf_house_fill,
         route = "home"
     )
 
     object Search : Screens(
         titleId = R.string.search,
-        iconIdInactive = R.drawable.search,
-        iconIdActive = R.drawable.search_filled,
+        iconIdInactive = R.drawable.sf_magnifyingglass,
+        iconIdActive = R.drawable.sf_magnifyingglass,
         route = "search"
     )
 
     object Library : Screens(
         titleId = R.string.filter_library,
-        iconIdInactive = R.drawable.library_outlined,
-        iconIdActive = R.drawable.library_filled,
+        iconIdInactive = R.drawable.sf_music_note_square_stack_fill,
+        iconIdActive = R.drawable.sf_music_note_square_stack_fill,
         route = "library"
     )
 
@@ -61,10 +61,9 @@ sealed class Screens(
 
     object MoodAndGenres : Screens(
         titleId = R.string.mood_and_genres,
-        // Apple-Music "Radio" tab: a center node with radiating broadcast waves.
-        // Thin concentric waves when inactive, bold solid node + waves when active.
-        iconIdInactive = R.drawable.radio,
-        iconIdActive = R.drawable.radio_filled,
+        // Convx 2.0.4's Explore glyph, square.grid.2x2.fill: one solid glyph in both states.
+        iconIdInactive = R.drawable.sf_square_grid_2x2_fill,
+        iconIdActive = R.drawable.sf_square_grid_2x2_fill,
         route = "mood_and_genres"
     )
 

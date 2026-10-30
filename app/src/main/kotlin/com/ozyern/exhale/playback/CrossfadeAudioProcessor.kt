@@ -3,19 +3,19 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * Procesador de audio PCM para fade-in/fade-out a nivel de pipeline de ExoPlayer.
- * Trabaja de forma ortogonal a CrossfadeAudio: este aplica el fundido dentro de
- * un único stream de audio (inicio/fin de pista), mientras que CrossfadeAudio
- * mezcla dos players simultáneos durante la transición entre canciones.
+ * A PCM audio processor that fades in and out inside ExoPlayer's pipeline.
+ * It works alongside CrossfadeAudio rather than with it: this one fades within
+ * a single audio stream (the start and end of a track), while CrossfadeAudio
+ * mixes two players at once across the change between songs.
  *
- * Arquitectura del buffer:
- *   - tailBuffer (ring buffer circular): retiene los últimos N bytes del stream
- *     entrante equivalentes a crossfadeDurationMs, para poder aplicarles
- *     fade-out al detectar el fin del stream.
- *   - outBuffer  (ring buffer circular): cola de bytes ya procesados listos
- *     para entregar a través de getOutput().
+ * Buffers:
+ *   - tailBuffer (a ring buffer): holds the last N bytes of the incoming stream,
+ *     crossfadeDurationMs worth, so they can be faded out
+ *     once the end of the stream is seen.
+ *   - outBuffer  (a ring buffer): processed bytes waiting
+ *     to be handed out through getOutput().
  *
- * Flujo de datos:
+ * Data flow:
  *   queueInput() → appendInputToTail() + drainTailToArray() → applyFadeIn/Out → enqueueOutput()
  *   getOutput()  → dequeueOutputToByteBuffer()
  */
@@ -33,14 +33,14 @@ import kotlin.math.min
 @UnstableApi
 class CrossfadeAudioProcessor : AudioProcessor {
 
-    // ── Formato de audio ──────────────────────────────────────────────────────
+    // ── Audio format ──────────────────────────────────────────────────────────
 
     private var inputAudioFormat = AudioFormat.NOT_SET
     private var outputAudioFormat = AudioFormat.NOT_SET
 
-    // ── Duración de crossfade ─────────────────────────────────────────────────
+    // ── Crossfade length ──────────────────────────────────────────────────────
 
-    /** Duración configurada externamente. Aplica en el próximo flush(). */
+    /** Set from outside; takes effect on the next flush(). */
     @Volatile
     var crossfadeDurationMs: Int = 0
         set(value) {
@@ -55,28 +55,28 @@ class CrossfadeAudioProcessor : AudioProcessor {
     private var crossfadeFrames: Int = 0
     private var bytesPerFrame: Int = 0
 
-    // ── Estado de fade ────────────────────────────────────────────────────────
+    // ── Fade state ────────────────────────────────────────────────────────────
 
     private var isEnding: Boolean = false
     private var shouldFadeInThisStream: Boolean = false
     private var shouldFadeInNextStream: Boolean = false
     private var framesOutputInStream: Long = 0L
 
-    // ── Ring buffer: cola de tail ─────────────────────────────────────────────
+    // ── Ring buffer: the tail ─────────────────────────────────────────────────
 
     private var tailBufferBytes: ByteArray = ByteArray(0)
     private var tailCapacityBytes: Int = 0
     private var tailStartIndex: Int = 0
     private var tailSizeBytes: Int = 0
 
-    // ── Ring buffer: cola de salida ───────────────────────────────────────────
+    // ── Ring buffer: the output ───────────────────────────────────────────────
 
     private var outBufferBytes: ByteArray = ByteArray(0)
     private var outCapacityBytes: Int = 0
     private var outStartIndex: Int = 0
     private var outSizeBytes: Int = 0
 
-    // ── Scratch y buffer de salida de ByteBuffer ──────────────────────────────
+    // ── Scratch space and the output ByteBuffer ───────────────────────────────
 
     private var scratch: ByteArray = ByteArray(0)
     private var outputBuffer: ByteBuffer = AudioProcessor.EMPTY_BUFFER
@@ -158,7 +158,7 @@ class CrossfadeAudioProcessor : AudioProcessor {
 
         if (!isEnding) return AudioProcessor.EMPTY_BUFFER
 
-        // Fin del stream: aplicar fade-out al contenido del tail
+        // End of the stream: fade out what is in the tail
         if (crossfadeFrames <= 0 || bytesPerFrame <= 0 || tailSizeBytes <= 0) {
             shouldFadeInThisStream = false
             shouldFadeInNextStream = false
@@ -188,7 +188,7 @@ class CrossfadeAudioProcessor : AudioProcessor {
         )
         framesOutputInStream += tailFrames.toLong()
 
-        // Señalizar que el stream siguiente debe hacer fade-in
+        // Flag the next stream to fade in
         shouldFadeInNextStream = true
         enqueueOutput(scratch, 0, alignedTailBytes)
 
@@ -236,7 +236,7 @@ class CrossfadeAudioProcessor : AudioProcessor {
         isEnding = true
     }
 
-    // ── Gestión de duración ───────────────────────────────────────────────────
+    // ── Changing the length ───────────────────────────────────────────────────
 
     private fun applyCrossfadeDurationIfNeeded(force: Boolean) {
         val targetMs = pendingCrossfadeDurationMs
@@ -267,7 +267,7 @@ class CrossfadeAudioProcessor : AudioProcessor {
             return
         }
 
-        // Redimensionar el tail preservando los bytes más recientes
+        // Resize the tail, keeping the most recent bytes
         val newBuffer = ByteArray(newCapacityBytes)
         val bytesToCopy = min(tailSizeBytes, newCapacityBytes)
 
@@ -403,8 +403,8 @@ class CrossfadeAudioProcessor : AudioProcessor {
     // ── DSP: fade-in / fade-out sobre PCM 16-bit ──────────────────────────────
 
     /**
-     * Aplica un fade-in lineal a [length] bytes de [data] comenzando en [offset].
-     * El gain va de 0 → 1 a lo largo de [crossfadeFrames] frames totales,
+     * Fades in [length] bytes of [data] linearly, starting at [offset].
+     * The gain runs 0 → 1 across [crossfadeFrames] frames in all,
      * contando desde [startFrameIndex].
      */
     private fun applyFadeInPcm16(
@@ -429,9 +429,9 @@ class CrossfadeAudioProcessor : AudioProcessor {
     }
 
     /**
-     * Aplica un fade-out lineal a [frameCount] frames de [data] comenzando en [offset].
-     * Si [shouldFadeInThisStream] está activo, combina fade-in simultáneo para el
-     * stream entrante (crossfade a nivel PCM en el mismo buffer).
+     * Fades out [frameCount] frames of [data] linearly, starting at [offset].
+     * With [shouldFadeInThisStream] set, it fades the incoming stream in at the same
+     * time (a PCM-level crossfade within one buffer).
      */
     private fun applyFadeOutPcm16(
         data: ByteArray,
@@ -461,8 +461,8 @@ class CrossfadeAudioProcessor : AudioProcessor {
     }
 
     /**
-     * Escala un frame PCM 16-bit little-endian por [gain].
-     * Cubre todos los canales del frame ([bytesPerFrame] bytes).
+     * Scales one 16-bit little-endian PCM frame by [gain].
+     * Covers every channel in the frame ([bytesPerFrame] bytes).
      */
     private fun scaleFramePcm16(data: ByteArray, frameOffset: Int, gain: Float) {
         if (gain == 1f) return
@@ -480,7 +480,7 @@ class CrossfadeAudioProcessor : AudioProcessor {
         }
     }
 
-    // ── Utilidades ────────────────────────────────────────────────────────────
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun ensureScratchCapacity(size: Int) {
         if (scratch.size < size) scratch = ByteArray(size)

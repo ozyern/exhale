@@ -43,6 +43,19 @@ fun MediaItem.withQueueTier(tier: QueueTier): MediaItem {
         .build()
 }
 
+private const val SUGGESTED_KEY = "exhale.smartShuffle"
+
+/** A song Smart Shuffle slipped into a shuffled album or playlist, not part of it. */
+val MediaItem.isSmartSuggestion: Boolean
+    get() = mediaMetadata.extras?.getBoolean(SUGGESTED_KEY) == true
+
+fun MediaItem.asSmartSuggestion(): MediaItem {
+    val extras = Bundle(mediaMetadata.extras ?: Bundle()).apply { putBoolean(SUGGESTED_KEY, true) }
+    return buildUpon()
+        .setMediaMetadata(mediaMetadata.buildUpon().setExtras(extras).build())
+        .build()
+}
+
 /** Timeline indices in the order they will play, shuffle included. */
 fun Player.playOrder(): List<Int> {
     val timeline = currentTimeline

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 8D audio, as the letters people know it by: an orbit-and-head glyph read as an eye. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 8: two stacked rings, the lower one a touch larger. -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:pathData="M4.4,8.2a2.9,2.9 0,1 0,5.8 0a2.9,2.9 0,1 0,-5.8 0z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:pathData="M3.9,15.4a3.4,3.4 0,1 0,6.8 0a3.4,3.4 0,1 0,-6.8 0z" />
+    <!-- D -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round"
+        android:pathData="M13.6,5h2.6a5.4,7 0,0 1,0 14h-2.6z" />
+</vector>

@@ -39,7 +39,7 @@ import com.ozyern.exhale.ui.component.SpotifyLibraryPlaylistListItem
 @Composable
 fun LibrarySpotifyPlaylistsScreen(
     navController: NavController,
-    filterContent: @Composable () -> Unit, // Recibe los chips desde el padre
+    filterContent: @Composable () -> Unit, // the filter chips, from the parent
     viewModel: SpotifyLibraryViewModel = hiltViewModel(),
 ) {
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
@@ -56,7 +56,7 @@ fun LibrarySpotifyPlaylistsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
-            // ── Filtros (chips) desde el padre ──────────────────────────────
+            // ── Filter chips, from the parent ───────────────────────────────
             item(key = "spotify_filters") {
                 Column(
                     modifier = Modifier

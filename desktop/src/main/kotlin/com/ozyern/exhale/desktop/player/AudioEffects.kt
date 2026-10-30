@@ -21,16 +21,32 @@ object AudioEffects {
      * into two, the delayed copies landing on top of the originals — a hollow, phasey sound — and the
      * sum running past full scale.
      */
-    fun filterChain(settings: Settings, outputChannels: Int? = null): String {
+    fun filterChain(settings: Settings, outputChannels: Int? = null, linearPhase: Boolean = true, sourceChannels: Int? = null): String {
+        // Music that is already surround — Dolby Atmos' bed, a 5.1 or 7.1 Dolby track — keeps its own
+        // channels. The upmix below lays a bed out of a stereo pair; given a real one it would rebuild
+        // the surrounds from the fronts and throw the originals away.
+        val settings = if ((sourceChannels ?: 2) > 2) settings.copy(spatialAudio = "OFF") else settings
         val filters = buildList {
             if (settings.equalizerEnabled) {
                 val gains = EqualizerPresets.frequencies.indices.map { settings.equalizerBands.getOrElse(it) { 0 } }
                 // Headroom for the boost, so raised bands don't clip.
                 val peak = gains.maxOrNull() ?: 0
                 if (peak > 0) add("volume=-${peak}dB")
-                EqualizerPresets.frequencies.forEachIndexed { index, frequency ->
-                    val gain = gains[index]
-                    if (gain != 0) add("equalizer=f=$frequency:t=o:w=1:g=$gain")
+                if (gains.any { it != 0 }) {
+                    if (linearPhase) {
+                        // One linear-phase FIR drawn through the ten band gains, rather than ten peaking
+                        // biquads in a row. The biquads' skirts overlap — two neighbouring bands at +6 dB
+                        // lift the frequencies between them past +6, past the headroom above — and each
+                        // shifts the phase around its band. The FIR follows the curve as set, smoothly from
+                        // band to band, with every frequency delayed alike: the music's timing untouched.
+                        val entries = EqualizerPresets.frequencies.mapIndexed { index, frequency -> "entry($frequency,${gains[index]})" }
+                        add("firequalizer=gain_entry='${entries.joinToString(";")}':gain='cubic_interpolate(f)':zero_phase=on")
+                    } else {
+                        EqualizerPresets.frequencies.forEachIndexed { index, frequency ->
+                            val gain = gains[index]
+                            if (gain != 0) add("equalizer=f=$frequency:t=o:w=1:g=$gain")
+                        }
+                    }
                 }
             }
             if (settings.skipSilence) {
@@ -55,7 +71,7 @@ object AudioEffects {
             // nothing is subtracted, so a stereo mix stays the mix - it just has somewhere to sit
             // when Windows Sonic or Atmos places it.
             //
-            // LFE is left silent on purpose: a full-range copy of the music in a channel the
+            // LFE is left silent on purpose, by not naming it (pan rejects "LFE=0"): a full-range copy of the music in a channel the
             // receiver expects to be low-passed is how an upmix ends up boomy.
             val opened = outputChannels ?: 0
             val layout = when {
@@ -66,14 +82,14 @@ object AudioEffects {
             when (layout) {
                 "7.1" -> {
                     add(
-                        "pan=7.1|FL=FL|FR=FR|FC=0.3*FL+0.3*FR|LFE=0" +
+                        "pan=7.1|FL=FL|FR=FR|FC=0.3*FL+0.3*FR" +
                             "|BL=0.28*FL|BR=0.28*FR|SL=0.22*FL|SR=0.22*FR"
                     )
                     add("adelay=0|0|0|0|16|16|10|10")
                 }
 
                 "5.1" -> {
-                    add("pan=5.1|FL=FL|FR=FR|FC=0.3*FL+0.3*FR|LFE=0|BL=0.30*FL|BR=0.30*FR")
+                    add("pan=5.1|FL=FL|FR=FR|FC=0.3*FL+0.3*FR|BL=0.30*FL|BR=0.30*FR")
                     add("adelay=0|0|0|0|14|14")
                 }
             }

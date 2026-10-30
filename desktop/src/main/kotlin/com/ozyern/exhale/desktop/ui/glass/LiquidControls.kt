@@ -363,7 +363,9 @@ fun LiquidToggle(
     ) {
         Box(
             Modifier
-                .layerBackdrop(trackBackdrop)
+                // The track is only recorded for the glass thumb to bend, so only while there is one:
+                // a resting toggle draws it straight, with no layer of its own every frame.
+                .then(if (glassy) Modifier.layerBackdrop(trackBackdrop) else Modifier)
                 .clip(CircleShape)
                 .drawBehind { drawRect(lerp(TrackOff, accent, drag.value)) }
                 .size(64.dp, 28.dp),
@@ -633,6 +635,9 @@ fun LiquidSegmented(
     }
     val onAccent = if (accent.red * 0.299f + accent.green * 0.587f + accent.blue * 0.114f > 0.6f) Color.Black else Color.White
     val pad = 3.dp
+    // At rest there is no glass to see, so nothing is recorded or drawn for it: a page of these paid for
+    // a hidden glass pill and a layer of its labels on every frame.
+    val glassy by remember { derivedStateOf { drag.pressProgress > 0.001f } }
     Box(
         modifier
             .then(if (fill) Modifier.fillMaxWidth() else Modifier)
@@ -658,7 +663,7 @@ fun LiquidSegmented(
         )
         androidx.compose.foundation.layout.Row(
             Modifier
-                .layerBackdrop(labelsBackdrop)
+                .then(if (glassy) Modifier.layerBackdrop(labelsBackdrop) else Modifier)
                 .then(if (fill) Modifier.fillMaxWidth() else Modifier.width(androidx.compose.foundation.layout.IntrinsicSize.Max))
                 .fillMaxHeight(),
         ) {
@@ -697,7 +702,7 @@ fun LiquidSegmented(
                     layout(w, constraints.maxHeight) { placeable.place(0, 0) }
                 }
                 .then(drag.modifier)
-                .drawBackdrop(
+                .then(if (!glassy) Modifier else Modifier.drawBackdrop(
                     backdrop = rememberCombinedBackdrop(backdrop, labelsBackdrop),
                     shape = { CircleShape },
                     effects = {
@@ -714,7 +719,7 @@ fun LiquidSegmented(
                         scaleY = drag.scaleY * (1f - (velocity * 0.2f).fastCoerceIn(-0.2f, 0.2f))
                     },
                     onDrawSurface = { drawRect(accent.copy(alpha = 0.18f)) },
-                ),
+                )),
         )
     }
 }

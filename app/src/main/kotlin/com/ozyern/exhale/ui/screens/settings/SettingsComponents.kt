@@ -464,24 +464,34 @@ fun SettingsPermissionBanner(
     onRequestPermission: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
+    // Stacked, the way iOS asks for something: an icon tile, the whole question and why, and one
+    // full-width capsule under them. It was a single row — a puck, a title cut off at "Allow
+    // Exhale to work…", two squeezed lines of reason and a square Material button wedged at the
+    // end — which left none of the three enough room to read.
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .settingsGlassGroup(RoundedCornerShape(SettingsDimensions.BannerCardCornerRadius))
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 14.dp),
     ) {
+        Row(verticalAlignment = Alignment.Top) {
+            // A solid system-blue tile with a white glyph, as a Settings row icon is drawn.
             Box(
                 modifier = Modifier
-                    .size(SettingsDimensions.BannerIconSize)
-                    .settingsIconPuck(MaterialTheme.colorScheme.primary, CircleShape),
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                            listOf(Color(0xFF3B9BFF), Color(0xFF0A6CF0)),
+                        ),
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     painter = painterResource(R.drawable.security),
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(SettingsDimensions.BannerIconInnerSize),
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp),
                 )
             }
 
@@ -489,41 +499,39 @@ fun SettingsPermissionBanner(
 
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 Text(
                     text = stringResource(R.string.permissions_title),
-                    style = MaterialTheme.typography.titleSmall,
+                    fontSize = 17.sp,
+                    lineHeight = 21.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = stringResource(R.string.permissions_subtitle),
-                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 15.sp,
+                    lineHeight = 20.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
                 )
             }
+        }
 
-            Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-            Button(
-                onClick = onRequestPermission,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                ),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.allow),
-                    fontWeight = FontWeight.SemiBold,
-                    style = MaterialTheme.typography.labelMedium,
-                )
-            }
+        Text(
+            text = stringResource(R.string.allow),
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onPrimary,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary)
+                .clickable(onClick = onRequestPermission)
+                .padding(vertical = 13.dp),
+        )
     }
 }
 
@@ -982,8 +990,15 @@ fun SettingsTopAppBar(
     scrollBehavior: TopAppBarScrollBehavior? = null,
 ) {
     Box(modifier) {
-        // No ground behind the bar: the page runs up under the back button and the title the way
-        // the tabs do. A ground here was a dark band across the top of every settings page.
+        // Nothing behind the bar at rest: the page runs up under the back button. Once rows scroll
+        // beneath it, the page's own ground and wash rise behind it and fade out at its foot, as
+        // iOS's scroll edge does — without it, group headers ran straight into the back disc.
+        val edge = rememberSettingsEdge(scrollBehavior)
+        SettingsBarGround(
+            Modifier
+                .matchParentSize()
+                .scrollEdgeFade(edge),
+        )
 
         TopAppBar(
             title = { ScrollingHeading(large = false, scrollBehavior = scrollBehavior, title = title) },
@@ -1021,8 +1036,15 @@ fun SettingsLargeTopAppBar(
     scrollBehavior: TopAppBarScrollBehavior? = null,
 ) {
     Box(modifier) {
-        // No ground behind the bar: the page runs up under the back button and the title the way
-        // the tabs do. A ground here was a dark band across the top of every settings page.
+        // Nothing behind the bar at rest: the page runs up under the back button. Once rows scroll
+        // beneath it, the page's own ground and wash rise behind it and fade out at its foot, as
+        // iOS's scroll edge does — without it, group headers ran straight into the back disc.
+        val edge = rememberSettingsEdge(scrollBehavior)
+        SettingsBarGround(
+            Modifier
+                .matchParentSize()
+                .scrollEdgeFade(edge),
+        )
 
         LargeTopAppBar(
             title = { ScrollingHeading(large = true, scrollBehavior = scrollBehavior, title = title) },
@@ -1228,7 +1250,7 @@ internal val IosAutoColors = IosSystemColors.dropLast(1)
 /**
  * A page's heading: set in Home's wide face, and part of the page rather than the bar — it goes
  * up and away with the rows while the back button stays pinned. A large bar's title already
- * travels with the collapse; the small copy the bar would bring in at the top is kept out.
+ * travels with the collapse, and the small copy comes in over the back button as it goes.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1241,10 +1263,10 @@ private fun ScrollingHeading(
     val fadePx = with(LocalDensity.current) { 56.dp.toPx() }
     Box(
         Modifier.graphicsLayer {
-            if (large) {
-                val collapsed = scrollBehavior?.state?.collapsedFraction ?: 0f
-                alpha = (1f - 2f * collapsed).coerceIn(0f, 1f)
-            } else {
+            // Large: the bar's own crossfade is left to run, so as the big title scrolls away the
+            // small one comes in over the back button, as iOS's does. Faded here as well, both
+            // copies went and a scrolled page was left with no name at all.
+            if (!large) {
                 val moved = scrolled?.floatValue ?: 0f
                 translationY = -moved.coerceAtMost(fadePx * 2)
                 alpha = (1f - moved / fadePx).coerceIn(0f, 1f)

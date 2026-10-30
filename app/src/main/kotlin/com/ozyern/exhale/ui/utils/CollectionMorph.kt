@@ -12,6 +12,7 @@ package com.ozyern.exhale.ui.utils
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
@@ -21,6 +22,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,10 +62,13 @@ import androidx.navigation.NavBackStackEntry
  * finds nothing to claim and keeps the ordinary artwork push.
  */
 object CollectionMorph {
-    /** Out of the tile: the iOS card curve, front half quick, a long soft landing. */
-    const val EnterMillis = 340
+    /**
+     * Out of the tile: the iOS card curve, front half quick, a long soft landing. A little longer
+     * than the hero-only flight's 340: the whole page travels now, and the eye has more to follow.
+     */
+    const val EnterMillis = 420
     /** Back into it: shorter, the same curve. */
-    const val ExitMillis = 260
+    const val ExitMillis = 320
     val Easing = CubicBezierEasing(0.3f, 0.5f, 0.4f, 1f)
 
     // A press only counts for the navigation it causes.
@@ -123,6 +129,16 @@ object CollectionMorph {
     }
 
     internal fun isShrinking(entryId: String) = shrinking == entryId
+
+    // Pages whose flight out of the tile has finished, so coming back to one does not replay it.
+    private val landed = HashSet<String>()
+
+    internal fun hasLanded(entryId: String) = entryId in landed
+
+    internal fun markLanded(entryId: String) {
+        landed += entryId
+        if (landed.size > 64) landed.retainAll(origins.keys)
+    }
 }
 
 /**
@@ -151,15 +167,74 @@ fun Modifier.collectionMorphSource(seed: CollectionSeed? = null): Modifier {
         }
 }
 
-private val TileCornerRadius = 10.dp
+// The shelf cards' corner, so the flight starts on the tile's own outline.
+private val TileCornerRadius = 18.dp
+
+/** How much of the morph the card takes to appear over the tile, and to go on the way back. */
+private const val PageFadeFraction = 0.12f
+
+/**
+ * The flight a page's hero takes out of its tile: the tile's window rectangle, and how far along
+ * the morph is (0 in the tile, 1 at rest in the page). Read in the draw phase only.
+ */
+class CollectionMorphFlight(val origin: Rect, val progress: () -> Float)
+
+/** The flight of the page being composed, when it was opened from a tile. */
+val LocalCollectionMorphFlight = compositionLocalOf<CollectionMorphFlight?> { null }
+
+/**
+ * Marks a page's hero artwork as the thing that flies out of the tile, as Convx's does: it starts
+ * on the tile's exact pixels as a rounded square, and grows into its place in the page while the
+ * rest of the page appears around it. Outside a morph it does nothing.
+ */
+@Composable
+fun Modifier.collectionMorphHero(): Modifier {
+    val flight = LocalCollectionMorphFlight.current ?: return this
+    val at = remember { floatArrayOf(0f, 0f) }
+    val card = remember { MorphCardShape() }
+    return this
+        .onPlaced {
+            val position = it.positionInWindow()
+            at[0] = position.x
+            at[1] = position.y
+        }
+        .graphicsLayer {
+            val p = flight.progress()
+            if (p >= 1f || size.width <= 0f) {
+                clip = false
+                return@graphicsLayer
+            }
+            val tile = flight.origin
+            // Uniform, by width: the tile's square becomes the hero's width and the height opens
+            // with it, so the picture is never stretched on the way.
+            val s = lerp(tile.width / size.width, 1f, p).coerceAtLeast(0.01f)
+            transformOrigin = TransformOrigin(0f, 0f)
+            scaleX = s
+            scaleY = s
+            translationX = lerp(tile.left - at[0], 0f, p)
+            translationY = lerp(tile.top - at[1], 0f, p)
+            card.height = lerp(tile.height, size.height, p) / s
+            card.radius = lerp(TileCornerRadius.toPx(), 0f, p) / s
+            shape = card
+            clip = true
+        }
+}
+
+/** A rounded rectangle whose height and radius the morph sets each frame, so no shape is allocated per frame. */
+private class MorphCardShape : Shape {
+    var height = 0f
+    var radius = 0f
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline =
+        Outline.Rounded(RoundRect(0f, 0f, size.width, height.coerceIn(0f, size.height), CornerRadius(radius)))
+}
 
 /**
  * Frames an artwork page for the morph. With no tile to come out of it is just [content].
  *
- * The page is drawn whole, scaled uniformly by width so the tile's artwork becomes its hero, and
- * clipped to a rounded card whose height opens with it. It fades in over the first few frames
- * (the tile is under it, so it reads as the tile lifting) and melts back into the tile at the end
- * of the way home.
+ * Convx's motion: the page itself does not travel. It appears in place over the first fifth of the
+ * morph (the tile is under it, so nothing blinks), and its hero — marked [collectionMorphHero] —
+ * flies out of the tile into the header. On the way back the hero flies home and the page goes in
+ * the last fifth. A page without a marked hero simply fades.
  */
 @Composable
 fun AnimatedContentScope.CollectionMorphFrame(
@@ -172,70 +247,84 @@ fun AnimatedContentScope.CollectionMorphFrame(
         return
     }
     val seed = remember(entry.id) { CollectionMorph.seedFor(entry.id) }
-    val progress by transition.animateFloat(
-        transitionSpec = {
-            if (targetState == EnterExitState.Visible) {
-                tween(CollectionMorph.EnterMillis, easing = CollectionMorph.Easing)
-            } else {
-                tween(CollectionMorph.ExitMillis, easing = CollectionMorph.Easing)
-            }
-        },
-        label = "collectionMorph",
+
+    // Out of the tile: on a clock of its own that starts once the page has been drawn. Building a
+    // page can hold the main thread for a few hundred milliseconds, and the navigation transition's
+    // clock runs through that — so the flight was most of the way home on the first frame anyone
+    // saw. A page that has already landed (come back to from deeper in) starts at rest.
+    val enter = remember(entry.id) {
+        Animatable(if (CollectionMorph.hasLanded(entry.id)) 1f else 0f)
+    }
+    LaunchedEffect(entry.id) {
+        if (enter.value < 1f) {
+            withFrameNanos {}
+            withFrameNanos {}
+            enter.animateTo(1f, tween(CollectionMorph.EnterMillis, easing = CollectionMorph.Easing))
+        }
+        CollectionMorph.markLanded(entry.id)
+    }
+    // Back into it: on the transition's clock, which is what keeps the page composed until it has.
+    val back by transition.animateFloat(
+        transitionSpec = { tween(CollectionMorph.ExitMillis, easing = CollectionMorph.Easing) },
+        label = "collectionMorphBack",
     ) { state ->
-        when (state) {
-            EnterExitState.PreEnter -> 0f
-            EnterExitState.Visible -> 1f
-            // Covered by a page pushed over it, it stays where it is; only going back shrinks it.
-            EnterExitState.PostExit -> if (CollectionMorph.isShrinking(entry.id)) 0f else 1f
-        }
+        // Covered by a page pushed over it, it stays where it is; only going back shrinks it.
+        if (state == EnterExitState.PostExit && CollectionMorph.isShrinking(entry.id)) 0f else 1f
     }
-    val pageOrigin = remember { floatArrayOf(0f, 0f) }
+    val progress: () -> Float = { minOf(enter.value, back) }
+
+    // The whole page is the card, as iOS's zoom transition has it: the page starts shrunk onto the
+    // tile, a rounded card showing its own top (the cover, where the tile's picture was), and grows
+    // to fill the screen with everything in it travelling together. Only the hero used to fly, and
+    // the title, buttons and list popped in around it already in place, which read as cheap; and a
+    // page with no marked hero (an artist's) only faded in, which read as no animation at all.
     val ground = MaterialTheme.colorScheme.background
-    val radiusPx = remember { floatArrayOf(0f) }
-    val card = remember {
-        object : Shape {
-            var height = 0f
-            var radius = 0f
-            override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline =
-                Outline.Rounded(RoundRect(0f, 0f, size.width, height.coerceIn(0f, size.height), CornerRadius(radius)))
-        }
-    }
+    // An artist's tile is a disc, so the card starts as one; everything else is a rounded square.
+    val fromDisc = entry.destination.route?.startsWith("artist/") == true
+    val at = remember { floatArrayOf(0f, 0f) }
+    val card = remember { MorphCardShape() }
     Box(
         Modifier
             .onPlaced {
-                val at = it.positionInWindow()
-                pageOrigin[0] = at.x
-                pageOrigin[1] = at.y
+                val position = it.positionInWindow()
+                at[0] = position.x
+                at[1] = position.y
             }
             .graphicsLayer {
-                val p = progress
+                val p = progress()
+                alpha = (p / PageFadeFraction).coerceIn(0f, 1f)
                 if (p >= 1f || size.width <= 0f) {
                     clip = false
                     return@graphicsLayer
                 }
-                radiusPx[0] = TileCornerRadius.toPx()
-                val tile = origin.translate(-pageOrigin[0], -pageOrigin[1])
-                val s = lerp(tile.width / size.width, 1f, p).coerceAtLeast(0.01f)
+                // Uniform, by width, so nothing on the page is ever stretched on the way.
+                val s = lerp(origin.width / size.width, 1f, p).coerceAtLeast(0.01f)
                 transformOrigin = TransformOrigin(0f, 0f)
                 scaleX = s
                 scaleY = s
-                translationX = lerp(tile.left, 0f, p)
-                translationY = lerp(tile.top, 0f, p)
-                card.height = lerp(tile.height, size.height, p) / s
-                card.radius = lerp(radiusPx[0], 0f, p) / s
+                translationX = lerp(origin.left - at[0], 0f, p)
+                translationY = lerp(origin.top - at[1], 0f, p)
+                // The card's height opens from the tile's to the whole page's: at the start only the
+                // top of the page, the size of the tile, shows.
+                card.height = lerp(origin.height, size.height * s, p) / s
+                val startRadius = if (fromDisc) origin.minDimension / 2f else TileCornerRadius.toPx()
+                card.radius = lerp(startRadius, ScreenCornerRadius.toPx(), p) / s
                 shape = card
                 clip = true
-                alpha = (p / 0.18f).coerceIn(0f, 1f)
             }
             .drawBehind {
-                // A ground for the card while it moves, for pages that are see-through at rest;
-                // it thins away over the landing so nothing pops when the morph lets go.
-                val p = progress
+                // An opaque ground inside the card, for pages that are see-through at rest, so it
+                // reads as a card over the page beneath; it thins away over the landing.
+                val p = progress()
                 if (p < 1f) {
-                    drawRect(ground.copy(alpha = ground.alpha * (1f - ((p - 0.75f) / 0.25f).coerceIn(0f, 1f))))
+                    drawRect(ground.copy(alpha = ground.alpha * (1f - ((p - 0.8f) / 0.2f).coerceIn(0f, 1f))))
                 }
             },
     ) {
+        // No separate hero flight: the hero travels with the page now.
         CompositionLocalProvider(LocalCollectionSeed provides seed) { content() }
     }
 }
+
+/** The card's corners as it reaches the screen: about a phone display's own, so it lands flush. */
+private val ScreenCornerRadius = 28.dp

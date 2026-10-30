@@ -80,6 +80,9 @@ class HomeViewModel @Inject constructor(
     val keepListening = MutableStateFlow<List<LocalItem>?>(null)
     val similarRecommendations = MutableStateFlow<List<SimilarRecommendation>?>(null)
 
+    /** Shelves from the artists picked in setup, shown near the top of Home while history is thin. */
+    val preferenceShelves = MutableStateFlow<List<SimilarRecommendation>?>(null)
+
     /**
      * The big cards at the top of Home, as the Windows app builds them: songs from the radios of the
      * artists this listener actually plays most, alternated with the songs YouTube's own feed picked,
@@ -302,26 +305,50 @@ class HomeViewModel @Inject constructor(
      *
      * Resolved artist ids are cached in-process so a refresh does not re-hit search every time.
      */
-    private val seededArtistIdCache = mutableMapOf<String, String?>()
+    private val seededArtistIdCache = java.util.concurrent.ConcurrentHashMap<String, java.util.Optional<String>>()
+
+    /**
+     * The artists picked during setup, resolved to YouTube Music ids, in the order they were
+     * picked: (id, name). Names that find no artist are dropped. Resolved once per process.
+     */
+    private suspend fun preferredArtists(limit: Int): List<Pair<String, String>> =
+        context.dataStore.getAsync(PreferredArtistsKey, "")
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .take(limit)
+            .mapNotNull { name ->
+                val id = seededArtistIdCache[name]?.orElse(null) ?: run {
+                    if (seededArtistIdCache.containsKey(name)) return@mapNotNull null
+                    // Only a search that answered is remembered: a failed one (offline, a timeout)
+                    // is asked again next time, rather than leaving the shelves empty all session.
+                    val result = YouTube.search(name, YouTube.SearchFilter.FILTER_ARTIST).getOrNull()
+                        ?: return@mapNotNull null
+                    val found = result.items.filterIsInstance<ArtistItem>().firstOrNull()?.id
+                    seededArtistIdCache[name] = java.util.Optional.ofNullable(found)
+                    found
+                } ?: return@mapNotNull null
+                id to name
+            }
+
+    /**
+     * Whether there is too little listening yet for history to say what someone likes: fewer than
+     * three artists ever played. Until then the choices made in setup lead the top of Home; after
+     * it, history does, and the setup picks settle into the recommendation rail with the rest.
+     */
+    private suspend fun historyIsThin(): Boolean =
+        database.mostPlayedArtists(0L, limit = 3).first().count { it.artist.isYouTubeArtist } < 3
 
     private suspend fun loadOnboardingSeededRecommendations(
         hideExplicit: Boolean,
         hideVideo: Boolean,
     ): List<SimilarRecommendation> {
-        val preferredNames = context.dataStore.getAsync(PreferredArtistsKey, "")
-            .split(",")
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .distinct()
-            .take(4) // keep the Home fetch light; the rest still bias search locale via App.kt
-        if (preferredNames.isEmpty()) return emptyList()
+        // Four keeps the Home fetch light; the rest still bias search locale via App.kt.
+        val preferred = preferredArtists(limit = 4)
+        if (preferred.isEmpty()) return emptyList()
 
-        return preferredNames.mapNotNull { name ->
-            val artistId = seededArtistIdCache.getOrPut(name) {
-                YouTube.search(name, YouTube.SearchFilter.FILTER_ARTIST).getOrNull()
-                    ?.items?.filterIsInstance<ArtistItem>()?.firstOrNull()?.id
-            } ?: return@mapNotNull null
-
+        return preferred.mapNotNull { (artistId, _) ->
             val page = YouTube.artist(artistId).getOrNull() ?: return@mapNotNull null
             val items = buildList {
                 addAll(page.sections.getOrNull(page.sections.size - 2)?.items.orEmpty())
@@ -350,19 +377,23 @@ class HomeViewModel @Inject constructor(
         val languages = preferredLanguages()
         val month = System.currentTimeMillis() - 86400000L * 30
 
-        // Who they listen to: the last month first, all-time when the month is thin.
-        val artists = (database.mostPlayedArtists(month, limit = 12).first() + database.allArtistsByPlayTime().first().take(12))
+        // Who they listen to: the last month first, all-time when the month is thin — and, while
+        // there is little history at all, the artists they picked in setup fill the rest, so a
+        // fresh install's top row is built from their choices rather than a generic feed.
+        val played = (database.mostPlayedArtists(month, limit = 12).first() + database.allArtistsByPlayTime().first().take(12))
             .filter { it.artist.isYouTubeArtist }
-            .distinctBy { it.id }
+            .map { it.id to it.artist.name }
+        val artists = (played + if (played.distinctBy { it.first }.size < 4) preferredArtists(limit = 4) else emptyList())
+            .distinctBy { it.first }
             .take(4)
 
         val mix = coroutineScope {
-            artists.map { artist ->
+            artists.map { (artistId, artistName) ->
                 async {
-                    val page = YouTube.artist(artist.id).getOrNull() ?: return@async emptyList()
+                    val page = YouTube.artist(artistId).getOrNull() ?: return@async emptyList()
                     val radio = page.artist.radioEndpoint ?: return@async emptyList()
                     YouTube.next(radio).getOrNull()?.items.orEmpty()
-                        .map { com.ozyern.exhale.models.Recommendation(it, "Because you like ${artist.artist.name}") }
+                        .map { com.ozyern.exhale.models.Recommendation(it, "Because you like $artistName") }
                 }
             }.awaitAll()
         }
@@ -491,12 +522,20 @@ class HomeViewModel @Inject constructor(
                 )
             }
 
-        // Onboarding-seeded rows stay pinned at the top (not shuffled in) so the user immediately
-        // sees their picks reflected; de-dupe by artist id against history-derived rows.
+        // De-duped by artist id against the history-derived rows.
         val historyBased = (artistRecommendations + songRecommendations).shuffled()
         val seededIds = onboardingRecommendations.mapTo(HashSet()) { it.title.id }
-        similarRecommendations.value =
-            onboardingRecommendations + historyBased.filterNot { it.title.id in seededIds }
+        val rest = historyBased.filterNot { it.title.id in seededIds }
+        if (historyIsThin()) {
+            // Little history yet: the setup picks are the best thing known about this person, so
+            // they move up to sit under Quick picks instead of below the whole feed.
+            preferenceShelves.value = onboardingRecommendations
+            similarRecommendations.value = rest
+        } else {
+            // Settled in: history leads, and the setup picks stay pinned at the head of the rail.
+            preferenceShelves.value = emptyList()
+            similarRecommendations.value = onboardingRecommendations + rest
+        }
     }
 
     private suspend fun songLoad() {

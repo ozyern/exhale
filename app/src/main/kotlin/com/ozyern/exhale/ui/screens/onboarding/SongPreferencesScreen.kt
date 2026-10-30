@@ -41,6 +41,8 @@ import com.ozyern.exhale.ui.screens.settings.SettingsDimensions
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -100,6 +102,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import com.ozyern.exhale.constants.AppBarHeight
 import com.ozyern.exhale.constants.ContentLanguageKey
 import com.ozyern.exhale.constants.PreferredArtistsKey
 import com.ozyern.exhale.constants.PreferredAudioLanguagesKey
@@ -144,7 +147,9 @@ fun SongPreferencesScreen(
         Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current),
+            // Without the app bar's slot: onboarding has no app bar, and that slot was a 64dp band
+            // of nothing above every header.
+            .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.exclude(WindowInsets(top = AppBarHeight))),
         // Centred at a phone's measure on a tablet or an unfolded foldable, so the chips wrap into
         // a block and Continue is a button rather than a 1000dp bar.
         contentAlignment = Alignment.TopCenter,

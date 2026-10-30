@@ -20,7 +20,7 @@ import kotlin.concurrent.thread
  * (Opus in WebM, AAC in MP4) straight off an HTTPS URL, so no Media3 port is needed.
  */
 @Suppress("FunctionName")
-private interface LibMpv : Library {
+internal interface LibMpv : Library {
     fun mpv_create(): Pointer?
     fun mpv_initialize(ctx: Pointer): Int
     fun mpv_terminate_destroy(ctx: Pointer)
@@ -48,7 +48,7 @@ private val streamCacheDir: String by lazy {
         .absolutePath
 }
 
-class Mpv(private val listener: Listener, windowId: Long? = null) : AutoCloseable {
+class Mpv(private val listener: Listener, windowId: Long? = null, extraOptions: Map<String, String> = emptyMap()) : AutoCloseable {
     interface Listener {
         fun onFileLoaded() {}
         fun onEndOfFile() {}
@@ -65,6 +65,16 @@ class Mpv(private val listener: Listener, windowId: Long? = null) : AutoCloseabl
 
     /** A video's separate sound track, waiting for the picture to open. */
     @Volatile private var pendingAudio: String? = null
+
+    /**
+     * loadfiles sent since mpv last began a file, and that file's playlist entry. An error from any
+     * other entry, or while a newer load hasn't started yet, is stale: reporting it would mark the new
+     * song failed and auto-skip past it, which is how a burst of quick song changes cascaded into
+     * "nothing to play" errors. (Counting loads against starts instead never caught up when mpv
+     * replaced a file before beginning it, and from then on every real error went unreported.)
+     */
+    @Volatile private var loadsPending = 0
+    @Volatile private var startedEntry = -1L
     private val eventThread: Thread
 
     init {
@@ -85,6 +95,10 @@ class Mpv(private val listener: Listener, windowId: Long? = null) : AutoCloseabl
                 put("video", "no")
             }
             putAll(audioOnlyOptions)
+            // Development aid: EXHALE_MPV_LOG=<file> keeps mpv's own log, for when playback fails.
+            System.getenv("EXHALE_MPV_LOG")?.let { put("log-file", it) }
+            // Anything else a caller needs set before mpv starts (tests encode through it, for one).
+            putAll(extraOptions)
         }.forEach { (name, value) -> lib.mpv_set_option_string(ctx, name, value) }
 
         check(lib.mpv_initialize(ctx) >= 0) { "mpv_initialize failed" }
@@ -152,7 +166,8 @@ class Mpv(private val listener: Listener, windowId: Long? = null) : AutoCloseabl
         // http-header-fields is a comma-separated list, so only comma-free values go here.
         lib.mpv_set_property_string(ctx, "http-header-fields", headers.origin?.let { "Origin: $it" }.orEmpty())
         lib.mpv_set_property_string(ctx, "pause", "no")
-        command("loadfile", url, "replace")
+        loadsPending++
+        if (!command("loadfile", url, "replace")) loadsPending--
     }
 
     /**
@@ -167,7 +182,8 @@ class Mpv(private val listener: Listener, windowId: Long? = null) : AutoCloseabl
         lib.mpv_set_property_string(ctx, "http-header-fields", headers.origin?.let { "Origin: $it" }.orEmpty())
         lib.mpv_set_property_string(ctx, "pause", "no")
         pendingAudio = audioUrl
-        command("loadfile", videoUrl, "replace")
+        loadsPending++
+        if (!command("loadfile", videoUrl, "replace")) loadsPending--
     }
 
     /** The separate sound track for the picture that just loaded, if there is one. */
@@ -220,9 +236,11 @@ class Mpv(private val listener: Listener, windowId: Long? = null) : AutoCloseabl
         lib.mpv_command(ctx, arrayOf("ao-reload"))
     }
 
-    private fun command(vararg args: String) {
+    /** Runs an mpv command; a refusal is reported to the listener and returned as false. */
+    private fun command(vararg args: String): Boolean {
         val result = lib.mpv_command(ctx, arrayOf(*args))
         if (result < 0) listener.onError("mpv ${args.first()}: ${lib.mpv_error_string(result)}")
+        return result >= 0
     }
 
     /**
@@ -237,6 +255,11 @@ class Mpv(private val listener: Listener, windowId: Long? = null) : AutoCloseabl
             val event = lib.mpv_wait_event(ctx, if (loaded && !paused) PositionPollSeconds else -1.0)
             when (event.getInt(0)) {
                 EVENT_SHUTDOWN -> return
+                EVENT_START_FILE -> {
+                    // mpv_event_start_file: the playlist entry's id.
+                    startedEntry = event.getPointer(16)?.getLong(0) ?: -1L
+                    loadsPending = 0
+                }
                 EVENT_FILE_LOADED -> {
                     loaded = true
                     attachPendingAudio()
@@ -248,7 +271,7 @@ class Mpv(private val listener: Listener, windowId: Long? = null) : AutoCloseabl
                     val data = event.getPointer(16)
                     when (data?.getInt(0)) {
                         END_REASON_EOF -> listener.onEndOfFile()
-                        END_REASON_ERROR -> listener.onError("Playback failed: ${lib.mpv_error_string(data!!.getInt(4))}")
+                        END_REASON_ERROR -> if (loadsPending == 0 && data!!.getLong(8) == startedEntry) listener.onError("Playback failed: ${lib.mpv_error_string(data!!.getInt(4))}")
                     }
                 }
                 EVENT_PROPERTY_CHANGE -> {
@@ -299,7 +322,7 @@ class Mpv(private val listener: Listener, windowId: Long? = null) : AutoCloseabl
         lib.mpv_terminate_destroy(ctx)
     }
 
-    private companion object {
+    internal companion object {
         /** How often a playing song's position is read: often enough for progress, fades and the lyrics clock to steer by. */
         const val PositionPollSeconds = 0.2
 
@@ -307,6 +330,7 @@ class Mpv(private val listener: Listener, windowId: Long? = null) : AutoCloseabl
         const val FORMAT_DOUBLE = 5
 
         const val EVENT_SHUTDOWN = 1
+        const val EVENT_START_FILE = 6
         const val EVENT_END_FILE = 7
         const val EVENT_FILE_LOADED = 8
         const val EVENT_PROPERTY_CHANGE = 22

@@ -10,6 +10,7 @@ package com.ozyern.exhale.ui.screens.playlist
 import com.ozyern.exhale.ui.component.GradientArtwork
 import com.ozyern.exhale.ui.component.CollectionPlay
 import com.ozyern.exhale.ui.component.CollectionAction
+import com.ozyern.exhale.ui.component.CollectionShuffle
 import com.ozyern.exhale.ui.component.CollectionHero
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
@@ -404,12 +405,10 @@ fun AutoPlaylistScreen(
                                             )
                                         },
                                     )
-                                    CollectionAction(
-                                        icon = R.drawable.shuffle,
-                                        contentDescription = stringResource(R.string.shuffle),
+                                    CollectionShuffle(
                                         onClick = {
                                             playerConnection.playQueue(
-                                                ListQueue(title = playlist, items = songs!!.shuffled().map { it.toMediaItem() }),
+                                                ListQueue(title = playlist, items = songs!!.shuffled().map { it.toMediaItem() }, shuffled = true),
                                             )
                                         },
                                     )
@@ -639,14 +638,8 @@ fun AutoPlaylistScreen(
                         )
                     }
                 } else if (!isSearching) {
-                    androidx.compose.material3.IconButton(
-                        onClick = { isSearching = true }
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.search),
-                            contentDescription = null
-                        )
-                    }
+                    // A glass disc like the back button opposite it, as iOS draws every round bar control.
+                    com.ozyern.exhale.ui.component.LiquidGlassIconButton(onClick = { isSearching = true }, icon = R.drawable.search)
                 }
             }
         )

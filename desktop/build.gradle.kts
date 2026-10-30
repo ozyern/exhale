@@ -102,6 +102,9 @@ tasks.test {
     environment("EXHALE_SMOKE", (findProperty("exhaleSmoke") as String?) ?: System.getenv("EXHALE_SMOKE") ?: "0")
     // Which video a probe should use, when the default isn't the one being looked into.
     (findProperty("exhaleVideoId") as String?)?.let { environment("EXHALE_VIDEO_ID", it) }
+    // A copy of the settings folder for a test to run against, so it never writes to the real one.
+    (findProperty("exhaleAppData") as String?)?.let { environment("APPDATA", it) }
+    (findProperty("exhaleMpvLog") as String?)?.let { environment("EXHALE_MPV_LOG", it) }
     testLogging { showStandardStreams = true }
 }
 
@@ -157,7 +160,7 @@ compose.desktop {
 
             // resources/windows/libmpv-2.dll ships next to the app; see scripts/fetch-libmpv.ps1.
             appResourcesRootDir.set(layout.projectDirectory.dir("resources"))
-            modules("java.naming", "java.sql", "jdk.crypto.ec", "jdk.unsupported")
+            modules("java.management", "java.naming", "java.sql", "jdk.crypto.ec", "jdk.management", "jdk.unsupported")
 
             windows {
                 iconFile.set(layout.projectDirectory.file("icons/exhale.ico"))

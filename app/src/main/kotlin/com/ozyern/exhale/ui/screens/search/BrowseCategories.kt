@@ -214,24 +214,8 @@ fun BrowseCategoriesGrid(
                     modifier = Modifier.weight(1f),
                 )
                 if (showProfile) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(percent = 50))
-                            .background(
-                                if (pureBlack) Color.White.copy(alpha = 0.10f)
-                                else MaterialTheme.colorScheme.surfaceVariant
-                            )
-                            .clickable(onClick = onProfileClick),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.person),
-                            contentDescription = "Profile",
-                            tint = if (pureBlack) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
+                    // The same account disc as Home's title.
+                    com.ozyern.exhale.ui.component.AppleAvatar(onClick = onProfileClick)
                 }
             }
         }

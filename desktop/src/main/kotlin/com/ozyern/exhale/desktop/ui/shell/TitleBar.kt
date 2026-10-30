@@ -10,6 +10,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -24,7 +25,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.runtime.Composable
@@ -66,6 +71,12 @@ val LocalTitleBarHeight = compositionLocalOf { 0.dp }
 /** What the title bar's back button does right now: close the player, or go back a page. Null hides it. */
 object ChromeNav {
     var back by mutableStateOf<(() -> Unit)?>(null)
+
+    /** Shows and hides the sidebar, from the button at its top right. Null where there's no sidebar. */
+    var sidebarToggle by mutableStateOf<(() -> Unit)?>(null)
+
+    /** Where the sidebar's pane ends, so the back button sits beside it rather than on it. */
+    var sidebarEnd by mutableStateOf(0.dp)
 }
 
 /**
@@ -108,30 +119,53 @@ fun FrameWindowScope.ExhaleTitleBar(nativeBar: WindowDecorations.CustomTitleBar?
         Modifier
             .fillMaxWidth()
             .height(TitleBarHeight)
-            .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.22f), Color.Transparent))),
+            // The shade that keeps the caption glyphs legible stops at the sidebar, whose glass needs none.
+            .drawBehind {
+                val from = ChromeNav.sidebarEnd.toPx()
+                drawRect(
+                    Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.22f), Color.Transparent)),
+                    topLeft = Offset(from, 0f),
+                    size = Size(size.width - from, size.height),
+                )
+            },
     ) {
         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-            if (back != null) {
-                CaptionButton(nativeBar, onClick = back, width = 52.dp, glyphColor = glyph) { color -> drawBack(color) }
-            }
-            val region = Modifier.weight(1f).fillMaxHeight()
-            if (nativeBar != null) {
-                // Every event over the empty stretch is caption: Windows drags, snaps and maximises.
-                Box(
-                    region.pointerInput(nativeBar) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                awaitPointerEvent(PointerEventPass.Main)
-                                nativeBar.forceHitTest(false)
+            @Composable
+            fun DragRegion(modifier: Modifier) {
+                if (nativeBar != null) {
+                    // Every event over the empty stretch is caption: Windows drags, snaps and maximises.
+                    Box(
+                        modifier.pointerInput(nativeBar) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    awaitPointerEvent(PointerEventPass.Main)
+                                    nativeBar.forceHitTest(false)
+                                }
                             }
-                        }
-                    },
-                )
-            } else {
-                WindowDraggableArea(region) {
-                    Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onDoubleTap = { toggleMaximize() }) })
+                        },
+                    )
+                } else {
+                    WindowDraggableArea(modifier) {
+                        Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onDoubleTap = { toggleMaximize() }) })
+                    }
                 }
             }
+
+            // The Music app's sidebar button: at the sidebar's top right while it's out, at the window's
+            // left edge once it's hidden.
+            val toggle = ChromeNav.sidebarToggle
+            if (toggle != null) {
+                val end = ChromeNav.sidebarEnd
+                val lead = if (end > 0.dp) (end - 46.dp).coerceAtLeast(10.dp) else 10.dp
+                DragRegion(Modifier.width(lead).fillMaxHeight())
+                CaptionButton(nativeBar, onClick = toggle, width = 38.dp, glyphColor = glyph, glyphSize = 18.dp, rounded = true) { color -> drawSidebar(color) }
+                Box(Modifier.width((end - lead - 38.dp).coerceAtLeast(0.dp) + 6.dp))
+            }
+            if (back != null) {
+                // The Music app's back: a round plate of glass, not a caption block.
+                CaptionButton(nativeBar, onClick = back, width = 40.dp, glyphColor = glyph, glyphSize = 12.dp, plate = true) { color -> drawBack(color) }
+            }
+            DragRegion(Modifier.weight(1f).fillMaxHeight())
             CaptionButton(nativeBar, onClick = { windowState.isMinimized = true }, glyphColor = glyph) { color -> drawMinimize(color) }
             CaptionButton(nativeBar, onClick = ::toggleMaximize, glyphColor = glyph) { color -> if (maximized) drawRestore(color) else drawMaximize(color) }
             CaptionButton(nativeBar, onClick = onClose, danger = true, glyphColor = glyph) { color -> drawClose(color) }
@@ -146,6 +180,9 @@ private fun CaptionButton(
     width: Dp = 46.dp,
     danger: Boolean = false,
     glyphColor: Color,
+    glyphSize: Dp = 10.dp,
+    rounded: Boolean = false,
+    plate: Boolean = false,
     glyph: DrawScope.(Color) -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -182,13 +219,38 @@ private fun CaptionButton(
                     Modifier
                 },
             )
+            // A button inside the sidebar is a rounded plate, like the Music app's, not a caption block.
+            .then(if (rounded) Modifier.padding(vertical = 5.dp).clip(RoundedCornerShape(8.dp)) else Modifier)
+            .then(
+                if (plate) {
+                    Modifier
+                        .padding(4.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(Color(0xFF2A2A2D).copy(alpha = 0.72f))
+                        .border(0.75.dp, Color.White.copy(alpha = 0.14f), androidx.compose.foundation.shape.CircleShape)
+                } else {
+                    Modifier
+                },
+            )
             .background(background)
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.size(10.dp)) { glyph(tint) }
+        Canvas(Modifier.size(glyphSize)) { glyph(tint) }
     }
+}
+
+/** SF Symbols' sidebar.left: a rounded window with its left third ruled off. */
+private fun DrawScope.drawSidebar(color: Color) {
+    val s = 1.4.dp.toPx()
+    val h = size.height * 0.78f
+    val top = (size.height - h) / 2f
+    drawRoundRect(color, topLeft = Offset(s / 2, top), size = Size(size.width - s, h), cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()), style = Stroke(s))
+    val rule = size.width * 0.36f
+    drawLine(color, Offset(rule, top), Offset(rule, top + h), strokeWidth = s)
+    drawLine(color, Offset(size.width * 0.13f, top + h * 0.25f), Offset(rule - size.width * 0.1f, top + h * 0.25f), strokeWidth = s, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+    drawLine(color, Offset(size.width * 0.13f, top + h * 0.45f), Offset(rule - size.width * 0.1f, top + h * 0.45f), strokeWidth = s, cap = androidx.compose.ui.graphics.StrokeCap.Round)
 }
 
 private fun DrawScope.stroke() = 1.dp.toPx()

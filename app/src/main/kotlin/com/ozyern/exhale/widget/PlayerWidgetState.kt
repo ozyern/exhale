@@ -51,13 +51,13 @@ data class PlayerWidgetState(
     val hasMedia: Boolean
         get() = title.isNotBlank() || artist.isNotBlank()
 
-    // Progreso de la canción (0.0 a 1.0)
+    // How far through the song (0.0 to 1.0)
     val progress: Float
         get() = if (durationMs > 0) {
             (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
         } else 0f
 
-    // Tiempo formateado para mostrar
+    // Times, formatted for display
     val positionText: String
         get() = formatTime(positionMs)
 
@@ -89,8 +89,8 @@ data class PlayerWidgetState(
                 }
             }
 
-            // El blur y el color dominante se derivan UNA sola vez por bitmap nuevo,
-            // no en cada recomposición del widget (eso pasaría si se calculara en Glance).
+            // The blur and the dominant colour are worked out ONCE per new bitmap,
+            // not on every recomposition of the widget (as they would be inside Glance).
             val blurBitmap = artworkBitmap?.let { computeBackgroundBlur(it) }
             val dominantColor = artworkBitmap?.let { computeDominantColor(it) }
 
@@ -110,11 +110,11 @@ data class PlayerWidgetState(
         }
 
         /**
-         * Genera un fondo difuminado a partir del artwork usando RenderEffect (API 31+).
-         * Se reduce el bitmap a un tamaño pequeño ANTES de difuminar: el costo de un blur
-         * crece con la resolución, y para un fondo de widget no se necesita nitidez.
-         * Si algo falla (API vieja, sin soporte hardware, etc.) retorna null y el widget
-         * cae automáticamente al color dominante.
+         * A blurred background made from the artwork with RenderEffect (API 31+).
+         * The bitmap is shrunk BEFORE blurring: a blur costs more
+         * the larger the image, and a widget background needs no sharpness.
+         * If anything fails (an old API, no hardware support, ...) it returns null and the
+         * widget falls back to the dominant colour.
          */
         private suspend fun computeBackgroundBlur(source: Bitmap): Bitmap? {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
@@ -132,8 +132,8 @@ data class PlayerWidgetState(
 
         @RequiresApi(Build.VERSION_CODES.S)
         private fun blurBitmapApi31(source: Bitmap, radius: Float, downscaleTo: Int): Bitmap? {
-            // 1) Downscale: un bitmap chico difumina mucho más rápido y el resultado
-            //    se va a estirar igual para llenar el fondo del widget.
+            // 1) Downscale: a small bitmap blurs far faster, and the result
+            //    is stretched to fill the widget's background anyway.
             val ratio = source.width.toFloat() / source.height.toFloat()
             val width =
                 if (ratio >= 1f) downscaleTo else (downscaleTo * ratio).toInt().coerceAtLeast(1)
@@ -178,7 +178,7 @@ data class PlayerWidgetState(
                 image.close()
                 hardwareRenderer.destroy()
 
-                // RemoteViews/Glance no acepta bitmaps HARDWARE: hay que copiarlos a software.
+                // RemoteViews/Glance take no HARDWARE bitmaps: they have to be copied to software.
                 val softwareCopy = hardwareBitmap?.copy(Bitmap.Config.ARGB_8888, false)
                 hardwareBitmap?.recycle()
                 softwareCopy
@@ -188,7 +188,7 @@ data class PlayerWidgetState(
             }
         }
 
-        /** Extrae el color dominante/vibrante del artwork como fallback liviano del blur. */
+        /** The artwork's dominant or vibrant colour, the light fallback for the blur. */
         private suspend fun computeDominantColor(bitmap: Bitmap): Int? =
             withContext(Dispatchers.Default) {
                 try {

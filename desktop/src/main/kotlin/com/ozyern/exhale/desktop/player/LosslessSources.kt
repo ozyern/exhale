@@ -131,7 +131,9 @@ data class LosslessTrack(
 }
 
 private val LosslessFormats = setOf("flac", "alac", "wav", "wave", "aiff", "aif", "ape", "wv", "dsf", "dff", "shn")
-private val AudioExtensions = LosslessFormats + setOf("m4a", "mp3", "ogg", "opus", "aac")
+/** Dolby Digital, Dolby Digital Plus (the format Atmos music is streamed and sold in) and TrueHD. */
+private val DolbyFormats = setOf("ac3", "ec3", "eac3", "thd", "mlp", "mka")
+private val AudioExtensions = LosslessFormats + DolbyFormats + setOf("m4a", "mp3", "ogg", "opus", "aac")
 
 /**
  * Lossless and hi-res playback, from sources the listener configures.

@@ -27,7 +27,7 @@ val FloatingToolbarBottomPadding = 12.dp
 val NavigationBarHeight = FloatingToolbarHeight
 val SlimNavBarHeight = SlimFloatingToolbarHeight
 val MiniPlayerHeight = 64.dp
-val MiniPlayerBottomSpacing = 2.dp // Space between MiniPlayer and NavigationBar; with the slim pill's inset it reads as ~9dp, the iOS music app's gap
+val MiniPlayerBottomSpacing = 0.dp // with the slot's 6dp inset, Convx's ~10dp between the mini player and the bar
 
 /**
  * Geometry of the collapsed mini-player *pill*. These three values are the morph target for the
@@ -73,7 +73,9 @@ val MiniPlayerPillCornerRadius = 32.dp
  * resulting gap above it, and the Dynamic-Island morph is handed the same three numbers so the
  * full player still shrinks onto the pill that is actually there.
  */
-val CompactMiniPlayerHeight = 50.dp
+// Convx 2.0.4's mini player, measured off its debug build on the same emulator: 52dp (a 38dp
+// cover and 7dp above and below it), drawn inside the 64dp slot so the sheet's bound holds.
+val CompactMiniPlayerHeight = 52.dp
 val CompactMiniPlayerPillCornerRadius = CompactMiniPlayerHeight / 2
 val CompactMiniPlayerTopInset = (MiniPlayerHeight - CompactMiniPlayerHeight) / 2
 
@@ -203,3 +205,6 @@ val BottomSheetCloseAnimationSpec = spring<Dp>(
 	stiffness = 195f,
 	visibilityThreshold = 0.5.dp,
 )
+
+/** Convx 2.0.4 sets its dock and mini player 20dp in from the edges; this is what it adds to ours. */
+val ConvxChromeExtraInset = 4.dp

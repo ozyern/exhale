@@ -9,6 +9,10 @@
 package com.ozyern.exhale.ui.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -81,6 +85,8 @@ import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import kotlinx.coroutines.CoroutineScope
+import com.ozyern.exhale.ui.component.collectionSeed
+import com.ozyern.exhale.ui.utils.collectionMorphSource
 import com.ozyern.exhale.R
 import com.ozyern.exhale.constants.GridThumbnailHeight
 import com.ozyern.exhale.constants.ListItemHeight
@@ -175,21 +181,47 @@ fun QuickPicksSection(
     // The list shelf: four songs to a page, the next page peeking in from the right, so a
     // long list is a swipe rather than a scroll past it.
     Column(modifier.fillMaxWidth()) {
-        Text(
-            text = stringResource(R.string.quick_picks),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 22.dp, bottom = 10.dp),
-        )
+        // "Quick picks" bold on the left, a quiet "Play all" on the right, as the reference has it.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 20.dp, end = 8.dp, top = 26.dp, bottom = 14.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.quick_picks),
+                fontSize = 24.sp,
+                lineHeight = 28.sp,
+                letterSpacing = (-0.3).sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "Play all",
+                fontSize = 17.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable {
+                        playerConnection.playQueue(
+                            ListQueue(
+                                title = "Quick picks",
+                                items = distinctQuickPicks.map { it.toMediaItem() },
+                            )
+                        )
+                    }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+        }
         BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val columnWidth = minOf(maxWidth * 0.88f, 400.dp)
+            val columnWidth = minOf(maxWidth - 40.dp - 14.dp, 400.dp)
             val listState = rememberLazyListState()
             LazyRow(
                 state = listState,
                 flingBehavior = rememberSnapFlingBehavior(lazyListState = listState, snapPosition = SnapPosition.Start),
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 items(distinctQuickPicks.chunked(4), key = { it.first().id }) { page ->
                     Column(Modifier.width(columnWidth)) {
@@ -233,20 +265,36 @@ private fun QuickPickRow(
     onClick: () -> Unit,
     onMore: () -> Unit,
 ) {
+    // The reference's row: 56dp artwork, 17 white over 15 grey, no menu button (long-press has
+    // it), and a press that dips the whole row a little rather than washing it.
+    val source = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        if (pressed) 0.97f else 1f,
+        spring(dampingRatio = 0.55f, stiffness = 600f),
+        label = "quickPickPress",
+    )
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .combinedClickable(onClick = onClick, onLongClick = onMore)
-            .padding(vertical = 4.dp),
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .combinedClickable(
+                interactionSource = source,
+                indication = null,
+                onClick = onClick,
+                onLongClick = onMore,
+            )
+            .padding(vertical = 5.5.dp),
     ) {
-        val shape = RoundedCornerShape(7.dp)
+        val shape = RoundedCornerShape(8.dp)
         androidx.compose.foundation.layout.Box(
             Modifier
-                .size(50.dp)
+                .size(56.dp)
                 .clip(shape)
-                .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f), shape)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
@@ -270,35 +318,23 @@ private fun QuickPickRow(
                 }
             }
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(13.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 text = song.song.title,
-                style = MaterialTheme.typography.titleMedium,
+                fontSize = 17.sp,
+                lineHeight = 21.sp,
                 color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = song.artists.joinToString { it.name },
-                style = MaterialTheme.typography.bodyMedium,
+                fontSize = 15.sp,
+                lineHeight = 20.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-            )
-        }
-        androidx.compose.foundation.layout.Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .clickable(onClick = onMore),
-        ) {
-            Icon(
-                painterResource(R.drawable.more_vert),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp),
             )
         }
     }
@@ -742,6 +778,9 @@ fun SimilarRecommendationsSection(
     metadataMap: Map<String, ItemMetadata> = emptyMap(),
     modifier: Modifier = Modifier
 ) {
+    // The same card every other shelf on Home uses — one size, squares with artists round, the
+    // caption underneath — instead of the generic grid item, whose artists came out as outsized
+    // circles beside playlists of another size, so the row never lined up.
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(HomeRowItemSpacing),
         contentPadding = homeRowContentPadding(),
@@ -752,16 +791,11 @@ fun SimilarRecommendationsSection(
             key = { it.id },
             contentType = { "yt_grid_item" }
         ) { item ->
-            YouTubeGridItemWrapper(
+            HomeShelfCard(
                 item = item,
-                mediaMetadata = mediaMetadata,
+                active = item.id in listOf(mediaMetadata?.album?.id, mediaMetadata?.id),
                 isPlaying = isPlaying,
-                navController = navController,
-                playerConnection = playerConnection,
-                menuState = menuState,
-                haptic = haptic,
-                scope = scope,
-                metadata = metadataMap[item.id]
+                modifier = Modifier.ytItemClicks(item, navController, playerConnection, menuState, haptic, scope),
             )
         }
     }
@@ -885,6 +919,8 @@ private fun YouTubeGridItemWrapper(
             subtitle = heroSubtitle(item),
             thumbnail = item.thumbnail,
             round = item is ArtistItem,
+            // The seed carries the exact picture this card shows, so the page's hero is in memory already.
+            morphSeed = item.collectionSeed()?.copy(thumbnail = item.thumbnail?.resize(900, 900)),
             modifier = modifier.width(heroWidth).then(clickable),
         )
         return
@@ -1038,7 +1074,12 @@ fun AccountPlaylistsTitle(
 }
 
 /**
- * Similar recommendations navigation title
+ * The header of a "Similar to" shelf: who it is similar to, as a person rather than a word — their
+ * photo (round for an artist, a rounded square for a song or album) beside a quiet "Similar to"
+ * over their name, and a chevron. The whole header opens them.
+ *
+ * It was the generic shelf title with the name set at Title 2 and no picture (the thumbnail it was
+ * handed was never drawn), which made every one of these read as a heading shouting a name.
  */
 @Composable
 fun SimilarRecommendationsTitle(
@@ -1046,32 +1087,63 @@ fun SimilarRecommendationsTitle(
     navController: NavController,
     modifier: Modifier = Modifier
 ) {
-    NavigationTitle(
-        label = stringResource(R.string.similar_to),
-        title = recommendation.title.title,
-        thumbnail = recommendation.title.thumbnailUrl?.let { thumbnailUrl ->
-            {
-                val shape = if (recommendation.title is Artist) CircleShape 
-                    else RoundedCornerShape(ThumbnailCornerRadius)
-                AsyncImage(
-                    model = thumbnailUrl,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(ListThumbnailSize)
-                        .clip(shape)
-                )
-            }
-        },
-        onClick = {
-            when (recommendation.title) {
-                is Song -> navController.navigate("album/${recommendation.title.album!!.id}")
-                is Album -> navController.navigate("album/${recommendation.title.id}")
-                is Artist -> navController.navigate("artist/${recommendation.title.id}")
-                is Playlist -> {}
-            }
-        },
+    val subject = recommendation.title
+    val onOpen: (() -> Unit)? = when (subject) {
+        is Song -> subject.album?.id?.let { id -> { navController.navigate("album/$id") } }
+        is Album -> { { navController.navigate("album/${subject.id}") } }
+        is Artist -> { { navController.navigate("artist/${subject.id}") } }
+        else -> null
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
-    )
+            .fillMaxWidth()
+            .padding(top = 22.dp, bottom = 12.dp)
+            .then(if (onOpen != null) Modifier.clickable(onClick = onOpen) else Modifier)
+            .padding(horizontal = 20.dp, vertical = 4.dp),
+    ) {
+        val shape = if (subject is Artist) CircleShape else RoundedCornerShape(10.dp)
+        androidx.compose.foundation.layout.Box(
+            Modifier
+                .size(48.dp)
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        ) {
+            AsyncImage(
+                model = subject.thumbnailUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize(),
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.similar_to),
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+            Text(
+                text = subject.title,
+                fontSize = 22.sp,
+                lineHeight = 26.sp,
+                letterSpacing = (-0.3).sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (onOpen != null) {
+            Icon(
+                painter = painterResource(R.drawable.navigate_next),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.size(24.dp),
+            )
+        }
+    }
 }
 
 /**
@@ -1083,51 +1155,20 @@ fun HomePageSectionTitle(
     navController: NavController,
     modifier: Modifier = Modifier
 ) {
-    // The shelf heading: the title large, what it is in a quieter line under it, and the
-    // whole heading a way into the full shelf when there is one.
+    // The same header every other shelf wears (Title 2, the chevron right after the words), so a
+    // shelf whose title comes from YouTube no longer stands a size up from its neighbours.
     val onOpen: (() -> Unit)? = section.endpoint?.browseId?.let { browseId ->
         {
             if (browseId == "FEmusic_moods_and_genres") navController.navigate(Screens.MoodAndGenres.route)
             else navController.navigate("browse/$browseId")
         }
     }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
-            .fillMaxWidth()
-            .then(if (onOpen != null) Modifier.clickable(onClick = onOpen) else Modifier)
-            .padding(start = 16.dp, end = 12.dp, top = 22.dp, bottom = 10.dp),
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = section.title,
-                style = MaterialTheme.typography.headlineMedium.copy(letterSpacing = (-0.4).sp),
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            section.label?.takeIf { it.isNotBlank() }?.let {
-                Text(
-                    // The shelf's description is set in capitals, a step down in grey.
-                    text = it.uppercase(),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        if (onOpen != null) {
-            Icon(
-                painter = painterResource(R.drawable.navigate_next),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(22.dp),
-            )
-        }
-    }
+    NavigationTitle(
+        title = section.title,
+        label = section.label?.takeIf { it.isNotBlank() },
+        onClick = onOpen,
+        modifier = modifier,
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1184,12 +1225,18 @@ fun LazyListScope.SimilarRecommendationsContainer(
     playerConnection: PlayerConnection,
     menuState: MenuState,
     haptic: HapticFeedback,
-    scope: CoroutineScope
+    scope: CoroutineScope,
+    /** The setup-picked shelves for the top of the page, instead of the history rail. */
+    fromSetupPicks: Boolean = false,
 ) {
-     item(key = "similar_recommendations_container", contentType = "similar_recommendations") {
-        val similarRecommendations by viewModel.similarRecommendations.collectAsState()
+     item(
+         key = if (fromSetupPicks) "preference_shelves_container" else "similar_recommendations_container",
+         contentType = "similar_recommendations",
+     ) {
+        val source = if (fromSetupPicks) viewModel.preferenceShelves else viewModel.similarRecommendations
+        val similarRecommendations by source.collectAsState()
         val allItemsMetadata by viewModel.allItemsMetadata.collectAsState()
-        
+
         Column {
             similarRecommendations?.forEach { recommendation ->
                 SimilarRecommendationsTitle(
@@ -1286,11 +1333,14 @@ private fun HomeHeroCard(
     thumbnail: String?,
     round: Boolean,
     modifier: Modifier = Modifier,
+    /** Set for a release, playlist or artist: its page grows out of this card. */
+    morphSeed: com.ozyern.exhale.ui.utils.CollectionSeed? = null,
 ) {
     val shape = RoundedCornerShape(24.dp)
     androidx.compose.foundation.layout.Box(
         modifier = modifier
             .aspectRatio(0.92f)
+            .then(if (morphSeed != null) Modifier.collectionMorphSource(morphSeed) else Modifier)
             .clip(shape)
             .border(1.dp, androidx.compose.ui.graphics.Color.White.copy(alpha = 0.15f), shape)
             .background(MaterialTheme.colorScheme.surfaceVariant),
@@ -1347,17 +1397,22 @@ private fun HomeShelfCard(
 ) {
     val round = item is ArtistItem
     val shape = if (round) CircleShape else RoundedCornerShape(18.dp)
+    val art = item.thumbnail?.resize(540, 540)
+    // The seed carries the exact picture this card shows, so the page's hero is in memory already.
+    val morphSeed = item.collectionSeed()?.copy(thumbnail = art)
     Column(modifier.width(176.dp), horizontalAlignment = if (round) Alignment.CenterHorizontally else Alignment.Start) {
         androidx.compose.foundation.layout.Box(
             Modifier
                 .size(176.dp)
+                // A release, playlist or artist opened from here grows out of this artwork.
+                .then(if (morphSeed != null) Modifier.collectionMorphSource(morphSeed) else Modifier)
                 .clip(shape)
                 .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f), shape)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
             AsyncImage(
-                model = item.thumbnail?.resize(540, 540),
+                model = art,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.matchParentSize(),

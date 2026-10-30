@@ -16,6 +16,18 @@ import com.ozyern.exhale.models.MediaMetadata
 interface Queue {
     val preloadItem: MediaMetadata?
 
+    /**
+     * The album or playlist this queue plays, when it plays one: what per-collection settings
+     * (its transition style) are keyed by. Null for radios, mixes and one-off lists.
+     */
+    val sourceId: String? get() = null
+
+    /**
+     * Started from a Shuffle button: the list is already in shuffled order, with the player's own
+     * shuffle mode off. Smart Shuffle treats it the same as shuffle mode.
+     */
+    val shuffled: Boolean get() = false
+
     suspend fun getInitialStatus(): Status
 
     fun hasNextPage(): Boolean

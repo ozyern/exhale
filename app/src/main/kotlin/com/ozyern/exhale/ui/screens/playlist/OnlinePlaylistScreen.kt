@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import com.ozyern.exhale.ui.component.PlaylistArtwork
 import com.ozyern.exhale.ui.component.CollectionPlay
 import com.ozyern.exhale.ui.component.CollectionAction
+import com.ozyern.exhale.ui.component.CollectionShuffle
 import com.ozyern.exhale.ui.component.CollectionHero
 import com.ozyern.exhale.ui.component.rememberScrollEdge
 import com.ozyern.exhale.ui.component.scrollEdgeScrim
@@ -434,13 +435,6 @@ fun OnlinePlaylistScreen(
                                             },
                                         )
                                     }
-                                    playlist.radioEndpoint?.let { radioEndpoint ->
-                                        CollectionAction(
-                                            icon = R.drawable.radio,
-                                            contentDescription = stringResource(R.string.radio),
-                                            onClick = { playerConnection.playQueue(YouTubeQueue(radioEndpoint)) },
-                                        )
-                                    }
                                     (playlist.playEndpoint ?: playlist.shuffleEndpoint)?.let { playEndpoint ->
                                         CollectionPlay(
                                             contentDescription = stringResource(R.string.play),
@@ -448,10 +442,8 @@ fun OnlinePlaylistScreen(
                                         )
                                     }
                                     playlist.shuffleEndpoint?.let { shuffleEndpoint ->
-                                        CollectionAction(
-                                            icon = R.drawable.shuffle,
-                                            contentDescription = stringResource(R.string.shuffle),
-                                            onClick = { playerConnection.playQueue(YouTubeQueue(shuffleEndpoint)) },
+                                        CollectionShuffle(
+                                            onClick = { playerConnection.playQueue(YouTubeQueue(shuffleEndpoint, shuffled = true)) },
                                         )
                                     }
                                     CollectionAction(
@@ -794,12 +786,8 @@ fun OnlinePlaylistScreen(
                         )
                     }
                 } else if (!isSearching) {
-                    IconButton(onClick = { isSearching = true }, onLongClick = {}) {
-                        Icon(
-                            painter = painterResource(R.drawable.search),
-                            contentDescription = null
-                        )
-                    }
+                    // A glass disc like the back button opposite it, as iOS draws every round bar control.
+                    com.ozyern.exhale.ui.component.LiquidGlassIconButton(onClick = { isSearching = true }, icon = R.drawable.search)
                 }
             }
         )

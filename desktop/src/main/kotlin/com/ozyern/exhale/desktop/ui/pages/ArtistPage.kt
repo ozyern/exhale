@@ -86,6 +86,10 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.ozyern.exhale.desktop.data.LocalSettings
+import com.ozyern.exhale.desktop.data.Pin
+import com.ozyern.exhale.desktop.data.DesktopPrefs
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.collectAsState
 import com.ozyern.exhale.desktop.player.DesktopPlayer
 import com.ozyern.exhale.desktop.player.PlayerState
 import com.ozyern.exhale.desktop.ui.BenchList
@@ -149,6 +153,7 @@ fun ArtistScreen(
     }
     val nav = LocalNavigator.current
     val listState = rememberLazyListState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     BenchList(listState, home = false)
     val cascade = rememberCascade("artist:$browseId", ready = result != null)
     val sections = remember(page) { page?.sections.orEmpty().map { it.copy(items = it.items.clean()) }.filter { it.items.isNotEmpty() } }
@@ -186,6 +191,10 @@ fun ArtistScreen(
                         onPlay = playTop,
                         onShuffle = shuffle,
                         onRadio = radio,
+                        // (i) goes to the About card at the foot of the page.
+                        onInfo = page?.description?.takeIf { it.isNotBlank() }?.let {
+                            { scope.launch { listState.animateScrollToItem((listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)) }; Unit }
+                        },
                         onHeight = { heroHeight = it },
                     )
                 }
@@ -227,8 +236,8 @@ fun ArtistScreen(
                 }
             }
             PageScrollbar(listState, insets)
+            // Back is the title bar's round button, as in the Music app: one, in the same place on every page.
             StickyArtistBar(pastHero, title, image, start, canPlay || topSongs.isNotEmpty(), onPlay = playTop)
-            GlassIconButton(NavIcons.Back, "Back", onBack, Modifier.padding(start = start, top = 16.dp))
         }
     }
 }
@@ -292,11 +301,24 @@ private fun ArtistHero(
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
     onRadio: () -> Unit,
+    onInfo: (() -> Unit)?,
     onHeight: (Float) -> Unit,
 ) {
     val reduced = LocalSettings.current.reducedMotion
     val settle = remember { Animatable(if (reduced) 1f else 0f) }
     LaunchedEffect(Unit) { settle.animateTo(1f, spring(dampingRatio = 1f, stiffness = 55f)) }
+    // The drift's clock, at 30 steps a second — plenty for motion this slow, and an eighth of the
+    // redraws at 240 Hz. Stopped with Reduce motion, on Lite graphics, and once the photo is scrolled away.
+    val drift = remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    val still = reduced || com.ozyern.exhale.desktop.data.Graphics.lite
+    LaunchedEffect(still) {
+        if (still) return@LaunchedEffect
+        val start = System.nanoTime()
+        while (true) {
+            if (listState.firstVisibleItemIndex == 0) drift.floatValue = (System.nanoTime() - start) / 1_000_000_000f
+            kotlinx.coroutines.delay(33)
+        }
+    }
     val progress: () -> Float = { settle.value }
     val ground = MaterialTheme.colorScheme.background
     // Re-read whenever a face is chosen, here or on another artist's page.
@@ -305,7 +327,8 @@ private fun ArtistHero(
     var choosing by remember { mutableStateOf(false) }
 
     BoxWithConstraints(Modifier.fillMaxWidth().onSizeChanged { onHeight(it.height.toFloat()) }) {
-        val height = (maxWidth * 0.46f).coerceIn(400.dp, 620.dp)
+        // Tall, as the Music app's: the photo holds most of the first screen.
+        val height = (maxWidth * 0.58f).coerceIn(460.dp, 800.dp)
         val pageWidth = maxWidth
         Box(Modifier.fillMaxWidth().height(height)) {
             AsyncImage(
@@ -325,37 +348,50 @@ private fun ArtistHero(
                     .graphicsLayer {
                         val scrolled = if (listState.firstVisibleItemIndex == 0) listState.firstVisibleItemScrollOffset.toFloat() else size.height
                         translationY = scrolled * 0.45f
-                        val zoom = 1f + 0.12f * (1f - settle.value)
+                        // macOS 27's living artist art: the photo breathes in and out by a few percent and
+                        // drifts sideways, too slowly to watch but enough that the page isn't a still.
+                        val t = drift.floatValue
+                        val breathe = 0.045f * (0.5f - 0.5f * kotlin.math.cos(t * 2f * kotlin.math.PI.toFloat() / 26f))
+                        val zoom = 1f + 0.12f * (1f - settle.value) + breathe
                         scaleX = zoom
                         scaleY = zoom
+                        translationX = kotlin.math.sin(t * 2f * kotlin.math.PI.toFloat() / 38f) * size.width * 0.012f
                         alpha = FastOutSlowInEasing.transform((settle.value * 2.4f).coerceAtMost(1f))
                     },
             )
             // Enough shade behind the name to read it over any photo.
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 0.85f to Color.Black.copy(alpha = 0.32f), 1f to Color.Transparent)))
 
-            Row(
+            // The Music app's hero: everything centred over the photo's lower third — a small badge, the
+            // name, and three round buttons with Play the only prominent one.
+            Column(
                 Modifier
-                    .align(Alignment.BottomStart)
+                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(start = start, end = 40.dp, bottom = 34.dp)
+                    .padding(start = start, end = 40.dp, bottom = 30.dp)
                     .graphicsLayer {
                         val scrolled = if (listState.firstVisibleItemIndex == 0) listState.firstVisibleItemScrollOffset.toFloat() else height.toPx()
                         alpha = 1f - (scrolled / (height.toPx() * 0.5f)).coerceIn(0f, 1f)
                     },
-                verticalAlignment = Alignment.Bottom,
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Box(Modifier.padding(bottom = 6.dp).stage(0.3f, progress)) {
-                    PlayCircle(
-                        diameter = 54.dp,
-                        enabled = canPlay,
-                        description = "Play $name",
-                        color = apple?.keyColor?.let { Color(it) },
-                        onClick = onPlay,
+                audience?.let {
+                    Text(
+                        it,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .stage(0.15f, progress)
+                            .clip(RoundedCornerShape(7.dp))
+                            .background(Color.Black.copy(alpha = 0.34f))
+                            .border(0.75.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(7.dp))
+                            .padding(horizontal = 9.dp, vertical = 4.dp),
                     )
+                    Spacer(Modifier.height(10.dp))
                 }
-                Spacer(Modifier.width(18.dp))
-                Column(Modifier.weight(1f).stage(0.2f, progress)) {
+                Box(Modifier.stage(0.2f, progress)) {
                     Box(
                         Modifier
                             .clip(RoundedCornerShape(10.dp))
@@ -365,10 +401,10 @@ private fun ArtistHero(
                         if (logo != null) {
                             // Apple's own lettering for the artist, drawn the way they draw it.
                             val aspect = apple.logoAspect.coerceIn(0.4f, 6f)
-                            val logoHeight = (height * 0.24f).coerceIn(70.dp, 150.dp)
+                            val logoHeight = (height * 0.15f).coerceIn(56.dp, 104.dp)
                             AsyncImage(logo, contentDescription = name, modifier = Modifier.height(logoHeight).width((logoHeight * aspect).coerceAtMost(pageWidth * 0.55f)))
                         } else {
-                            ArtistDisplayName(name, font)
+                            ArtistDisplayName(name, font, centred = true)
                         }
                         ArtistFontMenu(
                             expanded = choosing,
@@ -387,14 +423,38 @@ private fun ArtistHero(
                             onDismiss = { choosing = false },
                         )
                     }
-                    audience?.let {
-                        Text(it, fontSize = 14.sp, color = Color.White.copy(alpha = 0.78f), modifier = Modifier.padding(top = 6.dp))
-                    }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp).stage(0.4f, progress)) {
-                    PillButton("Shuffle", TransportIcons.Shuffle, primary = false, enabled = canPlay, onClick = onShuffle)
-                    Spacer(Modifier.width(10.dp))
-                    PillButton("Radio", NavIcons.Radio, primary = false, enabled = canPlay, onClick = onRadio)
+                Spacer(Modifier.height(16.dp))
+                val pins by DesktopPrefs.pins.collectAsState()
+                val pinned = pins.any { it.id == artistId }
+                var more by remember { mutableStateOf(false) }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.stage(0.35f, progress)) {
+                    // Balances the ⋯ on the right, so Play sits dead centre under the name.
+                    Spacer(Modifier.width(HeroButtonSize + 12.dp))
+                    HeroButton(NavIcons.Info, "About $name", onClick = onInfo, enabled = onInfo != null)
+                    Spacer(Modifier.width(26.dp))
+                    HeroPlay(enabled = canPlay, description = "Play $name", glyph = apple?.keyColor?.let { Color(it) }, onClick = onPlay)
+                    Spacer(Modifier.width(26.dp))
+                    // The star keeps the artist in the sidebar's Pins: the Music app's favourite.
+                    HeroButton(if (pinned) NavIcons.Star else NavIcons.StarOutline, if (pinned) "Unfavourite" else "Favourite", onClick = {
+                        DesktopPrefs.togglePin(Pin(Pin.Kind.Artist, artistId, name, null, image))
+                    })
+                    Spacer(Modifier.width(12.dp))
+                    Box {
+                        HeroButton(NavIcons.More, "More", onClick = { more = true })
+                        DropdownMenu(expanded = more, onDismissRequest = { more = false }, shape = RoundedCornerShape(12.dp)) {
+                            DropdownMenuItem(text = { Text("Shuffle", fontSize = 13.sp) }, enabled = canPlay, onClick = { onShuffle(); more = false })
+                            DropdownMenuItem(text = { Text("Start Station", fontSize = 13.sp) }, enabled = canPlay, onClick = { onRadio(); more = false })
+                            DropdownMenuItem(text = { Text("Name Style…", fontSize = 13.sp) }, onClick = { more = false; choosing = true })
+                            DropdownMenuItem(text = { Text("Copy Link", fontSize = 13.sp) }, onClick = {
+                                runCatching {
+                                    java.awt.Toolkit.getDefaultToolkit().systemClipboard
+                                        .setContents(java.awt.datatransfer.StringSelection("https://music.youtube.com/channel/$artistId"), null)
+                                }
+                                more = false
+                            })
+                        }
+                    }
                 }
             }
         }
@@ -403,8 +463,9 @@ private fun ArtistHero(
 
 /** The artist's name, large, in [font]. */
 @Composable
-private fun ArtistDisplayName(name: String, font: ArtistNameFont) {
-    val size = font.size(name)
+private fun ArtistDisplayName(name: String, font: ArtistNameFont, centred: Boolean = false) {
+    // Centred over the photo, as the Music app sets it, the name is a size down: the photo leads.
+    val size = font.size(name) * (if (centred) 0.8f else 1f)
     Text(
         text = if (font.uppercase) name.uppercase() else name,
         fontFamily = font.family,
@@ -415,8 +476,74 @@ private fun ArtistDisplayName(name: String, font: ArtistNameFont) {
         color = Color.White,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
+        textAlign = if (centred) androidx.compose.ui.text.style.TextAlign.Center else null,
+        // A soft shadow keeps white lettering legible over a pale photo.
+        style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.35f), blurRadius = 24f)),
         modifier = Modifier.artistNameTexture(font),
     )
+}
+
+private val HeroButtonSize = 44.dp
+
+/**
+ * A secondary button on the hero: a round plate of frosted white over the photo with a white
+ * symbol, as the Music app's info and star buttons. Brightens under the pointer, dips when pressed.
+ */
+@Composable
+private fun HeroButton(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, enabled: Boolean = true, onClick: (() -> Unit)?) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by pressScale(pressed, false, pressedScale = 0.92f)
+    val fill by animateFloatAsState(if (hovered && enabled) 0.26f else 0.16f, tween(140), label = "hero_button")
+    Box(
+        Modifier
+            .size(HeroButtonSize)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                alpha = if (enabled) 1f else 0.4f
+            }
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = fill))
+            .border(0.75.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled && onClick != null) { onClick?.invoke() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = description, tint = Color.White, modifier = Modifier.size(19.dp))
+    }
+}
+
+/**
+ * The hero's Play: the one prominent control, a large light disc with the play glyph in the
+ * artist's own colour when Apple has one for them.
+ */
+@Composable
+private fun HeroPlay(enabled: Boolean, description: String, glyph: Color?, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by pressScale(pressed, hovered, pressedScale = 0.92f, hoverScale = 1.05f)
+    // A key colour too pale to read on the light disc falls back to the Music app's blue.
+    val tint = glyph?.takeIf { it.luminance() < 0.55f } ?: com.ozyern.exhale.desktop.ui.AppleColors.Accent
+    Box(
+        Modifier
+            .size(64.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                alpha = if (enabled) 1f else 0.45f
+            }
+            .shadow(18.dp, CircleShape)
+            .clip(CircleShape)
+            .background(Color(0xFFF2F2F4).copy(alpha = 0.94f))
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(TransportIcons.Play, contentDescription = description, tint = tint, modifier = Modifier.padding(start = 3.dp).size(30.dp))
+    }
 }
 
 /** Every face, each set in itself with the artist's name; for this artist only, or for every artist. */
@@ -560,7 +687,7 @@ private fun Spotlight(
 private fun LatestRelease(album: AlbumItem, state: PlayerState, player: DesktopPlayer, modifier: Modifier) {
     val open = rememberItemOpener(player)
     Column(modifier) {
-        Text("Latest release", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 14.dp))
+        Text("Latest Release", fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 14.dp))
         ItemCard(album, isActive = album.id == state.current?.album?.id, onClick = { open(album) }, artSize = 260.dp, onPlay = { player.playNow(album) })
     }
 }
@@ -568,7 +695,7 @@ private fun LatestRelease(album: AlbumItem, state: PlayerState, player: DesktopP
 @Composable
 private fun TopSongs(section: ArtistSection, onSeeAll: (() -> Unit)?, state: PlayerState, player: DesktopPlayer, cascade: () -> Float, modifier: Modifier) {
     Column(modifier) {
-        SectionTitle(section.title.ifBlank { "Top songs" }, onSeeAll, Modifier.padding(bottom = 8.dp))
+        SectionTitle(section.title.ifBlank { "Top Songs" }.let { if (it.equals("Top songs", ignoreCase = true)) "Top Songs" else it }, onSeeAll, Modifier.padding(bottom = 8.dp))
         Box(Modifier.padding(end = 0.dp)) {
             SongColumns(section.items.filterIsInstance<SongItem>().take(10), state, player, cascade, twoColumnsFrom = 700.dp)
         }
@@ -689,7 +816,7 @@ private fun VideoCard(song: SongItem, active: Boolean, playing: Boolean, onClick
         }
         Spacer(Modifier.height(10.dp))
         Text(song.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
-        if (song.artists.isNotEmpty()) ArtistLinks(song.artists, MaterialTheme.typography.bodySmall, MaterialTheme.colorScheme.secondary)
+        if (song.artists.isNotEmpty()) ArtistLinks(song.artists, MaterialTheme.typography.bodySmall, Color.White.copy(alpha = 0.55f))
     }
 }
 

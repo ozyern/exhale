@@ -7,17 +7,11 @@ import { prefersReducedMotion } from '../hooks.js'
  * Every screen stays mounted and cross-fades on `data-on`, so the frame never
  * resizes between beats and the device doesn't jump while it's pinned.
  *
- * The dock is the one piece still rebuilt in markup (see `Dock`) — you can drag
- * that one, and a screenshot can't be dragged.
+ * Fitted with realistic camera punch-hole and specular glass glare.
  */
 
 /**
  * A screen recording layered over the stills.
- *
- * Lyrics land word by word and the claim is entirely in the timing, which a
- * still frame can't show. Plays only while its beat owns the device and the
- * page isn't paused; rewinds when it loses the beat so scrolling back starts
- * the line again instead of joining halfway.
  */
 function PhoneVideo({ src, poster, on, running }) {
   const ref = useRef(null)
@@ -26,8 +20,6 @@ function PhoneVideo({ src, poster, on, running }) {
     const el = ref.current
     if (!el) return
     if (on && running && !prefersReducedMotion()) {
-      // Autoplay can be refused. The poster is a real frame, so that degrades
-      // to a screenshot rather than a black hole.
       const started = el.play()
       if (started?.catch) started.catch(() => {})
     } else {
@@ -53,9 +45,45 @@ function PhoneVideo({ src, poster, on, running }) {
 }
 
 export default function Phone({ shots, index, video }) {
+  const phoneRef = useRef(null)
+
+  const handleMouseEnter = (e) => {
+    e.currentTarget._cachedRect = e.currentTarget.getBoundingClientRect()
+  }
+
+  const handleMouseMove = (e) => {
+    if (prefersReducedMotion()) return
+    let rect = e.currentTarget._cachedRect
+    if (!rect) {
+      rect = e.currentTarget.getBoundingClientRect()
+      e.currentTarget._cachedRect = rect
+    }
+    const x = (e.clientX - rect.left) / rect.width
+    const y = (e.clientY - rect.top) / rect.height
+    const rx = ((0.5 - y) * 10).toFixed(2)
+    const ry = ((x - 0.5) * 10).toFixed(2)
+    e.currentTarget.style.setProperty('--rx', `${rx}deg`)
+    e.currentTarget.style.setProperty('--ry', `${ry}deg`)
+    e.currentTarget.style.setProperty('--gx', `${(x * 100).toFixed(1)}%`)
+    e.currentTarget.style.setProperty('--gy', `${(y * 100).toFixed(1)}%`)
+  }
+
+  const handleMouseLeave = (e) => {
+    e.currentTarget.style.setProperty('--rx', '0deg')
+    e.currentTarget.style.setProperty('--ry', '0deg')
+  }
+
   return (
-    <div className="phone">
+    <div
+      ref={phoneRef}
+      className="phone"
+      onMouseEnter={handleMouseEnter}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+    >
       <div className="phone-screen">
+        <div className="phone-camera" aria-hidden="true" />
+        <div className="phone-glare" aria-hidden="true" />
         {shots.map((shot, i) => (
           <img
             key={shot.src}

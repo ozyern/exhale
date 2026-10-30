@@ -96,6 +96,8 @@ fun main() {
 
     // First opens of pages and the player hitched on classes loading mid-frame; load them early, off it.
     ClassWarmup.start()
+    // Settings → Graphics on Auto: judge this PC once (older integrated chips get Lite).
+    com.ozyern.exhale.desktop.data.Graphics.detectOnce()
 
     // Artwork cache on disk, sized by Storage → Image cache.
     SingletonImageLoader.setSafe { context ->
@@ -108,8 +110,13 @@ fun main() {
             }
             // Decoded artwork lives in native memory. Uncapped, Coil sizes this cache from the JVM's heap
             // limit — hundreds of megabytes of bitmaps held for covers long scrolled past.
-            .memoryCache { MemoryCache.Builder().maxSizeBytes(160L * 1024 * 1024).build() }
-            .crossfade(true)
+            // A PC with under 8 GB keeps a smaller one, so the cache doesn't push the rest into the page file.
+            .memoryCache {
+                val small = (com.ozyern.exhale.desktop.data.Graphics.memoryGb ?: 16) < 8
+                MemoryCache.Builder().maxSizeBytes((if (small) 64L else 160L) * 1024 * 1024).build()
+            }
+            // On Lite graphics covers appear at once rather than drawing old and new together for a fade.
+            .crossfade(!com.ozyern.exhale.desktop.data.Graphics.lite)
             .build()
     }
 

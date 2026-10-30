@@ -51,6 +51,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** How long a playlist made on this phone is kept in the Library while YouTube catches up with it. */
+private const val NewPlaylistGraceDays = 3L
+
 @Singleton
 class SyncUtils @Inject constructor(
     private val database: MusicDatabase,
@@ -425,6 +428,10 @@ class SyncUtils @Inject constructor(
                 .map { it.playlist }
                 .filter { it.browseId != null }
                 .filter { it.browseId !in remoteLikedIds }
+                // Not one this phone has just made. YouTube's list of the account's playlists takes
+                // a while to show a new one, and a sync in that gap took a freshly made or
+                // imported playlist off the Library moments after it appeared.
+                .filterNot { it.isEditable && it.createdAt?.isAfter(now.minusDays(NewPlaylistGraceDays)) == true }
                 .forEach { database.update(it.copy(bookmarkedAt = null, lastUpdateTime = now)) }
 
             val localPlaylistIdByBrowseId = HashMap<String, String>(remotePlaylists.size)

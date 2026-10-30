@@ -344,6 +344,15 @@ private fun categories(
             Group(
                 "Effects",
                 listOf(
+                    ChoiceItem(
+                        "Graphics",
+                        // What Auto found, so the choice it made isn't a mystery.
+                        "Lite keeps the look with still frosted panels, for older PCs. Auto picked " +
+                            (if (com.ozyern.exhale.desktop.data.Graphics.detectedLite) "Lite" else "Full") +
+                            (com.ozyern.exhale.desktop.data.Graphics.detectedGpu?.let { " for $it." } ?: "."),
+                        listOf("AUTO" to "Auto", "FULL" to "Full", "LITE" to "Lite"),
+                        s.graphics,
+                    ) { v -> update { it.copy(graphics = v) } }.withIcon(NavIcons.Chip, "graphics"),
                     SwitchItem("Liquid glass", "Blur and refraction on the dock, bars and menus. Off uses plain frosted panels.", s.liquidGlass) { v -> update { it.copy(liquidGlass = v) } }.withIcon(NavIcons.Glass, "liquid_glass"),
                     SwitchItem("Moving artwork", "The cover's colours drift slowly behind pages and the player. Drawn on the GPU.", s.animatedBackground) { v -> update { it.copy(animatedBackground = v) } }.withIcon(NavIcons.Sparkles, "animated_background"),
                     SwitchItem("Moving covers", "Plays a song's moving cover in the player, from Apple Music or Tidal, where it has one.", s.motionCovers) { v -> update { it.copy(motionCovers = v) } }.withIcon(NavIcons.Image, "motion_covers"),
@@ -395,6 +404,11 @@ private fun categories(
                         s.spatialAudio,
                     ) { v -> update { it.copy(spatialAudio = v) } }.withIcon(NavIcons.Surround, "spatial_audio"),
                     SwitchItem("Exclusive mode", "Takes the device for bit-perfect output. Bypasses Windows effects, Dolby included.", s.exclusiveAudio) { v -> update { it.copy(exclusiveAudio = v) } }.withIcon(TransportIcons.VolumeUp, "exclusive_audio"),
+                    SwitchItem(
+                        "Dolby passthrough",
+                        "Sends Dolby Atmos, Dolby Digital Plus and TrueHD untouched to a receiver or soundbar over HDMI or optical.",
+                        s.dolbyPassthrough,
+                    ) { v -> update { it.copy(dolbyPassthrough = v) } }.withIcon(NavIcons.DolbyAtmos, "dolby_passthrough"),
                     SwitchItem("High-quality resampler", "A sharper filter when your device doesn't run at 48 kHz.", s.hqResampler) { v -> update { it.copy(hqResampler = v) } }.withIcon(NavIcons.HighQuality, "hq_resampler"),
                 ),
             ),
@@ -732,10 +746,6 @@ fun SettingsScreen(
             val landingState = rememberLazyListState()
             Column(Modifier.width(256.dp).fillMaxHeight().padding(bottom = insets.bottom + 12.dp)) {
                 Row(Modifier.padding(start = 2.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (onBack != null) {
-                        GlassIconButton(NavIcons.Back, "Back", onClick = onBack)
-                        Spacer(Modifier.width(10.dp))
-                    }
                     Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
                 }
                 SearchPill(query, searchFocus) { query = it }
@@ -1789,8 +1799,19 @@ private fun PalettePicker(s: Settings) {
             Text(if (s.dynamicTheme) "From artwork" else AccentPalettes.byId(s.accent).label, style = MaterialTheme.typography.labelLarge, color = accent)
         }
         Spacer(Modifier.height(14.dp))
+        // macOS's accent picker is one row of dots. The first row shows here, with the chosen colour always
+        // among them; the rest wait behind "Show All Colours" — and aren't built until asked for, which
+        // was most of what the Appearance page cost to open.
+        var showAll by remember { mutableStateOf(false) }
+        val row = 14
+        val chosen = AccentPalettes.all.indexOfFirst { it.id == s.accent }
+        val shown = when {
+            showAll -> AccentPalettes.all
+            chosen >= row -> AccentPalettes.all.take(row - 1) + AccentPalettes.all[chosen]
+            else -> AccentPalettes.all.take(row)
+        }
         FlowRow(Modifier.padding(start = 50.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            AccentPalettes.all.forEach { palette ->
+            shown.forEach { palette ->
                 val selected = palette.id == s.accent && !s.dynamicTheme
                 val swatchInteraction = remember { MutableInteractionSource() }
                 val swatchHovered by swatchInteraction.collectIsHoveredAsState()
@@ -1802,22 +1823,33 @@ private fun PalettePicker(s: Settings) {
                 }
                 Box(
                     Modifier
-                        .size(34.dp)
+                        .size(26.dp)
                         .graphicsLayer {
                             scaleX = scale
                             scaleY = scale
                         }
                         .clip(CircleShape)
                         .background(fill)
-                        .border(if (selected) 3.dp else 1.dp, if (selected) Color.White else Color.White.copy(alpha = 0.15f), CircleShape)
+                        .border(if (selected) 2.dp else 0.75.dp, if (selected) Color.White else Color.White.copy(alpha = 0.15f), CircleShape)
                         .hoverable(swatchInteraction)
                         .clickable(interactionSource = swatchInteraction, indication = null) { update { it.copy(accent = palette.id, dynamicTheme = false) } },
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (selected) Icon(NavIcons.Check, contentDescription = palette.label, tint = if (palette.primary.luminance() > 0.5f) Color.Black else Color.White, modifier = Modifier.size(18.dp))
+                    // macOS marks the chosen accent with a small white dot in it.
+                    if (selected) Box(Modifier.size(8.dp).clip(CircleShape).background(if (palette.primary.luminance() > 0.6f) Color.Black else Color.White))
                 }
             }
         }
+        Text(
+            if (showAll) "Show Fewer Colours" else "Show All Colours",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .padding(start = 46.dp, top = 8.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .clickable { showAll = !showAll }
+                .padding(horizontal = 4.dp, vertical = 4.dp),
+        )
     }
 }
 

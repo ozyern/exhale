@@ -128,6 +128,8 @@
     <string name="resume_autoscroll">Resume Autoscroll</string>
     <string name="lyrics_romanize_japanese">Romanize japanese lyrics</string>
     <string name="lyrics_romanize_korean">Romanize korean lyrics</string>
+    <string name="lyrics_romanize_hindi">Romanize Hindi lyrics</string>
+    <string name="lyrics_romanize_other">Romanize other scripts (Chinese, Russian, Arabic, Thai…)</string>
     <string name="slim">Slim</string>
     <string name="slim_navbar">Slim bottom navigation bar</string>
     <string name="auto_playlists">Auto playlists</string>
@@ -515,4 +517,13 @@
         <item quantity="one">1 song left</item>
         <item quantity="other">%d songs left</item>
     </plurals>
+
+    <!-- Song details page -->
+    <string name="media_info_album">Album</string>
+    <string name="media_info_duration">Duration</string>
+    <string name="media_info_released">Released</string>
+    <string name="media_info_uploaded">Uploaded</string>
+    <string name="media_info_channel">Channel</string>
+    <string name="media_info_stream">Stream</string>
+    <string name="media_info_tap_to_copy">Tap a row to copy it.</string>
 </resources>

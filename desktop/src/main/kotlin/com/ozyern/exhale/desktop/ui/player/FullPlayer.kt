@@ -18,6 +18,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -140,6 +141,7 @@ import com.ozyern.exhale.desktop.lyrics.LyricsSync
 import com.ozyern.exhale.desktop.player.AudioOutputStatus
 import com.ozyern.exhale.desktop.player.DesktopPlayer
 import com.ozyern.exhale.desktop.player.DolbyAccess
+import com.ozyern.exhale.desktop.player.ImmersiveFormat
 import com.ozyern.exhale.desktop.player.PlayerState
 import com.ozyern.exhale.desktop.player.RepeatMode
 import com.ozyern.exhale.desktop.ui.AmbientGlow
@@ -392,6 +394,8 @@ fun FullPlayer(
                         dismissGesture = dismissGesture,
                         onArtworkBounds = onArtworkBounds,
                         artworkAlpha = artworkAlpha,
+                        onToggle = ::toggle,
+                        onMore = { menuOpen = true },
                     )
                 }
             }
@@ -440,6 +444,8 @@ private fun SplitPlayer(
     dismissGesture: Modifier,
     onArtworkBounds: (Rect) -> Unit,
     artworkAlpha: () -> Float,
+    onToggle: (PlayerPanel) -> Unit,
+    onMore: () -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize().padding(start = 56.dp, end = 56.dp, bottom = 36.dp)) {
         val panelOpen = panel != PlayerPanel.None
@@ -452,14 +458,15 @@ private fun SplitPlayer(
         if (panelOpen && shownPanel != panel) shownPanel = panel
 
         val columnWidth = (maxWidth * (1f / (1f + 1.15f * panelFraction)) - 24.dp).coerceIn(300.dp, 560.dp)
-        // What sits under the cover — title, progress, transport, volume — needs about 300dp.
-        val art = minOf(columnWidth, maxHeight - 300.dp).coerceIn(200.dp, 560.dp)
+        // What sits under the cover — title, progress, transport, volume, the row of panel buttons —
+        // needs about 360dp.
+        val art = minOf(columnWidth, maxHeight - 360.dp).coerceIn(200.dp, 560.dp)
 
         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
             if (lyricsLeft) PanelSlot(panelFraction, shownPanel, state, player, lyrics, position, lyricOffset, nudged, onNudge, onResetNudge, leading = true)
             Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                 // Title, progress, controls and volume line up under the cover, as the Music app sets them.
-                NowPlayingColumn(state, player, art, art, dismissGesture, onArtworkBounds, artworkAlpha)
+                NowPlayingColumn(state, player, art, art, dismissGesture, onArtworkBounds, artworkAlpha, panel, onToggle, onMore)
             }
             if (!lyricsLeft) PanelSlot(panelFraction, shownPanel, state, player, lyrics, position, lyricOffset, nudged, onNudge, onResetNudge, leading = false)
         }
@@ -622,7 +629,7 @@ private fun SyncToast(offsetMs: Long) {
 private fun PlayerBackground(thumbnail: String, colors: List<Color>, settings: Settings, paused: Boolean) {
     val style = settings.playerBackground
     val base = colors.firstOrNull() ?: MaterialTheme.colorScheme.primary
-    val fluid = style == "ARTWORK" && settings.animatedBackground && fluidBackgroundAvailable
+    val fluid = style == "ARTWORK" && settings.animatedBackground && fluidBackgroundAvailable && !com.ozyern.exhale.desktop.data.Graphics.lite
     when {
         // Nothing sits over the player's background, so it drifts smoothly at the display's own rate.
         fluid -> FluidArtwork(thumbnail.resizedThumbnail(120), Modifier.fillMaxSize(), brightness = 0.95f, paused = paused, smooth = true)
@@ -662,9 +669,10 @@ private fun PlayerTopBar(
     onLeaveVideo: () -> Unit,
     modifier: Modifier,
 ) {
-    Box(modifier.fillMaxWidth().height(if (video) 46.dp else 76.dp).padding(horizontal = 28.dp)) {
-        // The grab handle: the whole bar is draggable, this just says so.
-        Box(Modifier.align(Alignment.TopCenter).padding(top = 10.dp).size(width = 40.dp, height = 5.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.28f)))
+    // The Music app's Now Playing keeps its top clear: the chevron that folds it away, and nothing else
+    // but what only this moment offers (the song's video, full-screen lyrics while they're open). Lyrics,
+    // AirPlay and Up Next sit under the controls; ⋯ sits beside the title.
+    Box(modifier.fillMaxWidth().height(if (video) 46.dp else 64.dp).padding(horizontal = 28.dp)) {
         PlayerCircleButton(TransportIcons.Collapse, "Close player", active = false, modifier = Modifier.align(Alignment.CenterStart), onClick = onClose)
         Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (video) {
@@ -675,10 +683,9 @@ private fun PlayerTopBar(
             } else {
                 // Only for a song YouTube actually has a video of.
                 if (videoAvailable) PlayerCircleButton(NavIcons.Video, "Watch the video", active = false, onClick = onVideo)
-                PlayerCircleButton(TransportIcons.Lyrics, "Lyrics", active = panel == PlayerPanel.Lyrics) { onToggle(PlayerPanel.Lyrics) }
-                PlayerCircleButton(if (fullLyrics) NavIcons.FullscreenExit else NavIcons.Fullscreen, "Full-screen lyrics", active = fullLyrics, onClick = onToggleFull)
-                PlayerCircleButton(TransportIcons.Queue, "Up next", active = panel == PlayerPanel.Queue) { onToggle(PlayerPanel.Queue) }
-                PlayerCircleButton(NavIcons.More, "More", active = false, onClick = onMore)
+                if (panel == PlayerPanel.Lyrics) {
+                    PlayerCircleButton(if (fullLyrics) NavIcons.FullscreenExit else NavIcons.Fullscreen, "Full-screen lyrics", active = fullLyrics, onClick = onToggleFull)
+                }
             }
         }
     }
@@ -694,6 +701,9 @@ private fun NowPlayingColumn(
     dismissGesture: Modifier,
     onArtworkBounds: (Rect) -> Unit,
     artworkAlpha: () -> Float,
+    panel: PlayerPanel,
+    onToggle: (PlayerPanel) -> Unit,
+    onMore: () -> Unit,
 ) {
     val song = state.current ?: return
     val settings = LocalSettings.current
@@ -724,6 +734,8 @@ private fun NowPlayingColumn(
                         modifier = Modifier.weight(1f).playerMarquee(),
                     )
                     FavoriteStar(current)
+                    Spacer(Modifier.width(8.dp))
+                    TitleButton(NavIcons.More, "More", onClick = onMore)
                 }
                 // Artists and the album are links to their pages; the player folds away as one opens.
                 val nav = LocalNavigator.current
@@ -763,6 +775,17 @@ private fun NowPlayingColumn(
         Box(Modifier.reveal(0.56f, 22.dp)) { TransportRow(state, player) }
         Spacer(Modifier.height(10.dp))
         Box(Modifier.reveal(0.62f, 22.dp)) { VolumeRow(state, player) }
+        Spacer(Modifier.height(18.dp))
+        // The Music app's row under the controls: lyrics, where the sound goes, and what's next.
+        Row(
+            Modifier.reveal(0.68f, 22.dp),
+            horizontalArrangement = Arrangement.spacedBy(64.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PanelButton(TransportIcons.Lyrics, "Lyrics", active = panel == PlayerPanel.Lyrics) { onToggle(PlayerPanel.Lyrics) }
+            AirPlayButton(player)
+            PanelButton(TransportIcons.Queue, "Up Next", active = panel == PlayerPanel.Queue) { onToggle(PlayerPanel.Queue) }
+        }
 
         state.error?.let {
             Spacer(Modifier.height(8.dp))
@@ -781,7 +804,7 @@ private fun FavoriteStar(song: SongItem) {
     val scale by pressScale(pressed, pressedScale = 0.8f)
     Box(
         Modifier
-            .size(36.dp)
+            .size(32.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -791,7 +814,7 @@ private fun FavoriteStar(song: SongItem) {
             .clickable(interactionSource = interaction, indication = null) { DesktopPrefs.toggleFavorite(song) },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(if (on) NavIcons.Star else NavIcons.StarOutline, if (on) "Undo Favorite" else "Favorite", tint = Color.White, modifier = Modifier.size(19.dp))
+        Icon(if (on) NavIcons.Star else NavIcons.StarOutline, if (on) "Undo Favorite" else "Favorite", tint = Color.White, modifier = Modifier.size(17.dp))
     }
 }
 
@@ -813,14 +836,14 @@ private fun Artwork(song: SongItem, size: Dp, playing: Boolean, modifier: Modifi
             .onGloballyPositioned { onBounds(it.boundsInRoot()) }
             .graphicsLayer { this.alpha = alpha() }
             .reveal(0.3f, 28.dp)
-            .shadow(elevation, shape)
+            .then(if (com.ozyern.exhale.desktop.ui.Bench.off("artshadow")) Modifier else Modifier.shadow(elevation, shape))
             .clip(shape)
             .background(Color.White.copy(alpha = 0.06f)),
     ) {
         Crossfade(targetState = thumbnail, animationSpec = tween(450), label = "artwork") { url ->
             AsyncImage(url.resizedThumbnail(1200), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
-        if (LocalSettings.current.motionCovers) {
+        if (LocalSettings.current.motionCovers && !com.ozyern.exhale.desktop.ui.Bench.off("motioncover")) {
             // Keyed on the song, so the next one starts from its still cover and fades its own in.
             key(song.id) { MotionCoverLayer(song, playing, Modifier.fillMaxSize()) }
         }
@@ -894,7 +917,7 @@ private fun ProgressSection(state: PlayerState, player: DesktopPlayer, settings:
     )
     Row(Modifier.fillMaxWidth().height(24.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(formatTime(shown), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
-        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { QualityBadge(state.streamInfo, settings) }
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { QualityBadge(state, settings) }
         Text("-" + formatTime(duration - shown), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.6f))
     }
 }
@@ -917,17 +940,22 @@ private fun RowScope.BarProgress(player: DesktopPlayer, state: PlayerState, dura
 
 /**
  * The line under the scrubber, as the Android app writes it: a glyph and a word in the scrubber's own
- * grey, no chip. "Dolby Atmos" once Windows has opened a surround bed for Exhale and Dolby Access is
- * there to render it, "Spatial Audio" for a bed Windows Sonic renders; otherwise the codec.
+ * grey, no chip. The music's own format first: "Dolby Atmos" only when the track really is Atmos (or
+ * TrueHD, Dolby Digital Plus…), with "Passthrough" while the receiver decodes it. Then "Spatial Audio"
+ * for stereo laid out as a surround bed — the Dolby mark when Dolby Access renders it — and otherwise
+ * the codec.
  */
 @Composable
-private fun QualityBadge(streamInfo: String?, settings: Settings) {
+private fun QualityBadge(state: PlayerState, settings: Settings) {
     val output by AudioOutputStatus.state.collectAsState()
     val spatial = settings.spatialAudio != "OFF" && output?.isSurround == true
+    val immersive = state.immersive
     val tag = when {
-        spatial && DolbyAccess.isInstalled -> SoundTag(NavIcons.DolbyAtmos, "Dolby Atmos")
+        immersive == ImmersiveFormat.Eclipsa -> SoundTag(NavIcons.SpatialAudio, immersive.label)
+        immersive != null -> SoundTag(NavIcons.DolbyAtmos, immersive.label + if (state.passthrough) " · Passthrough" else "")
+        spatial && DolbyAccess.isInstalled -> SoundTag(NavIcons.DolbyAtmos, "Spatial Audio")
         spatial -> SoundTag(NavIcons.SpatialAudio, "Spatial Audio")
-        streamInfo != null -> SoundTag(null, streamInfo)
+        state.streamInfo != null -> SoundTag(null, state.streamInfo)
         else -> return
     }
     AnimatedContent(
@@ -950,31 +978,110 @@ private data class SoundTag(val icon: ImageVector?, val label: String)
 
 @Composable
 private fun TransportRow(state: PlayerState, player: DesktopPlayer) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        ToggleGlyph(TransportIcons.Shuffle, "Shuffle", state.shuffle, player::toggleShuffle)
-        Spacer(Modifier.weight(1f))
+    // The Music app's transport: back, play/pause and forward alone, centred and spaced wide. Shuffle and
+    // repeat live at the top of Up Next, where the Music app keeps them.
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
         GlyphButton(62.dp, onClick = player::previous, nudge = -1f) {
-            Icon(TransportIcons.Previous, "Previous", tint = Color.White, modifier = Modifier.size(40.dp))
+            Icon(TransportIcons.Previous, "Previous", tint = Color.White, modifier = Modifier.size(38.dp))
         }
-        Spacer(Modifier.width(18.dp))
-        GlyphButton(84.dp, onClick = player::togglePlayPause, enabled = !state.isLoading) {
+        Spacer(Modifier.width(34.dp))
+        GlyphButton(80.dp, onClick = player::togglePlayPause, enabled = !state.isLoading) {
             if (state.isLoading && LocalPlayerActive.current) {
                 LoadingRing(Modifier.size(40.dp), color = Color.White, stroke = 3.dp)
             } else {
-                PlayPauseIcon(state.isPlaying, Color.White, Modifier.size(58.dp))
+                PlayPauseIcon(state.isPlaying, Color.White, Modifier.size(50.dp))
             }
         }
-        Spacer(Modifier.width(18.dp))
+        Spacer(Modifier.width(34.dp))
         GlyphButton(62.dp, onClick = player::next, enabled = state.hasNext, nudge = 1f) {
-            Icon(TransportIcons.Next, "Next", tint = Color.White.copy(alpha = if (state.hasNext) 1f else 0.35f), modifier = Modifier.size(40.dp))
+            Icon(TransportIcons.Next, "Next", tint = Color.White.copy(alpha = if (state.hasNext) 1f else 0.35f), modifier = Modifier.size(38.dp))
         }
-        Spacer(Modifier.weight(1f))
-        ToggleGlyph(
-            if (state.repeat == RepeatMode.ONE) TransportIcons.RepeatOne else TransportIcons.Repeat,
-            "Repeat",
-            state.repeat != RepeatMode.OFF,
-            player::cycleRepeat,
-        )
+    }
+}
+
+/** A small round button beside the title — ⋯, and the star's twin in shape. */
+@Composable
+private fun TitleButton(icon: ImageVector, description: String, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val hovered by interaction.collectIsHoveredAsState()
+    val scale by pressScale(pressed, pressedScale = 0.86f)
+    Box(
+        Modifier
+            .size(32.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = if (hovered) 0.2f else 0.12f))
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, description, tint = Color.White, modifier = Modifier.size(18.dp))
+    }
+}
+
+/**
+ * Lyrics or Up Next, under the controls: a grey symbol at rest; while its panel is open, the symbol
+ * goes white on a soft rounded plate, as the Music app marks it.
+ */
+@Composable
+private fun PanelButton(icon: ImageVector, description: String, active: Boolean, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val hovered by interaction.collectIsHoveredAsState()
+    val scale by pressScale(pressed, pressedScale = 0.86f)
+    val fill by animateColorAsState(if (active) Color.White.copy(alpha = 0.22f) else Color.Transparent, label = "panel_button_fill")
+    val tint by animateColorAsState(if (active || hovered) Color.White else Color.White.copy(alpha = 0.6f), label = "panel_button_tint")
+    Box(
+        Modifier
+            .size(38.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(RoundedCornerShape(10.dp))
+            .background(fill)
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, description, tint = tint, modifier = Modifier.size(22.dp))
+    }
+}
+
+/** AirPlay's place in the row: every output Windows offers, the one in use ticked. */
+@Composable
+private fun AirPlayButton(player: DesktopPlayer) {
+    var open by remember { mutableStateOf(false) }
+    var outputs by remember { mutableStateOf(emptyList<DesktopPlayer.AudioOutput>()) }
+    Box {
+        PanelButton(TransportIcons.AirPlay, "Audio output", active = open) {
+            outputs = player.audioOutputs()
+            open = true
+        }
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }, shape = RoundedCornerShape(12.dp)) {
+            if (outputs.isEmpty()) {
+                androidx.compose.material3.DropdownMenuItem(text = { Text("No outputs found", fontSize = 13.sp) }, onClick = { open = false }, enabled = false)
+            }
+            val current = player.currentAudioOutput()
+            outputs.forEach { output ->
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text(output.description, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    leadingIcon = {
+                        Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
+                            if (output.name == current) Icon(NavIcons.Check, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                        }
+                    },
+                    onClick = {
+                        player.setAudioOutput(output.name)
+                        open = false
+                    },
+                )
+            }
+        }
     }
 }
 
@@ -1134,13 +1241,14 @@ fun GlassTrack(
             },
         contentAlignment = Alignment.CenterStart,
     ) {
-        Box(Modifier.fillMaxWidth().height(height).clip(shape).background(Color.White.copy(alpha = 0.18f)).border(0.5.dp, Color.White.copy(alpha = 0.10f), shape))
+        // The Music app's scrubber: a plain translucent capsule, the elapsed part a brighter white.
+        Box(Modifier.fillMaxWidth().height(height).clip(shape).background(Color.White.copy(alpha = 0.2f)))
         Box(
             Modifier
                 .fillMaxWidth(fraction)
                 .height(height)
                 .clip(shape)
-                .background(Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.75f), Color.White.copy(alpha = 0.95f)))),
+                .background(Color.White.copy(alpha = if (drag != null || hovered) 0.95f else 0.78f)),
         )
     }
 }
@@ -1177,6 +1285,16 @@ private fun QueuePanel(state: PlayerState, player: DesktopPlayer, modifier: Modi
             Spacer(Modifier.width(10.dp))
             Text("${state.queue.size} songs", style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.5f), modifier = Modifier.padding(bottom = 3.dp))
             Spacer(Modifier.weight(1f))
+            // Shuffle and repeat, where the Music app puts them: at the head of Up Next.
+            ToggleGlyph(TransportIcons.Shuffle, "Shuffle", state.shuffle, player::toggleShuffle)
+            Spacer(Modifier.width(4.dp))
+            ToggleGlyph(
+                if (state.repeat == RepeatMode.ONE) TransportIcons.RepeatOne else TransportIcons.Repeat,
+                "Repeat",
+                state.repeat != RepeatMode.OFF,
+                player::cycleRepeat,
+            )
+            Spacer(Modifier.width(6.dp))
             // Only worth offering while something is actually waiting behind this song.
             if (state.index >= 0 && state.index < state.queue.size - 1) {
                 Text(
@@ -1275,63 +1393,37 @@ internal fun PlayerMenu(song: SongItem, state: PlayerState, player: DesktopPlaye
     val nav = LocalNavigator.current
     val linkedArtist = song.artists.firstOrNull { it.id != null }
 
+    // The Music app's menu on macOS 27, as the song menu elsewhere in the app is (see MacMenu): the song
+    // at the head, then groups parted by hairlines, rows that fill with the accent under the pointer.
+    // The settings among them show where they stand in grey and open their control in place when
+    // clicked. It was a 384-wide coloured card of big tiles and always-open segmented controls.
+    var open by remember { mutableStateOf<String?>(null) }
+    val toggle: (String) -> Unit = { key -> open = if (open == key) null else key }
     Column(
         Modifier
-            .width(384.dp)
-            .heightIn(max = 700.dp)
-            .glassPlate(RoundedCornerShape(30.dp), base = Color(0xF2151218))
+            .width(300.dp)
+            .heightIn(max = 640.dp)
+            .shadow(20.dp, RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xF5232325))
+            .border(0.5.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(14.dp))
             .pointerInput(Unit) { detectTapGestures { } }
-            .verticalScroll(rememberScrollState()),
+            .verticalScroll(rememberScrollState())
+            .padding(5.dp)
+            .animateContentSize(spring(dampingRatio = 0.9f, stiffness = 600f)),
     ) {
-        // The cover's own colour behind what's playing, so the sheet belongs to this song.
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .background(Brush.horizontalGradient(listOf(wash, Color.Transparent)))
-                .padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Row(Modifier.padding(start = 7.dp, end = 7.dp, top = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             AsyncImage(
-                song.thumbnail.resizedThumbnail(226),
+                song.thumbnail.resizedThumbnail(120),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(58.dp).shadow(10.dp, RoundedCornerShape(14.dp)).clip(RoundedCornerShape(14.dp)),
+                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)).background(Color.White.copy(alpha = 0.08f)),
             )
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(song.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(song.artists.joinToString { it.name }, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.66f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                state.streamInfo?.let {
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White.copy(alpha = 0.82f),
-                        maxLines = 1,
-                        modifier = Modifier.clip(CircleShape).background(Color.White.copy(alpha = 0.12f)).padding(horizontal = 9.dp, vertical = 3.dp),
-                    )
-                }
-            }
-        }
-
-        // The four things anyone actually opens this sheet for.
-        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            QuickTile(NavIcons.Radio, "Radio") {
-                player.startRadio(song)
-                onDismiss()
-            }
-            QuickTile(NavIcons.Link, "Copy link") {
-                runCatching { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(link), null) }
-                onDismiss()
-            }
-            QuickTile(NavIcons.OpenInNew, "YT Music") {
-                runCatching { Desktop.getDesktop().browse(URI(link)) }
-                onDismiss()
-            }
-            QuickTile(NavIcons.Headphones, if (DolbyAccess.isInstalled) "Dolby" else "Get Dolby") {
-                DolbyAccess.open()
-                onDismiss()
+                Text(song.title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(song.artists.joinToString { it.name }, fontSize = 12.sp, color = Color.White.copy(alpha = 0.55f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                state.streamInfo?.let { Text(it, fontSize = 11.sp, color = Color.White.copy(alpha = 0.4f), maxLines = 1) }
             }
         }
 
@@ -1339,41 +1431,52 @@ internal fun PlayerMenu(song: SongItem, state: PlayerState, player: DesktopPlaye
         val videoAvailable by player.videoAvailable.collectAsState()
         val watching by player.videoMode.collectAsState()
         if (videoAvailable || watching) {
-            Spacer(Modifier.height(10.dp))
-            MenuRow(
-                if (watching) NavIcons.New else NavIcons.Image,
-                if (watching) "Switch to audio" else "Switch to video",
-            ) {
+            com.ozyern.exhale.desktop.ui.MenuDivider()
+            com.ozyern.exhale.desktop.ui.MacMenuRow(if (watching) NavIcons.New else NavIcons.Image, if (watching) "Switch to Audio" else "Switch to Video") {
                 player.setVideoMode(!watching)
                 onDismiss()
             }
         }
 
+        com.ozyern.exhale.desktop.ui.MenuDivider()
+        com.ozyern.exhale.desktop.ui.MacMenuRow(NavIcons.Radio, "Create Station") {
+            player.startRadio(song)
+            onDismiss()
+        }
+        val favorite = remember(song.id) { DesktopPrefs.isFavorite(song.id) }
+        com.ozyern.exhale.desktop.ui.MacMenuRow(NavIcons.Star, if (favorite) "Undo Favorite" else "Favorite") {
+            DesktopPrefs.toggleFavorite(song)
+            onDismiss()
+        }
+
         if (nav != null && (linkedArtist != null || song.album != null)) {
-            Spacer(Modifier.height(10.dp))
-            linkedArtist?.let { artist ->
-                MenuRow(NavIcons.Artists, "Go to ${artist.name}") {
-                    nav.openArtist(artist.id!!, artist.name, null)
+            com.ozyern.exhale.desktop.ui.MenuDivider()
+            song.album?.let { album ->
+                com.ozyern.exhale.desktop.ui.MacMenuRow(NavIcons.Library, "Go to Album") {
+                    nav.openAlbum(album.id, album.name, song.thumbnail)
                     onDismiss()
                 }
             }
-            song.album?.let { album ->
-                MenuRow(NavIcons.Library, "Go to ${album.name}") {
-                    nav.openAlbum(album.id, album.name, song.thumbnail)
+            linkedArtist?.let { artist ->
+                com.ozyern.exhale.desktop.ui.MacMenuRow(NavIcons.Artists, "Go to Artist") {
+                    nav.openArtist(artist.id!!, artist.name, null)
                     onDismiss()
                 }
             }
         }
 
+        com.ozyern.exhale.desktop.ui.MenuDivider()
         val remaining = sleepAt?.let { ((it - now) / 1000).coerceAtLeast(0) }
-        MenuCard(
+        SettingRow(
             NavIcons.Moon,
-            "Sleep timer",
+            "Sleep Timer",
             when {
-                sleepAtEndOfSong -> "End of song"
+                sleepAtEndOfSong -> "End of Song"
                 remaining != null -> formatTime(remaining.toDouble())
                 else -> "Off"
             },
+            open == "sleep",
+            { toggle("sleep") },
         ) {
             val minutes = listOf(15, 30, 45, 60)
             val selected = when {
@@ -1389,57 +1492,92 @@ internal fun PlayerMenu(song: SongItem, state: PlayerState, player: DesktopPlaye
                 }
             }
         }
-
-        MenuCard(
+        val modes = listOf("OFF" to "Off", "SURROUND_51" to "5.1", "SURROUND_71" to "7.1")
+        SettingRow(
             NavIcons.Surround,
-            "Spatial audio",
-            when (settings.spatialAudio) {
-                "SURROUND_71" -> "7.1"
-                "SURROUND_51" -> "5.1"
-                else -> "Off"
-            },
+            "Spatial Audio",
+            modes.firstOrNull { it.first == settings.spatialAudio }?.second ?: "Off",
+            open == "spatial",
+            { toggle("spatial") },
         ) {
-            val modes = listOf("OFF" to "Off", "SURROUND_51" to "5.1", "SURROUND_71" to "7.1")
             Segmented(modes.map { it.second }, modes.indexOfFirst { it.first == settings.spatialAudio }) { index ->
                 AppSettings.update { it.copy(spatialAudio = modes[index].first) }
             }
         }
-
         // One tap to a different sound, as on Android: the record-speed presets, with 8D beside them.
         val presets = com.ozyern.exhale.desktop.player.AudioEffects.SoundPresets
-        MenuCard(
+        SettingRow(
             TransportIcons.Equalizer,
             "Sound",
             listOfNotNull(
                 presets.firstOrNull { it.first == settings.soundPreset }?.second?.takeIf { settings.soundPreset != "NORMAL" },
                 "8D".takeIf { settings.eightD },
             ).joinToString(" · ").ifEmpty { "Normal" },
+            open == "sound",
+            { toggle("sound") },
         ) {
             Segmented(presets.map { it.second }, presets.indexOfFirst { it.first == settings.soundPreset }) { index ->
                 AppSettings.update { it.copy(soundPreset = presets[index].first) }
             }
-            Spacer(Modifier.height(8.dp))
-            Segmented(listOf("8D off", "8D on"), if (settings.eightD) 1 else 0) { index ->
+            Spacer(Modifier.height(6.dp))
+            Segmented(listOf("8D Off", "8D On"), if (settings.eightD) 1 else 0) { index ->
                 AppSettings.update { it.copy(eightD = index == 1) }
             }
         }
-
-        MenuCard(NavIcons.Speed, "Speed", "${settings.playbackSpeed}×") {
-            val speeds = listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+        val speeds = listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+        SettingRow(NavIcons.Speed, "Speed", "${settings.playbackSpeed}×", open == "speed", { toggle("speed") }) {
             Segmented(speeds.map { if (it == 1f) "1×" else "$it" }, speeds.indexOfFirst { it == settings.playbackSpeed }) { index ->
                 AppSettings.update { it.copy(playbackSpeed = speeds[index]) }
             }
         }
 
-        MenuCard(TransportIcons.VolumeUp, "Volume", "${state.volume}%") {
-            GlassTrack(
-                value = state.volume / 100f,
-                onChange = { player.setVolume((it * 100).roundToInt()) },
-                onCommit = { player.setVolume((it * 100).roundToInt()) },
-                modifier = Modifier.fillMaxWidth(),
-            )
+        com.ozyern.exhale.desktop.ui.MenuDivider()
+        com.ozyern.exhale.desktop.ui.MacMenuRow(NavIcons.Link, "Copy Link") {
+            runCatching { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(link), null) }
+            onDismiss()
         }
-        Spacer(Modifier.height(16.dp))
+        com.ozyern.exhale.desktop.ui.MacMenuRow(NavIcons.OpenInNew, "Open in YouTube Music") {
+            runCatching { Desktop.getDesktop().browse(URI(link)) }
+            onDismiss()
+        }
+        com.ozyern.exhale.desktop.ui.MacMenuRow(NavIcons.Headphones, if (DolbyAccess.isInstalled) "Open Dolby Access" else "Get Dolby Access") {
+            DolbyAccess.open()
+            onDismiss()
+        }
+    }
+}
+
+/**
+ * A setting in the menu: its name, where it stands in grey at the right, and a chevron that turns as
+ * its control opens beneath it in place.
+ */
+@Composable
+private fun SettingRow(icon: ImageVector, label: String, value: String, expanded: Boolean, onToggle: () -> Unit, content: @Composable () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val turn by animateFloatAsState(if (expanded) 90f else 0f, spring(dampingRatio = 0.8f, stiffness = 600f), label = "menu_setting_turn")
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(26.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(if (hovered) Color.White.copy(alpha = 0.10f) else Color.Transparent)
+                .hoverable(interaction)
+                .clickable(interactionSource = interaction, indication = null, onClick = onToggle)
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(icon, contentDescription = null, tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(15.dp))
+            Spacer(Modifier.width(9.dp))
+            Text(label, fontSize = 13.sp, color = Color.White.copy(alpha = 0.92f), modifier = Modifier.weight(1f))
+            Text(value, fontSize = 12.sp, color = Color.White.copy(alpha = 0.45f), maxLines = 1)
+            Spacer(Modifier.width(6.dp))
+            Text("›", fontSize = 14.sp, color = Color.White.copy(alpha = 0.45f), modifier = Modifier.graphicsLayer { rotationZ = turn })
+        }
+        if (expanded) {
+            Column(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 8.dp)) { content() }
+        }
     }
 }
 

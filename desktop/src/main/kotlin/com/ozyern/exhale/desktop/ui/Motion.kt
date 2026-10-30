@@ -115,16 +115,16 @@ fun Modifier.cascade(index: Int, progress: () -> Float): Modifier = graphicsLaye
     transformOrigin = TransformOrigin(0.5f, 0f)
 }
 
-/** A clock for [cascade] that starts when [ready] first turns true, and runs once per [key]. */
+/**
+ * A clock for [cascade]. Always settled now: the Music app on the Mac lets a page's content simply be
+ * there, and the second-long stagger this used to run kept the whole page redrawing at the very moment
+ * its artwork was arriving and going up to the GPU — the first-visit stutter on New and the artist pages.
+ */
+@Suppress("UNUSED_PARAMETER")
 @Composable
-fun rememberCascade(key: Any?, ready: Boolean): () -> Float {
-    val reduced = LocalSettings.current.reducedMotion
-    val clock = remember(key) { Animatable(if (reduced) 1f else 0f) }
-    LaunchedEffect(clock, ready) {
-        if (ready && clock.value == 0f) clock.animateTo(1f, tween(1_000, easing = LinearEasing))
-    }
-    return { clock.value }
-}
+fun rememberCascade(key: Any?, ready: Boolean): () -> Float = SettledCascade
+
+private val SettledCascade: () -> Float = { 1f }
 
 /** ColorOS 17's press: the surface gives at once, with nothing to wobble about… */
 private val PressIn = spring<Float>(dampingRatio = 1f, stiffness = 1_400f)

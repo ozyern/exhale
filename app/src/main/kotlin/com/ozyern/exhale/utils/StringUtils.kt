@@ -46,8 +46,10 @@ fun makeTimeString(duration: Long?): String {
  */
 fun totalLengthString(totalSeconds: Long): String {
     if (totalSeconds <= 0) return ""
-    val hours = totalSeconds / 3600
-    val minutes = (totalSeconds % 3600 + 30) / 60
+    // Rounded to the minute before splitting, so 3:59:40 reads "4 hr", never "3 hr 60 min".
+    val totalMinutes = (totalSeconds + 30) / 60
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
     return when {
         hours > 0 && minutes > 0 -> "$hours hr $minutes min"
         hours > 0 -> "$hours hr"

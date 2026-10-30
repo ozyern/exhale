@@ -742,7 +742,7 @@ fun PlayerTopActions(
                     )
                 }
 
-                // Menú
+                // Menu
                 Box(
                     modifier = Modifier
                         .size(42.dp)
@@ -1958,7 +1958,7 @@ fun PlayerPlaybackControls(
         }
 
         PlayerDesignStyle.V7 -> {
-            // NO SPRING ANIMATIONS - Mantener como está
+            // NO SPRING ANIMATIONS - keep it as it is
             Row(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
@@ -2052,7 +2052,7 @@ fun PlayerPlaybackControls(
         }
 
         else -> {
-            // Default/fallback para V8 y futuros estilos
+            // Default/fallback for V8 and later styles
             Row(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
@@ -2593,17 +2593,22 @@ fun PlayerBackground(
                     label = "GlowAnimatedContent"
                 ) { colors ->
                     if (colors.isNotEmpty()) {
-                        val infiniteTransition = rememberInfiniteTransition(label = "GlowAnimation")
-
-                        val progress by infiniteTransition.animateFloat(
-                            initialValue = 0f,
-                            targetValue = 1f,
-                            animationSpec = infiniteRepeatable(
-                                animation = tween(20000, easing = LinearEasing),
-                                repeatMode = RepeatMode.Restart
-                            ),
-                            label = "glowProgress"
-                        )
+                        // Still while the player is only pre-built behind the dock.
+                        val progress = if (com.ozyern.exhale.ui.component.LocalPlayerShown.current) {
+                            val infiniteTransition = rememberInfiniteTransition(label = "GlowAnimation")
+                            val running by infiniteTransition.animateFloat(
+                                initialValue = 0f,
+                                targetValue = 1f,
+                                animationSpec = infiniteRepeatable(
+                                    animation = tween(20000, easing = LinearEasing),
+                                    repeatMode = RepeatMode.Restart
+                                ),
+                                label = "glowProgress"
+                            )
+                            running
+                        } else {
+                            0f
+                        }
 
                         fun rotatedColorAt(index: Int): Color {
                             val size = colors.size
@@ -2905,7 +2910,7 @@ fun V8PlayerControlsContent(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth()
     ) {
-        // === TOP ROW: Title + Like/Menu (mismo layout/medidas que V7) ===
+        // === TOP ROW: Title + Like/Menu (same layout and sizes as V7) ===
         Row(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
@@ -2914,7 +2919,7 @@ fun V8PlayerControlsContent(
                 .padding(horizontal = PlayerHorizontalPadding)
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                // Título
+                // Title
                 AnimatedContent(
                     targetState = mediaMetadata.title,
                     transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) },
@@ -3024,7 +3029,7 @@ fun V8PlayerControlsContent(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // Botones superiores: Like + Menú (38dp, ~10% menos que V7)
+            // Top buttons: Like + Menu (38dp, ~10% smaller than V7)
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -3055,7 +3060,7 @@ fun V8PlayerControlsContent(
                     )
                 }
 
-                // Menú
+                // Menu
                 Box(
                     modifier = Modifier
                         .size(38.dp)
@@ -3132,7 +3137,7 @@ fun V8PlayerControlsContent(
 
         Spacer(Modifier.height(4.dp))
 
-        // === TIME ROW: tiempo transcurrido / restante + formato (igual que V7) ===
+        // === TIME ROW: elapsed / remaining + format (as in V7) ===
         PlayerTimeLabel(
             sliderPosition = sliderPosition,
             position = position,
@@ -3176,7 +3181,7 @@ fun V8PlayerControlsContent(
             }
         )
 
-        // === A CONTINUACIÓN: preview del siguiente track, rasgo clásico de the iOS music app ===
+        // === UP NEXT: a preview of the next track, as the iOS music app shows it ===
         if (nextUpMetadata != null) {
             Spacer(Modifier.height(6.dp))
             Row(
@@ -3214,7 +3219,7 @@ fun V8PlayerControlsContent(
 
         Spacer(Modifier.height(14.dp))
 
-        // === PLAYBACK CONTROLS: tamaños de V7 reducidos ~12% ===
+        // === PLAYBACK CONTROLS: V7's sizes, ~12% smaller ===
         V8PlaybackControls(
             playbackState = playbackState,
             isPlaying = isPlaying,
@@ -3229,7 +3234,7 @@ fun V8PlayerControlsContent(
 
         Spacer(Modifier.height(14.dp))
 
-        // === VOLUME SLIDER (más corta en los lados que el slider de tiempo) ===
+        // === VOLUME SLIDER (inset further at the sides than the time slider) ===
         V8VolumeSlider(
             volume = playerVolume,
             onVolumeChange = onVolumeChange,
@@ -3280,7 +3285,7 @@ fun V8VolumeSlider(
             modifier = Modifier.weight(1f)
         )
 
-        // Icono grande (volumen alto) a la derecha
+        // Large icon (loud) on the right
         Icon(
             painter = painterResource(R.drawable.volume_up),
             contentDescription = null,
@@ -3489,8 +3494,8 @@ fun QueueCollapsedContentV8(
 
 
 /**
- * Track con efecto "glass" (vidrio esmerilado translúcido), estilo the iOS music app.
- * Capa base translúcida + blur sutil + borde tenue + relleno de progreso con highlight.
+ * A frosted glass slider track, as the iOS music app draws it.
+ * A translucent base, a light blur, a faint rim and a highlighted progress fill.
  */
 @Composable
 fun GlassTrack(
@@ -3505,7 +3510,7 @@ fun GlassTrack(
             .height(trackHeight)
             .clip(shape)
     ) {
-        // Capa base "glass": translúcida + blur + borde tenue
+        // Glass base: translucent, blurred, faint rim
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -3518,7 +3523,7 @@ fun GlassTrack(
                 .border(width = 0.75.dp, color = tint.copy(alpha = 0.3f), shape = shape)
         )
 
-        // Relleno de progreso (vidrio más opaco + highlight superior), sin blur
+        // Progress fill (denser glass with a top highlight), no blur
         Box(
             modifier = Modifier
                 .fillMaxHeight()

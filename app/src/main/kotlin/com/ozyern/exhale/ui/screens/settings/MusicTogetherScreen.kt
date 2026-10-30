@@ -322,6 +322,8 @@ fun MusicTogetherScreen(
 
     var mode by rememberSaveable { mutableStateOf(TogetherMode.Nearby) }
     var onlineCode by rememberSaveable { mutableStateOf("") }
+    // Opened already when there's a link from last time, so rejoining is one tap.
+    var joinOpen by rememberSaveable { mutableStateOf(lastJoinLink.isNotBlank()) }
     val idle = sessionState is TogetherSessionState.Idle || sessionState is TogetherSessionState.Error
     val hostSettings = hostingLan?.settings ?: hostingOnline?.settings
 
@@ -386,10 +388,13 @@ fun MusicTogetherScreen(
         if (showIdle) {
             ModeSwitch(mode = mode, onMode = { mode = it })
 
-            CapsuleButton(
-                text = if (mode == TogetherMode.Nearby) "Start Session" else "Start Online Session",
-                icon = if (mode == TogetherMode.Nearby) R.drawable.wifi else R.drawable.language,
-                onClick = {
+            // The two things this page is for, as two big tiles: start a room, or get into one.
+            HostJoinTiles(
+                mode = mode,
+                hostLoading = isCreatingSessionLoading,
+                hostEnabled = !isCreatingSessionLoading && !isJoining && !isHosting,
+                joinOpen = joinOpen,
+                onHost = {
                     val settings = TogetherRoomSettings(
                         allowGuestsToAddTracks = allowAddTracks,
                         allowGuestsToControlPlayback = allowControlPlayback,
@@ -401,10 +406,40 @@ fun MusicTogetherScreen(
                         playerConnection?.service?.startTogetherHost(port = port, displayName = displayName, settings = settings)
                     }
                 },
-                enabled = !isCreatingSessionLoading && !isJoining && !isHosting,
-                loading = isCreatingSessionLoading,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 18.dp),
+                onJoin = { joinOpen = !joinOpen },
             )
+
+            androidx.compose.animation.AnimatedVisibility(
+                visible = joinOpen,
+                enter = androidx.compose.animation.fadeIn(tween(220, delayMillis = 60)) + androidx.compose.animation.expandVertically(spring(dampingRatio = 0.9f, stiffness = 420f)),
+                exit = androidx.compose.animation.fadeOut(tween(120)) + androidx.compose.animation.shrinkVertically(spring(dampingRatio = 1f, stiffness = 500f)),
+            ) {
+                val nearbyValid = canJoin
+                val onlineValid = onlineCode.length >= 4
+                JoinCard(
+                    mode = mode,
+                    input = if (mode == TogetherMode.Online) onlineCode else joinInput,
+                    onInput = { if (mode == TogetherMode.Online) onlineCode = it else joinInput = it },
+                    valid = if (mode == TogetherMode.Online) onlineValid else nearbyValid,
+                    enabled = !disableJoinUi && !isJoining,
+                    onPaste = {
+                        val text = clipboard.getText()?.text?.trim().orEmpty()
+                        if (text.isNotBlank()) {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            if (mode == TogetherMode.Online) onlineCode = text.uppercase().filter { it.isLetterOrDigit() }.take(8) else joinInput = text
+                        }
+                    },
+                    onJoin = {
+                        if (mode == TogetherMode.Online) {
+                            playerConnection?.service?.joinTogetherOnline(onlineCode, displayName)
+                        } else {
+                            val trimmed = joinInput.trim()
+                            setLastJoinLink(trimmed)
+                            playerConnection?.service?.joinTogether(trimmed, displayName)
+                        }
+                    },
+                )
+            }
 
             androidx.compose.animation.AnimatedVisibility(
                 visible = mode == TogetherMode.Nearby,
@@ -416,7 +451,7 @@ fun MusicTogetherScreen(
                         icon = R.drawable.wifi,
                         tint = Color(0xFF34C759),
                         title = "No Wi-Fi? Use a hotspot",
-                        body = "Turn on your hotspot, have the other phone join it, then start the session. Two phones are all it takes. No router needed.",
+                        body = "Turn on one phone's hotspot and join it with the other. No router needed.",
                         modifier = Modifier.padding(16.dp),
                         action = {
                             Text(
@@ -431,32 +466,7 @@ fun MusicTogetherScreen(
                 }
             }
 
-            val nearbyValid = canJoin
-            val onlineValid = onlineCode.length >= 4
-            JoinCard(
-                mode = mode,
-                input = if (mode == TogetherMode.Online) onlineCode else joinInput,
-                onInput = { if (mode == TogetherMode.Online) onlineCode = it else joinInput = it },
-                valid = if (mode == TogetherMode.Online) onlineValid else nearbyValid,
-                enabled = !disableJoinUi && !isJoining,
-                onPaste = {
-                    val text = clipboard.getText()?.text?.trim().orEmpty()
-                    if (text.isNotBlank()) {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        if (mode == TogetherMode.Online) onlineCode = text.uppercase().filter { it.isLetterOrDigit() }.take(8) else joinInput = text
-                    }
-                },
-                onJoin = {
-                    if (mode == TogetherMode.Online) {
-                        playerConnection?.service?.joinTogetherOnline(onlineCode, displayName)
-                    } else {
-                        val trimmed = joinInput.trim()
-                        setLastJoinLink(trimmed)
-                        playerConnection?.service?.joinTogether(trimmed, displayName)
-                    }
-                },
-            )
-
+            Spacer(Modifier.height(12.dp))
             TogetherSection("You", footer = "This is the name everyone else in the room sees.") {
                 PuckRow(R.drawable.person, "Your name", subtitle = displayName, onClick = { showNameDialog = true })
             }
@@ -478,7 +488,17 @@ fun MusicTogetherScreen(
                 RelayCard()
             }
         } else {
-            // A room is running (or being joined): the way in, who is in, and what they may do.
+            // A room is running (or being joined): what's playing, the way in, who is in, and what they may do.
+            val room = hostingLan?.roomState ?: hostingOnline?.roomState ?: joinedState?.roomState
+            val nowPlaying = room?.queue?.getOrNull(room.currentIndex)
+            androidx.compose.animation.AnimatedVisibility(
+                visible = nowPlaying != null && !isWaitingApproval,
+                enter = androidx.compose.animation.fadeIn(tween(220)) + androidx.compose.animation.expandVertically(spring(dampingRatio = 0.9f, stiffness = 420f)),
+                exit = androidx.compose.animation.fadeOut(tween(120)) + androidx.compose.animation.shrinkVertically(),
+            ) {
+                if (nowPlaying != null) RoomNowPlaying(nowPlaying, playing = room.isPlaying)
+            }
+
             if (hostingOnline != null) {
                 InviteCode(code = hostingOnline.code, onCopy = copy, onShare = share)
             } else if (hostingLan != null) {
@@ -531,7 +551,8 @@ fun MusicTogetherScreen(
     }
 
     SettingsTopAppBar(
-        title = { Text(stringResource(R.string.music_together)) },
+        // The hero below already names the page; a second, two-line title over it only crowded the top.
+        title = {},
         navigationIcon = {
             com.ozyern.exhale.ui.component.LiquidBackButton(
                 onClick = navController::navigateUp,
@@ -566,8 +587,9 @@ private fun TogetherSection(
         if (footer != null) {
             Text(
                 footer,
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
+                // Footnote, the size iOS gives a group's footer.
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 2.dp, bottom = 4.dp),
             )
@@ -758,71 +780,222 @@ private fun TogetherHeader(
     }
 }
 
-/** Nearby or Online as a segmented control: a thumb that slides, not two buttons that light up. */
+/**
+ * Nearby or Online, as the app's liquid glass segmented control: the same glass thumb the Library's
+ * Liked / Library switch has, which stretches as it slides and bends what is under it. It sits
+ * straight under the title with no header over it, the way iOS places a segmented control, and
+ * the line under it says what the choice means.
+ */
 @Composable
 private fun ModeSwitch(mode: TogetherMode, onMode: (TogetherMode) -> Unit, modifier: Modifier = Modifier) {
-    val dark = isSystemInDarkTheme()
     val haptic = LocalHapticFeedback.current
-    Column(modifier.fillMaxWidth()) {
-        PreferenceGroupTitle("Where your friends are")
-        PreferenceGroup {
-            androidx.compose.foundation.layout.BoxWithConstraints(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .height(38.dp)
-                    .clip(RoundedCornerShape(11.dp))
-                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = if (dark) 0.10f else 0.07f))
-                    .padding(3.dp),
-            ) {
-                val half = maxWidth / 2
-                val offset by animateDpAsState(
-                    if (mode == TogetherMode.Nearby) 0.dp else half,
-                    spring(dampingRatio = 0.78f, stiffness = 520f),
-                    label = "togetherModeThumb",
-                )
-                Box(
-                    Modifier
-                        .offset(x = offset)
-                        .width(half)
-                        .fillMaxHeight()
-                        .shadow(if (dark) 0.dp else 2.dp, RoundedCornerShape(9.dp), clip = false)
-                        .clip(RoundedCornerShape(9.dp))
-                        .background(if (dark) Color.White.copy(alpha = 0.20f) else Color.White),
-                )
-                Row(Modifier.fillMaxSize()) {
-                    for ((value, label) in listOf(TogetherMode.Nearby to "Nearby", TogetherMode.Online to "Online")) {
-                        Box(
-                            Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                    if (mode != value) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    onMode(value)
-                                },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                label,
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = if (mode == value) FontWeight.SemiBold else FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        }
-                    }
-                }
+    val modes = listOf(TogetherMode.Nearby, TogetherMode.Online)
+    Column(modifier.fillMaxWidth().padding(top = 12.dp)) {
+        com.ozyern.exhale.ui.component.liquid.LiquidSegmentedTabs(
+            labels = listOf("Nearby", "Online"),
+            selectedIndex = modes.indexOf(mode),
+            onSelect = { index ->
+                val picked = modes[index]
+                if (picked != mode) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onMode(picked)
+            },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        )
+        androidx.compose.animation.Crossfade(targetState = mode, animationSpec = tween(220), label = "togetherModeText") { m ->
+            Text(
+                if (m == TogetherMode.Nearby) "Phones on the same Wi-Fi. No server, nothing leaves the network."
+                else "Friends anywhere join with a short code, through a relay server.",
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(start = 32.dp, end = 32.dp, top = 10.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Host and Join side by side. Host is the filled, prominent one, the way a sheet's primary action
+ * is; Join is glass and opens the code field under it rather than taking the page over.
+ */
+@Composable
+private fun HostJoinTiles(
+    mode: TogetherMode,
+    hostLoading: Boolean,
+    hostEnabled: Boolean,
+    joinOpen: Boolean,
+    onHost: () -> Unit,
+    onJoin: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 18.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        val accent = MaterialTheme.colorScheme.primary
+        ActionTile(
+            icon = if (mode == TogetherMode.Nearby) R.drawable.wifi else R.drawable.language,
+            title = "Host",
+            subtitle = if (mode == TogetherMode.Nearby) "Start a room here" else "Get a room code",
+            filled = true,
+            selected = false,
+            loading = hostLoading,
+            enabled = hostEnabled,
+            onClick = onHost,
+            // A flat fill, as an iOS primary action has: the gradient read as a promo banner.
+            background = androidx.compose.ui.graphics.SolidColor(accent),
+            modifier = Modifier.weight(1f),
+        )
+        ActionTile(
+            icon = R.drawable.link,
+            title = "Join",
+            subtitle = if (mode == TogetherMode.Nearby) "Scan or paste a link" else "Enter a code",
+            filled = false,
+            selected = joinOpen,
+            loading = false,
+            enabled = true,
+            onClick = onJoin,
+            background = null,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun ActionTile(
+    icon: Int,
+    title: String,
+    subtitle: String,
+    filled: Boolean,
+    selected: Boolean,
+    loading: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    background: Brush?,
+    modifier: Modifier = Modifier,
+) {
+    val haptic = LocalHapticFeedback.current
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.96f else 1f, spring(dampingRatio = 0.6f, stiffness = 700f), label = "tilePress")
+    val shape = RoundedCornerShape(24.dp)
+    val onTile = if (filled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+    val ring by androidx.compose.animation.animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primary else Color.Transparent, tween(200), label = "tileRing",
+    )
+    Column(
+        modifier
+            .height(132.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                alpha = if (enabled || loading) 1f else 0.5f
             }
-            androidx.compose.animation.Crossfade(targetState = mode, animationSpec = tween(220), label = "togetherModeText") { m ->
-                Text(
-                    if (m == TogetherMode.Nearby) "Phones on the same Wi-Fi. No server, nothing leaves the network."
-                    else "Friends anywhere join with a short code, through a relay server.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 8.dp),
+            .then(if (background != null) Modifier.clip(shape).background(background) else Modifier.settingsGlassGroup(shape))
+            .border(1.5.dp, ring, shape)
+            .clickable(interactionSource = source, indication = null, enabled = enabled && !loading) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            }
+            .padding(16.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Box(
+            Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(if (filled) onTile.copy(alpha = 0.14f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (loading) {
+                LoadingRing(Modifier.size(20.dp), stroke = 2.dp, color = onTile)
+            } else {
+                Icon(
+                    painterResource(icon),
+                    null,
+                    tint = if (filled) onTile else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp),
                 )
             }
         }
+        Column {
+            Text(title, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = onTile)
+            Text(
+                subtitle,
+                fontSize = 13.sp,
+                color = if (filled) onTile.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
 
+/** What the room is listening to, so a guest sees the same song the host does and everyone sees it's live. */
+@Composable
+private fun RoomNowPlaying(track: com.ozyern.exhale.together.TogetherTrack, playing: Boolean) {
+    TogetherCard {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            coil3.compose.AsyncImage(
+                model = track.thumbnailUrl,
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (playing) "Playing in the room" else "Paused",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if (playing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(track.title, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    track.artists.joinToString(", "),
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            LiveBars(playing)
+        }
+    }
+}
+
+/** Three bars that bounce while the room plays and settle flat when it pauses. */
+@Composable
+private fun LiveBars(playing: Boolean) {
+    val transition = rememberInfiniteTransition(label = "liveBars")
+    val color = MaterialTheme.colorScheme.primary
+    val level by animateFloatAsState(if (playing) 1f else 0f, tween(300), label = "liveBarsLevel")
+    val phases = listOf(0, 180, 360).map { delay ->
+        transition.animateFloat(
+            0.25f, 1f,
+            infiniteRepeatable(tween(520, delayMillis = delay, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "liveBar$delay",
+        )
+    }
+    Row(Modifier.height(18.dp), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.Bottom) {
+        phases.forEach { phase ->
+            Box(
+                Modifier
+                    .width(3.dp)
+                    .fillMaxHeight()
+                    .graphicsLayer {
+                        val h = 0.2f + (phase.value - 0.2f) * level
+                        scaleY = h
+                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
+                    }
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(color),
+            )
+        }
     }
 }
 
@@ -871,8 +1044,8 @@ private fun JoinCard(
 ) {
     val online = mode == TogetherMode.Online
     TogetherSection(
-        "Join",
-        modifier,
+        null,
+        modifier.padding(top = 12.dp),
         footer = if (online) "Ask the host for their room code." else "Scan the host's QR code with your camera, or paste their invite link.",
     ) {
         TogetherCard {

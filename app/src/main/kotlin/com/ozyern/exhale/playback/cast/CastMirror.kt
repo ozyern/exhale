@@ -83,19 +83,19 @@ class CastMirror(
     private var endWasPlaying = false
 
     private val statusCallback = object : RemoteMediaClient.Callback() {
-        override fun onStatusUpdated() = onRemoteStatus()
+        override fun onStatusUpdated() = guarded("status") { onRemoteStatus() }
     }
 
     private val localListener = object : Player.Listener {
-        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-            if (mediaItem == null || mediaItem.mediaId == loadedMediaId) return
-            val player = localPlayer() ?: return
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) = guarded("transition") {
+            if (mediaItem == null || mediaItem.mediaId == loadedMediaId) return@guarded
+            val player = localPlayer() ?: return@guarded
             load(mediaItem, player.currentPosition.coerceAtLeast(0L), player.playWhenReady)
         }
 
-        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-            if (loading) return
-            val remote = client ?: return
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) = guarded("play/pause") {
+            if (loading) return@guarded
+            val remote = client ?: return@guarded
             val remotePlaying = remote.mediaStatus?.playerState == MediaStatus.PLAYER_STATE_PLAYING
             if (playWhenReady && !remotePlaying) remote.play()
             if (!playWhenReady && remotePlaying) remote.pause()
@@ -105,10 +105,27 @@ class CastMirror(
             oldPosition: Player.PositionInfo,
             newPosition: Player.PositionInfo,
             reason: Int,
-        ) {
-            if (reason != Player.DISCONTINUITY_REASON_SEEK) return
-            if (newPosition.mediaItemIndex != oldPosition.mediaItemIndex) return
+        ) = guarded("seek") {
+            if (reason != Player.DISCONTINUITY_REASON_SEEK) return@guarded
+            if (newPosition.mediaItemIndex != oldPosition.mediaItemIndex) return@guarded
             seekRemote(newPosition.positionMs)
+        }
+    }
+
+    /**
+     * Runs one step of keeping the receiver in step, and never lets it throw. Every one of these
+     * is called from the Cast framework's callbacks, the player's listeners or the service's
+     * scope, none of which catch: one failure there (a session torn down between two calls, a
+     * receiver answering with something unexpected) took the whole app down a couple of seconds
+     * into casting. A step that fails now costs that step and is logged.
+     */
+    private inline fun guarded(what: String, block: () -> Unit) {
+        try {
+            block()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "cast $what failed", e)
         }
     }
 
@@ -219,6 +236,11 @@ class CastMirror(
                     Log.w(TAG, "load failed: ${result.status.statusCode}")
                     say("The TV couldn't play this song")
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "cast load failed", e)
+                if (generation == loadGeneration) say("The TV couldn't play this song")
             } finally {
                 if (generation == loadGeneration) loading = false
             }
@@ -236,22 +258,26 @@ class CastMirror(
         syncJob = scope().launch {
             while (isActive) {
                 delay(SYNC_EVERY_MS)
-                if (loading) continue
-                val remote = client ?: continue
-                val player = localPlayer() ?: continue
-                val status = remote.mediaStatus ?: continue
-                if (status.mediaInfo?.customData?.optString(KEY_MEDIA_ID) != player.currentMediaItem?.mediaId) continue
-                val playing = status.playerState == MediaStatus.PLAYER_STATE_PLAYING
-                if (player.playWhenReady != playing && status.playerState != MediaStatus.PLAYER_STATE_BUFFERING) {
-                    if (player.playWhenReady) remote.play() else remote.pause()
-                    continue
-                }
-                if (playing && player.isPlaying &&
-                    abs(remote.approximateStreamPosition - player.currentPosition) > DRIFT_MS
-                ) {
-                    seekRemote(player.currentPosition)
-                }
+                guarded("sync") { syncOnce() }
             }
+        }
+    }
+
+    private fun syncOnce() {
+        if (loading) return
+        val remote = client ?: return
+        val player = localPlayer() ?: return
+        val status = remote.mediaStatus ?: return
+        if (status.mediaInfo?.customData?.optString(KEY_MEDIA_ID) != player.currentMediaItem?.mediaId) return
+        val playing = status.playerState == MediaStatus.PLAYER_STATE_PLAYING
+        if (player.playWhenReady != playing && status.playerState != MediaStatus.PLAYER_STATE_BUFFERING) {
+            if (player.playWhenReady) remote.play() else remote.pause()
+            return
+        }
+        if (playing && player.isPlaying &&
+            abs(remote.approximateStreamPosition - player.currentPosition) > DRIFT_MS
+        ) {
+            seekRemote(player.currentPosition)
         }
     }
 

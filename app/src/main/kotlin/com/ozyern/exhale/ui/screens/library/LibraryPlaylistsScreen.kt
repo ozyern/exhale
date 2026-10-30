@@ -452,7 +452,7 @@ private fun PlaylistControlCard(
 private fun PlaylistShortcutGrid(
     entries: List<PlaylistShortcutEntry>,
     onClick: (String) -> Unit,
-    onLongClick: (String) -> Unit = {}, // Añadido para aprovechar combinedClickable si lo necesitas
+    onLongClick: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(

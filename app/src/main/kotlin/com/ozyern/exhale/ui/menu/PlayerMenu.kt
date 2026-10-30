@@ -621,6 +621,55 @@ fun ColumnScope.PlayerMenu(
                         onClick = { showSleepTimerDialog = true },
                     )
 
+                    // A-B repeat: one row that marks A, then B (and starts looping), then clears.
+                    // The menu stays open, so A and B can be set in one visit while the song plays.
+                    Divider()
+                    val abLoop by playerConnection.service.abRepeat.loop.collectAsState()
+                    val loopForThis = abLoop?.takeIf { it.mediaId == mediaMetadata.id }
+                    PlayerMenuRow(
+                        icon = R.drawable.repeat_one,
+                        title = "A-B repeat",
+                        subtitle = when {
+                            loopForThis == null -> "Tap to mark the start"
+                            !loopForThis.looping -> "From ${makeTimeString(loopForThis.startMs)} · tap to mark the end"
+                            else -> "Looping ${makeTimeString(loopForThis.startMs)} – " +
+                                "${makeTimeString(loopForThis.endMs ?: 0L)} · tap to stop"
+                        },
+                        highlighted = loopForThis != null,
+                        onClick = { playerConnection.service.abRepeat.mark() },
+                    )
+
+                    // How this album or playlist moves between songs — its own choice, kept for next
+                    // time — when one is playing. Tapping steps App setting → Gapless → Crossfade →
+                    // AutoMix, so a live album can stay gapless with crossfade on everywhere else.
+                    val queueSourceId by playerConnection.service.queueSourceId.collectAsState()
+                    queueSourceId?.let { sourceId ->
+                        val (transitionsRaw, setTransitionsRaw) = com.ozyern.exhale.utils.rememberPreference(
+                            com.ozyern.exhale.constants.CollectionTransitionsKey,
+                            "",
+                        )
+                        val modes = remember(transitionsRaw) {
+                            com.ozyern.exhale.playback.CollectionTransitions.parse(transitionsRaw)
+                        }
+                        val mode = modes[sourceId] ?: com.ozyern.exhale.playback.TransitionMode.DEFAULT
+                        Divider()
+                        PlayerMenuRow(
+                            icon = R.drawable.mix,
+                            // The collection's name is already on the player ("Playing from …"); here
+                            // it only made the row wrap onto three lines.
+                            title = "Transitions",
+                            subtitle = "${mode.label} · for this playlist or album",
+                            highlighted = mode != com.ozyern.exhale.playback.TransitionMode.DEFAULT,
+                            onClick = {
+                                setTransitionsRaw(
+                                    com.ozyern.exhale.playback.CollectionTransitions.encode(
+                                        modes + (sourceId to mode.next()),
+                                    ),
+                                )
+                            },
+                        )
+                    }
+
                     // The queue actions, for the song playing: hear it again straight after
                     // itself, or once more at the end of everything queued.
                     Divider()
@@ -692,10 +741,18 @@ fun ColumnScope.PlayerMenu(
 
                     if (isQueueTrigger != true) {
                         Divider()
+                        // Exhale's own equaliser — the tone pad, the faders and the live curve — not
+                        // the device-effects dialog this used to open: a Material app bar over rows
+                        // of horizontal sliders and text buttons, the oldest-looking screen the
+                        // player could reach. The device's effects are still one row away on it.
                         PlayerMenuRow(
                             icon = R.drawable.equalizer,
                             title = stringResource(R.string.equalizer),
-                            onClick = { showEqualizerDialog = true },
+                            onClick = {
+                                onDismiss()
+                                playerBottomSheetState.snapTo(playerBottomSheetState.collapsedBound)
+                                navController.navigate("settings/player/equalizer")
+                            },
                         )
 
                         Divider()

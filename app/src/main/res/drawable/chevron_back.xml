@@ -4,11 +4,12 @@
     android:viewportWidth="24"
     android:viewportHeight="24"
     android:autoMirrored="true">
-    <!-- Back, as iOS draws it: a chevron, not an arrow with a shaft. -->
+    <!-- Back, as ColorOS draws it: a thin arrow with a shaft and round ends. Every back control in
+         the app draws this one, so it is redrawn here rather than at each of them. -->
     <path
-        android:pathData="M14.6,5.2 L7.8,12 L14.6,18.8"
+        android:pathData="M19.5,12 L4.8,12 M11,5.6 L4.6,12 L11,18.4"
         android:strokeColor="@android:color/white"
-        android:strokeWidth="2.5"
+        android:strokeWidth="1.9"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
 </vector>

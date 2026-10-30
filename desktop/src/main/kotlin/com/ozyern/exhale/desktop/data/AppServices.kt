@@ -72,10 +72,9 @@ object AppLifecycle {
 }
 
 /**
- * Updates from GitHub releases. The repository's releases are shared with the Android app, whose
- * version numbers run far ahead of this one's — so only releases that actually carry a Windows
- * installer count. Comparing against the newest release of any kind told every Windows user an
- * Android APK was an update.
+ * Updates from GitHub releases, as the Android app fetches its own. The repository's releases are
+ * shared with Android, so Windows has its own tags: v1.0.xxx-windows, named "Exhale 1.0.xxx-windows",
+ * carrying the setup. Only those count here (and Android ignores them), newest version first.
  */
 object UpdateChecker {
     private val http = OkHttpClient()
@@ -89,7 +88,10 @@ object UpdateChecker {
 
     val download = MutableStateFlow<UpdateDownload>(UpdateDownload.Idle)
 
-    /** Windows releases, newest first. */
+    /** The tag suffix that marks a release as Windows'. */
+    const val WindowsTagSuffix = "-windows"
+
+    /** Windows releases, newest version first. */
     suspend fun releases(): Result<List<ReleaseInfo>> = withContext(Dispatchers.IO) {
         runCatching {
             val request = Request.Builder()
@@ -105,6 +107,7 @@ object UpdateChecker {
             val array = JSONArray(body)
             (0 until array.length()).map { array.getJSONObject(it) }
                 .filter { !it.optBoolean("draft") && !it.optBoolean("prerelease") }
+                .filter { it.optString("tag_name").endsWith(WindowsTagSuffix, ignoreCase = true) }
                 .mapNotNull { release ->
                     val assets = release.optJSONArray("assets") ?: JSONArray()
                     val files = (0 until assets.length()).map { assets.getJSONObject(it) }
@@ -121,6 +124,8 @@ object UpdateChecker {
                         checksums = files.firstOrNull { it.name.contains("sha256", ignoreCase = true) },
                     )
                 }
+                // By version, not by publishing order: a re-published older release mustn't come first.
+                .sortedWith { a, b -> if (isNewer(a.tag, b.tag)) -1 else if (isNewer(b.tag, a.tag)) 1 else 0 }
         }.onSuccess {
             val now = System.currentTimeMillis()
             lastChecked.value = now
@@ -203,12 +208,22 @@ object UpdateChecker {
 
     /** Starts the downloaded installer and closes Exhale, so it can be replaced. False if Windows wouldn't start it. */
     fun install(installer: File): Boolean =
-        runCatching { ProcessBuilder(installer.absolutePath).start() }
+        runCatching {
+            // An .msi isn't a program Windows will start by itself; msiexec runs it.
+            val command = if (installer.name.endsWith(".msi", ignoreCase = true)) {
+                listOf("msiexec", "/i", installer.absolutePath)
+            } else {
+                listOf(installer.absolutePath)
+            }
+            ProcessBuilder(command).start()
+        }
             .onSuccess { AppLifecycle.exit?.invoke() }
             .isSuccess
 
+    /** Whether [tag] (v1.0.xxx-windows, or a bare version) is a later version than [than]. */
     fun isNewer(tag: String, than: String = AppInfo.VERSION): Boolean {
-        fun parts(version: String) = version.trimStart('v', 'V').split('.', '-').mapNotNull { it.toIntOrNull() }
+        fun parts(version: String) =
+            version.trimStart('v', 'V').removeSuffix(WindowsTagSuffix).split('.', '-').mapNotNull { it.toIntOrNull() }
         val a = parts(tag)
         val b = parts(than)
         for (i in 0 until maxOf(a.size, b.size)) {

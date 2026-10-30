@@ -193,9 +193,9 @@ fun WidgetSettings(
 }
 
 /**
- * Vista previa en vivo del widget dentro de la propia pantalla de Settings,
- * usando datos de ejemplo (sin tocar PlayerWidgetState real) para que la
- * persona vea el efecto de cada ajuste sin salir de la app.
+ * A live preview of the widget inside Settings itself,
+ * on sample data (the real PlayerWidgetState is left alone), so
+ * each setting's effect shows without leaving the app.
  */
 @Composable
 private fun WidgetLivePreview(
@@ -333,9 +333,9 @@ private fun WidgetSliderRow(
     valueText: (Float) -> String,
     onValueChangeFinished: (Float) -> Unit,
 ) {
-    // El valor que llega desde el DataStore (Flow) solo se actualiza DESPUÉS de
-    // soltar el slider, así que durante el arrastre se usa un estado local para
-    // que el slider y el texto respondan al instante sin escribir en cada frame.
+    // The value from the DataStore (Flow) only changes AFTER the slider
+    // is let go, so while dragging a local state is used, so
+    // the slider and its text answer at once without a write every frame.
     var localValue by remember(value) { mutableFloatStateOf(value) }
 
     Column(

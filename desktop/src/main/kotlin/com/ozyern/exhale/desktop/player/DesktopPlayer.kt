@@ -47,6 +47,10 @@ data class PlayerState(
     /** Bumped on every seek, so what follows this state rather than [DesktopPlayer.position] (Discord) still hears about jumps. */
     val seekGeneration: Int = 0,
     val streamInfo: String? = null,
+    /** The immersive format the music itself is in — Dolby Atmos, TrueHD… — or null for ordinary stereo. */
+    val immersive: ImmersiveFormat? = null,
+    /** True while a Dolby track goes out to the receiver as it is, decoded there rather than here. */
+    val passthrough: Boolean = false,
     val error: String? = null,
     val volume: Int = 100,
     val shuffle: Boolean = false,
@@ -99,6 +103,9 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
     private var sleepJob: Job? = null
 
     private var appliedFilters: String? = null
+    /** The track mpv has open, once it's loaded: what [AudioEffects.filterChain] must leave alone. */
+    @Volatile private var sourceAudio: SourceAudio? = null
+    private var appliedPassthrough: Boolean? = null
     private var appliedSpeed: Float? = null
     private var appliedPitchCorrection: Boolean? = null
     private var appliedProxy: String? = null
@@ -107,6 +114,9 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
     private var appliedExclusive: Boolean? = null
     private var appliedResampler: String? = null
     private var probeJob: Job? = null
+
+    /** The song already given one fresh-URL retry after mpv failed on it; see onError. */
+    @Volatile private var retriedSongId: String? = null
 
     // Your Sound Chem: how long the loaded song has actually been heard — playing time, not position,
     // so seeking around a song doesn't count as listening to it.
@@ -124,7 +134,10 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
             }
             _state.update { it.copy(isLoading = false, isPlaying = true) }
             WindowsMediaSession.setPlaying(true)
-            scope.launch { probeOutput() }
+            scope.launch {
+                probeSource()
+                probeOutput()
+            }
         }
 
         override fun onEndOfFile() {
@@ -133,6 +146,17 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         }
 
         override fun onError(message: String) {
+            // A cached or prefetched YouTube URL can go stale or get throttled when many songs are
+            // started in a row; mpv then reads nothing from it. Ask for a fresh URL once before giving up.
+            val failed = loadedSongId
+            if (failed != null && failed != retriedSongId && failed == _state.value.current?.id && !_videoMode.value) {
+                retriedSongId = failed
+                StreamResolver.forget(failed)
+                val at = _position.value.takeIf { it > 1.0 }
+                println("Exhale: retrying $failed with a fresh stream — $message")
+                scope.launch { load(_state.value.index, at) }
+                return
+            }
             _state.update { it.copy(isLoading = false, isPlaying = false, error = message) }
             scope.launch { scheduleAutoSkip() }
         }
@@ -145,9 +169,12 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
                 if (lastListenTick != 0L) listenedMs += ((now - lastListenTick) / 1_000_000L).coerceIn(0L, 1_000L)
                 lastListenTick = now
             }
-            _position.value = seconds
-            _buffered.value = mpv.bufferedTo() ?: 0.0
-            updateFade(seconds)
+            // mpv's clock is the video's in video mode; everything else (the bar, the lyrics) runs on
+            // the song's, which starts the length of the video's intro later.
+            val songSeconds = (seconds - videoOffsetSec).coerceAtLeast(0.0)
+            _position.value = songSeconds
+            _buffered.value = ((mpv.bufferedTo() ?: 0.0) - videoOffsetSec).coerceAtLeast(0.0)
+            updateFade(songSeconds)
             val now = System.currentTimeMillis()
             if (now - lastPersistAt > 10_000) {
                 lastPersistAt = now
@@ -212,16 +239,28 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
     /** Settings that act on the audio engine itself. */
     private fun applyEngineSettings(settings: Settings) {
         val opened = AudioOutputStatus.state.value?.channels
-        val chain = AudioEffects.filterChain(settings, opened)
+        val sourceChannels = sourceAudio?.channels
+        val chain = AudioEffects.filterChain(settings, opened, sourceChannels = sourceChannels)
         if (chain != appliedFilters) {
-            // A libmpv without the upmix filter refuses the whole chain; keep the rest of it.
-            if (!mpv.setProperty("af", chain) &&
-                !mpv.setProperty("af", AudioEffects.filterChain(settings.copy(spatialAudio = "OFF")))
-            ) {
-                // And one without 8D's graph either, so the equalizer at least survives.
-                mpv.setProperty("af", AudioEffects.filterChain(settings.copy(spatialAudio = "OFF", eightD = false)))
-            }
+            // A libmpv without the upmix filter refuses the whole chain; keep the rest of it. And one
+            // without 8D's graph either, so the equalizer at least survives — as the linear-phase FIR if
+            // this build has it, as the classic band filters if not.
+            val fallbacks = sequenceOf(
+                chain,
+                AudioEffects.filterChain(settings.copy(spatialAudio = "OFF")),
+                AudioEffects.filterChain(settings.copy(spatialAudio = "OFF", eightD = false)),
+                AudioEffects.filterChain(settings, opened, linearPhase = false, sourceChannels = sourceChannels),
+                AudioEffects.filterChain(settings.copy(spatialAudio = "OFF", eightD = false), linearPhase = false),
+            )
+            fallbacks.firstOrNull { mpv.setProperty("af", it) }
             appliedFilters = chain
+        }
+        // Dolby passthrough: Dolby Digital, Dolby Digital Plus (and the Atmos it carries) and TrueHD go
+        // to the receiver or soundbar bit for bit, which decodes them — Atmos' objects and all — rather
+        // than Exhale decoding them to channels. Stereo music is unaffected; it isn't in those codecs.
+        if (settings.dolbyPassthrough != appliedPassthrough) {
+            mpv.setProperty("audio-spdif", if (settings.dolbyPassthrough) ImmersiveAudio.PassthroughCodecs else "")
+            appliedPassthrough = settings.dolbyPassthrough
         }
         val channels = AudioEffects.outputChannels(settings)
         val resampler = AudioEffects.resamplerOptions(settings)
@@ -276,6 +315,21 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
             appliedGain = gain
         }
         mpv.setVolume(_state.value.volume * fade)
+    }
+
+    /**
+     * What the music itself is: its codec, channels, and whether it's Dolby Atmos. A multichannel
+     * source must never meet the stereo upmix (it would rebuild the surrounds from the front pair and
+     * throw the real ones away), so the effects are laid out again once this is known.
+     */
+    private suspend fun probeSource() {
+        val source = withContext(Dispatchers.IO) { ImmersiveAudio.fromTrackList(mpv.getProperty("track-list")) }
+        sourceAudio = source
+        val passthrough = AppSettings.current.dolbyPassthrough &&
+            source?.codec in setOf("ac3", "eac3", "truehd") &&
+            withContext(Dispatchers.IO) { mpv.getProperty("audio-out-params/format") }?.startsWith("spdif") == true
+        _state.update { it.copy(immersive = source?.format, passthrough = passthrough) }
+        applyEngineSettings(AppSettings.current)
     }
 
     /** Reads back what the audio device actually opened with — Settings and the player badge show it. */
@@ -335,6 +389,7 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
 
     private fun load(index: Int, startAt: Double? = null) {
         val song = _state.value.queue.getOrNull(index) ?: return
+        if (song.id != retriedSongId) retriedSongId = null
         loadJob?.cancel()
         skipJob?.cancel()
         mpv.stop()
@@ -342,6 +397,8 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         listenSong = song
         loadedSongId = null
         pendingSeek = null
+        // Until the next track says what it is, nothing about this one's channels applies.
+        sourceAudio = null
         fade = if (AppSettings.current.crossfadeSeconds > 0) 0.0 else 1.0
         _state.update {
             it.copy(
@@ -350,11 +407,18 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
                 isPlaying = false,
                 durationSeconds = song.duration?.toDouble() ?: 0.0,
                 streamInfo = null,
+                immersive = null,
+                passthrough = false,
                 error = null,
             )
         }
         _position.value = startAt ?: 0.0
         _buffered.value = 0.0
+        // A new song starts on its own clock; video mode sets its offset again once it knows it.
+        if (videoOffsetSec != 0.0) {
+            videoOffsetSec = 0.0
+            mpv.setProperty("audio-delay", "0")
+        }
         // What Windows shows in its own panel and on the volume overlay.
         WindowsMediaSession.nowPlaying(song.title, song.artists.joinToString { it.name })
         loadJob = scope.launch {
@@ -367,10 +431,15 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
                 // the sound stays the song's — the video's own track can carry skits, a longer intro
                 // or a radio edit.
                 val videoId = runCatching { MusicVideoMatch.videoIdFor(song) }.getOrNull() ?: song.id
+                // The video's own soundtrack, kept for lining the two up before it is swapped out.
+                var videoSound: Pair<String, StreamHeaders>? = null
+                var songSound: Pair<String, StreamHeaders>? = null
                 StreamResolver.resolveVideo(videoId)
                     .map { video ->
                         if (videoId == song.id) return@map video
                         val sound = StreamResolver.resolve(song.id).getOrNull() ?: return@map video
+                        videoSound = (video.audioUrl ?: video.videoUrl) to video.headers
+                        songSound = sound.url to sound.headers
                         video.copy(audioUrl = sound.url, headers = video.headers.merge(sound.headers))
                     }
                     .onSuccess { video ->
@@ -383,8 +452,24 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
                         DesktopPrefs.recordPlayed(song)
                         loadedSongId = song.id
                         applyVolume()
-                        mpv.loadVideo(video.videoUrl, video.audioUrl, video.headers, startAt?.takeIf { it > 1.0 })
+                        // Started in step when this pair has been measured before; otherwise together,
+                        // and lined up the moment the measurement lands.
+                        val known = if (videoId == song.id) 0L else VideoAlignment.known(videoId, song.id)
+                        videoOffsetSec = (known ?: 0L) / 1000.0
+                        mpv.setProperty("audio-delay", videoOffsetSec.toString())
+                        val start = (startAt ?: 0.0) + videoOffsetSec
+                        mpv.loadVideo(video.videoUrl, video.audioUrl, video.headers, start.takeIf { it > 1.0 })
                         persistQueue()
+                        val ownSound = videoSound
+                        val itsSong = songSound
+                        if (known == null && ownSound != null && itsSong != null) {
+                            scope.launch {
+                                val measured = VideoAlignment.offsetMs(videoId, song.id, ownSound.first, ownSound.second, itsSong.first, itsSong.second)
+                                    ?: return@launch
+                                println("Exhale video: $videoId starts its song ${measured} ms in")
+                                if (_videoMode.value && loadedSongId == song.id) applyVideoOffset(measured / 1000.0)
+                            }
+                        }
                     }
                     .onFailure { error ->
                         if (error is CancellationException) throw error
@@ -479,6 +564,7 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         mpv = Mpv(mpvListener, windowId)
         // The new mpv knows none of the settings the old one had.
         appliedFilters = null
+        appliedPassthrough = null
         appliedSpeed = null
         appliedPitchCorrection = null
         appliedProxy = null
@@ -596,7 +682,23 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         _position.value = seconds
         _state.update { it.copy(seekGeneration = it.seekGeneration + 1) }
         if (loadedSongId != current.current?.id) return
-        mpv.seekTo(seconds)
+        mpv.seekTo(seconds + videoOffsetSec)
+    }
+
+    /**
+     * In video mode, how far into the video its song begins (see VideoAlignment): the song's sound is
+     * delayed by this in mpv, and positions are reported on the song's clock. 0 for everything else.
+     */
+    @Volatile private var videoOffsetSec = 0.0
+
+    /** Lines the playing video up with its song, once measured: sound delayed, picture moved on with it. */
+    private fun applyVideoOffset(seconds: Double) {
+        val change = seconds - videoOffsetSec
+        if (kotlin.math.abs(change) < 0.05) return
+        videoOffsetSec = seconds
+        mpv.setProperty("audio-delay", seconds.toString())
+        // The picture jumps on by the change, so the song carries on from where it was heard.
+        mpv.seekTo(_position.value + seconds)
     }
 
     fun seekBy(deltaSeconds: Double) {
@@ -681,6 +783,19 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
     }
 
     fun addToQueue(song: SongItem) = addToQueue(listOf(song))
+
+    /** A whole album or playlist straight after the song playing, in its own order. */
+    fun playNext(songs: List<SongItem>) {
+        if (songs.isEmpty()) return
+        val current = _state.value
+        if (current.current == null) {
+            play(songs, 0)
+            return
+        }
+        val queue = current.queue.toMutableList().apply { addAll(current.index + 1, songs) }
+        _state.update { it.copy(queue = queue) }
+        persistQueue()
+    }
 
     /**
      * Takes one song out. Removing the song playing moves on to the next; removing one before it keeps

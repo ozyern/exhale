@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import com.ozyern.exhale.ui.component.PlaylistArtwork
 import com.ozyern.exhale.ui.component.CollectionPlay
 import com.ozyern.exhale.ui.component.CollectionAction
+import com.ozyern.exhale.ui.component.CollectionShuffle
 import com.ozyern.exhale.ui.component.CollectionHero
 import com.ozyern.exhale.ui.component.rememberScrollEdge
 import com.ozyern.exhale.ui.component.scrollEdgeScrim
@@ -585,19 +586,20 @@ fun LocalPlaylistScreen(
                                             playerConnection.playQueue(
                                                 ListQueue(
                                                     title = playlist.playlist.name,
+                                                    sourceId = viewModel.playlistId,
                                                     items = songs.map { it.song.toMediaItem() },
                                                 ),
                                             )
                                         },
                                     )
-                                    CollectionAction(
-                                        icon = R.drawable.shuffle,
-                                        contentDescription = stringResource(R.string.shuffle),
+                                    CollectionShuffle(
                                         onClick = {
                                             playerConnection.playQueue(
                                                 ListQueue(
                                                     title = playlist.playlist.name,
+                                                    sourceId = viewModel.playlistId,
                                                     items = songs.shuffled().map { it.song.toMediaItem() },
+                                                    shuffled = true,
                                                 ),
                                             )
                                         },
@@ -812,6 +814,7 @@ fun LocalPlaylistScreen(
                                                 playerConnection.playQueue(
                                                     ListQueue(
                                                         title = playlist!!.playlist.name,
+                                                        sourceId = viewModel.playlistId,
                                                         items = songs.map { it.song.toMediaItem() },
                                                         startIndex = songs.indexOfFirst { it.map.id == song.map.id },
                                                     ),
@@ -948,6 +951,7 @@ fun LocalPlaylistScreen(
                                                     playerConnection.playQueue(
                                                         ListQueue(
                                                             title = playlist!!.playlist.name,
+                                                            sourceId = viewModel.playlistId,
                                                             items = songs.map { it.song.toMediaItem() },
                                                             startIndex = index,
                                                         ),
@@ -1130,15 +1134,8 @@ fun LocalPlaylistScreen(
                         )
                     }
                 } else if (!isSearching) {
-                    IconButton(
-                        onClick = { isSearching = true },
-                        onLongClick = {}
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.search),
-                            contentDescription = null
-                        )
-                    }
+                    // A glass disc like the back button opposite it, as iOS draws every round bar control.
+                    com.ozyern.exhale.ui.component.LiquidGlassIconButton(onClick = { isSearching = true }, icon = R.drawable.search)
                 }
             }
         )

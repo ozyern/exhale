@@ -36,6 +36,9 @@ import kotlin.math.roundToInt
  */
 object VideoSlot {
     val rect = mutableStateOf<IntRect?>(null)
+
+    /** Where the picture last sat in the open player: where it glides from, into the dock, as the player closes. */
+    val lastOpen = mutableStateOf<IntRect?>(null)
 }
 
 /**
@@ -74,16 +77,14 @@ fun VideoStage(state: PlayerState, player: DesktopPlayer, modifier: Modifier = M
                     .size(width, width / shape)
                     .onGloballyPositioned { coordinates ->
                         val bounds = coordinates.boundsInRoot()
-                        VideoSlot.rect.value = if (open) {
-                            IntRect(
-                                bounds.left.roundToInt(),
-                                bounds.top.roundToInt(),
-                                bounds.right.roundToInt(),
-                                bounds.bottom.roundToInt(),
-                            )
-                        } else {
-                            null
-                        }
+                        val rect = IntRect(
+                            bounds.left.roundToInt(),
+                            bounds.top.roundToInt(),
+                            bounds.right.roundToInt(),
+                            bounds.bottom.roundToInt(),
+                        )
+                        VideoSlot.rect.value = if (open) rect else null
+                        if (open) VideoSlot.lastOpen.value = rect
                     },
             )
         }

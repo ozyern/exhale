@@ -1,8 +1,13 @@
 name: Release
 
-# Push a tag and the release builds itself.
+# Push a tag and the release builds itself. Android and Windows release separately, each
+# under its own tag, so either can ship without the other:
 #
-#   git tag v1.0.103 && git push origin v1.0.103
+#   git tag v1.0.103 && git push origin v1.0.103                  Android: the APK
+#   git tag v1.0.103-windows && git push origin v1.0.103-windows  Windows: the setup
+#
+# Each app's updater only looks at its own: Windows at the -windows releases, Android at
+# the rest.
 #
 # The tag is the source of truth for the version: the job refuses to build if the
 # tag and `versionName` in app/build.gradle.kts disagree, because a release whose
@@ -14,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to build and publish (e.g. v1.0.103)'
+        description: 'Tag to build and publish (v1.0.103 for Android, v1.0.103-windows for Windows)'
         required: true
 
 permissions:
@@ -22,6 +27,7 @@ permissions:
 
 jobs:
   release:
+    if: ${{ !endsWith(github.event.inputs.tag || github.ref_name, '-windows') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -140,7 +146,7 @@ jobs:
   # with two artifact configurations in the SignPath project, "app" and "setup" (see
   # .signpath/). Until then the setup is published unsigned.
   windows:
-    needs: release
+    if: ${{ endsWith(github.event.inputs.tag || github.ref_name, '-windows') }}
     runs-on: windows-latest
 
     steps:
@@ -153,8 +159,21 @@ jobs:
         shell: bash
         run: |
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          VERSION="${VERSION%-windows}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # The Windows app reports versionName as its version, and its updater compares that with the tag.
+      - name: Check the tag against versionName
+        shell: bash
+        run: |
+          GRADLE_VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
+          echo "tag=${{ steps.tag.outputs.version }}  gradle=$GRADLE_VERSION"
+          if [ "${{ steps.tag.outputs.version }}" != "$GRADLE_VERSION" ]; then
+            echo "::error::Tag v$GRADLE_VERSION-windows expected — the tag and versionName must match."
+            exit 1
+          fi
 
       # The JetBrains Runtime SDK, with jpackage: the installed app keeps its custom title bar on it.
       - uses: actions/setup-java@v4
@@ -236,8 +255,9 @@ jobs:
           wait-for-completion-timeout-in-seconds: 14400
           output-artifact-directory: out/signed
 
-      # The checksum list is shared with the APK; the Windows updater checks its download against it.
-      - name: Attach the setup to the release
+      # Its own release, named as the tag: "Exhale 1.0.103-windows". The Windows updater checks its
+      # download against the checksum list attached beside it.
+      - name: Publish the release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -246,7 +266,10 @@ jobs:
           mkdir -p out
           if [ -f "out/signed/$SETUP" ]; then cp "out/signed/$SETUP" out/; else cp "desktop/build/installer/$SETUP" out/; fi
           cd out
-          gh release download "${{ steps.tag.outputs.tag }}" --repo "${{ github.repository }}" --pattern SHA256SUMS.txt --clobber
-          sha256sum "$SETUP" >> SHA256SUMS.txt
+          sha256sum "$SETUP" > SHA256SUMS.txt
           cat SHA256SUMS.txt
-          gh release upload "${{ steps.tag.outputs.tag }}" --repo "${{ github.repository }}" --clobber "$SETUP" SHA256SUMS.txt
+          gh release create "${{ steps.tag.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --title "Exhale ${{ steps.tag.outputs.version }}-windows" \
+            --notes "Exhale ${{ steps.tag.outputs.version }} for Windows. Run the setup to install or update; Exhale also offers it in the app." \
+            "$SETUP" SHA256SUMS.txt

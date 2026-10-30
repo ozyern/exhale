@@ -134,10 +134,125 @@ fun <T : YTItem> List<T>.filterVideo(enabled: Boolean = true) =
         this
     }
 
+/** The label's own music video (not a fan upload), which search shows marked as such. */
+val YTItem.isOfficialMusicVideo: Boolean
+    get() = this is SongItem &&
+        endpoint?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType == MUSIC_VIDEO_TYPE_OMV
+
 /** A music video or a user upload rather than the audio track itself. */
 val YTItem.isMusicVideo: Boolean
     get() = this is SongItem && endpoint?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType
         .let { it == MUSIC_VIDEO_TYPE_OMV || it == MUSIC_VIDEO_TYPE_UGC }
+
+/**
+ * The audio track of [video] among these items: a song (not itself a video) whose title is the
+ * video's with its dressing taken off - "(Official Video)", "[4K]", an "Artist - " prefix - and that
+ * shares an artist with it, or is by an artist the video's title names. Null if there is none, so a
+ * cover or a different song of the same name never stands in for it.
+ */
+fun List<YTItem>.audioTrackFor(video: YTItem): SongItem? {
+    if (video !is SongItem || !video.isMusicVideo) return null
+    val videoTitle = video.title.songTitleKey()
+    val rawVideoTitle = video.title.lowercase()
+    val videoArtists = video.artists.map { it.name.lowercase().trim() }.filter { it.isNotEmpty() }.toSet()
+    return asSequence()
+        .filterIsInstance<SongItem>()
+        .filter { !it.isMusicVideo && it.id != video.id }
+        .firstOrNull { song ->
+            val title = song.title.songTitleKey()
+            val titleMatches = title.isNotEmpty() && (title == videoTitle || videoTitle.contains(title))
+            val songArtists = song.artists.map { it.name.lowercase().trim() }
+            val sameArtist = songArtists.any { it in videoArtists } ||
+                songArtists.any { it.isNotEmpty() && rawVideoTitle.contains(it) }
+            titleMatches && sameArtist
+        }
+}
+
+private val titleDressing = Regex(
+    """\s*[(\[](?:[^)\]]*\b(?:official|video|audio|lyrics?|visuali[sz]er|4k|hd|mv|m/v|live|from)\b[^)\]]*)[)\]]""",
+    RegexOption.IGNORE_CASE,
+)
+
+/** A title reduced to the song's own name: no video dressing, no "Artist - " in front, one case. */
+private fun String.songTitleKey(): String {
+    var t = replace(titleDressing, "")
+    val dash = t.indexOf(" - ")
+    if (dash > 0) t = t.substring(dash + 3)
+    return t.lowercase().replace(Regex("""[^\p{L}\p{N}]+"""), " ").trim()
+}
+
+/** Lowercase words, accents and punctuation gone: how a query and a title are compared. */
+private fun String.searchWords(): List<String> =
+    java.text.Normalizer.normalize(this, java.text.Normalizer.Form.NFD)
+        .replace(Regex("""\p{M}+"""), "")
+        .lowercase()
+        .split(Regex("""[^\p{L}\p{N}]+"""))
+        .filter { it.isNotEmpty() }
+
+/** Versions of a song that are not the song: wanted only when the search asks for them. */
+private val alternateVersions = listOf(
+    "remix", "sped", "slowed", "reverb", "lofi", "lo", "nightcore", "8d", "live", "cover", "karaoke",
+    "instrumental", "acoustic", "unplugged", "mashup", "edit", "version", "reprise", "remaster",
+    "remastered", "extended", "bass", "boosted", "mix", "rework", "flip", "dj", "female", "male",
+)
+
+/**
+ * The song a search for [query] is most likely after, among these results: the plain studio
+ * recording, named by what was typed.
+ *
+ * YouTube's top result for a song's name is often not the song: its music video, a remix, a
+ * sped-up edit, a cover, a lyric video, or the artist when the name is also in an artist's. Every
+ * audio track here (never a video) is scored on how much of its title was typed, whether its
+ * artist was typed too, and whether it is another version (a remix, a live take) that the search
+ * didn't ask for, with YouTube's own order as the tie-break. A song only qualifies if what was
+ * typed actually names it: all of its title, or all of what was typed found in its title and
+ * artists. Null when nothing qualifies, so a search for an artist or an album keeps its answer.
+ */
+fun List<YTItem>.bestSongFor(query: String): SongItem? {
+    val typed = query.searchWords()
+    if (typed.isEmpty()) return null
+    val typedSet = typed.toSet()
+    return asSequence()
+        .filterIsInstance<SongItem>()
+        .filter { !it.isMusicVideo }
+        .distinctBy { it.id }
+        .withIndex()
+        .mapNotNull { (rank, song) ->
+            val title = song.title.songTitleKey().searchWords()
+            if (title.isEmpty()) return@mapNotNull null
+            val artistWords = song.artists.flatMap { it.name.searchWords() }.toSet()
+            val titleTyped = title.all { it in typedSet }
+            val allTypedFound = typed.all { it in title || it in artistWords }
+            if (!titleTyped && !allTypedFound) return@mapNotNull null
+            // Something of the title must have been typed: an artist's name alone names no song.
+            if (typed.none { it in title }) return@mapNotNull null
+            var score = 0
+            if (titleTyped) score += 60
+            if (allTypedFound) score += 30
+            // Every typed word that is neither title nor artist is noise the song doesn't answer.
+            score -= 8 * typed.count { it !in title && it !in artistWords }
+            if (song.artists.any { artist -> artist.name.searchWords().let { it.isNotEmpty() && typedSet.containsAll(it) } }) score += 25
+            // Another version of the song, which the search didn't name.
+            val rawTitle = song.title.searchWords().toSet()
+            val unasked = alternateVersions.count { it in rawTitle && it !in typedSet }
+            score -= 70 * unasked
+            score -= rank.coerceAtMost(20)
+            song to score
+        }
+        .filter { it.second > 0 }
+        .maxByOrNull { it.second }
+        ?.first
+}
+
+/**
+ * Whether [query] is this artist's, album's or playlist's name as typed: the one case where it
+ * stays the top result over a song whose title was typed too.
+ */
+fun YTItem.isNamedBy(query: String): Boolean {
+    if (this is SongItem) return false
+    val name = title.searchWords()
+    return name.isNotEmpty() && name == query.searchWords()
+}
 
 /**
  * Songs before videos. Most people searching a track want the track — a video loads slower and

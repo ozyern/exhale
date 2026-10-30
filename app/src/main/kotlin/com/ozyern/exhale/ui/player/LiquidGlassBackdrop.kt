@@ -184,17 +184,24 @@ private fun LiquidMeshGradient(
         safe.map { it.copy(alpha = blobAlpha) }
     }
 
-    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "liquidMesh")
-    val twoPi = (2.0 * PI).toFloat()
-    val p1 by transition.animateFloat(
-        0f, twoPi, infiniteRepeatable(tween(23_000, easing = LinearEasing)), label = "mesh1",
-    )
-    val p2 by transition.animateFloat(
-        0f, twoPi, infiniteRepeatable(tween(31_000, easing = LinearEasing)), label = "mesh2",
-    )
-    val p3 by transition.animateFloat(
-        0f, twoPi, infiniteRepeatable(tween(37_000, easing = LinearEasing)), label = "mesh3",
-    )
+    // Only running while the player is on screen: pre-built behind the dock, an infinite
+    // transition would ask for a frame every vsync for a backdrop no one can see.
+    val (p1, p2, p3) = if (com.ozyern.exhale.ui.component.LocalPlayerShown.current) {
+        val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "liquidMesh")
+        val twoPi = (2.0 * PI).toFloat()
+        val a by transition.animateFloat(
+            0f, twoPi, infiniteRepeatable(tween(23_000, easing = LinearEasing)), label = "mesh1",
+        )
+        val b by transition.animateFloat(
+            0f, twoPi, infiniteRepeatable(tween(31_000, easing = LinearEasing)), label = "mesh2",
+        )
+        val c by transition.animateFloat(
+            0f, twoPi, infiniteRepeatable(tween(37_000, easing = LinearEasing)), label = "mesh3",
+        )
+        Triple(a, b, c)
+    } else {
+        Triple(0f, 0f, 0f)
+    }
 
     val phases = rememberUpdatedState(Triple(p1, p2, p3))
 

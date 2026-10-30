@@ -1,5 +1,5 @@
 /* ==========================================================================
-   KeyHero — Flagship Exhale 405 multi-device scroll hero.
+   KeyHero — Flagship Exhale 506 multi-device scroll hero.
    ========================================================================== */
 
 @font-face {
@@ -37,41 +37,41 @@
 .kh {
   --kp: 0;
 
-  /* Phase 1: 405 initial mark shrinks & merges into phone (0.00..0.14) */
+  /* Phase 1: 506 initial mark shrinks & merges into phone (0.00..0.14) */
   --a: clamp(0, calc(var(--kp) / 0.14), 1);
   --merge: calc(var(--a) * var(--a) * (3 - 2 * var(--a)));
 
-  /* Middle phone: appears quickly as 405 shrinks (0.00..0.10) */
+  /* Middle phone: appears quickly as 506 shrinks (0.00..0.10) */
   --mid-fade: clamp(0, calc(var(--kp) / 0.10), 1);
   --mid-in: calc(var(--mid-fade) * var(--mid-fade) * (3 - 2 * var(--mid-fade)));
 
-  /* Extended solo phone hold (0.00..0.40):
-     Phone stays front-and-center for a long scroll duration, easing gently 1.55 -> 1.22 */
-  --solo-t: clamp(0, calc(var(--kp) / 0.40), 1);
+  /* Solo phone hold (0.00..0.38):
+     Phone stays front-and-center, easing gently 1.55 -> 1.20 */
+  --solo-t: clamp(0, calc(var(--kp) / 0.38), 1);
   --solo-e: calc(1 - (1 - var(--solo-t)) * (1 - var(--solo-t)));
 
-  /* Docking phase (0.40..0.74):
-     Phone settles 1.22 -> 1.00 as the 4 companion devices glide in from off-screen */
-  --dock-t: clamp(0, calc((var(--kp) - 0.40) / 0.34), 1);
+  /* Docking phase (0.38..0.70):
+     Phone settles 1.20 -> 1.00 as the 4 companion devices glide in from off-screen */
+  --dock-t: clamp(0, calc((var(--kp) - 0.38) / 0.32), 1);
   --dock-p: calc(1 - var(--dock-t));
   --dock-e: calc(1 - var(--dock-p) * var(--dock-p) * var(--dock-p));
 
-  --mid-scale: calc(1.55 - 0.33 * var(--solo-e) - 0.22 * var(--dock-e));
+  --mid-scale: calc(1.55 - 0.35 * var(--solo-e) - 0.20 * var(--dock-e));
 
-  /* Stage slightly lifts to make room for brand lockup (0.66..0.80) */
-  --dev-lift: clamp(0, calc((var(--kp) - 0.66) / 0.14), 1);
+  /* Stage slightly lifts to make room for brand lockup (0.60..0.76) */
+  --dev-lift: clamp(0, calc((var(--kp) - 0.60) / 0.16), 1);
   --dev-lift-e: calc(var(--dev-lift) * var(--dev-lift) * (3 - 2 * var(--dev-lift)));
 
-  /* Brand lockup & buttons rise in under the middle phone (0.70..0.84) */
-  --b: clamp(0, calc((var(--kp) - 0.70) / 0.14), 1);
+  /* Brand lockup & buttons rise in under the middle phone (0.64..0.78) */
+  --b: clamp(0, calc((var(--kp) - 0.64) / 0.14), 1);
   --brand-in: calc(var(--b) * var(--b) * (3 - 2 * var(--b)));
 
-  /* Progressive fade-out to pure black for the background only (0.82..0.96) */
-  --exit-t: clamp(0, calc((var(--kp) - 0.82) / 0.14), 1);
+  /* Progressive fade-out to pure black for the background only (0.80..0.95) */
+  --exit-t: clamp(0, calc((var(--kp) - 0.80) / 0.15), 1);
   --exit-e: calc(var(--exit-t) * var(--exit-t) * (3 - 2 * var(--exit-t)));
 
   position: relative;
-  height: 480vh;
+  height: 380vh;
 }
 
 .kh-stage {
@@ -81,8 +81,18 @@
   height: 100vh;
   height: 100svh;
   overflow: hidden;
-  background: #000 url('/hero/banner-bg.png') center / cover no-repeat;
+  background: #000;
   isolation: isolate;
+}
+
+.kh-stage-bg {
+  position: absolute;
+  inset: -6% 0;
+  background: #000 url('/hero/banner-bg.png') center / cover no-repeat;
+  transform: translate3d(0, calc(var(--kp) * -50px), 0) scale(calc(1 + var(--kp) * 0.05));
+  will-change: transform;
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* Cinematic dark vignette */
@@ -116,7 +126,7 @@
   white-space: nowrap;
 }
 
-/* ----------------------------- Plain Initial 405 Key Visual (At Scroll 0) */
+/* ----------------------------- Plain Initial 506 Key Visual (At Scroll 0) */
 
 .kh-plain-kv {
   position: absolute;
@@ -146,19 +156,23 @@
   letter-spacing: -0.015em;
   color: transparent;
   -webkit-text-fill-color: transparent;
-  /* Luminous frosted liquid acrylic matching Exhale 405 */
+  /* Luminous frosted liquid acrylic matching Exhale 506 with living ambient glint */
   background: linear-gradient(
-    172deg,
+    115deg,
     rgba(255, 255, 255, 0.96) 0%,
-    rgba(255, 248, 235, 0.85) 30%,
-    rgba(255, 242, 220, 0.68) 58%,
-    rgba(255, 250, 242, 0.88) 84%,
+    rgba(255, 248, 235, 0.85) 20%,
+    rgba(255, 235, 170, 0.98) 40%,
+    #ffffff 50%,
+    rgba(255, 242, 220, 0.72) 65%,
+    rgba(255, 250, 242, 0.88) 85%,
     #ffffff 100%
   );
+  background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
-  filter: drop-shadow(0 0 1.2px rgba(255, 255, 255, 0.95))
-          drop-shadow(0 0 25px rgba(255, 235, 180, 0.35))
+  animation: khNumShimmer 8s ease-in-out infinite alternate;
+  filter: drop-shadow(0 0 1.5px rgba(255, 255, 255, 0.95))
+          drop-shadow(0 0 28px rgba(255, 235, 180, 0.42))
           drop-shadow(0 15px 35px rgba(0, 0, 0, 0.45));
 }
 
@@ -217,12 +231,40 @@
   filter: drop-shadow(0 20px 45px rgba(0, 0, 0, 0.85));
 }
 
+/* -------------------------------------------------- ROG Strix Laptop Tuning */
+
+.kh-dev-tablet-left img {
+  filter: drop-shadow(0 24px 50px rgba(0, 0, 0, 0.9))
+          drop-shadow(0 4px 18px rgba(180, 80, 255, 0.18));
+}
+
+.kh-dev-tablet-left::after {
+  content: '';
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: -4px;
+  height: 20px;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(195, 80, 255, 0.45) 0%,
+    rgba(255, 70, 180, 0.24) 40%,
+    transparent 74%
+  );
+  filter: blur(12px);
+  pointer-events: none;
+  z-index: -1;
+  opacity: clamp(0, calc((var(--kp) - 0.35) * 4), 1);
+  transition: opacity 0.4s ease;
+}
+
 /* -------------------------------------------------------------- Middle Phone */
 
 .kh-dev-phone-middle {
   z-index: 5;
   opacity: var(--mid-in);
-  transform: translate3d(0, 0, 0) scale(var(--mid-scale));
+  transform: scale(var(--mid-scale));
   transform-origin: 50% 50%;
   will-change: transform, opacity;
 }
@@ -245,7 +287,8 @@
       calc(var(--dx) * (1 - var(--ease))),
       calc(var(--dy) * (1 - var(--ease))),
       0
-    );
+    )
+    scale(calc(0.92 + 0.08 * var(--ease)));
   transform-origin: 50% 50%;
 }
 
@@ -291,11 +334,13 @@
   font-size: clamp(34px, 5.2vw, 60px);
   font-weight: 600;
   letter-spacing: -0.04em;
-  background: linear-gradient(135deg, #ffe082 0%, #ffb300 45%, #ff8f00 75%, #ff6f00 100%);
+  background: linear-gradient(135deg, #ffe082 0%, #ffca28 35%, #ffb300 65%, #ff8f00 100%);
+  background-size: 200% auto;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  filter: drop-shadow(0 2px 16px rgba(255, 179, 0, 0.4));
+  filter: drop-shadow(0 2px 18px rgba(255, 179, 0, 0.45));
+  animation: khBrandGlow 6s ease-in-out infinite alternate;
 }
 
 .kh-brand-line {
@@ -322,51 +367,81 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 46px;
-  padding: 0 30px;
+  height: 48px;
+  padding: 0 32px;
   border-radius: 999px;
   font-family: 'DisplaySans', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 15.5px;
   font-weight: 600;
   text-decoration: none;
   cursor: pointer;
+  position: relative;
+  overflow: hidden;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease, border-color 0.2s ease;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.kh-pill:active {
+  transform: scale(0.96) !important;
 }
 
 .kh-pill-primary {
   background: #ffffff;
   color: #000000;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55), 0 0 20px rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55), 0 0 24px rgba(255, 255, 255, 0.25);
 }
 
 .kh-pill-primary:hover {
-  background: #f0f0f5;
-  transform: scale(1.04);
+  background: #f7f7fa;
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65), 0 0 36px rgba(255, 255, 255, 0.45);
 }
 
 .kh-pill-secondary {
   background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
 .kh-pill-secondary:hover {
-  background: rgba(255, 255, 255, 0.20);
-  border-color: rgba(255, 255, 255, 0.45);
-  transform: scale(1.04);
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.55);
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 24px rgba(255, 255, 255, 0.2);
 }
 
-/* ---------------------------------------------------------------- Responsive */
+/* ---------------------------------------------------------------- Responsive Architecture */
 
+/* 1. Large Portrait & Near-Square Displays (Rotated monitors 1080x1920, 1440x2560, LG DualUp 1920x1920, 4:3, iPads) */
+@media (min-width: 769px) and (max-aspect-ratio: 1.18/1), (min-width: 769px) and (orientation: portrait) {
+  .kh-devices {
+    width: min(180vw, calc((100vh - 110px) * 2518 / 1294 * 0.95));
+    height: calc(min(180vw, calc((100vh - 110px) * 2518 / 1294 * 0.95)) * 1294 / 2518);
+    left: 50%;
+    top: 42%;
+    transform: translate(-50%, calc(-50% - var(--dev-lift-e) * 8vh));
+  }
+
+  .kh-dev {
+    display: block !important;
+  }
+
+  .kh-brand-lockup {
+    bottom: clamp(24px, 5vh, 60px);
+    width: min(640px, 86vw);
+  }
+
+  .kh-plain-num {
+    font-size: clamp(90px, 14vw, 170px);
+  }
+}
+
+/* 2. Standard Mobile & Tablets (width <= 768px) */
 @media (max-width: 768px) {
   .kh-devices {
-    /* Match showcase mobile layout: size stage to 250vw width so the center phone
-       takes ~38% of mobile viewport, and all 4 surrounding devices peek in
-       from the 4 edges exactly matching the showcase mobile design */
     width: 250vw;
     height: calc(250vw * 1294 / 2518);
     left: 50%;
@@ -374,28 +449,27 @@
     transform: translate(-50%, calc(-50% - var(--dev-lift-e) * 6vh));
   }
 
-  /* All 5 devices remain visible on mobile, fanning out and bleeding off-screen */
   .kh-dev {
     display: block !important;
   }
 
   .kh-plain-num {
-    font-size: clamp(96px, 24vw, 150px);
-    line-height: 0.82;
+    font-size: clamp(86px, 22vw, 140px);
+    line-height: 0.85;
   }
 
   .kh-plain-name {
-    font-size: clamp(34px, 8.8vw, 52px);
+    font-size: clamp(30px, 8vw, 48px);
     margin-top: 0.02em;
   }
 
   .kh-plain-line {
-    font-size: clamp(14px, 3.8vw, 18px);
+    font-size: clamp(13px, 3.6vw, 17px);
     margin-top: 0.28em;
   }
 
   .kh-brand-lockup {
-    bottom: clamp(18px, 4.5vh, 36px);
+    bottom: clamp(16px, 4.2vh, 36px);
     width: 92vw;
   }
 
@@ -403,28 +477,205 @@
     gap: 0.25em;
   }
 
-  .kh-brand-name {
-    font-size: clamp(28px, 7.5vw, 44px);
-  }
-
+  .kh-brand-name,
   .kh-brand-ver {
-    font-size: clamp(28px, 7.5vw, 44px);
+    font-size: clamp(26px, 7vw, 42px);
   }
 
   .kh-brand-line {
-    font-size: clamp(14px, 3.8vw, 17px);
+    font-size: clamp(13px, 3.6vw, 16px);
     margin-top: 6px;
   }
 
   .kh-brand-actions {
-    margin-top: 16px;
-    gap: 12px;
+    margin-top: 14px;
+    gap: 10px;
   }
 
   .kh-pill {
     height: 42px;
     padding: 0 22px;
-    font-size: 14.5px;
+    font-size: 14px;
+  }
+}
+
+/* 3. Ultra-Narrow Phones & Foldable Cover Displays (width <= 360px, e.g. Galaxy Z Fold cover 340px, iPhone SE 320px) */
+@media (max-width: 360px) {
+  .kh-devices {
+    width: 290vw;
+    height: calc(290vw * 1294 / 2518);
+    top: 34%;
+  }
+
+  .kh-plain-num {
+    font-size: clamp(74px, 24vw, 100px);
+  }
+
+  .kh-plain-name {
+    font-size: 26px;
+  }
+
+  .kh-plain-line {
+    font-size: 12px;
+  }
+
+  .kh-brand-lockup {
+    bottom: 12px;
+    width: 96vw;
+  }
+
+  .kh-brand-name,
+  .kh-brand-ver {
+    font-size: 22px;
+  }
+
+  .kh-brand-actions {
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .kh-pill {
+    height: 36px;
+    padding: 0 16px;
+    font-size: 12.5px;
+  }
+}
+
+/* 4. Short Viewports & Laptops with High Display Scaling (height <= 720px, e.g. 1366x768, 1280x720 150% scaled) */
+@media (max-height: 720px) and (min-width: 769px) {
+  .kh-devices {
+    width: min(calc((100vh - 130px) * 2518 / 1294), 92vw);
+    height: min(calc(100vh - 130px), calc(92vw * 1294 / 2518));
+    top: calc(50% + 10px);
+    transform: translate(-50%, calc(-50% - var(--dev-lift-e) * 8vh));
+  }
+
+  .kh-plain-num {
+    font-size: clamp(70px, 17vh, 120px);
+    line-height: 0.9;
+  }
+
+  .kh-plain-name {
+    font-size: clamp(24px, 5.5vh, 36px);
+  }
+
+  .kh-plain-line {
+    font-size: clamp(12px, 2.5vh, 16px);
+    margin-top: 0.2em;
+  }
+
+  .kh-brand-lockup {
+    bottom: clamp(10px, 2.8vh, 26px);
+  }
+
+  .kh-brand-name,
+  .kh-brand-ver {
+    font-size: clamp(24px, 4.5vh, 38px);
+  }
+
+  .kh-brand-line {
+    font-size: clamp(12px, 2.2vh, 15px);
+    margin-top: 4px;
+  }
+
+  .kh-brand-actions {
+    margin-top: 10px;
+    gap: 10px;
+  }
+
+  .kh-pill {
+    height: 38px;
+    padding: 0 20px;
+    font-size: 13.5px;
+  }
+}
+
+/* 5. Ultra-Short Heights & Landscape Smartphones (height <= 520px, e.g. 844x390, 896x414) */
+@media (max-height: 520px) {
+  .kh-devices {
+    width: min(calc((100vh - 50px) * 2518 / 1294), 96vw);
+    height: min(calc(100vh - 50px), calc(96vw * 1294 / 2518));
+    top: calc(50% + 14px);
+    transform: translate(-50%, calc(-50% - var(--dev-lift-e) * 6vh));
+  }
+
+  .kh-plain-num {
+    font-size: clamp(52px, 18vh, 80px);
+    line-height: 0.88;
+  }
+
+  .kh-plain-name {
+    font-size: clamp(18px, 6vh, 26px);
+  }
+
+  .kh-plain-line {
+    display: none;
+  }
+
+  .kh-brand-lockup {
+    bottom: 6px;
+    width: 95vw;
+  }
+
+  .kh-brand-name,
+  .kh-brand-ver {
+    font-size: 20px;
+  }
+
+  .kh-brand-line {
+    display: none;
+  }
+
+  .kh-brand-actions {
+    margin-top: 6px;
+    gap: 8px;
+  }
+
+  .kh-pill {
+    height: 30px;
+    padding: 0 14px;
+    font-size: 12px;
+  }
+
+  .kh-scroll-cue {
+    display: none;
+  }
+}
+
+/* 6. Ultrawide & Super Ultrawide Monitors (21:9 and 32:9, min-aspect-ratio: 2.1/1) */
+@media (min-aspect-ratio: 2.1/1) {
+  .kh-devices {
+    width: min(calc(88vh * 2518 / 1294), 1920px);
+    height: calc(min(calc(88vh * 2518 / 1294), 1920px) * 1294 / 2518);
+  }
+
+  .kh-stage-bg {
+    inset: -12% -6%;
+    background-size: cover;
+  }
+}
+
+/* 7. Large 4K / 5K Displays (min-width: 2560px and min-height: 1400px) */
+@media (min-width: 2560px) and (min-height: 1400px) {
+  .kh-devices {
+    width: min(88vw, calc(86vh * 2518 / 1294));
+    height: calc(min(88vw, calc(86vh * 2518 / 1294)) * 1294 / 2518);
+  }
+
+  .kh-brand-name,
+  .kh-brand-ver {
+    font-size: clamp(48px, 4vw, 76px);
+  }
+
+  .kh-brand-line {
+    font-size: clamp(20px, 1.8vw, 28px);
+    max-width: 680px;
+  }
+
+  .kh-pill {
+    height: 56px;
+    padding: 0 40px;
+    font-size: 18px;
   }
 }
 
@@ -439,6 +690,10 @@
 
 .kh[data-static='true'] .kh-stage::after {
   display: none;
+}
+
+.kh[data-static='true'] .kh-stage-bg {
+  transform: none;
 }
 
 .kh[data-static='true'] .kh-plain-kv {
@@ -458,4 +713,77 @@
   opacity: 1;
   transform: translate(-50%, 0);
   pointer-events: auto;
+}
+
+@keyframes khNumShimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes khBrandGlow {
+  0% {
+    filter: drop-shadow(0 2px 16px rgba(255, 179, 0, 0.35));
+  }
+  100% {
+    filter: drop-shadow(0 2px 24px rgba(255, 200, 50, 0.65));
+  }
+}
+
+/* ----------------------------------------------------------- Scroll Cue */
+
+.kh-scroll-cue {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(18px, 4.2vh, 42px);
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  opacity: clamp(0, calc(1 - var(--kp) * 16), 1);
+  pointer-events: none;
+  z-index: 15;
+  transition: opacity 0.3s ease;
+}
+
+.kh-scroll-label {
+  font-family: 'DisplaySans-Medium', 'DisplaySans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.kh-scroll-chevron {
+  width: 14px;
+  height: 14px;
+  color: rgba(255, 255, 255, 0.7);
+  animation: khChevronBounce 1.8s ease-in-out infinite;
+}
+
+@keyframes khChevronBounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(4px);
+  }
+}
+
+@media (max-width: 768px) {
+  .kh-scroll-cue {
+    bottom: clamp(14px, 3vh, 28px);
+    padding: 6px 14px;
+    font-size: 12px;
+  }
 }

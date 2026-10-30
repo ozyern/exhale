@@ -70,6 +70,9 @@ import kotlin.time.TimeSource
  */
 object FoldingDockMotion {
     var fold by mutableFloatStateOf(0f)
+
+    /** Whether the dock is folded with the song inline (state B), for where a closing cover lands. */
+    var inline by androidx.compose.runtime.mutableStateOf(false)
 }
 
 /* ------------------------------------------------------------------ */
@@ -182,26 +185,32 @@ internal class InteractiveHighlight(
     }
 }
 
-/** The glass swells a few dp under the finger and leans after it as it drags. */
+/**
+ * The glass swells a few dp under the finger and leans after it as it drags. [frame] measures the
+ * stretch against another body's size — for a glyph that sits centred on glass it is not part of,
+ * so the two swell and lean as one.
+ */
 internal fun elasticStretchLayerBlock(
     interactiveHighlight: InteractiveHighlight,
     magnitude: Float = 1f,
+    frame: (() -> Size)? = null,
 ): GraphicsLayerScope.() -> Unit = {
-    val width = size.width
-    val height = size.height
+    val body = frame?.invoke() ?: size
+    val width = body.width
+    val height = body.height
     if (width > 0f && height > 0f) {
         val progress = interactiveHighlight.pressProgress
         val scale = lerp(1f, 1f + magnitude * 4f.dp.toPx() / height, progress)
-        val maxOffset = size.minDimension
+        val maxOffset = body.minDimension
         val initialDerivative = 0.05f
         val offset = interactiveHighlight.offset
         translationX = magnitude * maxOffset * tanh(initialDerivative * offset.x / maxOffset)
         translationY = magnitude * maxOffset * tanh(initialDerivative * offset.y / maxOffset)
         val maxDragScale = magnitude * 4f.dp.toPx() / height
         val offsetAngle = atan2(offset.y, offset.x)
-        scaleX = scale + maxDragScale * abs(cos(offsetAngle) * offset.x / size.maxDimension) *
+        scaleX = scale + maxDragScale * abs(cos(offsetAngle) * offset.x / body.maxDimension) *
             (width / height).fastCoerceAtMost(1f)
-        scaleY = scale + maxDragScale * abs(sin(offsetAngle) * offset.y / size.maxDimension) *
+        scaleY = scale + maxDragScale * abs(sin(offsetAngle) * offset.y / body.maxDimension) *
             (height / width).fastCoerceAtMost(1f)
     }
 }
@@ -226,10 +235,12 @@ internal class DockDragAnimation(
     val onDrag: DockDragAnimation.(size: IntSize, dragAmount: Offset) -> Unit,
 ) {
     private val valueAnimationSpec = spring(1f, 1000f, visibilityThreshold)
-    private val velocityAnimationSpec = spring(0.5f, 300f, visibilityThreshold * 10f)
+    private val velocityAnimationSpec = spring(0.7f, 500f, visibilityThreshold * 10f)
     private val pressProgressAnimationSpec = spring(1f, 1000f, 0.001f)
-    private val scaleXAnimationSpec = spring(0.6f, 250f, 0.001f)
-    private val scaleYAnimationSpec = spring(0.7f, 250f, 0.001f)
+    // Firm enough that the swell is gone within a quarter-second of release: at 250 it lingered for
+    // most of a second, and the swipe read as slow even though the page had already changed.
+    private val scaleXAnimationSpec = spring(0.75f, 560f, 0.001f)
+    private val scaleYAnimationSpec = spring(0.8f, 560f, 0.001f)
 
     private val valueAnimation = Animatable(initialValue, visibilityThreshold)
     private val velocityAnimation = Animatable(0f, 5f)
@@ -286,7 +297,9 @@ internal class DockDragAnimation(
             withFrameMillis { }
             if (value != targetValue) {
                 val threshold = (valueRange.endInclusive - valueRange.start) * 0.025f
-                withTimeoutOrNull(400) {
+                // Only a moment for the slot to arrive before the glass deflates; it settles the rest of
+                // the way deflated, rather than holding the swell up to 400 ms after the finger lifts.
+                withTimeoutOrNull(120) {
                     snapshotFlow { valueAnimation.value }
                         .first { abs(it - valueAnimation.targetValue) < threshold }
                 }

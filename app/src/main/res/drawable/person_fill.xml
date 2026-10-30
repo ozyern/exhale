@@ -1,0 +1,13 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- iOS's person.fill: a solid head over solid, rounded shoulders, as in its account avatar. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,3.2a4.3,4.3 0,1 1,0 8.6a4.3,4.3 0,1 1,0 -8.6z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M4.2,19.1C4.2,15.9 7.6,13.6 12,13.6C16.4,13.6 19.8,15.9 19.8,19.1C19.8,20.1 19.1,20.8 18.1,20.8L5.9,20.8C4.9,20.8 4.2,20.1 4.2,19.1z" />
+</vector>

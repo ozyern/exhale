@@ -11,6 +11,7 @@ package com.ozyern.exhale.ui.screens.playlist
 import com.ozyern.exhale.ui.component.GradientArtwork
 import com.ozyern.exhale.ui.component.CollectionPlay
 import com.ozyern.exhale.ui.component.CollectionAction
+import com.ozyern.exhale.ui.component.CollectionShuffle
 import com.ozyern.exhale.ui.component.CollectionHero
 import com.ozyern.exhale.ui.component.rememberScrollEdge
 import com.ozyern.exhale.ui.component.scrollEdgeScrim
@@ -381,11 +382,9 @@ fun TopPlaylistScreen(
                                             playerConnection.playQueue(ListQueue(title = name, items = songs!!.map { it.toMediaItem() }))
                                         },
                                     )
-                                    CollectionAction(
-                                        icon = R.drawable.shuffle,
-                                        contentDescription = stringResource(R.string.shuffle),
+                                    CollectionShuffle(
                                         onClick = {
-                                            playerConnection.playQueue(ListQueue(title = name, items = songs!!.shuffled().map { it.toMediaItem() }))
+                                            playerConnection.playQueue(ListQueue(title = name, items = songs!!.shuffled().map { it.toMediaItem() }, shuffled = true))
                                         },
                                     )
                                     CollectionAction(
@@ -619,14 +618,8 @@ fun TopPlaylistScreen(
                         )
                     }
                 } else if (!isSearching) {
-                    androidx.compose.material3.IconButton(
-                        onClick = { isSearching = true }
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.search),
-                            contentDescription = null
-                        )
-                    }
+                    // A glass disc like the back button opposite it, as iOS draws every round bar control.
+                    com.ozyern.exhale.ui.component.LiquidGlassIconButton(onClick = { isSearching = true }, icon = R.drawable.search)
                 }
             }
         )

@@ -57,7 +57,7 @@ import com.ozyern.exhale.constants.WidgetBackgroundMode
 import com.ozyern.exhale.widget.PlayerWidgetActions.openAppIntent
 import kotlinx.coroutines.flow.first
 
-/** Snapshot inmutable de las preferencias visuales configurables desde WidgetSettings. */
+/** An immutable snapshot of the look chosen in WidgetSettings. */
 private data class WidgetUiPrefs(
     val backgroundMode: WidgetBackgroundMode,
     val scrimOpacity: Float,
@@ -73,10 +73,10 @@ class ExhalePlayerWidget : GlanceAppWidget() {
         context: Context,
         id: GlanceId,
     ) {
-        // Se leen UNA VEZ por composición (provideGlance ya es suspend). El widget
-        // se vuelve a recomponer cada vez que WidgetPreferencesSync.notifyChanged()
-        // llama a update() tras un cambio en WidgetSettings, así que no hace falta
-        // observar el Flow en vivo dentro del propio Composable de Glance.
+        // Read ONCE per composition (provideGlance is already suspend). The widget
+        // recomposes whenever WidgetPreferencesSync.notifyChanged()
+        // calls update() after a change in WidgetSettings, so there is no need
+        // to observe the Flow live inside Glance's own Composable.
         val uiPrefs = WidgetUiPrefs(
             backgroundMode = WidgetPreferences.backgroundModeFlow(context).first(),
             scrimOpacity = WidgetPreferences.scrimOpacityFlow(context).first(),
@@ -128,19 +128,19 @@ private fun PlayerWidgetContent(state: PlayerWidgetState, uiPrefs: WidgetUiPrefs
             .cornerRadius(uiPrefs.cornerRadius)
             .clickable(actionStartActivity(openAppIntent(context))),
     ) {
-        // Capa 1: fondo. Respeta el modo elegido en WidgetSettings, con el mismo
-        // fallback en cascada si el dato necesario no está disponible todavía.
+        // Layer 1: the background, in the mode chosen in WidgetSettings, with the same
+        // fallbacks in turn while what it needs is not there yet.
         WidgetBackground(state = state, mode = uiPrefs.backgroundMode)
 
-        // Capa 2: scrim semitransparente, intensidad configurable, para que
-        // texto/iconos mantengan contraste sin importar el fondo elegido.
+        // Layer 2: a translucent scrim, its strength adjustable, so
+        // text and icons keep their contrast on any background.
         Box(
             modifier = GlanceModifier
                 .fillMaxSize()
                 .background(ColorProvider(Color.Black.copy(alpha = uiPrefs.scrimOpacity))),
         ) {}
 
-        // Capa 3: contenido real del widget.
+        // Layer 3: the widget's content.
         Column(
             modifier = GlanceModifier
                 .fillMaxSize()
@@ -204,12 +204,12 @@ private fun PlayerWidgetContent(state: PlayerWidgetState, uiPrefs: WidgetUiPrefs
 }
 
 /**
- * Fondo del widget. Respeta el modo elegido en WidgetSettings, con fallback en
- * cascada si el dato necesario para ese modo no está disponible todavía
- * (p. ej. eligió BLUR pero el blur aún no se calculó, o falló por API < 31):
- * 1. BLUR -> bitmap difuminado; si es null, cae a color dominante.
- * 2. DOMINANT_COLOR -> color extraído con Palette; si es null, cae a surface.
- * 3. SOLID -> siempre el color "surface" plano del tema.
+ * The widget's background, in the mode chosen in WidgetSettings, falling back
+ * in turn while what that mode needs is not there yet
+ * (say BLUR was chosen but the blur is not worked out yet, or failed on API < 31):
+ * 1. BLUR -> the blurred bitmap; if null, the dominant colour.
+ * 2. DOMINANT_COLOR -> the colour Palette found; if null, surface.
+ * 3. SOLID -> always the theme's plain surface colour.
  */
 @SuppressLint("RestrictedApi")
 @Composable
@@ -258,17 +258,17 @@ private fun SolidBackground(color: ColorProvider) {
 }
 
 /**
- * Barra de progreso NO interactiva (Glance no soporta sliders arrastrables en
- * RemoteViews). RowScope.defaultWeight() en Glance no acepta un valor de peso
- * (siempre es 1), así que el ancho del "fill" se calcula en Kotlin a partir del
- * ancho real del widget (LocalSize) y se aplica con .width(Dp) directamente.
+ * A progress bar you cannot drag (Glance has no draggable sliders in
+ * RemoteViews). Glance's RowScope.defaultWeight() takes no weight value
+ * (it is always 1), so the fill's width is worked out in Kotlin from the
+ * widget's real width (LocalSize) and set with .width(Dp).
  */
 @SuppressLint("RestrictedApi")
 @Composable
 private fun ProgressBar(progress: Float) {
     val clamped = progress.coerceIn(0f, 1f)
     val widgetWidth = LocalSize.current.width
-    // Resta el padding horizontal de la Column contenedora (14.dp a cada lado).
+    // Less the enclosing Column's horizontal padding (14.dp a side).
     val trackWidth = (widgetWidth - 28.dp).coerceAtLeast(0.dp)
     val fillWidth = (trackWidth * clamped)
 

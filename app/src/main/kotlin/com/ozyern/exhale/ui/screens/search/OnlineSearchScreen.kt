@@ -154,24 +154,21 @@ fun OnlineSearchScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 18.dp, end = 12.dp, top = 12.dp, bottom = 4.dp)
+                        .padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 4.dp)
                         .animateItem(),
                 ) {
+                    // "Recently Searched" set as the iOS music app sets it: Title 2, on the page's
+                    // 16dp margin, with Clear as a plain accent word at the other end.
                     Text(
                         text = stringResource(R.string.search_recent),
-                        style = MaterialTheme.typography.titleLarge,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.3).sp,
                         color = if (pureBlack) Color.White else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
                     )
-                    // A tinted pill, not a bare word. "Clear" as plain accent text beside a bold
-                    // title read as part of the heading rather than as the destructive action it
-                    // is, and it had no visible bounds to aim at.
                     Text(
                         text = stringResource(R.string.clear),
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium,
+                        fontSize = 17.sp,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
@@ -188,41 +185,53 @@ fun OnlineSearchScreen(
         }
 
         itemsIndexed(viewState.history, key = { _, it -> "history_${it.query}" }) { index, history ->
-            SuggestionItem(
-                query = history.query,
-                online = false,
-                position = groupPosition(index, historyCount),
-                showDivider = index < historyCount - 1,
-                onClick = {
-                    onSearch(history.query)
-                    onDismiss()
-                },
-                onDelete = {
-                    database.query {
-                        delete(history)
+            // Swiped away, as a recent search is on iOS, rather than an ✕ on every row.
+            val dismissState = rememberSwipeToDismissBoxState(
+                confirmValueChange = { value ->
+                    if (value == SwipeToDismissBoxValue.EndToStart) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        database.query { delete(history) }
+                        true
+                    } else {
+                        false
                     }
                 },
-                onFillTextField = {
-                    onQueryChange(TextFieldValue(history.query, TextRange(history.query.length)))
-                },
-                modifier = Modifier.animateItem(),
-                pureBlack = pureBlack
             )
+            SwipeToDismissBox(
+                state = dismissState,
+                enableDismissFromStartToEnd = false,
+                backgroundContent = { com.ozyern.exhale.ui.player.QueueSwipeBackground(dismissState, 16.dp) },
+                modifier = Modifier.animateItem(),
+            ) {
+                SuggestionItem(
+                    query = history.query,
+                    online = false,
+                    position = groupPosition(index, historyCount),
+                    showDivider = index < historyCount - 1,
+                    onClick = {
+                        onSearch(history.query)
+                        onDismiss()
+                    },
+                    onFillTextField = {
+                        onQueryChange(TextFieldValue(history.query, TextRange(history.query.length)))
+                    },
+                    pureBlack = pureBlack
+                )
+            }
         }
 
         if (suggestionCount > 0) {
             item(key = "suggestions_header") {
                 Text(
                     text = stringResource(R.string.search_suggestions),
-                    style = MaterialTheme.typography.titleLarge,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = (-0.3).sp,
                     color = if (pureBlack) Color.White else MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(
-                            start = 18.dp,
-                            end = 18.dp,
+                            start = 16.dp,
+                            end = 16.dp,
                             top = if (historyCount > 0) 20.dp else 8.dp,
                             bottom = 6.dp,
                         )
@@ -255,9 +264,9 @@ fun OnlineSearchScreen(
                 // A plain section title, as the results page sets its own — no accent bar.
                 Text(
                     text = stringResource(R.string.top_results),
-                    style = MaterialTheme.typography.titleLarge,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
         }
@@ -322,7 +331,8 @@ fun OnlineSearchScreen(
                         }
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.more_vert),
+                            // iOS's "…", not Android's vertical dots.
+                            painter = painterResource(R.drawable.more_horiz),
                             contentDescription = null
                         )
                     }
@@ -451,13 +461,10 @@ fun SuggestionItem(
         GroupPosition.MIDDLE -> RoundedCornerShape(0.dp)
     }
 
-    // Trailing glyphs were drawn at 16dp and 0.35 alpha — below the threshold at which a control
-    // reads as a control at all, so the row looked like it had two smudges on it. Both are now
-    // legible.
-    val trailingTint = if (pureBlack) Color.White.copy(alpha = 0.4f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
-
-    // Rows on the page itself, as the iOS music app lists them: no card, no slab per row — a line of
-    // text, a quiet glyph, and a hairline between rows.
+    // Rows on the page itself, as the iOS music app lists them: no card, no slab per row — a
+    // magnifier, a line of text, and a hairline between rows. Nothing at the trailing edge: a
+    // recent search is swiped away (see the history list), and a long press puts any row's text in
+    // the field to edit, where the ✕ and the ↖ arrow used to clutter every line.
     Column(
         modifier = modifier.fillMaxWidth()
     ) {
@@ -465,22 +472,20 @@ fun SuggestionItem(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = 48.dp)
                 .focusable()
-                .clickable(onClick = onClick)
-                .padding(start = 18.dp, end = 10.dp, top = 12.dp, bottom = 12.dp),
+                .combinedClickable(onClick = onClick, onLongClick = onFillTextField)
+                .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
         ) {
-            // A bare glyph, like every other row in the app now. The grey disc behind it was the
-            // last puck left standing after settings dropped theirs, and on a list of plain text
-            // queries it is the only shape on the screen.
             Box(
                 modifier = Modifier.size(24.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    painterResource(if (online) R.drawable.search else R.drawable.history),
+                    painterResource(R.drawable.search),
                     contentDescription = null,
                     tint = iconTint,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(20.dp)
                 )
             }
 
@@ -488,45 +493,21 @@ fun SuggestionItem(
 
             Text(
                 text = query,
-                style = MaterialTheme.typography.bodyLarge,
+                fontSize = 17.sp,
                 fontWeight = FontWeight.Normal,
                 color = if (pureBlack) Color.White.copy(alpha = 0.92f) else MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-
-            // Delete first, then the fill-field arrow at the outer edge. The arrow is the one that
-            // belongs against the screen edge: it is the row's "expand into the box" affordance and
-            // every search field on the platform puts it there, so having ✕ in that slot meant the
-            // muscle-memory tap on a suggestion deleted a search instead of editing it.
-            if (!online) {
-                IconButton(onClick = onDelete, modifier = Modifier.size(38.dp)) {
-                    Icon(
-                        painter = painterResource(R.drawable.close),
-                        contentDescription = null,
-                        tint = trailingTint,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
-
-            if (online) IconButton(onClick = onFillTextField, modifier = Modifier.size(38.dp)) {
-                Icon(
-                    painter = painterResource(R.drawable.arrow_top_left),
-                    contentDescription = null,
-                    tint = trailingTint,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
         }
 
         if (showDivider) {
-            // Hairline divider inset past the icon column — the iOS grouped-list separator.
+            // Hairline inset to the text and run to the screen's edge — the iOS list separator.
             HorizontalDivider(
                 thickness = 0.5.dp,
-                color = if (pureBlack) Color.White.copy(alpha = 0.08f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-                modifier = Modifier.padding(start = 60.dp, end = 18.dp)
+                color = if (pureBlack) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                modifier = Modifier.padding(start = 52.dp)
             )
         }
     }

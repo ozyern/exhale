@@ -36,6 +36,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
@@ -191,7 +192,22 @@ constructor(
                 runCatching { align(meta.id, song.id) }.getOrNull()
             }
         }
-        val offset = aligning?.let { withTimeoutOrNull(ALIGN_TIMEOUT_MS) { it.await() } } ?: 0L
+        val timely = aligning?.let { withTimeoutOrNull(ALIGN_TIMEOUT_MS) { it.await() } }
+        if (timely == null && aligning != null) {
+            // Not measured in time: shown unmoved for now, and corrected the moment it is. It used to
+            // stop there, so a video's lyrics stayed early by its whole intro for good.
+            @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val late = aligning.await() ?: return@launch
+                if (late == 0L) return@launch
+                val shifted = LyricsShift.shift(text, late)
+                val shown = Uncensor.restore(shifted) ?: shifted
+                cache.put(meta.id, listOf(LyricsResult(PREFETCH_PROVIDER_NAME, shifted)))
+                GlobalLog.append(Log.DEBUG, "LyricsHelper", "Video ${meta.id} → song ${song.id}, lyrics moved ${late}ms (late)")
+                VideoLyricsAlignment.onLateLyrics?.invoke(meta.id, shown)
+            }
+        }
+        val offset = timely ?: 0L
         GlobalLog.append(Log.DEBUG, "LyricsHelper", "Video ${meta.id} → song ${song.id}, lyrics moved ${offset}ms")
         return LyricsShift.shift(text, offset)
     }

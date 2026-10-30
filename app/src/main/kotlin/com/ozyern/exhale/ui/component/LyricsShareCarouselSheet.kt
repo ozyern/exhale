@@ -48,20 +48,20 @@ import com.ozyern.exhale.R
 import com.ozyern.exhale.models.MediaMetadata
 
 // ─────────────────────────────────────────────────────────────────────────────
-// API pública
+// Public API
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Bottom sheet que permite al usuario:
- *  1. Previsualizar en tiempo real la tarjeta de letras.
- *  2. Seleccionar un layout en el carrusel horizontal.
- *  3. Elegir el estilo de vidrio/color.
- *  4. Ajustar tamaño de texto, alineación, visibilidad y padding.
- *  5. Compartir o guardar la configuración resultante.
+ * The sheet where the listener:
+ *  1. Sees the lyric card as it will be shared.
+ *  2. Picks a design from the row of them.
+ *  3. Picks the glass and colour style.
+ *  4. Adjusts text size, alignment, what is shown and padding.
+ *  5. Shares or saves the result.
  *
- * @param onShare  Se llama con el [LyricsCardConfig] final cuando el usuario pulsa "Share".
- *                 El caller es responsable de capturar el composable como bitmap y lanzar el Intent.
- * @param onSave   Opcional. Si se provee, aparece el botón "Save".
+ * @param onShare  Called with the final [LyricsCardConfig] when the listener taps Share.
+ *                 The caller renders the card to a bitmap and sends the Intent.
+ * @param onSave   Optional; when given, a Save button appears.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -81,16 +81,17 @@ fun LyricsShareCarouselSheet(
         dragHandle        = { BottomSheetDefaults.DragHandle() },
         sheetState        = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
+        Column(modifier = Modifier.fillMaxWidth().navigationBarsPadding()) {
+        // The options scroll; Save and Share stay pinned under them, always in reach.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .navigationBarsPadding()
-                .padding(bottom = 28.dp),
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
 
-            // ── Título del sheet ──────────────────────────────────────────
+            // ── Sheet title ───────────────────────────────────────────────
             Text(
                 text       = "Share lyrics",
                 style      = MaterialTheme.typography.titleMedium,
@@ -101,7 +102,7 @@ fun LyricsShareCarouselSheet(
             Spacer(Modifier.height(18.dp))
 
             // ── Preview principal ─────────────────────────────────────────
-            // AnimatedContent hace fade entre cambios de config
+            // Fades between configs
             AnimatedContent(
                 targetState  = config,
                 transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(160)) },
@@ -117,7 +118,7 @@ fun LyricsShareCarouselSheet(
 
             Spacer(Modifier.height(22.dp))
 
-            // ── Carrusel de layouts ───────────────────────────────────────
+            // ── Designs ───────────────────────────────────────────────────
             SheetSectionLabel("Design")
 
             Row(
@@ -134,14 +135,22 @@ fun LyricsShareCarouselSheet(
                         mediaMetadata = mediaMetadata,
                         currentConfig = config,
                         isSelected    = config.layoutStyle == style,
-                        onSelect      = { config = config.copy(layoutStyle = style) },
+                        onSelect      = {
+                            // Vivid sets its lines flush left as Apple does; the others centre them.
+                            val align = when {
+                                style == LyricsLayoutStyle.Vivid -> TextAlign.Start
+                                config.layoutStyle == LyricsLayoutStyle.Vivid -> TextAlign.Center
+                                else -> config.textAlign
+                            }
+                            config = config.copy(layoutStyle = style, textAlign = align)
+                        },
                     )
                 }
             }
 
             Spacer(Modifier.height(18.dp))
 
-            // ── Selector de estilo de vidrio ──────────────────────────────
+            // ── Glass style ───────────────────────────────────────────────
             SheetSectionLabel("Style")
 
             Row(
@@ -162,7 +171,7 @@ fun LyricsShareCarouselSheet(
 
             Spacer(Modifier.height(14.dp))
 
-            // ── Panel de personalización (expandible) ─────────────────────
+            // ── Customisation (expandable) ────────────────────────────────
             CustomizationPanel(
                 config        = config,
                 onConfigChange = { config = it },
@@ -171,13 +180,13 @@ fun LyricsShareCarouselSheet(
                     .padding(horizontal = 20.dp),
             )
 
-            Spacer(Modifier.height(26.dp))
+            Spacer(Modifier.height(16.dp))
+        }
 
-            // ── Botones de acción ─────────────────────────────────────────
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
+                    .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 if (onSave != null) {
@@ -216,7 +225,7 @@ fun LyricsShareCarouselSheet(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Preview principal — box con la tarjeta escalada
+// The main preview: the card, scaled down
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -239,7 +248,7 @@ private fun CardPreviewBox(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        // La tarjeta siempre se renderiza a 340dp y se escala visualmente
+        // The card is always laid out at 340dp and scaled to fit
         Box(
             modifier = Modifier
                 .requiredSize(340.dp)
@@ -260,7 +269,7 @@ private fun CardPreviewBox(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Thumbnail de layout en el carrusel
+// A design's thumbnail in the row
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -292,7 +301,7 @@ private fun LayoutStyleThumbnail(
                 .clickable(onClick = onSelect),
             contentAlignment = Alignment.Center,
         ) {
-            // Preview escalada — Coil cachea la imagen, cloudy corre en GPU
+            // Scaled preview: Coil caches the artwork and cloudy runs on the GPU
             Box(
                 modifier = Modifier
                     .requiredSize(340.dp)
@@ -310,7 +319,7 @@ private fun LayoutStyleThumbnail(
                 )
             }
 
-            // Indicador de selección
+            // Selection mark
             if (isSelected) {
                 Box(
                     modifier = Modifier
@@ -346,7 +355,7 @@ private fun LayoutStyleThumbnail(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Chip de estilo de vidrio
+// Glass style chip
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -373,7 +382,7 @@ private fun GlassStyleChip(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // Muestra del color del estilo
+        // The style's colour swatch
         Box(
             modifier = Modifier
                 .size(13.dp)
@@ -392,7 +401,7 @@ private fun GlassStyleChip(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Panel de personalización (expandible)
+// Customisation (expandable)
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -409,7 +418,7 @@ private fun CustomizationPanel(
 
     Column(modifier = modifier) {
 
-        // Cabecera – toca para abrir/cerrar
+        // Header: tap to open or close
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -446,7 +455,7 @@ private fun CustomizationPanel(
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
 
-                // ── Tamaño de texto ───────────────────────────────────────
+                // ── Text size ─────────────────────────────────────────────
                 Column {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -473,7 +482,7 @@ private fun CustomizationPanel(
                     )
                 }
 
-                // ── Alineación del texto ──────────────────────────────────
+                // ── Text alignment ────────────────────────────────────────
                 Column {
                     Text(
                         text       = "Alignment",
@@ -508,7 +517,7 @@ private fun CustomizationPanel(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.18f))
 
-                // ── Visibilidad de elementos ──────────────────────────────
+                // ── What the card shows ───────────────────────────────────
                 Text(
                     text       = "Visibilidad",
                     style      = MaterialTheme.typography.bodyMedium,

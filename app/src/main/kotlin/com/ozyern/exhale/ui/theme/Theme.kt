@@ -147,8 +147,24 @@ fun ExhaleTheme(
         //
         // It now lives in `MainActivity.attachBaseContext` as a Configuration override, which is
         // where both of those values actually come from. See `utils/UiScale.kt`.
+        // The app's own Dark mode setting, told to everything under it. `isSystemInDarkTheme()`
+        // reads the configuration's night bit, so with Dark mode forced on or off in Settings
+        // against the phone's, every surface that asks it (the dock's ink, the settings cells,
+        // their hairlines) came out in the phone's mode on top of the app's.
+        val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+        val themedConfiguration = remember(configuration, darkTheme) {
+            val night = if (darkTheme) {
+                android.content.res.Configuration.UI_MODE_NIGHT_YES
+            } else {
+                android.content.res.Configuration.UI_MODE_NIGHT_NO
+            }
+            android.content.res.Configuration(configuration).apply {
+                uiMode = (uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK.inv()) or night
+            }
+        }
         CompositionLocalProvider(
             LocalGlass provides glass,
+            androidx.compose.ui.platform.LocalConfiguration provides themedConfiguration,
             content = content,
         )
     }

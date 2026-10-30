@@ -192,7 +192,7 @@ fun BackupAndRestore(
     val coroutineScope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
 
-    // Cargar estado inicial del switch
+    // Load the switch's starting state
     LaunchedEffect(Unit) {
         val enabled = viewModel.loadCloudBackupEnabled(context)
         viewModel.setCloudBackupEnabled(context, enabled)
@@ -209,7 +209,7 @@ fun BackupAndRestore(
         rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
             if (uri != null) {
                 viewModel.backup(context, uri)
-                // Si el switch está activado, subir a la nube después del backup
+                // With the switch on, upload to the cloud after the backup
                 if (cloudState.isEnabled) {
                     coroutineScope.launch {
                         delay(2000) // Esperar a que termine el backup
@@ -446,7 +446,7 @@ fun BackupAndRestore(
                             )
                         }
 
-                        // Mostrar estado de subida
+                        // Upload state
                         AnimatedVisibility(
                             visible = cloudState.isUploading,
                             enter = fadeIn() + expandVertically(),
@@ -468,7 +468,7 @@ fun BackupAndRestore(
                             }
                         }
 
-                        // Mostrar último enlace si existe
+                        // The last link, if there is one
                         AnimatedVisibility(
                             visible = !cloudState.isUploading && cloudState.lastUploadUrl != null,
                             enter = fadeIn() + expandVertically(),
@@ -548,7 +548,7 @@ fun BackupAndRestore(
                             }
                         }
 
-                        // Mostrar error si existe
+                        // The error, if there is one
                         AnimatedVisibility(
                             visible = cloudState.lastError != null && !cloudState.isUploading,
                             enter = fadeIn() + expandVertically(),
@@ -642,7 +642,7 @@ fun BackupAndRestore(
                         modifier = Modifier.padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(20.dp),
                     ) {
-                        // ============ HEADER DRAMÁTICO ============
+                        // ============ HEADER ============
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -777,7 +777,7 @@ fun BackupAndRestore(
                                     }
                                 }
 
-                                // Toggle con label mejorado
+                                // Toggle with its label
                                 Surface(
                                     shape = RoundedCornerShape(20.dp),
                                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
@@ -824,7 +824,7 @@ fun BackupAndRestore(
                                     }
                                 }
 
-                                // Botones de acción con mejor layout
+                                // Action buttons
                                 Column(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -851,7 +851,7 @@ fun BackupAndRestore(
                             }
                         }
 
-                        // ============ BOTÓN CONECTAR (Cuando desconectado) ============
+                        // ============ CONNECT BUTTON (while disconnected) ============
                         AnimatedVisibility(
                             visible = !spotifyState.isAuthenticated,
                             enter = expandVertically(animationSpec = spring(dampingRatio = 0.75f)) + fadeIn(),

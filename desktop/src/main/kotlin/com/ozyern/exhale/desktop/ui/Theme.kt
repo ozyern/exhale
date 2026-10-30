@@ -197,7 +197,16 @@ fun ExhaleTheme(settings: Settings, artworkSeed: Color?, content: @Composable ()
     } else {
         AccentPalettes.byId(settings.accent)
     }
-    val target = remember(palette, settings.pureBlack) { exhaleColorScheme(palette, settings.pureBlack) }
+    val target = remember(palette, settings.pureBlack) {
+        val scheme = exhaleColorScheme(palette, settings.pureBlack)
+        // Left on the default accent, the app wears the Music app's own: macOS 27's system blue for what's
+        // playing, links and active controls. A chosen accent, or colour from artwork, still wins.
+        if (palette.id == "default" && !(settings.dynamicTheme && artworkSeed != null)) {
+            scheme.copy(primary = AppleColors.Accent, onPrimary = Color.White)
+        } else {
+            scheme
+        }
+    }
     val scheme = animate(target)
     val typography = remember { exhaleTypography(Inter) }
     val density = LocalDensity.current

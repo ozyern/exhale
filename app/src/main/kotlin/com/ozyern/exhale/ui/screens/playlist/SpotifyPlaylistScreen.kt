@@ -814,15 +814,8 @@ fun SpotifyPlaylistScreen(
             },
             actions = {
                 if (!isSearching) {
-                    IconButton(
-                        onClick = { isSearching = true },
-                        onLongClick = {},
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.search),
-                            contentDescription = null,
-                        )
-                    }
+                    // A glass disc like the back button opposite it, as iOS draws every round bar control.
+                    com.ozyern.exhale.ui.component.LiquidGlassIconButton(onClick = { isSearching = true }, icon = R.drawable.search)
                 }
             },
             scrollBehavior = scrollBehavior,

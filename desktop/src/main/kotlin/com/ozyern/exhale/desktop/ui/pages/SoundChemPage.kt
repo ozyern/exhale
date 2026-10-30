@@ -156,7 +156,6 @@ fun SoundChemScreen(player: DesktopPlayer, state: PlayerState, insets: ChromeIns
                 contentPadding = PaddingValues(start = start, end = 40.dp, top = 16.dp, bottom = insets.bottom + 24.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                if (onBack != null) item(key = "back") { GlassIconButton(NavIcons.Back, "Back", onBack, Modifier.padding(bottom = 18.dp)) }
                 item(key = "header") {
                     ChemHeader(
                         month = monthName,

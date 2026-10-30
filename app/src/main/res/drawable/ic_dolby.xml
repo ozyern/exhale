@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dolby's double-D, as the Windows app draws it: two solid Ds back to back, bowls meeting in the middle. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M2,5h2.5a7,7 0,0 1,0 14H2z M22,5h-2.5a7,7 0,0 0,0 14H22z" />
+</vector>

@@ -108,6 +108,8 @@ import com.ozyern.exhale.ui.component.scrollEdgeScrim
 import com.ozyern.exhale.ui.component.PlayShuffleButton
 import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.ui.component.LiquidBackButton
+import com.ozyern.exhale.ui.component.CollectionPlay
+import com.ozyern.exhale.ui.component.CollectionShuffle
 import com.ozyern.exhale.ui.component.heroParallax
 import coil3.imageLoader
 import coil3.request.ImageRequest
@@ -602,9 +604,9 @@ fun AlbumScreen(
                             }
                         },
                     ) {
-                        val circle = 46.dp
-                        // Save · Shuffle · Play · Search · More.
-                        // Downloading lives in More, out of the way.
+                        val circle = 50.dp
+                        // Save · Play · Shuffle · More, as Apple Music sets a release: the two capsules
+                        // between the round controls. Search sits in the bar above; downloading in More.
                         val saved = albumWithSongs.album.bookmarkedAt != null
                         com.ozyern.exhale.ui.component.ReleaseCircle(
                             icon = if (saved) R.drawable.check else R.drawable.add,
@@ -616,32 +618,21 @@ fun AlbumScreen(
                                 database.query { update(albumWithSongs.album.toggleLike()) }
                             },
                         )
-                        com.ozyern.exhale.ui.component.ReleaseCircle(
-                            icon = R.drawable.shuffle,
-                            contentDescription = stringResource(R.string.shuffle),
-                            palette = palette,
-                            size = circle,
-                            onClick = {
-                                playerConnection.service.getAutomix(playlistId)
-                                playerConnection.playQueue(
-                                    LocalAlbumRadio(albumWithSongs.copy(songs = albumWithSongs.songs.shuffled())),
-                                )
-                            },
-                        )
-                        com.ozyern.exhale.ui.component.ReleasePlay(
+                        CollectionPlay(
                             contentDescription = stringResource(R.string.play),
-                            size = circle,
                             onClick = {
                                 playerConnection.service.getAutomix(playlistId)
                                 playerConnection.playQueue(LocalAlbumRadio(albumWithSongs))
                             },
                         )
-                        com.ozyern.exhale.ui.component.ReleaseCircle(
-                            icon = if (searching) R.drawable.close else R.drawable.search,
-                            contentDescription = null,
-                            palette = palette,
-                            size = circle,
-                            onClick = { if (searching) closeSearch() else searching = true },
+                        CollectionShuffle(
+                            contentDescription = stringResource(R.string.shuffle),
+                            onClick = {
+                                playerConnection.service.getAutomix(playlistId)
+                                playerConnection.playQueue(
+                                    LocalAlbumRadio(albumWithSongs.copy(songs = albumWithSongs.songs.shuffled()), shuffled = true),
+                                )
+                            },
                         )
                         com.ozyern.exhale.ui.component.ReleaseCircle(
                             icon = R.drawable.more_horiz,
@@ -1089,6 +1080,11 @@ fun AlbumScreen(
                             contentDescription = null
                         )
                     }
+                } else {
+                    com.ozyern.exhale.ui.component.LiquidGlassIconButton(
+                        onClick = { if (searching) closeSearch() else searching = true },
+                        icon = if (searching) R.drawable.close else R.drawable.search,
+                    )
                 }
             }
         )

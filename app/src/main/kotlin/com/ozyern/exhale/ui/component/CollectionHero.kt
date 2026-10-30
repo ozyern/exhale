@@ -6,6 +6,7 @@
 
 package com.ozyern.exhale.ui.component
 
+import com.ozyern.exhale.ui.utils.collectionMorphHero
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.draw.clip
@@ -112,7 +117,8 @@ fun CollectionHero(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(0.9f)
-                .heroParallax(lazyListState, travel = 260.dp),
+                .heroParallax(lazyListState, travel = 260.dp)
+                .collectionMorphHero(),
         ) {
             artwork()
             Box(
@@ -214,6 +220,7 @@ private fun WideCollectionHero(
         Box(
             Modifier
                 .size(sleeve)
+                .collectionMorphHero()
                 .sleeveShadow(sleeveShape)
                 .clip(sleeveShape),
         ) {
@@ -286,10 +293,12 @@ private fun ReleaseCollectionHero(
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(sleeveHeight),
+                .height(sleeveHeight)
+                // Opened from a tile, this is what flies out of it.
+                .collectionMorphHero(),
         ) {
             artwork()
-            // The join: a heavily blurred copy of the cover, shown only across its lower part, so
+            // The join:a heavily blurred copy of the cover, shown only across its lower part, so
             // the picture dissolves into its own colours before it reaches the page.
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                 Box(
@@ -417,28 +426,70 @@ fun CollectionAction(
     }
 }
 
-/** The one filled control on the page: Play, in the page's ink. */
+/**
+ * Play, as Apple Music sets it under a release's title: a labelled capsule, the one filled control
+ * on the page. It shares the row's spare width with [CollectionShuffle], so the pair stretch to
+ * fill whatever the round actions leave, on any width of screen.
+ */
 @Composable
-fun CollectionPlay(onClick: () -> Unit, contentDescription: String?) {
-    if (LocalReleasePalette.current != null) {
-        ReleasePlay(onClick = onClick, contentDescription = contentDescription)
-        return
-    }
-    Surface(
+fun RowScope.CollectionPlay(onClick: () -> Unit, contentDescription: String?) {
+    val palette = LocalReleasePalette.current
+    CollectionCapsule(
+        icon = com.ozyern.exhale.R.drawable.play,
+        label = androidx.compose.ui.res.stringResource(com.ozyern.exhale.R.string.play),
+        contentDescription = contentDescription,
+        fill = if (palette != null) Color.White else MaterialTheme.colorScheme.onSurface,
+        ink = if (palette != null) Color.Black else MaterialTheme.colorScheme.surface,
         onClick = onClick,
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.onSurface,
-        shadowElevation = 4.dp,
-        modifier = Modifier.size(58.dp),
+    )
+}
+
+/** Shuffle, Play's partner: the same capsule in the page's quieter glass. */
+@Composable
+fun RowScope.CollectionShuffle(onClick: () -> Unit, contentDescription: String? = null) {
+    val palette = LocalReleasePalette.current
+    CollectionCapsule(
+        icon = com.ozyern.exhale.R.drawable.shuffle,
+        label = androidx.compose.ui.res.stringResource(com.ozyern.exhale.R.string.shuffle),
+        contentDescription = contentDescription,
+        fill = palette?.elevated?.copy(alpha = 0.72f) ?: MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
+        ink = palette?.onBackground ?: MaterialTheme.colorScheme.onSurface,
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun RowScope.CollectionCapsule(
+    icon: Int,
+    label: String,
+    contentDescription: String?,
+    fill: Color,
+    ink: Color,
+    onClick: () -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .weight(1f)
+            .widthIn(max = 180.dp)
+            .height(50.dp)
+            .clip(CircleShape)
+            .background(fill)
+            .clickable(onClick = onClick)
+            .semantics(mergeDescendants = true) { contentDescription?.let { this.contentDescription = it } }
+            .padding(horizontal = 14.dp),
     ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Icon(
-                painterResource(com.ozyern.exhale.R.drawable.play),
-                contentDescription,
-                tint = MaterialTheme.colorScheme.surface,
-                modifier = Modifier.size(26.dp),
-            )
-        }
+        Icon(painterResource(icon), contentDescription = null, tint = ink, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = label,
+            color = ink,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

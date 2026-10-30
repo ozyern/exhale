@@ -8,6 +8,7 @@ package com.ozyern.exhale.playback
 
 import com.ozyern.exhale.innertube.YouTube
 import com.ozyern.exhale.innertube.models.SongItem
+import com.ozyern.exhale.innertube.models.isMusicVideo
 import com.ozyern.exhale.models.MediaMetadata
 import com.ozyern.exhale.utils.YTPlayerUtils
 import kotlinx.coroutines.Dispatchers
@@ -39,12 +40,91 @@ object MusicVideo {
     private const val STREAM_TTL_MS = 4 * 60 * 60 * 1000L
     private const val MAX_DURATION_DRIFT_S = 45
 
+    /** What Auto means: 720p, the tallest picture every phone decodes in hardware next to the song. */
+    const val AUTO_HEIGHT = 720
+
+    /** The qualities the player offers, tallest first; 0 is Auto. */
+    val QUALITIES = listOf(0, 1080, 720, 480, 360)
+
+    /**
+     * The tallest picture to fetch (0 = Auto), as chosen in the full-screen player. Kept here rather
+     * than passed down, so every lookup (inline, full screen, the dock) asks for the same stream.
+     */
+    @Volatile
+    var preferredHeight: Int = 0
+
+    /** Auto on mobile data: 480p, about 0.8 Mbps, which a phone network holds where 720p's 2 doesn't. */
+    private const val AUTO_METERED_HEIGHT = 480
+
+    /** The lowest Auto steps down to. */
+    private const val AUTO_FLOOR_HEIGHT = 360
+
+    /**
+     * What Auto is fetching now: 720p on Wi-Fi, 480p on mobile data ([refreshNetwork]), and a step
+     * lower each time the picture keeps stalling ([stepDownAuto]). A quality picked by hand is
+     * never changed.
+     */
+    @Volatile
+    private var autoHeight: Int = AUTO_HEIGHT
+
+    /** Whether the last network seen was metered, so stepping down survives until it changes. */
+    @Volatile
+    private var lastMetered: Boolean? = null
+
+    private val maxHeight get() = preferredHeight.takeIf { it > 0 } ?: autoHeight
+
+    /** Sets Auto for the network in use; called before each lookup. A change of network starts it afresh. */
+    fun refreshNetwork(context: android.content.Context) {
+        val connectivity = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+        val metered = connectivity?.isActiveNetworkMetered ?: true
+        if (metered == lastMetered) return
+        lastMetered = metered
+        autoHeight = if (metered) AUTO_METERED_HEIGHT else AUTO_HEIGHT
+    }
+
+    /**
+     * The picture keeps stalling on Auto: one quality lower for the rest of this network. True when
+     * it went lower, so the caller fetches the new stream; false on a hand-picked quality or at the floor.
+     */
+    fun stepDownAuto(): Boolean {
+        if (preferredHeight > 0) return false
+        val next = QUALITIES.filter { it in AUTO_FLOOR_HEIGHT until autoHeight }.maxOrNull() ?: return false
+        autoHeight = next
+        return true
+    }
+
+    /** (videoId|songId) → how far into the video the song starts, once measured. */
+    private val offsets = ConcurrentHashMap<String, Long>()
+
+    /**
+     * The video lined up with the song: how far into the video the song's own audio begins.
+     *
+     * A music video almost never starts where the song does — a cold open, a spoken intro, a
+     * longer instrumental lead-in — so held to the song's clock unmodified it ran seconds early or
+     * late for the whole song, and the picture's own small drift correction could never close a
+     * gap that size. Measured once per pair from the two soundtracks (the same alignment the
+     * video's lyrics use) and kept; until it lands, or when it can't be measured, the offset is 0.
+     */
+    suspend fun aligned(found: Found, songId: String): Found {
+        if (found.videoId == songId) return found
+        val key = "${found.videoId}|$songId"
+        offsets[key]?.let { return found.copy(offsetMs = it) }
+        val measured = runCatching {
+            com.ozyern.exhale.lyrics.VideoLyricsAlignment.aligner?.invoke(found.videoId, songId)
+        }.getOrNull() ?: return found
+        offsets[key] = measured
+        return found.copy(offsetMs = measured)
+    }
+
+    /** The measured offset, if this pair has been aligned already; the video can start in step. */
+    fun knownOffset(videoId: String, songId: String): Long = offsets["$videoId|$songId"] ?: 0L
+
     /**
      * A stream that stopped answering. YouTube's URLs go stale partway through a long video or after
      * enough seeking, and the cure is a new one — so it is dropped, and the next [find] asks again.
      */
     fun forgetStream(videoId: String) {
-        streams.remove(videoId)
+        streams.keys.removeAll { it.startsWith("$videoId@") }
     }
 
     /** Whether we already know there is no video, so the switch can be hidden without a request. */
@@ -70,11 +150,14 @@ object MusicVideo {
         videoIds[song.id] = videoId.orEmpty()
         videoId ?: return@withContext null
 
-        val cached = streams[videoId]?.takeIf { System.currentTimeMillis() - it.second < STREAM_TTL_MS }?.first
-        val stream = cached ?: YTPlayerUtils.videoStreamForDisplay(videoId).getOrNull()?.also {
-            streams[videoId] = it to System.currentTimeMillis()
+        // Kept per quality, so switching back to one already fetched is instant.
+        val height = maxHeight
+        val key = "$videoId@$height"
+        val cached = streams[key]?.takeIf { System.currentTimeMillis() - it.second < STREAM_TTL_MS }?.first
+        val stream = cached ?: YTPlayerUtils.videoStreamForDisplay(videoId, height).getOrNull()?.also {
+            streams[key] = it to System.currentTimeMillis()
         } ?: return@withContext null
-        Found(videoId, stream, offsetMs = 0L)
+        Found(videoId, stream, offsetMs = knownOffset(videoId, song.id))
     }
 
     private suspend fun search(song: MediaMetadata): String? {
@@ -90,6 +173,9 @@ object MusicVideo {
         // over a song that has a real video.
         val best = results.take(10).mapNotNull { video ->
             if (video.id == song.id) return@mapNotNull null
+            // An audio upload is not a video, whatever its title says.
+            val type = video.endpoint?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType
+            if (type == com.ozyern.exhale.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.MUSIC_VIDEO_TYPE_ATV) return@mapNotNull null
             val raw = video.title.lowercase()
             if (EDITS.any { it.containsMatchIn(raw) } && EDITS.none { it.containsMatchIn(song.title.lowercase()) }) return@mapNotNull null
             val title = normalize(video.title)
@@ -131,7 +217,10 @@ object MusicVideo {
             score -= drift / 3
             video.id to score
         }.maxByOrNull { it.second }
-        return best?.first ?: song.id.takeIf { results.any { it.id == song.id } }
+        // The song itself only when it *is* a video. Every song's own audio upload (a still of the
+        // cover) turns up in a video search too, and taking that as its video put the Video switch
+        // on songs with no video at all, which then showed the cover standing still.
+        return best?.first ?: song.id.takeIf { results.any { it.id == song.id && it.isMusicVideo } }
     }
 
     /** Versions of a song that are not its video: they run at another speed, or are someone else. */

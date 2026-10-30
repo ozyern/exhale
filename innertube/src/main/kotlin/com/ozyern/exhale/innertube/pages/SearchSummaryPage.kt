@@ -15,6 +15,7 @@ import com.ozyern.exhale.innertube.models.MusicResponsiveListItemRenderer
 import com.ozyern.exhale.innertube.models.PlaylistItem
 import com.ozyern.exhale.innertube.models.SongItem
 import com.ozyern.exhale.innertube.models.YTItem
+import com.ozyern.exhale.innertube.models.audioTrackFor
 import com.ozyern.exhale.innertube.models.filterExplicit
 import com.ozyern.exhale.innertube.models.filterVideo
 import com.ozyern.exhale.innertube.models.isMusicVideo
@@ -67,7 +68,18 @@ data class SearchSummaryPage(
      * videos moves below the ones that are not. The top section keeps its place.
      */
     fun songsFirst(): SearchSummaryPage {
-        val ranked = summaries.map { SearchSummary(it.title, it.items.songsFirst()) }
+        var ranked = summaries.map { SearchSummary(it.title, it.items.songsFirst()) }
+        // The top result a music video, with its own audio track elsewhere on the page: the track
+        // leads instead, and the video follows it. Searching a song should play the song.
+        val top = ranked.firstOrNull()
+        val lead = top?.items?.firstOrNull()
+        if (top != null && lead != null && lead.isMusicVideo) {
+            val track = ranked.flatMap { it.items }.audioTrackFor(lead)
+            if (track != null) {
+                ranked = listOf(SearchSummary(top.title, listOf(track) + top.items.filter { it.id != track.id })) +
+                    ranked.drop(1)
+            }
+        }
         if (ranked.size < 2) return SearchSummaryPage(ranked)
         val rest = ranked.drop(1).sortedBy { s -> if (s.items.count { it.isMusicVideo } * 2 > s.items.size) 1 else 0 }
         return SearchSummaryPage(listOf(ranked.first()) + rest)

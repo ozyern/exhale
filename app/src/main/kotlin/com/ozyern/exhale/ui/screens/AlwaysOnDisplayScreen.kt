@@ -142,7 +142,7 @@ import java.util.Locale
 import kotlin.math.abs
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Utilidad: extrae el color dominante de la portada vía Palette API
+//  The artwork's dominant colour, through the Palette API
 // ═══════════════════════════════════════════════════════════════════════════
 
 @Composable
@@ -159,7 +159,7 @@ private fun rememberDominantColor(thumbnailUrl: String?): Color {
             val req = ImageRequest.Builder(context)
                 .data(thumbnailUrl)
                 .allowHardware(false)   // Palette necesita bitmap de software
-                .size(128, 128)         // Tamaño pequeño es suficiente y más rápido
+                .size(128, 128)         // small is enough, and faster
                 .build()
             val result = context.imageLoader.execute(req)
             if (result is SuccessResult) {
@@ -180,7 +180,7 @@ private fun rememberDominantColor(thumbnailUrl: String?): Color {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Estado compartido entre transiciones — clave de sincronización
+//  State shared across transitions, the key they all sync on
 // ═══════════════════════════════════════════════════════════════════════════
 
 private data class AodMediaState(
@@ -311,7 +311,7 @@ fun AlwaysOnDisplayScreen(navController: NavController) {
         mediaMetadata?.artists?.joinToString(", ") { it.name }.orEmpty()
     }
 
-    // ── Estado sincronizado para transiciones ────────────────────────────
+    // ── State the transitions sync on ────────────────────────────────────
     val mediaState = remember(mediaMetadata?.id) {
         AodMediaState(
             id = mediaMetadata?.id,
@@ -321,7 +321,7 @@ fun AlwaysOnDisplayScreen(navController: NavController) {
         )
     }
 
-    // ── Color dominante (se comparte entre layouts) ───────────────────────
+    // ── Dominant colour (shared by every layout) ──────────────────────────
     val dominantColor = rememberDominantColor(mediaState.thumbnailUrl)
 
     val configuration = LocalConfiguration.current
@@ -347,7 +347,7 @@ fun AlwaysOnDisplayScreen(navController: NavController) {
         .statusBarsPadding()
         .navigationBarsPadding()
 
-    // ── Reloj del sistema (opcional) ─────────────────────────────────────
+    // ── System clock (optional) ──────────────────────────────────────────
     var clockText by remember { mutableStateOf("") }
     val clockPattern = if (clockFormat24h) "HH:mm" else "hh:mm a"
     LaunchedEffect(showClock) {
@@ -360,7 +360,7 @@ fun AlwaysOnDisplayScreen(navController: NavController) {
         }
     }
 
-    // ── Parámetros unificados pasados a todos los layouts ─────────────────
+    // ── The parameters every layout is given ──────────────────────────────
     val commonParams = AodCommonParams(
         mediaState = mediaState,
         dominantColor = dominantColor,
@@ -555,7 +555,7 @@ private fun BackgroundAodLayout(
     darkness: Float,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        // Fondo borroso sincronizado
+        // Blurred background, in sync
         AnimatedContent(
             targetState = params.mediaState.thumbnailUrl,
             transitionSpec = { fadeIn(tween(params.transitionDuration)) togetherWith fadeOut(tween((params.transitionDuration * 0.85f).toInt())) },
@@ -588,7 +588,7 @@ private fun BackgroundAodLayout(
                     )
                 )
         )
-        // Viñetas
+        // Vignette
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -802,7 +802,7 @@ private fun LargeAodLayout(
     artShape: AodArtShape,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
-        // Arte a pantalla completa con fade-out inferior
+        // Full-screen artwork fading out at the bottom
         AnimatedContent(
             targetState = params.mediaState.thumbnailUrl,
             transitionSpec = {
@@ -888,7 +888,7 @@ private fun LargeAodLayout(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  SPOTLIGHT ★ — halo real con color extraído de la portada
+//  SPOTLIGHT ★ — a halo in the artwork's own colour
 // ═══════════════════════════════════════════════════════════════════════════
 
 @Composable
@@ -900,7 +900,7 @@ private fun SpotlightAodLayout(
     spotlightIntensity: Float,
     spotlightPulse: Boolean,
 ) {
-    // Color del halo con animación suave al cambiar de canción
+    // The halo's colour, easing over when the song changes
     val animatedHaloColor by animateColorAsState(
         targetValue = params.dominantColor,
         animationSpec = tween(params.transitionDuration + 200),
@@ -939,17 +939,17 @@ private fun SpotlightAodLayout(
 
     Box(modifier = Modifier.fillMaxSize()) {
 
-        // ── Capas de brillo del spotlight ───────────────────────────────
+        // ── The spotlight's layers of light ─────────────────────────────
         Canvas(modifier = Modifier.fillMaxSize()) {
             val artApproxRadius = artSizeDp.toPx() / 2f
             val cx = size.width / 2f
             val cy = if (params.isLandscape) size.height / 2f else size.height * 0.38f
             val center = Offset(cx, cy)
 
-            // Máxima intensidad configurada por el usuario
+            // The strength the listener set
             val maxAlpha = spotlightIntensity.coerceIn(0.10f, 1.0f)
 
-            // ① Glow exterior difuso — radio muy amplio, muy translúcido
+            // ① Soft outer glow: very wide, very faint
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
@@ -964,7 +964,7 @@ private fun SpotlightAodLayout(
                 radius = artApproxRadius * 3.6f * pulseScale
             )
 
-            // ② Halo medio — define el "cono" de luz
+            // ② Middle halo: the cone of light
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
@@ -979,7 +979,7 @@ private fun SpotlightAodLayout(
                 radius = artApproxRadius * 1.9f * pulseScale
             )
 
-            // ③ Corona interior brillante — justo alrededor de la portada
+            // ③ Bright inner corona, just around the artwork
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
@@ -995,7 +995,7 @@ private fun SpotlightAodLayout(
                 radius = artApproxRadius * 1.28f * pulseScale
             )
 
-            // ④ Anillo de borde — contorno sutil con color dominante
+            // ④ Rim ring: a faint outline in the dominant colour
             drawCircle(
                 color = animatedHaloColor.copy(alpha = maxAlpha * 0.38f * pulseAlpha),
                 center = center,
@@ -1015,7 +1015,7 @@ private fun SpotlightAodLayout(
                 )
             )
 
-            // ⑥ Oscurecimiento del fondo lejos del centro
+            // ⑥ Darkening away from the centre
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
@@ -1087,8 +1087,8 @@ private fun SpotlightAodLayout(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Imagen de portada con transición sincronizada al [mediaState].
- * Todos los layouts usan este composable → fade del arte ocurre al mismo tiempo
+ * The artwork, changing in step with [mediaState].
+ * Every layout uses this, so the artwork fades at the same moment in all of them
  */
 @Composable
 private fun SyncedArtImage(
@@ -1099,7 +1099,7 @@ private fun SyncedArtImage(
     modifier: Modifier = Modifier
 ) {
     AnimatedContent(
-        targetState = mediaState,       // ← sincronizado con title + artist
+        targetState = mediaState,       // in step with title + artist
         transitionSpec = {
             fadeIn(tween(duration)) togetherWith fadeOut(tween((duration * 0.85f).toInt()))
         },
@@ -1117,7 +1117,7 @@ private fun SyncedArtImage(
 }
 
 /**
- * Halo ambiente con gradiente radial colorido, reemplaza el Canvas blanco del classic.
+ * An ambient halo in a coloured radial gradient, in place of the classic's white Canvas.
  */
 @Composable
 private fun AmbientHalo(color: Color, modifier: Modifier = Modifier) {
@@ -1140,7 +1140,7 @@ private fun AmbientHalo(color: Color, modifier: Modifier = Modifier) {
 }
 
 /**
- * Wrapper que sincroniza el crossfade de texto con la misma key del mediaState.
+ * Crossfades text on the same key as mediaState, so it changes in step.
  */
 @SuppressLint("UnusedContentLambdaTargetStateParameter")
 @Composable

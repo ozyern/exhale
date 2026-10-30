@@ -289,8 +289,11 @@ fun LibraryMixScreen(
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
             modifier = Modifier.fillMaxSize(),
         ) {
+            // The title is pinned over the list (see below), as Home's is; this only clears it.
             item(key = "large_title", contentType = "large_title") {
-                LibraryLargeTitle()
+                androidx.compose.foundation.layout.Spacer(
+                    Modifier.height(com.ozyern.exhale.ui.component.PinnedPageHeaderHeight),
+                )
             }
 
             // ── Your collections: Liked as the lead card, the rest as glass tiles under it ──
@@ -517,6 +520,12 @@ fun LibraryMixScreen(
                 }
             }
         }
+
+        com.ozyern.exhale.ui.component.PinnedPageHeader(
+            title = stringResource(R.string.filter_library),
+            scrolled = { lazyListState.firstVisibleItemIndex > 0 || lazyListState.firstVisibleItemScrollOffset > 0 },
+            modifier = Modifier.align(Alignment.TopStart),
+        )
     }
 }
 
@@ -532,28 +541,6 @@ private fun Modifier.pageGutter(): Modifier =
     this
         .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
         .padding(horizontal = LibraryGutter)
-
-/**
- * The large title, matching Home's.
- *
- * Inside the scroll content rather than in the app bar, so it rolls away under the chrome as you
- * move down — the entire point of the pattern.
- */
-@Composable
-private fun LibraryLargeTitle(modifier: Modifier = Modifier) {
-    Text(
-        text = stringResource(R.string.filter_library),
-        // Tracked in hard, same as Home. At display size the default letter fitting leaves
-        // visible gaps — the difference between a word that has been set and one that was typed.
-        style = MaterialTheme.typography.displaySmall.copy(letterSpacing = (-0.03).em),
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier = modifier
-            .fillMaxWidth()
-            .pageGutter()
-            .padding(top = 10.dp, bottom = 18.dp),
-    )
-}
 
 /**
  * One row of the library list: icon, label, chevron, hairline.

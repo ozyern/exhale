@@ -75,7 +75,7 @@ fun Queue.toPersistQueue(
             position = position,
             queueType = QueueType.LIST
         )
-    }
+    }.copy(sourceId = sourceId)
 }
 
 fun PersistQueue.toQueue(): Queue {
@@ -84,7 +84,8 @@ fun PersistQueue.toQueue(): Queue {
             title = title,
             items = items.map { it.toMediaItem() },
             startIndex = mediaItemIndex,
-            position = position
+            position = position,
+            sourceId = sourceId
         )
         is QueueType.YOUTUBE -> {
             // For now, fallback to ListQueue since we can't reconstruct YouTubeQueue properly
@@ -92,7 +93,8 @@ fun PersistQueue.toQueue(): Queue {
                 title = title,
                 items = items.map { it.toMediaItem() },
                 startIndex = mediaItemIndex,
-                position = position
+                position = position,
+                sourceId = sourceId
             )
         }
         is QueueType.YOUTUBE_ALBUM_RADIO -> {
@@ -101,7 +103,8 @@ fun PersistQueue.toQueue(): Queue {
                 title = title,
                 items = items.map { it.toMediaItem() },
                 startIndex = mediaItemIndex,
-                position = position
+                position = position,
+                sourceId = sourceId
             )
         }
         is QueueType.LOCAL_ALBUM_RADIO -> {
@@ -110,7 +113,8 @@ fun PersistQueue.toQueue(): Queue {
                 title = title,
                 items = items.map { it.toMediaItem() },
                 startIndex = mediaItemIndex,
-                position = position
+                position = position,
+                sourceId = sourceId
             )
         }
     }

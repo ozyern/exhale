@@ -39,6 +39,10 @@ import kotlin.math.sin
  *    drops a little, the way the outer ear shades a sound from behind. Without it the sound only
  *    swings left and right through the front; with it, it goes *behind* you on the way round.
  *
+ * Around those: the bass below [BASS_CENTRE_HZ] stays centred, as real 8D mixes keep it; the far
+ * ear is shaded as well as delayed (the head blocks highs); and two faint early reflections put a
+ * room round the listener, so the orbit is heard outside the head rather than between the ears.
+ *
  * Headphones only, really: on speakers both ears hear both channels and the delay cue collapses.
  *
  * Stereo, 16-bit or float, at any rate. Always active for stereo and a straight copy while off, so
@@ -86,6 +90,22 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         /** The limiter's ceiling: just under full scale. */
         private const val LIMIT = 0.97f
 
+        /** Below this the song stays centred while the rest goes round. */
+        private const val BASS_CENTRE_HZ = 150f
+
+        /** Where the head starts shading the far ear's highs. */
+        private const val HEAD_SHADOW_HZ = 1_800f
+
+        /** How much of the far ear is shaded with the image fully to one side. */
+        private const val HEAD_SHADOW = 0.6f
+
+        /** The two reflections' delays: different, so the two ears never hear the same echo. */
+        private const val ROOM_LEFT_MS = 11.3f
+        private const val ROOM_RIGHT_MS = 17.1f
+
+        /** Their level: about -18 dB, heard as space rather than as an echo. */
+        private const val ROOM_LEVEL = 0.12f
+
         private const val TWO_PI = 2.0 * PI
 
         /** Where the orbit is, shared so a new sink (a new song, a seek) picks up where it was. */
@@ -103,6 +123,14 @@ class EightDAudioProcessor : BaseAudioProcessor() {
     private var shadowAlpha = 0f
     private var shadowL = 0f
     private var shadowR = 0f
+    private var bassAlpha = 0f
+    private var bass = 0f
+    private var farAlpha = 0f
+    private var farShade = 0f
+    private var room = FloatArray(1)
+    private var roomWrite = 0
+    private var roomTapL = 1
+    private var roomTapR = 1
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         isFloat = when (inputAudioFormat.encoding) {
@@ -127,6 +155,15 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         shadowAlpha = 1f - exp(-2f * PI.toFloat() * REAR_CUTOFF_HZ / sampleRate)
         shadowL = 0f
         shadowR = 0f
+        val twoPi = 2f * PI.toFloat()
+        bassAlpha = 1f - exp(-twoPi * BASS_CENTRE_HZ / sampleRate)
+        farAlpha = 1f - exp(-twoPi * HEAD_SHADOW_HZ / sampleRate)
+        bass = 0f
+        farShade = 0f
+        roomTapL = (sampleRate * ROOM_LEFT_MS / 1000f).roundToInt().coerceAtLeast(1)
+        roomTapR = (sampleRate * ROOM_RIGHT_MS / 1000f).roundToInt().coerceAtLeast(1)
+        room = FloatArray(maxOf(roomTapL, roomTapR) + 1)
+        roomWrite = 0
         return inputAudioFormat
     }
 
@@ -173,7 +210,12 @@ class EightDAudioProcessor : BaseAudioProcessor() {
             // way: that was the "sounds worse on some songs", on any wide mix.
             val mid = (left + right) * 0.5f
             val side = (left - right) * 0.5f
-            ringL[write] = mid
+            // The bass stays in the middle, as a real 8D mix keeps it. Sent round the head with the
+            // rest, the kick and the bass line swung into one ear and out of the other: the low end
+            // pumped, and lost its weight whenever the orbit was at the side.
+            bass += bassAlpha * (mid - bass)
+            val moving = mid - bass
+            ringL[write] = moving
             ringR[write] = side
 
             // Round the head: sine is left/right, cosine is front/back.
@@ -183,8 +225,13 @@ class EightDAudioProcessor : BaseAudioProcessor() {
             // The far ear hears it later, by a *fractional* delay: whole-sample steps clicked as
             // the delay grew and shrank through the orbit.
             val delay = abs(pan) * maxItdSamples
-            val near = mid
-            val far = delayedMid(delay)
+            val near = moving
+            var far = delayedMid(delay)
+            // The head shadow: the ear turned away hears it later *and* duller, because the head is
+            // in the way of the highs. Only delayed, the far ear was as bright as the near one and
+            // the image sat inside the head rather than at one side of it.
+            farShade += farAlpha * (far - farShade)
+            far += (farShade - far) * (abs(pan) * HEAD_SHADOW)
             var l = if (pan > 0f) far else near
             var r = if (pan < 0f) far else near
 
@@ -202,6 +249,19 @@ class EightDAudioProcessor : BaseAudioProcessor() {
             val keepSide = 1f - 0.35f * applied
             l = l * cos(angle).toFloat() * 1.4142135f * level + side * keepSide
             r = r * sin(angle).toFloat() * 1.4142135f * level - side * keepSide
+
+            // Two early reflections, one each side at a different distance, from a room around you.
+            // They are what puts the sound outside the head: dry, the orbit circled between the
+            // ears. Fed from the moving part only, faint, and faded with the effect.
+            room[roomWrite] = moving
+            val echo = ROOM_LEVEL * applied
+            l += echo * room[(roomWrite - roomTapL + room.size) % room.size]
+            r += echo * room[(roomWrite - roomTapR + room.size) % room.size]
+            roomWrite = (roomWrite + 1) % room.size
+
+            // And the bass, the same in both ears.
+            l += bass
+            r += bass
 
             // A clean peak limiter instead of a clipper: the ear the sound turns toward gets up to
             // +3 dB, and on a loud master the old soft clip turned that into audible distortion.
@@ -248,6 +308,10 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         write = 0
         shadowL = 0f
         shadowR = 0f
+        bass = 0f
+        farShade = 0f
+        room.fill(0f)
+        roomWrite = 0
         limiterGain = 1f
         // The ramp restarts from the middle so a seek never jumps the image; the orbit itself
         // carries on from where it was.
@@ -257,6 +321,7 @@ class EightDAudioProcessor : BaseAudioProcessor() {
     override fun onReset() {
         ringL = FloatArray(0)
         ringR = FloatArray(0)
+        room = FloatArray(1)
         sampleRate = 0
     }
 }

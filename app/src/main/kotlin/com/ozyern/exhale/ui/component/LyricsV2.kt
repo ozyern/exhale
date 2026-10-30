@@ -99,6 +99,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -272,6 +273,8 @@ fun LyricsV2(
     val (lyricsLineSpacing) = rememberPreference(LyricsLineSpacingKey, defaultValue = 1.3f)
     val (romanizeJapanese) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = true)
     val (romanizeKorean) = rememberPreference(LyricsRomanizeKoreanKey, defaultValue = true)
+    val (romanizeHindi) = rememberPreference(com.ozyern.exhale.constants.LyricsRomanizeHindiKey, defaultValue = true)
+    val (romanizeOther) = rememberPreference(com.ozyern.exhale.constants.LyricsRomanizeOtherKey, defaultValue = true)
     val (showPronunciation, setShowPronunciation) = rememberPreference(com.ozyern.exhale.constants.LyricsShowPronunciationKey, true)
     val (showTranslation, setShowTranslation) = rememberPreference(com.ozyern.exhale.constants.LyricsShowTranslationKey, false)
     var translating by remember { mutableStateOf(false) }
@@ -419,14 +422,23 @@ fun LyricsV2(
     }
 
     // ── Romanization ──
-    LaunchedEffect(entriesWithWords, romanizeJapanese, romanizeKorean) {
-        if (!romanizeJapanese && !romanizeKorean) return@LaunchedEffect
+    LaunchedEffect(entriesWithWords, romanizeJapanese, romanizeKorean, romanizeHindi, romanizeOther) {
+        if (!romanizeJapanese && !romanizeKorean && !romanizeHindi && !romanizeOther) return@LaunchedEffect
         entriesWithWords.forEach { entry ->
             if (entry.text.isBlank() || entry.romanizedTextFlow.value != null) return@forEach
             scope.launch(Dispatchers.Default) {
                 val romanized = when {
-                    romanizeJapanese && isJapanese(entry.text) -> romanizeJapanese(entry.text)
+                    // Chinese shares its characters with Japanese kanji: without kana it is Chinese,
+                    // and pinyin, not a Japanese reading of it.
+                    romanizeJapanese && isJapanese(entry.text) && !isChinese(entry.text) -> romanizeJapanese(entry.text)
                     romanizeKorean && isKorean(entry.text) -> romanizeKorean(entry.text)
+                    romanizeHindi && com.ozyern.exhale.lyrics.DevanagariRomanizer.isDevanagari(entry.text) ->
+                        com.ozyern.exhale.lyrics.DevanagariRomanizer.romanize(entry.text)
+                    // Everything else: Chinese, Cyrillic, Arabic, Thai… (not a script with its own switch).
+                    romanizeOther && !isKorean(entry.text) &&
+                        !com.ozyern.exhale.lyrics.DevanagariRomanizer.isDevanagari(entry.text) &&
+                        (!isJapanese(entry.text) || isChinese(entry.text)) ->
+                        com.ozyern.exhale.lyrics.LyricsRomanizer.romanize(entry.text)
                     else -> null
                 }
                 if (romanized != null) entry.romanizedTextFlow.value = romanized
@@ -436,7 +448,9 @@ fun LyricsV2(
 
     // Whether this song has any lines in another script to pronounce — the globe only shows then.
     val hasPronunciation = remember(entriesWithWords) {
-        entriesWithWords.any { isJapanese(it.text) || isKorean(it.text) }
+        entriesWithWords.any {
+            isJapanese(it.text) || isKorean(it.text) || com.ozyern.exhale.lyrics.LyricsRomanizer.hasOtherScript(it.text)
+        }
     }
 
     // ── Translation, beneath each line, in the language chosen in the lyric settings ──
@@ -560,6 +574,8 @@ fun LyricsV2(
 
     // ── Scroll State ──
     val listState = rememberLazyListState()
+    val waterfallScope = rememberCoroutineScope()
+    val waterfall = remember(waterfallScope) { LyricsWaterfall(waterfallScope) }
     var isManualScrolling by remember { mutableStateOf(false) }
     var lastManualScrollTime by remember { mutableLongStateOf(0L) }
 
@@ -617,8 +633,10 @@ fun LyricsV2(
     }
     val scrollTarget = if (appleMotion) blockStart else scrollLineIndex
 
-    LaunchedEffect(scrollTarget, isManualScrolling, lyricsScroll) {
-        if (!lyricsScroll || isManualScrolling || !isSynced) return@LaunchedEffect
+    // Held still while lines are being picked to share: a column that kept following the song
+    // moved the next line out from under the finger reaching for it.
+    LaunchedEffect(scrollTarget, isManualScrolling, lyricsScroll, isSelectionModeActive) {
+        if (!lyricsScroll || isManualScrolling || !isSynced || isSelectionModeActive) return@LaunchedEffect
         if (scrollTarget < 0 || scrollTarget >= entriesWithWords.size) return@LaunchedEffect
 
         val target = scrollTarget
@@ -631,18 +649,9 @@ fun LyricsV2(
         // leaving more room below for the upcoming lines.
         val anchorY = layoutInfo.viewportStartOffset + (viewportHeight * 0.42f)
 
-        // Firm, and critically damped. This was StiffnessLow (200), which takes the better part of
-        // a second to cover a line — longer than plenty of lines last. Every time the next line
-        // arrived mid-glide it cancelled this coroutine and started a fresh spring from wherever
-        // the list had drifted to, so through a fast verse the column never actually reached the
-        // anchor and the active line wandered up and down the screen. At 340 a normal line-to-line
-        // move completes in roughly a third of a second, comfortably inside the gap, and the
-        // column arrives and *sits* — which is what reads as locked to the song.
-        val glide = spring<Float>(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = 340f,
-        )
-
+        // The list itself always lands exactly on the anchor in one step; only the drawing of the
+        // lines lags behind it. A glide used to be cancelled by the next line mid-flight, and through
+        // a fast verse the active line wandered up and down the screen without ever arriving.
         val itemInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.index == target }
         when {
             itemInfo != null -> {
@@ -662,9 +671,17 @@ fun LyricsV2(
                 // An animated scroll needs no catching. It is the same spring the branch below
                 // uses, it is interruptible - the next line simply retargets from wherever the
                 // column is - and there is no frame in which anything is in the wrong place.
+                //
+                // Now the Windows waterfall (see LyricsWaterfall): the list jumps and each line is
+                // drawn back where it was in that same frame, then released on its own spring a
+                // beat after the line above it. The no-flicker rule above still holds, because
+                // nothing waits for an effect: the offsets are read off the frame clock at draw.
                 val delta = itemInfo.offset + itemInfo.size / 2f - anchorY
                 if (abs(delta) > 4f) {
-                    listState.animateScrollBy(delta, glide)
+                    val now = withFrameNanos { it }
+                    var moved = 0f
+                    listState.scroll { moved = scrollBy(delta) }
+                    waterfall.push(moved, target, now)
                 }
             }
 
@@ -857,29 +874,20 @@ fun LyricsV2(
                 // Done, it drops back into the column like any other line.
                 // 1.0.405's look for its own motion: a word-synced line keeps every word in charge of
                 // its own light, sung or not. Only the iOS motion drops finished lines back.
+                // Picking lines to share: every line sharp and readable, the picked ones at full white.
+                val picking = isSelectionModeActive
+                val picked = picking && selectedIndices.contains(index)
                 val wordLineAlpha = if (item.words != null && isSynced && (lit || !appleMotion)) 1f else lineAlpha
+                    .let { if (picking) { if (picked) 1f else 0.55f } else it }
 
                 // ── Apple-Music line transition physics ──
                 // The active line pops to full size; inactive lines settle at 85% scale and
-                // pick up a light depth blur that grows with distance. NOTHING snaps: alpha,
-                // scale and blur all ride the same buttery spring the moment the active
-                // index moves.
-                // Stiffness falls off with distance from the active line, so a line change
-                // ripples outward through the stack instead of every line in the viewport
-                // arriving at its new state on the same frame. That synchronised move is what
-                // made the transition read as a crossfade of three properties rather than as one
-                // object being handed forward — and a spring cannot be given a start delay, so
-                // the stagger has to come from the curve rather than from timing.
-                val lineSpring = remember(distanceFromActive, isActive) {
-                    spring<Float>(
-                        dampingRatio = 0.8f,
-                        stiffness = if (isActive) 420f
-                        else (330f - distanceFromActive * 45f).coerceAtLeast(120f),
-                    )
-                }
+                // pick up a light depth blur that grows with distance. The timings are the Windows
+                // app's, so the two read as the same lyrics: opacity over 420ms, blur over 520ms,
+                // scale on a soft spring, and the line's position on the waterfall (LyricsWaterfall).
                 val animatedLineAlpha by animateFloatAsState(
                     targetValue = wordLineAlpha,
-                    animationSpec = lineSpring,
+                    animationSpec = tween(420),
                     label = "lineAlpha",
                 )
                 // The desktop build's number, not a shrink.
@@ -890,24 +898,9 @@ fun LyricsV2(
                 // that the sung line is the nearest object without the rest becoming small print,
                 // which is also how Apple does it (dimmer, barely smaller).
                 val animatedLineScale by animateFloatAsState(
-                    targetValue = if (!isSynced || lit) 1f else 0.965f,
-                    animationSpec = lineSpring,
+                    targetValue = if (!isSynced || lit || picking) 1f else 0.965f,
+                    animationSpec = spring(dampingRatio = 0.8f, stiffness = 180f),
                     label = "lineScale",
-                )
-                // The active line lifts a couple of pixels off the column and the line just
-                // behind it settles back. Small enough that it is never read as a layout shift,
-                // large enough that the eye is told where the words are without relying on
-                // brightness alone - which is the only cue that survives a bright wallpaper
-                // behind translucent lyrics.
-                val animatedLineLift by animateFloatAsState(
-                    targetValue = when {
-                        !isSynced -> 0f
-                        isActive -> -2.5f
-                        distanceFromActive == 1 -> 1.5f
-                        else -> 0f
-                    },
-                    animationSpec = lineSpring,
-                    label = "lineLift",
                 )
                 // Depth-of-field, and it only points forward.
                 //
@@ -932,11 +925,11 @@ fun LyricsV2(
                 // expensive way to draw the same idea.
                 val animatedLineBlur by animateFloatAsState(
                     targetValue = when {
-                        !isSynced || isActive || isManualScrolling || isPast -> 0f
+                        !isSynced || isActive || isManualScrolling || isPast || picking -> 0f
                         distanceFromActive > 4 -> 0f
                         else -> (distanceFromActive * 1.2f).coerceAtMost(5f)
                     },
-                    animationSpec = lineSpring,
+                    animationSpec = tween(520),
                     label = "lineBlur",
                 )
                 // Grow/shrink around the line's leading edge like the iOS music app (lines
@@ -960,10 +953,10 @@ fun LyricsV2(
                         .fillMaxWidth()
                         .background(
                             color = if (isSelected && isSelectionModeActive)
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                                Color.White.copy(alpha = 0.14f)
                             else
                                 Color.Transparent,
-                            shape = RoundedCornerShape(8.dp)
+                            shape = RoundedCornerShape(14.dp)
                         )
                         .padding(
                             start = if (isAllBackground) 24.dp else 12.dp,
@@ -988,7 +981,7 @@ fun LyricsV2(
                             alpha = animatedLineAlpha
                             scaleX = animatedLineScale
                             scaleY = animatedLineScale
-                            translationY = animatedLineLift.dp.toPx()
+                            translationY = waterfall.offset(index)
                             transformOrigin = lineTransformOrigin
                             renderEffect = if (
                                 android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S &&
@@ -1286,7 +1279,7 @@ fun LyricsV2(
         }
 
 
-        // ── Carrusel de estilos para compartir letras ──────────────────────────────
+        // ── Lyric card share sheet ─────────────────────────────────────────────────
         if (showShareCarouselSheet) {
             shareDialogData?.let { (lyricText, title, artist) ->
 

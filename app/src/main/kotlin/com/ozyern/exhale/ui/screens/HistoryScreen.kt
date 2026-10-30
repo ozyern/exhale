@@ -11,6 +11,14 @@ package com.ozyern.exhale.ui.screens
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -141,12 +149,15 @@ fun HistoryScreen(
             DateAgo.Yesterday -> context.getString(R.string.yesterday)
             DateAgo.ThisWeek -> context.getString(R.string.this_week)
             DateAgo.LastWeek -> context.getString(R.string.last_week)
-            is DateAgo.Other -> dateAgo.date.format(DateTimeFormatter.ofPattern("yyyy/MM"))
+            // "October 2026", not "2026/10".
+            is DateAgo.Other -> dateAgo.date.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
         }
     }
 
+    /** One row: a play, or several plays of the same song back to back ([plays]). */
     class WrappedHistoryItem(val item: EventWithSong) {
         var isSelected by mutableStateOf(false)
+        var plays = 1
     }
 
     val filteredEvents = remember(events, query) {
@@ -182,11 +193,20 @@ fun HistoryScreen(
         }
     }
 
+    // A song played several times in a row is one row with a count, not the same row five times
+    // over: on repeat, one song filled the whole page.
     val wrappedItemsMap = remember(filteredEvents) {
         filteredEvents.mapValues { (_, events) ->
-            events.map { WrappedHistoryItem(it) }.toMutableStateList()
+            val rows = ArrayList<WrappedHistoryItem>(events.size)
+            for (event in events) {
+                val last = rows.lastOrNull()
+                if (last != null && last.item.song.id == event.song.id) last.plays++ else rows.add(WrappedHistoryItem(event))
+            }
+            rows.toMutableStateList()
         }
     }
+    val totalPlays = remember(filteredEvents) { filteredEvents.values.sumOf { it.size } }
+    val uniqueSongs = remember(filteredEvents) { filteredEvents.values.flatten().distinctBy { it.song.id }.size }
 
     val allWrappedItems = remember(wrappedItemsMap) {
         wrappedItemsMap.values.flatten()
@@ -224,14 +244,44 @@ fun HistoryScreen(
                 )
             }
 
-            if (historySource == HistorySource.REMOTE && isLoggedIn) {
+            // What is here, and the two ways to play it, as the iOS music app heads a list: a line of
+            // counts and a Play and Shuffle pair. Only one floating shuffle button used to do this.
+            val remote = historySource == HistorySource.REMOTE && isLoggedIn
+            val playable = if (remote) {
+                filteredRemoteContent?.flatMap { it.songs }?.map { it.toMediaItem() }.orEmpty()
+            } else {
+                allWrappedItems.map { it.item.song.toMediaItem() }
+            }
+            if (playable.isNotEmpty()) {
+                item(key = "history_summary") {
+                    HistorySummary(
+                        summary = if (remote) {
+                            pluralStringResource(R.plurals.n_song, playable.size, playable.size)
+                        } else {
+                            "$totalPlays plays · " + pluralStringResource(R.plurals.n_song, uniqueSongs, uniqueSongs)
+                        },
+                        onPlay = {
+                            playerConnection.playQueue(ListQueue(title = context.getString(R.string.history), items = playable))
+                        },
+                        onShuffle = {
+                            playerConnection.playQueue(ListQueue(title = context.getString(R.string.history), items = playable.shuffled()))
+                        },
+                    )
+                }
+            } else if (!(remote && historyPage == null)) {
+                item(key = "history_empty") {
+                    HistoryEmpty(searching = query.text.isNotEmpty())
+                }
+            }
+
+            if (remote) {
                 filteredRemoteContent?.forEach { section ->
                     stickyHeader {
                         NavigationTitle(
                             title = section.title,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(MaterialTheme.colorScheme.background)
+                                .background(MaterialTheme.colorScheme.surface)
                         )
                     }
 
@@ -313,6 +363,13 @@ fun HistoryScreen(
                             isSelected = wrappedItem.isSelected && selection,
 
                             trailingContent = {
+                                if (wrappedItem.plays > 1) {
+                                    Text(
+                                        text = "×${wrappedItem.plays}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                                 IconButton(
                                     onClick = {
                                         if (!selection) {
@@ -374,35 +431,6 @@ fun HistoryScreen(
             }
         }
 
-        HideOnScrollFAB(
-            visible = if (historySource == HistorySource.REMOTE) {
-                filteredRemoteContent?.any { it.songs.isNotEmpty() } == true
-            } else {
-                allWrappedItems.isNotEmpty()
-            },
-            lazyListState = lazyListState,
-            icon = R.drawable.shuffle,
-            onClick = {
-                if (historySource == HistorySource.REMOTE && historyPage != null) {
-                    val songs = filteredRemoteContent?.flatMap { it.songs } ?: emptyList()
-                    if (songs.isNotEmpty()) {
-                        playerConnection.playQueue(
-                            ListQueue(
-                                title = context.getString(R.string.history),
-                                items = songs.map { it.toMediaItem() }.shuffled()
-                            )
-                        )
-                    }
-                } else {
-                    playerConnection.playQueue(
-                        ListQueue(
-                            title = context.getString(R.string.history),
-                            items = allWrappedItems.map { it.item.song.toMediaItem() }.shuffled()
-                        )
-                    )
-                }
-            }
-        )
     }
 
     TopAppBar(
@@ -518,4 +546,93 @@ fun HistoryScreen(
             }
         }
     )
+}
+
+/**
+ * The head of the list: how much is in it, and Play and Shuffle side by side, as the iOS music
+ * app heads a playlist. Grey capsules with the accent on the glyph and word, not two filled buttons.
+ */
+@Composable
+private fun HistorySummary(
+    summary: String,
+    onPlay: () -> Unit,
+    onShuffle: () -> Unit,
+) {
+    androidx.compose.foundation.layout.Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Text(
+            text = summary,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp, bottom = 12.dp),
+        )
+        androidx.compose.foundation.layout.Row(
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
+        ) {
+            HistoryAction(R.drawable.play, stringResource(R.string.play), onPlay, Modifier.weight(1f))
+            HistoryAction(R.drawable.shuffle, stringResource(R.string.shuffle), onShuffle, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun HistoryAction(icon: Int, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.layout.Row(
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        modifier = modifier
+            .height(48.dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+            .clickable(onClick = onClick),
+    ) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(20.dp),
+        )
+        androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))
+        Text(
+            text = label,
+            fontSize = 16.sp,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+}
+
+/** Nothing played yet, or nothing matching the search: said, rather than a blank page. */
+@Composable
+private fun HistoryEmpty(searching: Boolean) {
+    androidx.compose.foundation.layout.Column(
+        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 32.dp, vertical = 64.dp),
+    ) {
+        Icon(
+            painter = painterResource(if (searching) R.drawable.search else R.drawable.history),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(44.dp),
+        )
+        androidx.compose.foundation.layout.Spacer(Modifier.height(14.dp))
+        Text(
+            text = if (searching) "No matches" else "Nothing played yet",
+            fontSize = 20.sp,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        androidx.compose.foundation.layout.Spacer(Modifier.height(6.dp))
+        Text(
+            text = if (searching) "Try another title or artist." else "Songs you play show up here.",
+            fontSize = 15.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+    }
 }

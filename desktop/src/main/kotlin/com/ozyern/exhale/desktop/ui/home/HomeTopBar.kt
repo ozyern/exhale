@@ -267,7 +267,7 @@ private fun AccountMenu(onOpenSettings: () -> Unit, onOpenSoundChem: () -> Unit,
                         color = scheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(14.dp))
-                    Button(onClick = onSignIn, modifier = Modifier.fillMaxWidth().height(44.dp)) { Text("Sign in to YouTube Music") }
+                    Button(onClick = onSignIn, modifier = Modifier.fillMaxWidth().height(44.dp)) { Text("Sign in to Exhale") }
                 }
             }
         }

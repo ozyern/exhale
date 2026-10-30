@@ -3,13 +3,13 @@ import { prefersReducedMotion } from '../hooks.js'
 import './keyhero.css'
 
 /**
- * KeyHero — Flagship Exhale 405 multi-device scroll hero.
+ * KeyHero — Flagship Exhale 506 multi-device scroll hero.
  *
- * Sequence (matching Exhale 405 hero):
- * - Scroll 0.00: Fullscreen golden ribbons background with big metallic "405 Exhale" mark.
+ * Sequence (matching Exhale 506 hero):
+ * - Scroll 0.00: Fullscreen golden ribbons background with big metallic "506 Exhale" mark.
  * - Scroll 0.00 -> 0.15: Initial entrance zoom-out:
  *   Center phone appears scaled in close (scale ~2.10) framing the background,
- *   while the metallic 405 mark smoothly shrinks and dissolves into the phone's screen.
+ *   while the metallic 506 mark smoothly shrinks and dissolves into the phone's screen.
  * - Scroll 0.15 -> 0.45: [LONG SOLO PHONE HOLD]
  *   The phone stays alone in the center for an extended scroll duration (~150vh),
  *   commanding the entire screen at prominent portrait hero scale (easing 1.75 -> 1.45).
@@ -27,17 +27,17 @@ const SURROUNDING_DEVICES = [
   {
     id: 'tablet-left',
     src: '/hero/oppo_dev_tablet_left.png',
-    alt: 'Exhale on showcase Find N foldable tablet',
-    x: '6.83%',
-    y: '27.36%',
-    w: '29.42%',
-    h: '63.06%',
+    alt: 'Exhale music player on ROG Strix gaming laptop',
+    x: '3.6%',
+    y: '33.2%',
+    w: '36.6%',
+    h: '48.6%',
     dx: '-260%',
     dy: '0%',
-    depth: 1.05,
+    depth: 1.08,
     zIndex: 3,
-    tStart: 0.45,
-    tDur: 0.27,
+    tStart: 0.36,
+    tDur: 0.29,
   },
   {
     id: 'tablet-right',
@@ -51,8 +51,8 @@ const SURROUNDING_DEVICES = [
     dy: '-40%',
     depth: 0.95,
     zIndex: 2,
-    tStart: 0.47,
-    tDur: 0.25,
+    tStart: 0.40,
+    tDur: 0.26,
   },
   {
     id: 'phone-top',
@@ -66,7 +66,7 @@ const SURROUNDING_DEVICES = [
     dy: '-280%',
     depth: 0.90,
     zIndex: 4,
-    tStart: 0.43,
+    tStart: 0.37,
     tDur: 0.29,
   },
   {
@@ -81,15 +81,15 @@ const SURROUNDING_DEVICES = [
     dy: '240%',
     depth: 1.15,
     zIndex: 4,
-    tStart: 0.49,
-    tDur: 0.23,
+    tStart: 0.42,
+    tDur: 0.25,
   },
 ]
 
 export default function KeyHero({
   id = 'overview',
-  version = '405',
-  fullVersion = '1.0.405',
+  version = '506',
+  fullVersion = '1.0.506',
   name = 'Exhale',
   line = 'Silky Smooth. Knows your music.',
   title = 'Ultra fluid. Knows your music.',
@@ -107,7 +107,7 @@ export default function KeyHero({
     if (queryKp !== null) {
       const p = Math.min(1, Math.max(0, parseFloat(queryKp) || 0))
       node.style.setProperty('--kp', p.toFixed(4))
-      node.dataset.settled = p > 0.74 ? 'showcase' : 'intro'
+      node.dataset.settled = p > 0.65 ? 'showcase' : 'intro'
       return
     }
 
@@ -118,27 +118,37 @@ export default function KeyHero({
     }
 
     let frame = 0
+    let run = 1
+    let nodeTop = 0
+    let winH = window.innerHeight
+
     const update = () => {
       frame = 0
-      const rect = node.getBoundingClientRect()
-      const run = Math.max(1, rect.height - window.innerHeight)
-      const p = Math.min(1, Math.max(0, -rect.top / run))
+      const scrolled = window.scrollY - nodeTop
+      const p = Math.min(1, Math.max(0, scrolled / run))
       node.style.setProperty('--kp', p.toFixed(4))
-      node.dataset.settled = p > 0.74 ? 'showcase' : 'intro'
+      node.dataset.settled = p > 0.65 ? 'showcase' : 'intro'
     }
+
     const size = () => {
       const w = window.innerWidth
-      const h = window.innerHeight
+      winH = window.innerHeight
+      const rect = node.getBoundingClientRect()
+      nodeTop = rect.top + window.scrollY
+      run = Math.max(1, rect.height - winH)
       node.style.setProperty('--kh-w', `${w}px`)
-      node.style.setProperty('--kh-h', `${h}px`)
+      node.style.setProperty('--kh-h', `${winH}px`)
       update()
     }
+
     const onScroll = () => {
       if (!frame) frame = requestAnimationFrame(update)
     }
     size()
+
     window.addEventListener('scroll', onScroll, { passive: true })
     window.addEventListener('resize', size)
+
     return () => {
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', size)
@@ -149,7 +159,8 @@ export default function KeyHero({
   return (
     <section className="kh" id={id} ref={box}>
       <div className="kh-stage">
-        {/* Plain initial key visual at scroll 0: Big metallic 405 + Exhale on gold ribbon */}
+        <div className="kh-stage-bg" aria-hidden="true" />
+        {/* Plain initial key visual at scroll 0: Big metallic 506 + Exhale on gold ribbon */}
         <div className="kh-plain-kv" aria-hidden="true">
           <p className="kh-plain-num">{version}</p>
           <h1 className="kh-plain-name">{name}</h1>
@@ -194,7 +205,7 @@ export default function KeyHero({
           >
             <img
               src="/hero/oppo_dev_phone_middle.png"
-              alt="Exhale 405 on portrait flagship phone"
+              alt="Exhale 506 on portrait flagship phone"
               className="kh-mid-app"
               loading="eager"
               decoding="async"
@@ -202,7 +213,7 @@ export default function KeyHero({
           </div>
         </div>
 
-        {/* Brand Lockup & Actions — rises in directly beneath the showcase devices like Exhale 405 */}
+        {/* Brand Lockup & Actions — rises in directly beneath the showcase devices like Exhale 506 */}
         <div className="kh-brand-lockup">
           <h2 className="kh-brand-title">
             <span className="kh-brand-name">{name}</span>
@@ -213,6 +224,14 @@ export default function KeyHero({
             {primary}
             {secondary}
           </div>
+        </div>
+
+        {/* Minimalist interactive scroll cue at initial view */}
+        <div className="kh-scroll-cue" aria-hidden="true">
+          <span className="kh-scroll-label">Scroll to explore</span>
+          <svg viewBox="0 0 24 24" className="kh-scroll-chevron" aria-hidden="true">
+            <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         </div>
       </div>
     </section>

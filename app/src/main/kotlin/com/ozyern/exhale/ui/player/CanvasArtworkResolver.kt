@@ -3,8 +3,8 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * Orquestador de proveedores de canvas.
- * Reemplaza la implementación anterior basada en un único proxy server.
+ * Picks between the animated artwork (canvas) providers.
+ * Replaces the earlier version, which went through a single proxy server.
  *
  * Orden AUTO: the iOS music app → Exhale API → Tidal
  */
@@ -18,13 +18,13 @@ import com.ozyern.exhale.constants.CanvasSource
 import java.util.Locale
 
 /**
- * Intenta obtener el canvas animado para la canción en reproducción.
+ * Tries to find the animated artwork for the song that is playing.
  *
- * @param songTitleRaw  Título tal como viene del MediaMetadata (puede tener feat., etc.)
- * @param artistNameRaw Nombre del artista tal como viene del MediaMetadata
- * @param albumName     Nombre del álbum (opcional, mejora la precisión de the iOS music app)
- * @param storefront    Región de the iOS music app (ej. "us", "mx")
- * @param source        Fuente a usar; [CanvasSource.AUTO] prueba todas en orden
+ * @param songTitleRaw  The title as MediaMetadata has it (may include feat., etc.)
+ * @param artistNameRaw The artist as MediaMetadata has it
+ * @param albumName     The album (optional; makes the Apple Music match more precise)
+ * @param storefront    The Apple Music storefront (e.g. "us", "mx")
+ * @param source        Which source; [CanvasSource.AUTO] tries each in turn
  */
 internal suspend fun fetchCanvasArtworkForPlayback(
     songTitleRaw: String,
@@ -36,7 +36,7 @@ internal suspend fun fetchCanvasArtworkForPlayback(
     val songTitle = normalizeCanvasSongTitle(songTitleRaw)
     val artistName = normalizeCanvasArtistName(artistNameRaw)
 
-    // Genera combinaciones (normalizado + raw) para mayor cobertura de búsqueda
+    // Both the cleaned and the raw names, so more searches find a match
     val candidates = linkedSetOf(
         Triple(songTitle, artistName, albumName),
         Triple(songTitleRaw, artistName, albumName),
@@ -78,14 +78,14 @@ private suspend fun fetchFromSource(
 }
 
 // ---------------------------------------------------------------------------
-// Funciones de normalización
+// Cleaning up names
 // ---------------------------------------------------------------------------
 
 internal fun normalizeCanvasSongTitle(raw: String): String =
     raw
-        // Eliminar corchetes: [Official Video], [Remastered], etc.
+        // Drop brackets: [Official Video], [Remastered], etc.
         .replace(Regex("\\s*\\[[^]]*]"), "")
-        // Eliminar feat. / ft. / featuring entre paréntesis
+        // Drop feat. / ft. / featuring in parentheses
         .replace(
             Regex(
                 "\\s*\\((?:feat\\.?|ft\\.?|featuring|with)\\b[^)]*\\)",
@@ -93,7 +93,7 @@ internal fun normalizeCanvasSongTitle(raw: String): String =
             ),
             "",
         )
-        // Eliminar sufijos de tipo de contenido entre paréntesis
+        // Drop content-type suffixes in parentheses
         .replace(
             Regex(
                 "\\s*\\((?:official\\s*)?(?:music\\s*)?(?:video|mv|lyrics?|audio|visualizer|live|remaster(?:ed)?|version|edit|mix|remix)[^)]*\\)",
@@ -101,7 +101,7 @@ internal fun normalizeCanvasSongTitle(raw: String): String =
             ),
             "",
         )
-        // Eliminar sufijos separados por guion
+        // Drop suffixes after a dash
         .replace(
             Regex(
                 "\\s*-\\s*(?:official\\s*)?(?:music\\s*)?(?:video|mv|lyrics?|audio|visualizer|live|remaster(?:ed)?|version|edit|mix|remix)\\b.*$",

@@ -580,7 +580,13 @@ private fun Modifier.collapseHeight(fraction: () -> Float): Modifier = layout { 
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-internal fun DockProgress(fraction: () -> Float, duration: Double, onSeek: (Float) -> Unit, modifier: Modifier) {
+internal fun DockProgress(
+    fraction: () -> Float,
+    duration: Double,
+    onSeek: (Float) -> Unit,
+    modifier: Modifier,
+    fillColor: Color? = null,
+) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     var pointerX by remember { mutableFloatStateOf(-1f) }
@@ -590,7 +596,7 @@ internal fun DockProgress(fraction: () -> Float, duration: Double, onSeek: (Floa
     val thickness by animateDpAsState(if (engaged) 6.dp else 3.dp, spring(0.6f, 500f), label = "dock_progress")
     val knob by animateFloatAsState(if (engaged) 1f else 0f, spring(0.6f, 600f), label = "dock_progress_knob")
     val track = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-    val fill = MaterialTheme.colorScheme.primary
+    val fill = fillColor ?: MaterialTheme.colorScheme.primary
     val latestSeek by rememberUpdatedState(onSeek)
     Box(
         modifier

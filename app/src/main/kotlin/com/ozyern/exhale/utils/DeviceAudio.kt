@@ -20,8 +20,9 @@ import android.os.Build
  * virtualizers in series: the stage collapses inward, the centre goes hollow, and the result is the
  * "weird" sound those devices get from music apps that assume they are alone.
  *
- * So on those devices our own spatializer starts off, and the app points at the system's panel
- * instead. Everywhere else it starts on, because there is nothing else doing the work.
+ * Even so, Exhale's own spatializer now starts on everywhere, those phones included: it is how the
+ * app is meant to sound. Anyone who prefers the system's alone can switch it off, and the app still
+ * points at the system's panel.
  */
 object DeviceAudio {
     /** OnePlus, OPPO and Realme all run the same OPlus audio stack. */
@@ -30,8 +31,8 @@ object DeviceAudio {
         listOf("oneplus", "oppo", "realme").any { it in vendor }
     }
 
-    /** What the spatial-audio switch reads before anyone has touched it. */
-    val defaultSpatialAudio: Boolean get() = !isOplusDevice
+    /** What the spatial-audio switch reads before anyone has touched it: on, on every device. */
+    val defaultSpatialAudio: Boolean get() = true
 
     /**
      * Opens the phone's own effect panel — OReality on OPlus, the stock equaliser elsewhere —

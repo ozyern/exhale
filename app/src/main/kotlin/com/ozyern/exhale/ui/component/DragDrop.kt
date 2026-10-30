@@ -61,10 +61,10 @@ import com.ozyern.exhale.R
 import com.ozyern.exhale.constants.PreferredLyricsProvider
 
 /**
- * Estado de drag & drop basado en la posición REAL de los items dentro del
- * LazyColumn (a través de [LazyListState.layoutInfo]) en lugar de índices
- * guardados por separado en cada item. Esto evita la desincronización que
- * causaba que el drag "se rompiera" al reordenar.
+ * Drag-and-drop state built on where the items REALLY are in the
+ * LazyColumn (through [LazyListState.layoutInfo]) rather than on indices
+ * each item kept for itself. Those fell out of step, which is what
+ * made a drag "break" while reordering.
  */
 private class DragDropListState(
     private val listState: LazyListState,
@@ -81,7 +81,7 @@ private class DragDropListState(
             listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
         }
 
-    /** Cuánto debe desplazarse visualmente (translationY) el item que se arrastra. */
+    /** How far the dragged item is drawn from its slot (translationY). */
     val elementDisplacement: Float
         get() = currentElement?.let { item ->
             (draggingItemInitialOffset + draggedDistance) - item.offset
@@ -102,12 +102,12 @@ private class DragDropListState(
         val visible = listState.layoutInfo.visibleItemsInfo
         if (visible.isEmpty()) return
 
-        // Límites reales de la lista: el item arrastrado no puede visualmente
-        // moverse por encima del primer item ni por debajo del último.
-        // Sin este clamp, draggedDistance crecía sin tope al seguir empujando
-        // el dedo más allá del borde, lo que empujaba el item fuera del
-        // contenedor (se "recortaba" y parecía desaparecer) y dejaba un
-        // desfase acumulado que luego hacía saltar varias posiciones de golpe.
+        // The list's real bounds: the dragged item cannot be drawn
+        // above the first item or below the last.
+        // Without this clamp draggedDistance grew without limit while the finger
+        // kept pushing past the edge, which pushed the item out of the
+        // container (it was clipped and seemed to vanish) and left a
+        // built-up offset that later made it jump several places at once.
         val minTop = visible.first().offset.toFloat()
         val maxTop = (visible.last().offset + visible.last().size - current.size).toFloat()
 
@@ -124,8 +124,8 @@ private class DragDropListState(
 
         if (target != null) {
             onMove(current.index, target.index)
-            // Ajustamos el offset inicial al del nuevo índice para que el
-            // desplazamiento visual siga siendo continuo (sin saltos).
+            // The starting offset moves to the new index's, so the
+            // drawn movement carries on without a jump.
             draggingItemInitialOffset = target.offset
             draggedDistance = startOffset - target.offset
             draggingItemIndex = target.index
@@ -256,12 +256,12 @@ fun DragDropLyricsProviderDialog(
                                 .fillMaxWidth()
                                 .zIndex(if (isDragging) 1f else 0f)
                                 .then(
-                                    // Importante: mientras haya un drag activo, NINGÚN item debe
-                                    // animar su posición (ni siquiera los que no se arrastran).
-                                    // Si animan, su offset en layoutInfo queda en un valor
-                                    // transicional durante ~300ms, y el hit-testing de onDrag()
-                                    // compara justamente esos offsets — eso es lo que causaba
-                                    // que el item "saltara hasta arriba" en vez de moverse de a uno.
+                                    // While a drag is under way, NO item may
+                                    // animate its position (not even the ones not being dragged).
+                                    // If they animate, their offset in layoutInfo sits at an in-between
+                                    // value for ~300ms, and onDrag()'s hit-testing
+                                    // compares exactly those offsets. That is what made
+                                    // the item jump to the top instead of moving one place at a time.
                                     if (dragDropState.draggingItemIndex == null) {
                                         Modifier.animateItem(tween(300))
                                     } else {
@@ -333,7 +333,7 @@ private fun ProviderRow(
 
     Surface(
         modifier = modifier.height(64.dp),
-        shape = RoundedCornerShape(20.dp), // Forma expresiva por item
+        shape = RoundedCornerShape(20.dp),
         color = containerColor,
         tonalElevation = if (isDragging) 4.dp else 0.dp,
     ) {

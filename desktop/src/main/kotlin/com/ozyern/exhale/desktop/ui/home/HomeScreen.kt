@@ -82,6 +82,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.em
 import coil3.compose.AsyncImage
 import com.ozyern.exhale.desktop.data.AccountSession
@@ -207,16 +208,6 @@ class HomeFeed(private val scope: CoroutineScope) {
                     TopPick("Featuring ${artist.name}", "${artist.name} Radio", station.thumbnail ?: artist.thumbnail, station)
                 }
 
-                // A mix from the listener's artists' own radios. Radio follows the seed, not the IP.
-                val mix = withContext(Dispatchers.IO) {
-                    coroutineScope {
-                        pages.take(3).mapNotNull { it.second?.artist?.radioEndpoint }
-                            .map { endpoint -> async { YouTube.next(endpoint).getOrNull()?.items.orEmpty() } }
-                            .awaitAll()
-                            .flatten()
-                    }
-                }.distinctBy { it.id }.clean().shuffled().take(30)
-
                 val artistShelves = pages.take(4).mapNotNull { (artist, artistPage) ->
                     val items = artistPage?.sections.orEmpty().flatMap { it.items }
                         .filter { it is SongItem || it is AlbumItem || it is ArtistItem }
@@ -226,8 +217,10 @@ class HomeFeed(private val scope: CoroutineScope) {
                     if (items.isEmpty()) null
                     else Shelf("artist_${artist.id}", "Similar to", artist.name, items, artist.thumbnail, roundThumbnail = true)
                 }
-                // The first songs of the mix become the big cards, so the shelf starts where they end.
-                tasteShelves = listOfNotNull(mix.drop(6).takeIf { it.isNotEmpty() }?.let { Shelf("made_for_you", "Made for you", "Your Mix", it) }) + artistShelves
+                // Shown now: everything the first round of requests gave. Home used to wait for the
+                // mix's radios below as well, a second round of requests one after the first, before
+                // it drew anything at all, which was seconds of an empty page at every launch.
+                tasteShelves = artistShelves
 
                 val languages = DesktopPrefs.languages.toSet()
                 val pickedIds = artists.mapTo(HashSet()) { it.id }
@@ -246,6 +239,21 @@ class HomeFeed(private val scope: CoroutineScope) {
                 val homeSongs = page?.sections.orEmpty().flatMap { section ->
                     section.items.filterIsInstance<SongItem>().map { Recommendation(it, section.title) }
                 }
+                // Drawn from here: every section shows as soon as it has something. The big cards,
+                // built from the mix, keep their placeholder (isLoading is still on) until it arrives,
+                // rather than showing one set of songs and swapping it a second later.
+
+                // A mix from the listener's artists' own radios. Radio follows the seed, not the IP.
+                val mix = withContext(Dispatchers.IO) {
+                    coroutineScope {
+                        pages.take(3).mapNotNull { it.second?.artist?.radioEndpoint }
+                            .map { endpoint -> async { YouTube.next(endpoint).getOrNull()?.items.orEmpty() } }
+                            .awaitAll()
+                            .flatten()
+                    }
+                }.distinctBy { it.id }.clean().shuffled().take(30)
+                // The first songs of the mix become the big cards, so the shelf starts where they end.
+                tasteShelves = listOfNotNull(mix.drop(6).takeIf { it.isNotEmpty() }?.let { Shelf("made_for_you", "Made for you", "Your Mix", it) }) + artistShelves
                 recommended = interleave(mix.take(6).map { Recommendation(it, "From your mix") }, homeSongs)
                     .distinctBy { it.song.id }
                     .take(10)
@@ -423,7 +431,11 @@ fun HomeScreen(
 
             when {
                 feed.recommended.isNotEmpty() && sidebar -> item(key = "recommended") {
-                    Box(Modifier.padding(top = 18.dp).feedIntro(0f, introProgress)) { FeatureRow(feed.recommended, state, player, start) }
+                    Column(Modifier.padding(top = 18.dp).feedIntro(0f, introProgress)) {
+                        // The Music app's Home opens on this shelf, titled like every other one.
+                        MusicShelfTitle("Top Picks for You", modifier = Modifier.padding(start = start, end = 40.dp, bottom = 12.dp))
+                        FeatureRow(feed.recommended, state, player, start)
+                    }
                 }
                 feed.recommended.isNotEmpty() -> item(key = "recommended") {
                     RecommendedRow(feed.recommended, state, player, start, introProgress)
@@ -435,7 +447,13 @@ fun HomeScreen(
                 item(key = "recent_songs") {
                     Column(Modifier.feedIntro(1f, introProgress)) {
                         MusicShelfTitle("Recently Played", modifier = Modifier.padding(start = start, end = 40.dp, top = 34.dp, bottom = 10.dp))
-                        SongListGrid(history, state, player, start)
+                        // A row of square covers, as the Music app shows what you played last — not a song list.
+                        val recent = history.take(24)
+                        LazyRow(contentPadding = rowPadding, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            itemsIndexed(recent, key = { i, song -> "$i:${song.id}" }) { i, song ->
+                                ItemCard(song, isActive(song), onClick = { if (isActive(song)) player.togglePlayPause() else player.play(recent, i) })
+                            }
+                        }
                     }
                 }
             } else if (shortcuts.isNotEmpty()) {
@@ -875,7 +893,8 @@ fun LargeTitle(title: String, modifier: Modifier = Modifier, eyebrow: String? = 
         if (eyebrow != null) {
             Text(eyebrow, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text(title, style = MaterialTheme.typography.displaySmall.copy(letterSpacing = (-0.03).em), color = MaterialTheme.colorScheme.onSurface)
+        // The Mac Music app's page title: bold and large, but a window title, not a phone's 34-point one.
+        Text(title, fontSize = 30.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.02).em, color = MaterialTheme.colorScheme.onSurface)
     }
 }
 

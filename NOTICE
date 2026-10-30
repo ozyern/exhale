@@ -25,3 +25,7 @@ It includes or adapts work from these open-source projects, under their licenses
   the snap layout provider and the network connectivity observer.
 
 - InnerTune (https://github.com/z-huang/InnerTune), GPL-3.0: the project Exhale grew from.
+
+- Phosphor Icons (https://phosphoricons.com), MIT License, Copyright (c) 2023 Phosphor Icons:
+  the Windows sidebar's glyphs (desktop/.../ui/shell/Sidebar.kt) and the Android top bar's
+  settings gear (app/src/main/res/drawable/gearshape.xml).

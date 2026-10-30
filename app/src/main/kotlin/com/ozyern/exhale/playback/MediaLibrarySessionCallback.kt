@@ -66,6 +66,109 @@ constructor(
     var toggleLibrary: () -> Unit = {}
     var openOutputSwitcher: () -> Unit = {}
 
+    /** Play/pause, next and previous as the service's own widget actions do them; set by the service. */
+    var mediaButtonPlayPause: () -> Unit = {}
+    var mediaButtonNext: () -> Unit = {}
+    var mediaButtonPrevious: () -> Unit = {}
+    /** Play pressed on a player that wants to play but is stopped: prepare it again. */
+    var mediaButtonRecover: () -> Unit = {}
+
+    private val buttonHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var hookPresses = 0
+
+    /** Once the presses stop: one has already played or paused; two skip ahead, three go back. */
+    private val hookResolve = Runnable {
+        when (hookPresses) {
+            1 -> Unit
+            2 -> mediaButtonNext()
+            else -> mediaButtonPrevious()
+        }
+        hookPresses = 0
+    }
+
+    /**
+     * Media buttons — a wired headset's, a Bluetooth remote's — handled here rather than left to
+     * Media3.
+     *
+     * Media3 takes the commands for these from the media notification's controller. After a
+     * restart, with the restored song paused, there is no notification yet, so play/pause was
+     * "not available" and the press was dropped ("Calling play() omitted due to COMMAND_PLAY_PAUSE
+     * not being available"): the headset did nothing until the song had been started from the
+     * screen once. Here they go through the same path as the home-screen widget's buttons, which
+     * prepares an idle player and brings the service to the foreground first.
+     *
+     * The headset button keeps its usual meanings: one press plays or pauses, two skip ahead, three
+     * go back. The first press acts at once, rather than after the wait for a second: many Bluetooth
+     * headsets send this key for play/pause, and waiting on every press put a third of a second on
+     * top of the headset's own delay. A second press undoes it before skipping.
+     */
+    override fun onMediaButtonEvent(
+        session: MediaSession,
+        controllerInfo: MediaSession.ControllerInfo,
+        intent: android.content.Intent,
+    ): Boolean {
+        val event = androidx.core.content.IntentCompat.getParcelableExtra(
+            intent,
+            android.content.Intent.EXTRA_KEY_EVENT,
+            android.view.KeyEvent::class.java,
+        ) ?: return false
+        val code = event.keyCode
+        // Which panel sent what: the game sidebar can't be watched from here, but its taps can.
+        com.ozyern.exhale.utils.GlobalLog.append(
+            android.util.Log.INFO,
+            MediaButtonTag,
+            "${controllerInfo.packageName}: key=$code action=${event.action} down=${event.downTime} repeat=${event.repeatCount}",
+        )
+        val handled =code == android.view.KeyEvent.KEYCODE_HEADSETHOOK ||
+            code == android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ||
+            code == android.view.KeyEvent.KEYCODE_MEDIA_PLAY ||
+            code == android.view.KeyEvent.KEYCODE_MEDIA_PAUSE ||
+            code == android.view.KeyEvent.KEYCODE_MEDIA_STOP ||
+            code == android.view.KeyEvent.KEYCODE_MEDIA_NEXT ||
+            code == android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS
+        if (!handled) return false
+        // One action per press, on the press, as Media3 itself does: never its release, never its
+        // key repeats. Acting on releases too (to catch panels that were thought to send only those)
+        // made each tap from the game sidebar act twice whenever its press and release didn't share
+        // a down time: play, then straight back to pause, so its buttons seemed to do nothing. On
+        // the press alone, as 1.0.405 handled them, they work.
+        if (event.action != android.view.KeyEvent.ACTION_DOWN || event.repeatCount > 0) return true
+        when (code) {
+            android.view.KeyEvent.KEYCODE_MEDIA_STOP -> {
+                if (session.player.playWhenReady) mediaButtonPlayPause()
+            }
+            android.view.KeyEvent.KEYCODE_HEADSETHOOK -> {
+                hookPresses++
+                when (hookPresses) {
+                    1 -> mediaButtonPlayPause()
+                    // Not a play/pause after all: put it back the way it was, then wait for a third.
+                    2 -> mediaButtonPlayPause()
+                }
+                buttonHandler.removeCallbacks(hookResolve)
+                buttonHandler.postDelayed(hookResolve, HOOK_MULTI_PRESS_MS)
+            }
+            android.view.KeyEvent.KEYCODE_MEDIA_NEXT -> mediaButtonNext()
+            android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS -> mediaButtonPrevious()
+            else -> {
+                val player = session.player
+                // Stopped by an error or run off the end, it is not playing whatever playWhenReady
+                // says: Play then has to get it going again, not be ignored or toggle it off.
+                val stalled = player.playbackState == androidx.media3.common.Player.STATE_IDLE ||
+                    player.playbackState == androidx.media3.common.Player.STATE_ENDED
+                val playing = player.playWhenReady && !stalled
+                val wantPlay = when (code) {
+                    android.view.KeyEvent.KEYCODE_MEDIA_PLAY -> true
+                    android.view.KeyEvent.KEYCODE_MEDIA_PAUSE -> false
+                    else -> !playing
+                }
+                if (wantPlay != playing) {
+                    if (wantPlay && player.playWhenReady) mediaButtonRecover() else mediaButtonPlayPause()
+                }
+            }
+        }
+        return true
+    }
+
     private fun browsableExtras(
         browsableHint: Int = CONTENT_STYLE_GRID_ITEM,
         playableHint: Int = CONTENT_STYLE_LIST_ITEM,
@@ -88,6 +191,11 @@ constructor(
     ): MediaSession.ConnectionResult {
         val connectionResult = super.onConnect(session, controller)
         if (controller.packageName == AndroidAutoPackage) LockScreenLyrics.carControllers.add(controller)
+        com.ozyern.exhale.utils.GlobalLog.append(
+            android.util.Log.INFO,
+            MediaButtonTag,
+            "connect ${controller.packageName} (legacy ${controller.controllerVersion < 0}, trusted ${controller.isTrusted})",
+        )
         val sessionCommands = connectionResult.availableSessionCommands
             .buildUpon()
             .add(MediaSessionConstants.CommandToggleLike)
@@ -857,6 +965,9 @@ constructor(
             ).build()
 
     companion object {
+        /** How long after a wired-button press another one still counts as part of it. */
+        private const val HOOK_MULTI_PRESS_MS = 350L
+        private const val MediaButtonTag = "MediaButtons"
         private const val EXTRA_CONTENT_STYLE_SUPPORTED = "android.media.browse.CONTENT_STYLE_SUPPORTED"
         private const val EXTRA_CONTENT_STYLE_BROWSABLE_HINT =
             "android.media.browse.CONTENT_STYLE_BROWSABLE_HINT"

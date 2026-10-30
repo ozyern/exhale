@@ -17,6 +17,9 @@ data class PersistQueue(
     val position: Long,
     val queueType: QueueType = QueueType.LIST,
     val queueData: QueueData? = null,
+    /** The collection the queue was started from, which per-collection Transitions are keyed by.
+     *  Queues saved before it was added read back as null. */
+    val sourceId: String? = null,
 ) : Serializable {
     companion object {
         private const val serialVersionUID = 1L

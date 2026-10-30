@@ -98,24 +98,33 @@ function Film({ running }) {
     if (!node) return undefined
     const reduced = prefersReducedMotion()
     let frame = 0
+    let travel = 1
+    let nodeTop = 0
+    const measure = () => {
+      const rect = node.getBoundingClientRect()
+      nodeTop = window.scrollY + rect.top
+      travel = Math.max(1, (rect.height - window.innerHeight) * 0.55)
+    }
     const apply = () => {
       frame = 0
-      const rect = node.getBoundingClientRect()
-      const vh = window.innerHeight
-      // 0 while the section is arriving; 1 once it has been scrolled half its pinned travel.
-      const travel = Math.max(1, rect.height - vh)
-      const p = reduced ? 1 : Math.min(1, Math.max(0, -rect.top / (travel * 0.55)))
+      const dist = window.scrollY - nodeTop
+      const p = reduced ? 1 : Math.min(1, Math.max(0, dist / travel))
       node.style.setProperty('--film', p.toFixed(4))
     }
     const onScroll = () => {
       if (!frame) frame = requestAnimationFrame(apply)
     }
+    const onResize = () => {
+      measure()
+      apply()
+    }
+    measure()
     apply()
     window.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('resize', onScroll)
+    window.addEventListener('resize', onResize)
     return () => {
       window.removeEventListener('scroll', onScroll)
-      window.removeEventListener('resize', onScroll)
+      window.removeEventListener('resize', onResize)
       if (frame) cancelAnimationFrame(frame)
     }
   }, [])
@@ -181,6 +190,15 @@ function LyricsPanel({ running }) {
   return (
     <section className="tour-lyrics reveal" id="lyrics" ref={ref}>
       <div className="tour-copy">
+        <div className="live-pill" aria-label="Live synced playback indicator">
+          <span className="eq-bars" aria-hidden="true">
+            <span className="eq-bar" />
+            <span className="eq-bar" />
+            <span className="eq-bar" />
+            <span className="eq-bar" />
+          </span>
+          <span>Live Synced Audio</span>
+        </div>
         <p className="kicker">Lyrics</p>
         <h2 className="headline">Every word, on time.</h2>
         <p className="lede">
@@ -206,11 +224,25 @@ function LyricsPanel({ running }) {
  * reads as the app coming up through the page rather than a picture of a
  * phone lying on it.
  */
+const handleCardMouseEnter = (e) => {
+  e.currentTarget._cachedRect = e.currentTarget.getBoundingClientRect()
+}
+
+const handleCardSpotlight = (e) => {
+  let rect = e.currentTarget._cachedRect
+  if (!rect) {
+    rect = e.currentTarget.getBoundingClientRect()
+    e.currentTarget._cachedRect = rect
+  }
+  e.currentTarget.style.setProperty('--card-mx', `${(e.clientX - rect.left).toFixed(1)}px`)
+  e.currentTarget.style.setProperty('--card-my', `${(e.clientY - rect.top).toFixed(1)}px`)
+}
+
 function ShotTile({ kicker, title, body, shot, crop = 'top', delay = 0 }) {
   // An index into the 1.0.304 set, or a shot of its own.
   const pic = typeof shot === 'number' ? SHOTS_304[shot] : shot
   return (
-    <article className="ft reveal" style={{ '--d': `${delay}ms` }}>
+    <article className="ft reveal" style={{ '--d': `${delay}ms` }} onMouseEnter={handleCardMouseEnter} onMouseMove={handleCardSpotlight}>
       <div className="ft-copy">
         <p className="ft-kicker">{kicker}</p>
         <h3 className="ft-title">{title}</h3>
@@ -248,7 +280,7 @@ function Design() {
         {/* The one tile you can put your hands on: the dock is rebuilt in
             markup rather than photographed, and a screenshot can't be
             dragged. */}
-        <article className="ft ft-wide reveal">
+        <article className="ft ft-wide reveal" onMouseEnter={handleCardMouseEnter} onMouseMove={handleCardSpotlight}>
           <div className="ft-copy">
             <p className="ft-kicker">The material</p>
             <h3 className="ft-title">Liquid glass, not a picture of one.</h3>
@@ -303,10 +335,53 @@ function Design() {
 
 /* ------------------------------------------------------------------ page */
 
+function CopyCodeBlock({ text, children }) {
+  const [copied, setCopied] = useState(false)
+  const onCopy = () => {
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2200)
+      }).catch(() => {})
+    }
+  }
+
+  return (
+    <div className="code-wrap">
+      <pre className="code">{children}</pre>
+      <button
+        type="button"
+        className="code-copy-btn"
+        onClick={onCopy}
+        aria-label="Copy build commands to clipboard"
+      >
+        {copied ? (
+          <>
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+            <span>Copied!</span>
+          </>
+        ) : (
+          <>
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+            <span>Copy</span>
+          </>
+        )}
+      </button>
+    </div>
+  )
+}
+
 export default function App() {
   const [ambient, setAmbient] = useState(!prefersReducedMotion())
   const [section, setSection] = useState(0)
   const [notes, setNotes] = useState(false)
+
+  useEffect(() => {
+    const scrollParam = new URLSearchParams(window.location.search).get('scroll')
+    if (scrollParam) {
+      window.scrollTo(0, parseInt(scrollParam, 10))
+    }
+  }, [])
 
   // Stable, because the sheet's effect takes it as a dependency and a fresh
   // identity every render would tear the scroll lock down and rebuild it.
@@ -362,10 +437,15 @@ export default function App() {
       <Bars active={section} onSelect={goToSection} />
 
       <main>
+        <div className="ambient-mesh" aria-hidden="true">
+          <div className="ambient-orb ambient-orb-1" />
+          <div className="ambient-orb ambient-orb-2" />
+          <div className="ambient-orb ambient-orb-3" />
+        </div>
         <KeyHero
           id="overview"
-          version="405"
-          fullVersion="1.0.405"
+          version="506"
+          fullVersion="1.0.506"
           line="Silky Smooth. Knows your music."
 
 
@@ -451,11 +531,11 @@ export default function App() {
             </div>
             <div className="open-build reveal" style={{ '--d': '90ms' }}>
               <p className="ft-kicker">Build it yourself</p>
-              <pre className="code">
+              <CopyCodeBlock text={`git clone ${REPO}.git\ncd exhale\n./gradlew assembleUniversalDebug`}>
                 <b>git</b> clone {REPO}.git{'\n'}
                 <b>cd</b> exhale{'\n'}
                 <b>./gradlew</b> assembleUniversalDebug
-              </pre>
+              </CopyCodeBlock>
               <p className="subnote">
                 Sideloading asks for permission once; the app checks GitHub for
                 its own updates after that.
@@ -466,6 +546,7 @@ export default function App() {
       </main>
 
       <SiteFooter onNotes={openNotes} />
+
 
       <Changelog open={notes} onClose={closeNotes} />
     </div>

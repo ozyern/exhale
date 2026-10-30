@@ -40,6 +40,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import com.ozyern.exhale.ui.utils.fadingMarquee
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -75,6 +76,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateMapOf
@@ -133,9 +135,6 @@ import com.ozyern.exhale.constants.AquamorphicStiffness
 import com.ozyern.exhale.extensions.togglePlayPause
 import com.ozyern.exhale.ui.component.liquid.LocalAppBackdrop
 import com.ozyern.exhale.ui.screens.Screens
-import com.ozyern.exhale.constants.DockCompactKey
-import com.ozyern.exhale.constants.DockGlowKey
-import com.ozyern.exhale.constants.DockLabelsKey
 import com.ozyern.exhale.constants.DockStyle
 import com.ozyern.exhale.constants.DockStyleKey
 import com.ozyern.exhale.ui.component.jelly.JellyDock
@@ -149,6 +148,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.LinearEasing
@@ -205,16 +206,7 @@ fun LiquidGlassBottomBar(
     /** On the search pages, the jelly dock turns into the search row itself. */
     search: DockSearch? = null,
 ) {
-    // Tabs shown in the nav pill (Search stays its own circle, never a tab).
-    val tabs = remember(items) { items.filter { it.route != Screens.Search.route } }
     val searchScreen = remember(items) { items.find { it.route == Screens.Search.route } }
-    // Which tab we are actually on, or null. `?: tabs.first()` here was a quiet lie: on a route
-    // where no tab is selected it named Home, and the collapsed bar then drew Home's pill as
-    // selected and reported a tap on it as a *re-tap* — which the host answers by scrolling the
-    // page to the top rather than by navigating. A button that does nothing, on the one control
-    // that is supposed to always get you out.
-    val activeTab = tabs.find { isSelected(it) }
-    val homeTab = tabs.find { it.route == Screens.Home.route } ?: tabs.firstOrNull()
 
     // Subtle premium haptic tick on every nav interaction. LocalHapticFeedback is the app-wide
     // custom provider that already respects the user's "haptic feedback" preference, so calling
@@ -233,70 +225,32 @@ fun LiquidGlassBottomBar(
     // middle — no empty pill between them saying the name of the page you are already on. The
     // change between that and the full dock is a soft cross-dissolve with a little scale, not a cut.
     // How the open dock draws its tabs (Settings -> Appearance -> Dock). Only state A changes.
-    val dockStyle by rememberEnumPreference(DockStyleKey, DockStyle.LIQUID)
-    val dockLabels by rememberPreference(DockLabelsKey, true)
-    val dockCompact by rememberPreference(DockCompactKey, false)
-    val dockGlow by rememberPreference(DockGlowKey, true)
-    // The jelly dock folds the way the original does: with nothing playing it stays one bar, just
-    // minimised — icons only, shorter, narrower. Only with a song playing does it become state B.
-    // Both styles are the reference's folding tab bar now (see FoldingDock): the liquid style's
-    // own A <-> B change crossfaded the two states through each other instead of morphing.
-    val jellyStyle = dockStyle == DockStyle.JELLY || dockStyle == DockStyle.LIQUID
-    if (jellyStyle) {
-        JellyFoldingDock(
-            items = items,
-            searchScreen = searchScreen,
-            collapsed = collapsed,
-            hasNowPlaying = hasNowPlaying,
-            pureBlack = pureBlack,
-            showLabels = dockLabels,
-            isSelected = isSelected,
-            onItemClick = onItemClickHaptic,
-            onMiniPlayerClick = onMiniPlayerClickHaptic,
-            search = search,
-            modifier = modifier,
-            songPillReveal = songPillReveal,
-            // The liquid style keeps its own open bar — its capsule, its swipe, its spacing — and
-            // only borrows the fold.
-            liquidBar = dockStyle == DockStyle.LIQUID,
-        )
-        return
-    }
-    // The liquid dock folds the way the reference dock's does - see FluidDock.
-    FluidDock(
-        tabs = tabs,
+    val dockStyle by rememberEnumPreference(DockStyleKey, DockStyle.CONVX)
+    // Both styles are the reference's folding tab bar (see FoldingDock): the liquid style's own
+    // A <-> B change crossfaded the two states through each other instead of morphing.
+    JellyFoldingDock(
+        items = items,
         searchScreen = searchScreen,
-        leftTab = activeTab ?: homeTab,
         collapsed = collapsed,
         hasNowPlaying = hasNowPlaying,
         pureBlack = pureBlack,
+        showLabels = true,
         isSelected = isSelected,
         onItemClick = onItemClickHaptic,
         onMiniPlayerClick = onMiniPlayerClickHaptic,
+        search = search,
         modifier = modifier,
         songPillReveal = songPillReveal,
+        // The classic style keeps its own open bar — its capsule, its swipe, its spacing — and
+        // only borrows the fold; the floating one is one bar with search inside.
+        liquidBar = dockStyle == DockStyle.LIQUID,
+        convx = dockStyle != DockStyle.LIQUID,
     )
 }
 
 /* ----------------------------------------------------------------------- */
 /* The A <-> B morph                                                        */
 /* ----------------------------------------------------------------------- */
-
-/**
- * The size of every round piece of dock chrome, and therefore what the tab strip folds down to.
- */
-private val DockCircleSize = 64.dp
-
-/**
- * The round chrome in State B, a step down from the dock's own 64dp.
- *
- * Collapsed, the row is mostly the song: the reference this is drawn from gives the pill the width
- * and keeps the two circles as small marks at either end. At 64dp each they took a third of the
- * row between them and the pill was the narrowest thing in a bar that exists, in that state, to
- * show what is playing.
- */
-private val CollapsedCircleSize = 46.dp
-
 /**
  * Opacity: the outgoing state leaves before the incoming one arrives.
  *
@@ -466,8 +420,11 @@ private fun FrostedCircle(
             .then(
                 when {
                     jelly -> Modifier.jellyGlass(CircleShape)
-                    foldedDock -> Modifier.foldedGlass(CircleShape)
-                    openDockGlass -> Modifier.dockGlass(CircleShape)
+                    // One call site for both: the folded and open glass are the same material, and
+                    // the search circle flips between them halfway through the fold. As two
+                    // branches, the flip swapped composition groups, so the glass re-recorded its
+                    // backdrop and blinked for a frame mid-motion.
+                    foldedDock || openDockGlass -> Modifier.dockGlass(CircleShape)
                     else -> Modifier.clearGlass(CircleShape)
                 },
             )
@@ -488,33 +445,6 @@ private fun FrostedCircle(
             ),
         contentAlignment = Alignment.Center,
     ) { content() }
-}
-
-@Composable
-private fun NavGlyph(
-    iconRes: Int,
-    contentDescription: String?,
-    tint: Color,
-    // Drawn smaller rather than measured smaller: the glyph follows the circle down in the collapsed
-    // state, and a scale on the draw layer costs nothing on a frame where the circle is already
-    // being remeasured.
-    scale: Float = 1f,
-    modifier: Modifier = Modifier,
-) {
-    // Outlined to solid is a change of state, so it is watched happening rather than swapped on a frame.
-    Crossfade(targetState = iconRes, animationSpec = tween(170), label = "navGlyph", modifier = modifier) { res ->
-        Icon(
-            painter = painterResource(res),
-            contentDescription = contentDescription,
-            tint = tint,
-            modifier = Modifier
-                .size(26.dp)
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                },
-        )
-    }
 }
 
 /* ----------------------------------------------------------------------- */
@@ -587,68 +517,12 @@ private fun LiquidTabBar(
     val selectedIndex = tabs.indexOfFirst { isSelected(it) }
     val capsuleIndex = selectedIndex.coerceIn(0, lastIndex)
 
-    // Labels go when there is no longer room to read them.
-    //
-    // The dock is as wide as the screen, but how many dp that is depends on the interface scale
-    // (Settings -> Appearance -> Display): at 130% a 411dp phone reports 316dp, which leaves the
-    // tab pill about 200dp -- 50dp a tab, an icon and roughly six characters. "Mood & Genres"
-    // ellipsised to "Mood &..." is worse than no label at all, because a truncated word is
-    // something the eye tries to read twice. Below the threshold the row is icons, which is a
-    // complete design rather than a broken one.
-    //
-    // Derived from the configuration rather than from measurement so it is right on the first
-    // frame; a row that renders labels and then drops them is the flicker this is avoiding.
-    val configuration = LocalConfiguration.current
-    val showLabels = remember(configuration.screenWidthDp, tabs.size) {
-        val pillWidth = minOf(
-            configuration.screenWidthDp.dp - DockSideChrome,
-            LiquidTabBarMaxWidth,
-        )
-        (pillWidth - 8.dp) / tabs.size.coerceAtLeast(1) >= LabelledTabMinWidth
-    }
+    val showLabels = rememberShowDockLabels(tabs.size)
 
     var totalWidthPx by remember { mutableFloatStateOf(0f) }
     var tabWidthPx by remember { mutableFloatStateOf(0f) }
 
-    // How big the labels can be before they touch the ends of the capsule.
-    //
-    // "Mood & Genres" at 11sp is 90dp wide, and on a 411dp phone a tab slot is 93dp - so the label
-    // fitted, and sat hard against the curved ends of the glass with a dp to spare on each side.
-    // That is the overlap: not text running past its slot, but text with no room inside it.
-    //
-    // The slot cannot grow - four even tabs across the width of the phone is what there is - so
-    // the type gives way instead, by exactly as much as it has to and no more. Measured against
-    // the longest label at the heaviest weight it is ever drawn in, and one size is used for all
-    // four, because tabs set at different sizes look like a mistake rather than a fit. Apple sets
-    // a tab bar label at 10pt, so this lands where iOS already is.
-    val textMeasurer = rememberTextMeasurer()
-    val labelStyle = MaterialTheme.typography.labelSmall
-    val labels = tabs.map { stringResource(it.dockTitleId) }
-    val labelFontSize = remember(labels, tabWidthPx, labelStyle, density) {
-        val room = tabWidthPx - with(density) { DockLabelSideRoom.toPx() * 2f }
-        if (room <= 0f) {
-            DockLabelMaxSize
-        } else {
-            val widest = labels.maxOfOrNull { label ->
-                textMeasurer.measure(
-                    text = label,
-                    style = labelStyle.copy(
-                        fontSize = DockLabelMaxSize,
-                        fontWeight = FontWeight.SemiBold,
-                    ),
-                    maxLines = 1,
-                    softWrap = false,
-                ).size.width.toFloat()
-            } ?: 0f
-            if (widest <= room || widest == 0f) {
-                DockLabelMaxSize
-            } else {
-                (DockLabelMaxSize.value * (room / widest))
-                    .coerceAtLeast(DockLabelMinSize.value)
-                    .sp
-            }
-        }
-    }
+    val labelFontSize = rememberDockLabelFontSize(tabs, tabWidthPx)
 
     // Inset of the capsule inside the pill, and therefore what the tab pitch is measured from.
     // 64dp of bar minus 4dp top and bottom is the capsule's 56dp.
@@ -715,7 +589,16 @@ private fun LiquidTabBar(
                 val screen = tabsState.getOrNull(landed)
                 if (screen != null) {
                     if (landed != selectedIndexState) {
-                        onItemClickState(screen, false)
+                        // Building the next page holds the main thread for a couple of hundred
+                        // milliseconds, and no spring advances while it does: navigating at once
+                        // froze the capsule on the old tab and then cut it to the new one. Let it
+                        // travel first — capped, so a slow frame never makes the tap feel ignored.
+                        scope.launch {
+                            withTimeoutOrNull(TabNavigateMaxWaitMs) {
+                                snapshotFlow { abs(value - landed) < TabNavigateArrival }.first { it }
+                            }
+                            onItemClickState(screen, false)
+                        }
                     } else if (moved.floatValue < tapSlopPx) {
                         // Never travelled: a tap on the capsule, which sits on the active tab. Sent
                         // as a re-tap so the host can scroll the page back to the top.
@@ -808,6 +691,12 @@ private fun LiquidTabBar(
                     },
             )
 
+            // The lit tab is the one the capsule is over, not the route: the two used to disagree
+            // for the length of a navigation, with two tabs lit and the capsule on the old one.
+            // Nothing selected (a page outside the tabs) still lights nothing.
+            val inkIndex by remember(tabs.size) {
+                derivedStateOf { dampedDragAnimation.value.fastRoundToInt().coerceIn(0, lastIndex) }
+            }
             Row(
                 modifier = Modifier.fillMaxSize().padding(inset),
                 verticalAlignment = Alignment.CenterVertically,
@@ -815,7 +704,7 @@ private fun LiquidTabBar(
                 tabs.forEachIndexed { index, screen ->
                     LiquidTabItem(
                         screen = screen,
-                        tint = if (index == selectedIndex) selectedInk else restInk,
+                        tint = if (selectedIndex >= 0 && index == inkIndex) selectedInk else restInk,
                         filled = index == selectedIndex,
                         showLabel = showLabels,
                         labelFontSize = labelFontSize,
@@ -987,6 +876,86 @@ private fun LiquidTabBar(
 // 40dp is the margin that keeps it honest on a narrower phone or a larger display scale.
 private val LiquidTabBarMaxWidth = 460.dp
 
+/**
+ * How long a tap waits for the capsule to reach its tab before the page changes, at most, and how
+ * close counts as there. The capsule's spring covers a tab in about this long, so the wait is the
+ * slide itself rather than a pause after it.
+ */
+private const val TabNavigateMaxWaitMs = 180L
+private const val TabNavigateArrival = 0.15f
+
+/**
+ * Labels go when there is no longer room to read them.
+ *
+ * The dock is as wide as the screen, but how many dp that is depends on the interface scale
+ * (Settings -> Appearance -> Display): at 130% a 411dp phone reports 316dp, which leaves the
+ * tab pill about 200dp -- 50dp a tab, an icon and roughly six characters. "Mood & Genres"
+ * ellipsised to "Mood &..." is worse than no label at all, because a truncated word is
+ * something the eye tries to read twice. Below the threshold the row is icons, which is a
+ * complete design rather than a broken one.
+ *
+ * Derived from the configuration rather than from measurement so it is right on the first
+ * frame; a row that renders labels and then drops them is the flicker this is avoiding. Shared by
+ * the tab bar and the fold's plate, so the two never set the row differently.
+ */
+@Composable
+private fun rememberShowDockLabels(tabCount: Int): Boolean {
+    val configuration = LocalConfiguration.current
+    return remember(configuration.screenWidthDp, tabCount) {
+        val pillWidth = minOf(
+            configuration.screenWidthDp.dp - DockSideChrome,
+            LiquidTabBarMaxWidth,
+        )
+        (pillWidth - 8.dp) / tabCount.coerceAtLeast(1) >= LabelledTabMinWidth
+    }
+}
+
+/**
+ * How big the labels can be before they touch the ends of the capsule.
+ *
+ * "Mood & Genres" at 11sp is 90dp wide, and on a 411dp phone a tab slot is 93dp - so the label
+ * fitted, and sat hard against the curved ends of the glass with a dp to spare on each side.
+ * That is the overlap: not text running past its slot, but text with no room inside it.
+ *
+ * The slot cannot grow - four even tabs across the width of the phone is what there is - so
+ * the type gives way instead, by exactly as much as it has to and no more. Measured against
+ * the longest label at the heaviest weight it is ever drawn in, and one size is used for all
+ * four, because tabs set at different sizes look like a mistake rather than a fit. Apple sets
+ * a tab bar label at 10pt, so this lands where iOS already is.
+ */
+@Composable
+private fun rememberDockLabelFontSize(tabs: List<Screens>, tabWidthPx: Float): TextUnit {
+    val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+    val labelStyle = MaterialTheme.typography.labelSmall
+    val labels = tabs.map { stringResource(it.dockTitleId) }
+    return remember(labels, tabWidthPx, labelStyle, density) {
+        val room = tabWidthPx - with(density) { DockLabelSideRoom.toPx() * 2f }
+        if (room <= 0f) {
+            DockLabelMaxSize
+        } else {
+            val widest = labels.maxOfOrNull { label ->
+                textMeasurer.measure(
+                    text = label,
+                    style = labelStyle.copy(
+                        fontSize = DockLabelMaxSize,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                    maxLines = 1,
+                    softWrap = false,
+                ).size.width.toFloat()
+            } ?: 0f
+            if (widest <= room || widest == 0f) {
+                DockLabelMaxSize
+            } else {
+                (DockLabelMaxSize.value * (room / widest))
+                    .coerceAtLeast(DockLabelMinSize.value)
+                    .sp
+            }
+        }
+    }
+}
+
 /** Clear space at each end of a tab label, inside the capsule. */
 private val DockLabelSideRoom = 7.dp
 
@@ -1063,7 +1032,7 @@ private fun RowScope.LiquidTabItem(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
-            painter = painterResource(if (filled) screen.iconIdActive else screen.iconIdInactive),
+            painter = painterResource(screen.classicIcon(filled)),
             contentDescription = stringResource(screen.titleId),
             tint = tint,
             modifier = iconModifier.size(26.dp),
@@ -1108,13 +1077,16 @@ private fun MiniPlayerPill(
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val isPlaying by playerConnection.isPlaying.collectAsState()
     val haptic = LocalHapticFeedback.current
+    // Convx 2.0.4 keeps the artist under the title folded too, and its cover at 38dp rounded 22%;
+    // only the forward button leaves as the pill drops into the row.
+    val convx = LocalConvxChrome.current
+    val artistLine = if (convx) 1f else artistShown
 
-    // Where the song is, for the ring round play/pause: read from the player a few times a second
-    // while it plays, still while it doesn't.
+    // Where the song is, for the liquid metal ring round play/pause in the folded row: read from the
+    // player a few times a second while it plays, still while it doesn't.
     var progress by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(isPlaying, mediaMetadata?.id) {
         while (true) {
-            com.ozyern.exhale.utils.awaitAppVisible()
             val p = playerConnection.player
             val d = p.duration
             progress = if (d > 0) (p.currentPosition.toFloat() / d).coerceIn(0f, 1f) else 0f
@@ -1122,7 +1094,11 @@ private fun MiniPlayerPill(
             kotlinx.coroutines.delay(250)
         }
     }
-    val ringProgress by animateFloatAsState(progress, tween(260, easing = LinearEasing), label = "pillRing")
+    val ringProgress by animateFloatAsState(
+        progress,
+        tween(260, easing = androidx.compose.animation.core.LinearEasing),
+        label = "pillRing",
+    )
 
     // Swipes on the pill: sideways to skip, upwards to open the player. Which one is decided by the
     // axis the finger mostly travelled, so a slightly diagonal flick still does what it looked like.
@@ -1167,7 +1143,7 @@ private fun MiniPlayerPill(
                     },
                 )
             }
-            .padding(start = 10.dp, end = 4.dp),
+            .padding(start = 8.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // The song, as one thing that changes as one thing.
@@ -1203,6 +1179,12 @@ private fun MiniPlayerPill(
             ) {
                 // Album art (clean circle — no wavy/floral shapes). Where the cover is lifted from
                 // when the player opens from the dock, and where it lands on close.
+                // Folded into the dock's row (state B) the cover is a disc, as the iOS music app's
+                // inline accessory has it; lifting into the open pill it squares off to the sheet's
+                // own 10dp, so it lands on the sheet's cover in the sheet's shape.
+                // A disc in the Convx dock too, so the video playing in it is round as well (it is
+                // drawn inside this clip). Lifted open it takes Convx's own 22% corner.
+                val artCorner = lerp(19.dp, if (convx) 38.dp * 0.22f else 10.dp, artistShown)
                 val flight = com.ozyern.exhale.ui.player.LocalCoverFlight.current
                 val flightOwner = remember { Any() }
                 if (flight != null) {
@@ -1212,9 +1194,26 @@ private fun MiniPlayerPill(
                 }
                 Box(
                     modifier = Modifier
-                        .then(flight?.run { Modifier.reportMini(flightOwner, corner = 9.dp) } ?: Modifier)
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(9.dp))
+                        .then(
+                            flight?.run {
+                                // Two places: folded into the row, and lifted into the open pill.
+                                // Each is the landing only while the dock is the one showing the
+                                // song in that shape.
+                                Modifier.reportMini(
+                                    flightOwner,
+                                    corner = artCorner,
+                                    slot = if (inline) "dockInline" else "dockOpen",
+                                    visible = {
+                                        com.ozyern.exhale.ui.component.foldingdock.FoldingDockMotion.fold > 0.5f &&
+                                            com.ozyern.exhale.ui.component.foldingdock.FoldingDockMotion.inline == inline
+                                    },
+                                )
+                            } ?: Modifier,
+                        )
+                        // The folded row's 38dp, growing to the open pill's 42dp as it lifts, so
+                        // it lands on the sheet's own cover at the sheet's own size.
+                        .size(if (convx) 38.dp else lerp(38.dp, 42.dp, artistShown))
+                        .clip(RoundedCornerShape(artCorner))
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -1236,6 +1235,15 @@ private fun MiniPlayerPill(
                             modifier = Modifier.size(22.dp),
                         )
                     }
+                    // The video the player was showing when it closed carries on here, small.
+                    com.ozyern.exhale.ui.player.DockedVideo(
+                        metadata?.id,
+                        Modifier.fillMaxSize(),
+                        visible = {
+                            com.ozyern.exhale.ui.component.foldingdock.FoldingDockMotion.fold > 0.5f &&
+                                com.ozyern.exhale.ui.component.foldingdock.FoldingDockMotion.inline == inline
+                        },
+                    )
                 }
 
                 Column(
@@ -1250,28 +1258,29 @@ private fun MiniPlayerPill(
                     // the iOS music app's folded bar: the title, bold, and nothing under it.
                     Text(
                         text = metadata?.title.orEmpty(),
-                        fontSize = androidx.compose.ui.unit.lerp(16.sp, 14.sp, artistShown),
-                        lineHeight = 20.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontSize = if (convx) 17.sp else 16.sp,
+                        lineHeight = if (convx) 21.sp else 20.sp,
+                        fontWeight = if (convx) FontWeight.SemiBold else FontWeight.Bold,
                         color = clearGlassContentColor(),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.basicMarquee(),
+                        modifier = Modifier.fadingMarquee(),
                     )
-                    if (artistShown > 0.01f) {
+                    if (artistLine > 0.01f) {
                         Text(
                             text = metadata?.artists?.joinToString { it.name }.orEmpty(),
-                            fontSize = 12.sp,
-                            lineHeight = 15.sp,
-                            color = clearGlassContentColor().copy(alpha = 0.7f),
+                            fontSize = if (convx) 13.sp else 14.sp,
+                            lineHeight = if (convx) 16.sp else 17.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = clearGlassContentColor().copy(alpha = 0.72f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier
-                                .graphicsLayer { alpha = artistShown }
+                                .graphicsLayer { alpha = artistLine }
                                 // Its height grows with it, so the title glides up rather than jumps.
                                 .layout { measurable, constraints ->
                                     val placeable = measurable.measure(constraints)
-                                    val h = (placeable.height * artistShown).roundToInt()
+                                    val h = (placeable.height * artistLine).roundToInt()
                                     layout(placeable.width, h) { placeable.place(0, 0) }
                                 },
                         )
@@ -1280,113 +1289,59 @@ private fun MiniPlayerPill(
             }
         }
 
-        // Play / pause, as glass: the same lens the dock is made of, holding the accent inside it
-        // rather than sitting on it as a coloured chip. Shape carries the state — a rounded square
-        // while playing, a circle when paused — so the pill reads at a glance without a label.
+        // Play / pause and forward as the sheet's pill draws them (Convx's): bare solid glyphs on
+        // the glass. Folded into the row there is room for play alone, so forward opens out with
+        // the artist line as the pill lifts and closes with it as the pill drops.
         val ink = clearGlassContentColor()
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .clickable {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    playerConnection.player.togglePlayPause()
-                }
-                // How far through the song: a ring of liquid metal filling clockwise from the top,
-                // its reflections flowing while the song plays.
-                .liquidMetalRing(
-                    progress = { ringProgress },
-                    flowing = isPlaying,
-                    trackColor = ink.copy(alpha = 0.16f),
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            AnimatedContent(
-                targetState = isPlaying,
-                transitionSpec = {
-                    (scaleIn(spring(dampingRatio = 0.55f, stiffness = 700f), initialScale = 0.6f) + fadeIn(tween(120))) togetherWith
-                        (scaleOut(tween(120), targetScale = 0.6f) + fadeOut(tween(100)))
-                },
-                label = "pillPlayPause",
-            ) { playing ->
-                Icon(
-                    painter = painterResource(if (playing) R.drawable.pause else R.drawable.play),
-                    contentDescription = null,
-                    tint = ink,
-                    modifier = Modifier.size(20.dp),
+        Box(contentAlignment = Alignment.Center) {
+            // Folded into the row (state B), the song's progress is a ring of liquid metal round
+            // play/pause, flowing while it plays; it fades as the pill lifts into the open one.
+            val ringShown = 1f - artistShown
+            if (ringShown > 0.01f) {
+                Box(
+                    Modifier
+                        .size(40.dp)
+                        .graphicsLayer { alpha = ringShown }
+                        .liquidMetalRing(
+                            progress = { ringProgress },
+                            flowing = isPlaying && inline,
+                            trackColor = ink.copy(alpha = 0.16f),
+                        ),
                 )
             }
+            com.ozyern.exhale.ui.player.MiniGlyphButton(
+                icon = when {
+                    convx && isPlaying -> R.drawable.sf_pause_fill
+                    convx -> R.drawable.sf_play_fill
+                    isPlaying -> R.drawable.pause
+                    else -> R.drawable.play
+                },
+                contentDescription = stringResource(if (isPlaying) R.string.pause else R.string.play),
+                tint = ink.copy(alpha = 0.92f),
+                onClick = { playerConnection.player.togglePlayPause() },
+                // Inside the ring folded; the sheet pill's own size once lifted.
+                glyphSize = lerp(if (convx) 18.dp else 20.dp, if (convx) 22.dp else 30.dp, artistShown),
+            )
         }
-    }
-}
-
-/**
- * The other tabs, fanned up out of the folded dock's first circle on a long press: each a small
- * glass capsule with its glyph and name, rising one after another from the circle. Tap one to go
- * there; tap anywhere else to put them away.
- */
-@Composable
-private fun DockTabFan(
-    tabs: List<Screens>,
-    pureBlack: Boolean,
-    anchorHeight: Dp,
-    onPick: (Screens) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    val lift = with(density) { (anchorHeight + 12.dp).roundToPx() }
-    androidx.compose.ui.window.Popup(
-        alignment = Alignment.BottomStart,
-        offset = androidx.compose.ui.unit.IntOffset(0, -lift),
-        onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.PopupProperties(focusable = true),
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Nearest the circle first, so the list reads upward from the finger.
-            tabs.reversed().forEachIndexed { index, tab ->
-                val order = tabs.size - 1 - index
-                val appear = remember { androidx.compose.animation.core.Animatable(0f) }
-                LaunchedEffect(Unit) {
-                    kotlinx.coroutines.delay(order * 35L)
-                    appear.animateTo(1f, spring(dampingRatio = 0.62f, stiffness = 520f))
-                }
-                val shape = RoundedCornerShape(percent = 50)
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .graphicsLayer {
-                            alpha = appear.value.coerceIn(0f, 1f)
-                            val s = 0.6f + 0.4f * appear.value
-                            scaleX = s
-                            scaleY = s
-                            transformOrigin = TransformOrigin(0f, 1f)
-                            translationY = (1f - appear.value) * 18.dp.toPx() * (order + 1)
-                        }
-                        .height(46.dp)
-                        .clip(shape)
-                        .background(
-                            if (pureBlack) Color(0xF2111111)
-                            else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
-                        )
-                        .border(0.5.dp, Color.White.copy(alpha = 0.12f), shape)
-                        .clickable { onPick(tab) }
-                        .padding(start = 14.dp, end = 18.dp),
-                ) {
-                    Icon(
-                        painter = painterResource(tab.iconIdInactive),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(22.dp),
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        text = stringResource(tab.titleId),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                    )
-                }
+        if (artistShown > 0.01f) {
+            val canSkipNext by playerConnection.canSkipNext.collectAsState()
+            Box(
+                Modifier
+                    .graphicsLayer { alpha = artistShown }
+                    .layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints)
+                        val w = (placeable.width * artistShown).roundToInt()
+                        layout(w, placeable.height) { placeable.place(0, 0) }
+                    },
+            ) {
+                com.ozyern.exhale.ui.player.MiniGlyphButton(
+                    icon = if (convx) R.drawable.sf_forward_fill else R.drawable.forward_fill,
+                    contentDescription = stringResource(R.string.next),
+                    tint = (if (convx) ink else androidx.compose.ui.graphics.lerp(ink, MaterialTheme.colorScheme.primary, 0.45f))
+                        .copy(alpha = if (canSkipNext) 0.9f else 0.35f),
+                    onClick = { if (canSkipNext) playerConnection.seekToNext() },
+                    glyphSize = 24.dp,
+                )
             }
         }
     }
@@ -1460,11 +1415,6 @@ fun SearchBottomBar(
 ) {
     // In the jelly style the search row is made of the dock's own material, so the bottom of the
     // screen doesn't change from one kind of glass to another when you open Search.
-    val dockStyle by rememberEnumPreference(DockStyleKey, DockStyle.LIQUID)
-    if (dockStyle == DockStyle.JELLY) {
-        JellySearchRow(placeholder, onHomeClick, onSearchClick, modifier, committedQuery, leadingIsBack)
-        return
-    }
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -1541,120 +1491,6 @@ fun SearchBottomBar(
     }
 }
 
-/**
- * The search row in the jelly style: the home (or back) circle and the field, both smoked jelly
- * glass lit at the rim, in the dock's grey-and-white ink. Pressed, each gives like the dock's pill
- * does — a quick squash and an underdamped settle — rather than sinking like a button.
- */
-@Composable
-private fun JellySearchRow(
-    placeholder: String,
-    onHomeClick: () -> Unit,
-    onSearchClick: () -> Unit,
-    modifier: Modifier,
-    committedQuery: String?,
-    leadingIsBack: Boolean,
-) {
-    val haptic = LocalHapticFeedback.current
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        JellyPress(
-            onClick = {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                onHomeClick()
-            },
-            shape = CircleShape,
-            modifier = Modifier.size(SearchRowHeight),
-        ) {
-            Icon(
-                painter = painterResource(if (leadingIsBack) R.drawable.chevron_back else R.drawable.home_house_fill),
-                contentDescription = stringResource(if (leadingIsBack) R.string.back else R.string.home),
-                tint = jellyInk(active = true),
-                modifier = Modifier.size(24.dp),
-            )
-        }
-
-        Spacer(Modifier.width(10.dp))
-
-        JellyPress(
-            onClick = onSearchClick,
-            shape = RoundedCornerShape(percent = 50),
-            modifier = Modifier.weight(1f).height(SearchRowHeight),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.search),
-                    contentDescription = null,
-                    tint = jellyInk(active = committedQuery != null),
-                    modifier = Modifier.size(22.dp),
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = committedQuery ?: placeholder,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (committedQuery != null) FontWeight.Bold else FontWeight.Medium,
-                    color = jellyInk(active = committedQuery != null),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                Icon(
-                    painter = painterResource(if (committedQuery != null) R.drawable.close else R.drawable.mic),
-                    contentDescription = null,
-                    tint = jellyInk(active = false),
-                    modifier = Modifier.size(22.dp),
-                )
-            }
-        }
-    }
-}
-
-/** A piece of jelly glass that squashes under the finger and springs back with a wobble. */
-@Composable
-private fun JellyPress(
-    onClick: () -> Unit,
-    shape: androidx.compose.ui.graphics.Shape,
-    modifier: Modifier,
-    content: @Composable () -> Unit,
-) {
-    var pressed by remember { mutableStateOf(false) }
-    val squash by animateFloatAsState(
-        targetValue = if (pressed) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.5f, stiffness = 600f),
-        label = "jellyPress",
-    )
-    Box(
-        modifier = modifier
-            .graphicsLayer {
-                // Wider and shorter as it is pressed, the way the dock's pill swells.
-                scaleX = 1f + 0.05f * squash
-                scaleY = 1f - 0.06f * squash
-            }
-            .jellyGlass(shape)
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                    pressed = true
-                    waitForUpOrCancellation(pass = PointerEventPass.Initial)
-                    pressed = false
-                }
-            }
-            .clip(shape)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                role = Role.Button,
-                onClick = onClick,
-            ),
-        contentAlignment = Alignment.Center,
-    ) { content() }
-}
-
 /* ----------------------------------------------------------------------- */
 /* Colors (mirror FloatingNavigationToolbar's palette)                      */
 /* ----------------------------------------------------------------------- */
@@ -1677,28 +1513,8 @@ private fun selectedItemContainerColor(pureBlack: Boolean): Color =
 /* ----------------------------------------------------------------------- */
 /* The fluid dock: the reference dock's fold                                          */
 /* ----------------------------------------------------------------------- */
-
-/*
- * the reference dock's floating tab bar fold (their vendored FloatingTabBar), on this dock's pieces.
- *
- * The two states are not two layouts trading places; they are the same three objects in two
- * shapes, tied together as shared elements. Folding, the tab pill *is* the circle on the left:
- * one piece of glass whose bounds spring from the width of the bar down to a circle, with the
- * selected icon flying across to sit in it while the other tabs blur out where they were. The
- * search circle is the same circle at both ends, sliding in to sit beside it. Unfolding is the
- * same motion backwards: the circle stretches into the bar and the tabs blur in on it.
- *
- * Nothing playing, the folded dock is just those two circles side by side in the middle; with a
- * song, the mini player pill sits between them, the full width of the row.
- */
-
-/** The folded dock's pieces: the reference dock's inline row, 48dp, 8dp apart. */
-private val FluidInlineSize = 48.dp
-private val FluidInlineGap = 8.dp
-
-private const val FluidKeyTabs = "fluidDockTabs"
-private const val FluidKeySearch = "fluidDockSearch"
 private const val FluidKeyIcon = "fluidDockIcon"
+
 
 /** The fold's two halves, handed to the tab strip so it can take part in it. */
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -1756,292 +1572,6 @@ private fun Modifier.fluidTabFade(visibility: AnimatedVisibilityScope): Modifier
     }
 }
 
-/**
- * The liquid dock, open (State A) and folded (State B), as one piece of glass in motion.
- *
- * the iOS music app's fold, frame for frame: the tab bar's plate contracts from its right end into the
- * circle at the left while its labels fade, the search circle steps down in place at the right, and
- * the mini player — the shared accessory, flown here from the player sheet — settles into the gap
- * between them. Unfolding runs the same motion backwards.
- *
- * It used to be two separate layouts crossfading under an `AnimatedContent`, joined by shared
- * elements. Between the old layout fading out and the new one fading in, there were three frames
- * with no dock on screen at all, and the tab strip and the circle were different glass that never
- * met. Here every piece is always composed at a geometry interpolated from one spring, so there is
- * no frame where the dock is missing and nothing pops.
- */
-@Composable
-private fun FluidDock(
-    tabs: List<Screens>,
-    searchScreen: Screens?,
-    leftTab: Screens?,
-    collapsed: Boolean,
-    hasNowPlaying: Boolean,
-    pureBlack: Boolean,
-    isSelected: (Screens) -> Boolean,
-    onItemClick: (Screens, Boolean) -> Unit,
-    onMiniPlayerClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    songPillReveal: () -> Float = { 1f },
-) {
-    val ink = clearGlassContentColor()
-    // the iOS music app's tab bar minimising: about half a second of response with a soft settle at the
-    // end. At 320 the spring did nearly all its travel in the first 150ms, and the fold read as
-    // the dock simply arriving in its other shape.
-    val fold by animateFloatAsState(
-        targetValue = if (collapsed) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 160f),
-        label = "fluidFold",
-    )
-    // The tab labels are gone in the first third; the folded glass and its glyph arrive in the
-    // second half — so mid-fold the plate is empty glass, as it is in iOS's.
-    val tabsAlpha = 1f - fluidRamp(fold, 0.05f, 0.4f)
-    val foldedAlpha = fluidRamp(fold, 0.35f, 0.8f)
-    // The folded circles part for a song and close up without one. That was a cut: a song starting
-    // or the player being swiped away while folded jumped both circles to their new places.
-    val songSpan by animateFloatAsState(
-        targetValue = if (hasNowPlaying) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 160f),
-        label = "fluidSongSpan",
-    )
-
-    BoxWithConstraints(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(DockCircleSize),
-    ) {
-        val width = maxWidth
-        val withSearch = searchScreen != null
-        // State A: the tab strip, then the search circle at the right.
-        val tabsWidth = if (withSearch) width - DockCircleSize - 10.dp else width
-        // State B: the two circles at the ends with the song between them, or — nothing playing —
-        // the two circles side by side in the middle.
-        val pairWidth = FluidInlineSize * 2 + FluidInlineGap
-        val leftFoldedX = if (withSearch) lerp((width - pairWidth) / 2, 0.dp, songSpan) else 0.dp
-        val searchFoldedX = lerp(
-            leftFoldedX + FluidInlineSize + FluidInlineGap,
-            width - FluidInlineSize,
-            if (withSearch) songSpan else 1f,
-        )
-
-        val size = lerp(DockCircleSize, FluidInlineSize, fold)
-        val plateWidth = lerp(tabsWidth, FluidInlineSize, fold)
-        val plateX = lerp(0.dp, leftFoldedX, fold)
-        val searchX = lerp(width - DockCircleSize, searchFoldedX, fold)
-        // Bottom-aligned, as the folded row always was: the player's morph target counts on it.
-        val y = DockCircleSize - size
-
-        // ---- The left plate: the tab strip contracting into the circle ----
-        //
-        // At rest each end is the real thing: the tab bar open, the Home circle folded. In motion
-        // it is ONE plate of the dock's glass whose width springs between the two, with the tabs
-        // fading out inside it and the Home glyph fading in. It used to be the tab bar's own glass,
-        // clipped, under the circle's glass fading in on top — two panes stacked mid-fold, doubled
-        // rims and a strip being cut off rather than a plate closing.
-        val settledOpen = !collapsed && fold <= 0.001f
-        val settledFolded = collapsed && fold >= 0.999f
-        Box(
-            modifier = Modifier
-                .offset(x = plateX, y = y)
-                .size(plateWidth, size),
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            when {
-                settledOpen -> LiquidTabBar(
-                    tabs = tabs,
-                    pureBlack = pureBlack,
-                    isSelected = isSelected,
-                    onItemClick = onItemClick,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                settledFolded && leftTab != null -> {
-                    val here = isSelected(leftTab)
-                    var fanOpen by remember { mutableStateOf(false) }
-                    FrostedCircle(
-                        size = size,
-                        foldedDock = true,
-                        onClick = { onItemClick(leftTab, here) },
-                        onLongClick = { fanOpen = true },
-                    ) {
-                        NavGlyph(
-                            iconRes = if (here) leftTab.iconIdActive else leftTab.iconIdInactive,
-                            contentDescription = stringResource(leftTab.titleId),
-                            tint = ink,
-                        )
-                        if (fanOpen) {
-                            DockTabFan(
-                                tabs = tabs.filter { it != leftTab },
-                                pureBlack = pureBlack,
-                                anchorHeight = FluidInlineSize,
-                                onPick = { tab ->
-                                    fanOpen = false
-                                    onItemClick(tab, isSelected(tab))
-                                },
-                                onDismiss = { fanOpen = false },
-                            )
-                        }
-                    }
-                }
-                else -> FoldingPlate(
-                    tabs = tabs,
-                    leftTab = leftTab,
-                    isSelected = isSelected,
-                    openWidth = tabsWidth,
-                    tabsAlpha = tabsAlpha,
-                    foldedAlpha = foldedAlpha,
-                    ink = ink,
-                )
-            }
-        }
-
-        // ---- The search circle, stepping down in place ----
-        if (searchScreen != null) {
-            FluidSearchCircle(
-                screen = searchScreen,
-                size = size,
-                folded = fold > 0.5f,
-                ink = ink,
-                isSelected = isSelected,
-                onItemClick = onItemClick,
-                modifier = Modifier.offset(x = searchX, y = y),
-            )
-        }
-
-        // ---- The song, settling into the gap as the plate closes ----
-        // Driven by the fold itself, not by a shared-element flight with a spring of its own. The
-        // flight and the fold ran on two clocks: unfolding, the pill was caught mid-air twice over,
-        // once rising and once still in the dock, beside a plate that had not opened yet. Now it
-        // drops in from where the mini player was as the plate closes, and lifts out the same way.
-        val songIn = foldedAlpha * songSpan
-        if (songIn > 0.001f) {
-            Box(
-                modifier = Modifier
-                    .offset(x = FluidInlineSize + FluidInlineGap, y = DockCircleSize - FluidInlineSize)
-                    .width((width - (FluidInlineSize + FluidInlineGap) * 2).coerceAtLeast(0.dp))
-                    .height(FluidInlineSize)
-                    .graphicsLayer {
-                        alpha = songIn * songPillReveal().coerceIn(0f, 1f)
-                        translationY = -(1f - fold) * 22.dp.toPx()
-                        val scale = lerp(0.94f, 1f, fold)
-                        scaleX = scale
-                        scaleY = scale
-                    },
-            ) {
-                FrostedPill(
-                    height = FluidInlineSize,
-                    foldedDock = true,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    MiniPlayerPill(pureBlack = pureBlack, onExpand = onMiniPlayerClick)
-                }
-            }
-        }
-    }
-}
-
-/**
- * The dock mid-fold: one plate of its glass, at whatever width the spring has reached, with the open
- * dock's tabs laid out at their open width inside it (so they are never squeezed — the plate closes
- * over them) fading out, and the Home glyph fading in at its centre.
- */
-@Composable
-private fun FoldingPlate(
-    tabs: List<Screens>,
-    leftTab: Screens?,
-    isSelected: (Screens) -> Boolean,
-    openWidth: Dp,
-    tabsAlpha: Float,
-    foldedAlpha: Float,
-    ink: Color,
-) {
-    val shape = RoundedCornerShape(percent = 50)
-    val dark = isSystemInDarkTheme()
-    val restWash = if (dark) Color(0xFF1C1B1C) else Color(0xFFF2F2F2)
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .dockGlass(shape)
-            .clip(shape),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        if (tabsAlpha > 0.001f) {
-            Row(
-                modifier = Modifier
-                    .wrapContentSize(align = Alignment.CenterStart, unbounded = true)
-                    .requiredSize(openWidth, DockCircleSize)
-                    .padding(4.dp)
-                    .graphicsLayer { alpha = tabsAlpha },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                tabs.forEach { tab ->
-                    val here = isSelected(tab)
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .then(if (here) Modifier.background(restWash, shape) else Modifier),
-                        verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Icon(
-                            painter = painterResource(if (here) tab.iconIdActive else tab.iconIdInactive),
-                            contentDescription = null,
-                            tint = if (here) ink else ink.copy(alpha = 0.6f),
-                            modifier = Modifier.size(26.dp),
-                        )
-                    }
-                }
-            }
-        }
-        if (leftTab != null && foldedAlpha > 0.001f) {
-            Box(
-                modifier = Modifier
-                    .size(FluidInlineSize)
-                    .graphicsLayer { alpha = foldedAlpha },
-                contentAlignment = Alignment.Center,
-            ) {
-                NavGlyph(
-                    iconRes = if (isSelected(leftTab)) leftTab.iconIdActive else leftTab.iconIdInactive,
-                    contentDescription = null,
-                    tint = ink,
-                )
-            }
-        }
-    }
-}
-
-/** 0 before [start], 1 after [end], smoothstepped between. */
-private fun fluidRamp(value: Float, start: Float, end: Float): Float {
-    val t = ((value - start) / (end - start)).coerceIn(0f, 1f)
-    return t * t * (3f - 2f * t)
-}
-
-@Composable
-private fun FluidSearchCircle(
-    screen: Screens,
-    size: Dp,
-    folded: Boolean,
-    ink: Color,
-    isSelected: (Screens) -> Boolean,
-    onItemClick: (Screens, Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val active = isSelected(screen)
-    FrostedCircle(
-        size = size,
-        openDockGlass = !folded,
-        foldedDock = folded,
-        onClick = { onItemClick(screen, active) },
-        modifier = modifier,
-    ) {
-        NavGlyph(
-            iconRes = if (active) screen.iconIdActive else screen.iconIdInactive,
-            contentDescription = stringResource(screen.titleId),
-            tint = if (active) ink else ink.copy(alpha = 0.8f),
-        )
-    }
-}
-/* ----------------------------------------------------------------------- */
 /* The jelly dock: the reference's folding tab bar                          */
 /* ----------------------------------------------------------------------- */
 
@@ -2076,18 +1606,42 @@ private fun JellyFoldingDock(
     modifier: Modifier = Modifier,
     songPillReveal: () -> Float = { 1f },
     liquidBar: Boolean = false,
+    /** Convx 2.0.4's dock; false draws the classic one, kept as it was (Settings > Appearance > Dock). */
+    convx: Boolean = true,
 ) {
     // Search last, at the trailing end, where the folded bar detaches it into its own circle.
     val ordered = remember(items, searchScreen) { items.sortedBy { it == searchScreen } }
     val titles = ordered.map { stringResource(it.dockTitleId) }
     val selected = ordered.firstOrNull { isSelected(it) }
+    if (!convx) {
+        ClassicFoldingDock(
+            ordered = ordered,
+            titles = titles,
+            selected = selected,
+            searchScreen = searchScreen,
+            collapsed = collapsed,
+            hasNowPlaying = hasNowPlaying,
+            pureBlack = pureBlack,
+            showLabels = showLabels,
+            isSelected = isSelected,
+            onItemClick = onItemClick,
+            onMiniPlayerClick = onMiniPlayerClick,
+            search = search,
+            modifier = modifier,
+            songPillReveal = songPillReveal,
+            liquidBar = liquidBar,
+        )
+        return
+    }
     val tabs = ordered.mapIndexed { i, screen ->
         val here = screen == selected
         com.ozyern.exhale.ui.component.foldingdock.FoldingDockTab(
             key = screen.route,
             title = titles[i],
             icon = if (here) screen.iconIdActive else screen.iconIdInactive,
-            glyphSize = if (screen == searchScreen) 28.dp else 32.dp,
+            // Convx 2.0.4's sizes: glyphs that fill their whole viewbox are drawn smaller so every tab reads the same.
+            glyphSize = if (screen == searchScreen || screen == Screens.MoodAndGenres) 28.dp else 32.dp,
+            symbol = screen.dockSymbol(),
             onClick = {
                 when {
                     screen == searchScreen && search != null -> search.onTapBar()
@@ -2105,6 +1659,8 @@ private fun JellyFoldingDock(
         // Tapping the folded page circle unfolds the bar by taking the page back to its top.
         onUnfold = { selected?.let { onItemClick(it, true) } },
         hasSearchTab = searchScreen != null,
+        // Convx 2.0.4's accent, Apple Music red (AppleTokens.AccentRed).
+        accentColor = DockAccentRed,
         showLabels = showLabels,
         accessory = if (hasNowPlaying) {
             { accessoryModifier, isInline ->
@@ -2143,6 +1699,95 @@ private fun JellyFoldingDock(
     )
 }
 
+/** The classic dock's own glyphs, from before the Convx port's SF Symbols. */
+internal fun Screens.classicIcon(active: Boolean): Int = when (this) {
+    Screens.Home -> R.drawable.home_house_fill
+    Screens.Search -> if (active) R.drawable.search_filled else R.drawable.search
+    Screens.Library -> if (active) R.drawable.library_filled else R.drawable.library_outlined
+    Screens.MoodAndGenres -> if (active) R.drawable.radio_filled else R.drawable.radio
+    else -> if (active) iconIdActive else iconIdInactive
+}
+
+/**
+ * The classic dock, wired exactly as it was before the Convx 2.0.4 port: its own fold and glass
+ * ([com.ozyern.exhale.ui.component.foldingdock.classic.FoldingDock]), its glyphs, the theme's accent,
+ * and, in the liquid style, its own open tab bar beside a separate search circle.
+ */
+@Composable
+private fun ClassicFoldingDock(
+    ordered: List<Screens>,
+    titles: List<String>,
+    selected: Screens?,
+    searchScreen: Screens?,
+    collapsed: Boolean,
+    hasNowPlaying: Boolean,
+    pureBlack: Boolean,
+    showLabels: Boolean,
+    isSelected: (Screens) -> Boolean,
+    onItemClick: (Screens, Boolean) -> Unit,
+    onMiniPlayerClick: () -> Unit,
+    search: DockSearch?,
+    modifier: Modifier,
+    songPillReveal: () -> Float,
+    liquidBar: Boolean,
+) {
+    val tabs = ordered.mapIndexed { i, screen ->
+        val here = screen == selected
+        com.ozyern.exhale.ui.component.foldingdock.classic.FoldingDockTab(
+            key = screen.route,
+            title = titles[i],
+            icon = screen.classicIcon(here),
+            glyphSize = if (screen == searchScreen) 36.dp else 32.dp,
+            onClick = {
+                when {
+                    screen == searchScreen && search != null -> search.onTapBar()
+                    search != null && !here -> onItemClick(screen, false)
+                    else -> onItemClick(screen, here)
+                }
+            },
+        )
+    }
+    com.ozyern.exhale.ui.component.foldingdock.classic.FoldingDock(
+        tabs = tabs,
+        selectedKey = selected?.route,
+        folded = collapsed,
+        onUnfold = { selected?.let { onItemClick(it, true) } },
+        hasSearchTab = searchScreen != null,
+        showLabels = showLabels,
+        accessory = if (hasNowPlaying) {
+            { accessoryModifier, isInline ->
+                Box(accessoryModifier, contentAlignment = Alignment.Center) {
+                    MiniPlayerPill(pureBlack = pureBlack, onExpand = onMiniPlayerClick, inline = isInline)
+                }
+            }
+        } else {
+            null
+        },
+        accessoryReveal = songPillReveal,
+        openPlayerHeight = com.ozyern.exhale.constants.CompactMiniPlayerHeight,
+        openPlayerLift = com.ozyern.exhale.constants.MiniPlayerBottomSpacing +
+            com.ozyern.exhale.constants.CompactMiniPlayerTopInset,
+        searchMode = search != null,
+        typing = search?.typing == true,
+        openBar = if (liquidBar) {
+            { barModifier ->
+                LiquidTabBar(
+                    tabs = ordered.filter { it != searchScreen },
+                    pureBlack = pureBlack,
+                    isSelected = isSelected,
+                    onItemClick = onItemClick,
+                    modifier = barModifier,
+                )
+            }
+        } else {
+            null
+        },
+        openGap = if (liquidBar) 10.dp else 8.dp,
+        searchBarContent = search?.let { s -> { fieldModifier -> DockSearchField(s, fieldModifier) } },
+        modifier = modifier,
+    )
+}
+
 /**
  * The search field the search circle widens into, before the keyboard: back arrow, then the
  * placeholder or the query that was searched. A tap anywhere but the arrow opens the keyboard.
@@ -2160,29 +1805,33 @@ private fun DockSearchField(state: DockSearch, modifier: Modifier) {
             )
             .padding(horizontal = 4.dp),
     ) {
-        // On a results page the arrow steps back to Search. On Search itself the page circle beside
-        // the field is the way home, and the field leads with the magnifier, as the reference's does.
+        // Convx 2.0.4's SearchBarPlaceholder: the field always leads with the back arrow, on Search
+        // itself as on a results page; it steps back a level (results to Search, Search to the page
+        // you came from).
         Box(
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .then(if (state.leadingIsBack) Modifier.clickable(onClick = state.onExit) else Modifier)
-                .padding(if (state.leadingIsBack) 8.dp else 9.dp),
+                .clickable(onClick = state.onExit)
+                .padding(8.dp),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                painter = painterResource(if (state.leadingIsBack) R.drawable.arrow_back else R.drawable.search),
-                contentDescription = if (state.leadingIsBack) stringResource(R.string.back) else null,
-                tint = if (state.leadingIsBack) ink else ink.copy(alpha = 0.6f),
+                painter = painterResource(R.drawable.arrow_back),
+                contentDescription = stringResource(R.string.back),
+                tint = ink,
                 modifier = Modifier.fillMaxSize(),
             )
         }
         Box(Modifier.weight(1f)) {
             Text(
                 text = state.committedQuery ?: state.placeholder,
-                style = androidx.compose.ui.text.TextStyle(
+                // Convx's field: 17sp, the query in full ink and the prompt at 60%.
+                // In the app's own face: a bare TextStyle here fell back to the system font.
+                style = androidx.compose.material3.LocalTextStyle.current.copy(
                     color = if (state.committedQuery != null) ink else ink.copy(alpha = 0.6f),
                     fontSize = 17.sp,
+                    fontWeight = FontWeight.Normal,
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -2202,4 +1851,19 @@ private fun DockSearchField(state: DockSearch, modifier: Modifier) {
             )
         }
     }
+}
+
+/** Convx 2.0.4's accent, Apple Music red: the selected tab and its label. */
+internal val DockAccentRed = Color(0xFFFA2D48)
+
+/** Whether the Convx 2.0.4 dock is on (Settings > Appearance > Dock style); the mini player sizes to it. */
+val LocalConvxChrome = androidx.compose.runtime.staticCompositionLocalOf { true }
+
+/** The SF Symbol each tab wears in the dock, bold, as the reference draws its tab bar. */
+internal fun Screens.dockSymbol(): String? = when (this) {
+    Screens.Home -> "house.fill"
+    Screens.MoodAndGenres -> "square.grid.2x2.fill"
+    Screens.Library -> "music.note.square.stack.fill"
+    Screens.Search -> "magnifyingglass"
+    else -> null
 }

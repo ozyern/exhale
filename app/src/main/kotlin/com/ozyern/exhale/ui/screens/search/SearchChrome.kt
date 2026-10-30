@@ -17,6 +17,8 @@ data class SearchChrome(
     val fieldAtTop: Boolean,
     val openSearch: () -> Unit,
     val openAccount: () -> Unit,
+    /** The gear beside the account picture, when Settings > Appearance turns it on. */
+    val openSettings: () -> Unit = {},
 )
 
 val LocalSearchChrome = compositionLocalOf<SearchChrome?> { null }

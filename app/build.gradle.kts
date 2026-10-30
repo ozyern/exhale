@@ -300,6 +300,8 @@ dependencies {
     implementation(libs.ui.graphics)
     implementation(libs.ui.tooling.preview)
     implementation(libs.backdrop)
+    // SF Symbols (MIT) for the dock's glyphs, drawn at bold weight.
+    implementation(libs.jetpackSfSymbols)
     implementation(libs.kashif.mehmood.km.backdrop)
     implementation(libs.dev.haze)
     implementation(libs.compose.markdown)

@@ -533,11 +533,11 @@ fun NavGraphBuilder.navigationBuilder(
 
 
 // ─────────────────────────────────────────────────────────────────────────
-// Always On Display — como diálogo que cubre completamente
+// Always On Display, as a dialog covering everything
 // ─────────────────────────────────────────────────────────────────────────
     composable(
         route = "always_on_display",
-        // Esto la hace un diálogo que se superpone
+        // A dialog, so it sits over everything else
     ) { backStackEntry ->
         Dialog(
             onDismissRequest = { navController.navigateUp() },

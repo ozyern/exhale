@@ -51,4 +51,18 @@ object LyricsShift {
 object VideoLyricsAlignment {
     @Volatile
     var aligner: (suspend (videoId: String, songId: String) -> Long?)? = null
+
+    /**
+     * Offsets already measured, by "videoId|songId". A measurement downloads and decodes minutes of
+     * both recordings, so each pair is measured once and then known.
+     */
+    val known = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    /**
+     * Set by the playback service: a video's lyrics, aligned at last, for it to save over the ones
+     * already shown. The measurement often outlasts the wait the lyrics are given, and the lyrics
+     * then went out unmoved, early by the whole of the video's intro, and stayed that way.
+     */
+    @Volatile
+    var onLateLyrics: ((mediaId: String, lyrics: String) -> Unit)? = null
 }

@@ -34,12 +34,21 @@ export function useReveals() {
 
     observeAll()
 
-    const mo = new MutationObserver(() => observeAll())
+    let moTimer = 0
+    const mo = new MutationObserver(() => {
+      if (!moTimer) {
+        moTimer = window.setTimeout(() => {
+          moTimer = 0
+          observeAll()
+        }, 150)
+      }
+    })
     mo.observe(document.body, { childList: true, subtree: true })
 
     return () => {
       io.disconnect()
       mo.disconnect()
+      if (moTimer) window.clearTimeout(moTimer)
     }
   }, [])
 }
@@ -120,7 +129,8 @@ export function useScrolled(after = 12) {
       // compositor can use, and every extra write is a React render.
       frame = requestAnimationFrame(() => {
         frame = 0
-        setScrolled(window.scrollY > after)
+        const isPast = window.scrollY > after
+        setScrolled((prev) => (prev !== isPast ? isPast : prev))
       })
     }
     onScroll()

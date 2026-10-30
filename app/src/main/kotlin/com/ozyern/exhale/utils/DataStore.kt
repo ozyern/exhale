@@ -26,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -53,6 +54,12 @@ object PreferenceStore {
     }
 
     fun <T> get(key: Preferences.Key<T>): T? = _prefs.value?.get(key)
+
+    /**
+     * Every setting, as one shared flow, once the store has loaded; null before. The composables
+     * read through this rather than each opening its own DataStore subscription.
+     */
+    val loaded: kotlinx.coroutines.flow.Flow<Preferences>? get() = if (_prefs.value != null) _prefs.filterNotNull() else null
 
     fun launchEdit(
         dataStore: DataStore<Preferences>,
@@ -120,12 +127,16 @@ fun <T> rememberPreference(
 ): MutableState<T> {
     val context = LocalContext.current
 
+    // Opens on the saved value, not the default. Starting from the default drew one frame of the
+    // wrong state (a toggle flicking over, a dock in the other style) and recomposed every reader
+    // a frame later when the store answered.
+    val initial = remember { PreferenceStore.get(key) ?: defaultValue }
     val state =
         remember {
-            context.dataStore.data
+            (PreferenceStore.loaded ?: context.dataStore.data)
                 .map { it[key] ?: defaultValue }
                 .distinctUntilChanged()
-        }.collectAsState(defaultValue)
+        }.collectAsState(initial)
 
     return remember {
         object : MutableState<T> {
@@ -151,12 +162,13 @@ inline fun <reified T : Enum<T>> rememberEnumPreference(
 ): MutableState<T> {
     val context = LocalContext.current
 
+    val initial = remember { PreferenceStore.get(key).toEnum(defaultValue = defaultValue) }
     val state =
         remember {
-            context.dataStore.data
+            (PreferenceStore.loaded ?: context.dataStore.data)
                 .map { it[key].toEnum(defaultValue = defaultValue) }
                 .distinctUntilChanged()
-        }.collectAsState(defaultValue)
+        }.collectAsState(initial)
 
     return remember {
         object : MutableState<T> {

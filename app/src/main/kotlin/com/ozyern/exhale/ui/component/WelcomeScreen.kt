@@ -94,6 +94,9 @@ private const val H_RISE = 1.1f
 private const val W_IN = 3.7f
 private const val W_LEN = 1.6f
 
+/** How long the screen takes to clear into the app once "Get started" is tapped, in ms. */
+private const val WelcomeExitMillis = 520
+
 private fun clamp01(x: Float): Float = if (x < 0f) 0f else if (x > 1f) 1f else x
 
 /** An ease-out with a long tail, the curve ColorOS moves things into place on. */
@@ -130,17 +133,42 @@ fun WelcomeScreen(
     val wordMeasure = remember(wordPath) { PathMeasure().apply { setPath(wordPath, false) } }
     val wordScratch = remember { Path() }
 
+    // With animations switched off in the system, the screen opens on its last frame: the hills up
+    // and the word written, nothing moving in to get there.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val reducedMotion = remember {
+        android.provider.Settings.Global.getFloat(
+            context.contentResolver,
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f,
+        ) == 0f
+    }
+
     // One clock for the whole screen. Written from the frame callback and read only in draw and
     // layer lambdas, so a frame costs an invalidation, not a recomposition.
-    val clock = remember { mutableFloatStateOf(0f) }
+    val clock = remember { mutableFloatStateOf(if (reducedMotion) W_IN + W_LEN else 0f) }
     var arrived by remember { mutableStateOf(false) }
+    val digitCount = figure.ifBlank { version }.length
     LaunchedEffect(Unit) {
+        // Each digit is felt as it lands, a light tick a beat apart, and the word with one firmer
+        // one as the pen lifts: the sequence is meant to be felt as much as seen.
+        var ticked = 0
+        var signed = false
         var last = withFrameNanos { it }
         while (true) {
             val now = withFrameNanos { it }
             clock.floatValue += ((now - last) / 1_000_000_000f).coerceIn(0f, 0.05f)
             last = now
-            if (!arrived && clock.floatValue >= W_IN + W_LEN * 0.85f) arrived = true
+            val c = clock.floatValue
+            while (ticked < digitCount && c < V_OUT && c >= V_IN + 0.12f + ticked * V_STAGGER + V_RISE * 0.5f) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                ticked++
+            }
+            if (!signed && c >= W_IN + W_LEN) {
+                signed = true
+                if (!reducedMotion) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            }
+            if (!arrived && c >= W_IN + W_LEN * 0.85f) arrived = true
         }
     }
     val buttonIn by animateFloatAsState(
@@ -149,9 +177,30 @@ fun WelcomeScreen(
         label = "welcomeButton",
     )
 
+    // Going on: the landscape opens up into the app — a slight push toward the viewer while it
+    // clears — rather than the screen vanishing on the frame the button is tapped.
+    var leaving by remember { mutableStateOf(false) }
+    val exit by animateFloatAsState(
+        targetValue = if (leaving) 1f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(
+            durationMillis = if (reducedMotion) 1 else WelcomeExitMillis,
+            easing = androidx.compose.animation.core.FastOutSlowInEasing,
+        ),
+        label = "welcomeExit",
+        finishedListener = { if (leaving) onDismiss() },
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
+            // Alpha and scale only: a full-screen blur here cost enough per frame that the exit was
+            // mostly dropped frames, and the push already says "into the app".
+            .graphicsLayer {
+                alpha = 1f - exit
+                val s = 1f + 0.06f * exit
+                scaleX = s
+                scaleY = s
+            }
             .background(Color.Black)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                 // A tap during the number skips to the welcome rather than out of the screen.
@@ -210,9 +259,9 @@ fun WelcomeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .liquidGlassSurface(RoundedCornerShape(percent = 50))
-                    .clickable(enabled = arrived) {
+                    .clickable(enabled = arrived && !leaving) {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onDismiss()
+                        leaving = true
                     }
                     .padding(vertical = 18.dp),
             )
@@ -518,6 +567,20 @@ private fun DrawScope.drawWelcomeWord(
         drawPath(scratch, Color(0xFF0B3A78).copy(alpha = 0.10f), style = stroke(0.24f))
         drawPath(scratch, Color(0xFF0B3A78).copy(alpha = 0.12f), style = stroke(0.15f))
         drawPath(scratch, Color.White, style = stroke(0.085f))
+        // The pen: a soft point of light at the end of the stroke while it is still writing, so
+        // the word reads as being written by something rather than uncovered.
+        if (progress < 0.999f) {
+            val nib = measure.getPosition(measure.length * progress)
+            drawCircle(
+                brush = Brush.radialGradient(
+                    listOf(Color.White.copy(alpha = 0.85f), Color.White.copy(alpha = 0f)),
+                    center = nib,
+                    radius = 0.32f,
+                ),
+                radius = 0.32f,
+                center = nib,
+            )
+        }
     }
 }
 

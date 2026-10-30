@@ -203,7 +203,7 @@ fun NewReleaseScreen(
                 }
             }
 
-            // ── Sección Álbumes ──────────────────────────────────────────────
+            // ── Albums ───────────────────────────────────────────────────────
             item {
                 ReleaseSectionHeader(
                     title = stringResource(R.string.albums),
@@ -250,7 +250,7 @@ fun NewReleaseScreen(
                 )
             }
 
-            // ── Sección Singles ─────────────────────────────────────────────
+            // ── Singles ─────────────────────────────────────────────────────
             item {
                 ReleaseSectionHeader(
                     title = stringResource(R.string.singles),
@@ -297,7 +297,7 @@ fun NewReleaseScreen(
                 )
             }
 
-            // ── Sección EPs ─────────────────────────────────────────────────
+            // ── EPs ─────────────────────────────────────────────────────────
             item {
                 ReleaseSectionHeader(
                     title = "EPs",
@@ -583,7 +583,7 @@ private fun FeaturedCarousel(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Título de la sección destacada
+        // Featured section title
         Row(
             modifier = Modifier.padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -714,7 +714,7 @@ private fun FeaturedCarouselCard(
                     )
             )
 
-            // Gradiente overlay para legibilidad
+            // Gradient overlay, for legibility
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -729,7 +729,7 @@ private fun FeaturedCarouselCard(
                     )
             )
 
-            // Información superpuesta
+            // Text over the artwork
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -806,7 +806,7 @@ private fun FeaturedCarouselCard(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Expressive Carousel - M3 Expressive con formas diferenciadas
+// Expressive Carousel - M3 Expressive, a shape per release type
 // ═══════════════════════════════════════════════════════════════════════════
 
 @OptIn(
@@ -827,7 +827,7 @@ private fun ExpressiveCarousel(
     val distinctItems = items.distinctBy { it.id }
     val carouselState = rememberCarouselState { distinctItems.size }
 
-    // Forma diferenciada según el tipo de lanzamiento
+    // A shape per release type
     val cardShape = when (releaseType) {
         AlbumReleaseType.ALBUM -> RoundedCornerShape(
             topStart = 20.dp,
@@ -851,7 +851,7 @@ private fun ExpressiveCarousel(
         )
     }
 
-    // Color de acento según el tipo
+    // An accent colour per type
     val accentColor = when (releaseType) {
         AlbumReleaseType.ALBUM -> MaterialTheme.colorScheme.primary
         AlbumReleaseType.SINGLE -> MaterialTheme.colorScheme.tertiary
@@ -955,7 +955,7 @@ private fun ExpressiveCarouselCard(
                     .clip(shape)
             )
 
-            // Badge según tipo de lanzamiento
+            // Release type badge
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = accentColor.copy(alpha = 0.9f),
@@ -976,7 +976,7 @@ private fun ExpressiveCarouselCard(
                 )
             }
 
-            // Indicador de reproducción
+            // Now-playing indicator
             androidx.compose.animation.AnimatedVisibility(
                 visible = isActive && isPlaying,
                 modifier = Modifier
@@ -1042,7 +1042,7 @@ private fun ExpressiveCarouselCard(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Shimmer de carga para los carruseles
+// Loading shimmer for the carousels
 // ═══════════════════════════════════════════════════════════════════════════
 
 @Composable

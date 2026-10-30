@@ -1165,7 +1165,11 @@ object YTPlayerUtils {
         if (preferred == AudioCodec.AUTO) return 0
         val codec = extractCodec(format.mimeType)?.lowercase() ?: return 0
         return when (preferred) {
-            AudioCodec.AAC -> if (codec.contains("mp4a")) 1 else 0
+            // AAC is preferred for its offload and for the 256 kbps Premium rendition (141, 774). The
+            // 128 kbps AAC a free account is given (140) is worse than the ~160 kbps Opus beside it,
+            // so it gets no preference: there the Opus wins on bitrate, and AAC still wins wherever
+            // the good AAC exists.
+            AudioCodec.AAC -> if (codec.contains("mp4a") && (format.itag == 141 || format.itag == 774 || format.bitrate >= 192_000)) 1 else 0
             AudioCodec.OPUS -> if (codec.contains("opus")) 1 else 0
             AudioCodec.AUTO -> 0
         }

@@ -68,6 +68,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -100,6 +101,19 @@ import androidx.compose.ui.unit.min
 import coil3.compose.AsyncImage
 import com.ozyern.exhale.desktop.data.DesktopPrefs
 import com.ozyern.exhale.desktop.data.LocalSettings
+import com.ozyern.exhale.desktop.data.Pin
+import com.ozyern.exhale.desktop.ui.AppleColors
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.foundation.border
+import androidx.compose.ui.platform.LocalDensity
+import com.ozyern.exhale.desktop.ui.thumbnailSizeFor
+import androidx.compose.foundation.layout.widthIn
+import com.ozyern.exhale.desktop.ui.CollectionActionsMenu
+import com.ozyern.exhale.desktop.ui.SongActionsMenu
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.unit.sp
 import com.ozyern.exhale.desktop.player.DesktopPlayer
 import com.ozyern.exhale.desktop.player.PlayerState
 import com.ozyern.exhale.desktop.ui.BenchList
@@ -148,6 +162,10 @@ private class CollectionHeader(
     val artists: List<Artist>,
     val facts: List<String>,
     val description: String?,
+    // What Pin, in the page's ⋯ menu, keeps in the sidebar.
+    val pin: Pin? = null,
+    // Copy Link, in the same menu.
+    val link: String? = null,
 )
 
 /** How long a list of songs runs, said plainly: "43 min", "1 hr 12 min". */
@@ -159,6 +177,19 @@ private fun runningTime(songs: List<SongItem>): String? {
 }
 
 private fun songCount(count: Int): String = if (count == 1) "1 song" else "$count songs"
+
+/** The same, spelled out for the foot of an album: "36 minutes", "1 hour, 12 minutes". */
+private fun runningTimeLong(songs: List<SongItem>): String? {
+    val seconds = songs.sumOf { it.duration ?: 0 }
+    if (seconds <= 0) return null
+    val minutes = (seconds + 30) / 60
+    fun unit(n: Int, word: String) = if (n == 1) "1 $word" else "$n ${word}s"
+    return if (minutes >= 60) {
+        listOfNotNull(unit(minutes / 60, "hour"), (minutes % 60).takeIf { it > 0 }?.let { unit(it, "minute") }).joinToString(", ")
+    } else {
+        unit(minutes, "minute")
+    }
+}
 
 // ── Album ──
 
@@ -182,6 +213,10 @@ fun AlbumScreen(
     val page = result?.getOrNull()
     val album = page?.album
     val songs = remember(page) { page?.songs.orEmpty().clean() }
+    // The Music app's editorial note, under the facts. YouTube keeps it on the album's own page, when it has one.
+    val description by produceState<String?>(null, browseId) {
+        value = withContext(Dispatchers.IO) { YouTube.albumDescription(browseId).getOrNull() }
+    }
     val header = CollectionHeader(
         kind = when (album?.releaseType) {
             AlbumReleaseType.SINGLE -> "Single"
@@ -192,7 +227,9 @@ fun AlbumScreen(
         artwork = album?.thumbnail ?: thumbnail,
         artists = album?.artists.orEmpty().ifEmpty { songs.firstOrNull()?.artists.orEmpty() },
         facts = listOfNotNull(album?.year?.toString(), songs.takeIf { it.isNotEmpty() }?.let { songCount(it.size) }, runningTime(songs)),
-        description = null,
+        description = description,
+        pin = Pin(Pin.Kind.Album, browseId, album?.title ?: title.orEmpty(), album?.artists?.joinToString { it.name }, album?.thumbnail ?: thumbnail),
+        link = album?.shareLink,
     )
     // "More by …": the lead artist's other albums and singles, fetched once the album itself is known.
     val leadArtist = header.artists.firstOrNull { it.id != null }
@@ -224,15 +261,25 @@ fun AlbumScreen(
         footer = if (page == null) null else {
             {
                 Column(verticalArrangement = Arrangement.spacedBy(30.dp)) {
-                    // When it came out and how long it runs, set quietly under the last song.
-                    Text(
-                        listOfNotNull(album?.year?.let { "Released $it" }, songCount(songs.size), runningTime(songs)).joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 12.dp),
-                    )
+                    // The Music app's foot of an album: when it came out, then how many songs and how long,
+                    // each on its own quiet line under the last track.
+                    Column(Modifier.padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        album?.year?.let { Text("$it", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        Text(
+                            listOfNotNull(songCount(songs.size), runningTimeLong(songs)).joinToString(", "),
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     moreBy?.takeIf { it.isNotEmpty() }?.let { ShelfSection("More by ${leadArtist?.name.orEmpty()}", it, state, player) }
-                    page.otherVersions.takeIf { it.isNotEmpty() }?.let { ShelfSection("Other versions", it, state, player) }
+                    // YouTube lists this album's other editions and other artists' albums together; the
+                    // Music app keeps them apart, as Other Versions and You Might Also Like.
+                    val names = header.artists.mapTo(HashSet()) { it.name.lowercase() }
+                    val (versions, alike) = page.otherVersions.partition { item ->
+                        item is AlbumItem && item.artists.orEmpty().any { it.name.lowercase() in names }
+                    }
+                    versions.takeIf { it.isNotEmpty() }?.let { ShelfSection("Other Versions", it, state, player) }
+                    alike.takeIf { it.isNotEmpty() }?.let { ShelfSection("You Might Also Like", it, state, player) }
                 }
             }
         },
@@ -291,6 +338,8 @@ fun PlaylistScreen(
         artists = listOfNotNull(playlist?.author),
         facts = listOfNotNull(playlist?.songCountText ?: songs.takeIf { it.isNotEmpty() }?.let { songCount(it.size) }, runningTime(songs)),
         description = playlist?.description,
+        pin = Pin(Pin.Kind.Playlist, playlistId, playlist?.title ?: title.orEmpty(), playlist?.author?.name, playlist?.thumbnail ?: thumbnail),
+        link = playlist?.shareLink,
     )
     CollectionPage(
         pageKey = "playlist:$playlistId",
@@ -357,49 +406,43 @@ private fun CollectionPage(
                 if (footer != null) item(key = "footer") { Box(Modifier.feedIntro(3f, cascade).padding(top = 28.dp)) { footer() } }
             }
 
-            if (maxWidth >= 1080.dp) {
-                Row(Modifier.fillMaxSize()) {
-                    Column(
-                        Modifier
-                            .width(380.dp)
-                            .fillMaxHeight()
-                            .padding(start = start, top = 16.dp, end = 12.dp, bottom = insets.bottom),
-                    ) {
-                        GlassIconButton(NavIcons.Back, "Back", onBack)
-                        Spacer(Modifier.height(22.dp))
-                        Cover(header.artwork, 320.dp, sharedKey, RoundedCornerShape(22.dp))
-                        Spacer(Modifier.height(26.dp))
-                        CollectionInfo(header, canPlay = songs.isNotEmpty(), onPlay = onPlay, titleStyle = MaterialTheme.typography.headlineMedium)
-                    }
-                    Box(Modifier.weight(1f).fillMaxHeight()) {
-                        LazyColumn(
-                            state = listState,
-                            contentPadding = PaddingValues(start = 12.dp, end = 40.dp, top = 80.dp, bottom = insets.bottom + 16.dp),
-                            modifier = Modifier.fillMaxSize(),
-                            content = tracks,
-                        )
-                        PageScrollbar(listState, insets)
-                    }
-                }
-            } else {
-                Box(Modifier.fillMaxSize()) {
-                    LazyColumn(
-                        state = listState,
-                        contentPadding = PaddingValues(start = start, end = 40.dp, top = 16.dp, bottom = insets.bottom + 16.dp),
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        item(key = "back") { GlassIconButton(NavIcons.Back, "Back", onBack, Modifier.padding(bottom = 20.dp)) }
-                        item(key = "header") {
-                            Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(bottom = 28.dp)) {
-                                Cover(header.artwork, 230.dp, sharedKey, RoundedCornerShape(18.dp))
-                                Spacer(Modifier.width(28.dp))
-                                CollectionInfo(header, canPlay = songs.isNotEmpty(), onPlay = onPlay, titleStyle = MaterialTheme.typography.headlineSmall)
-                            }
+            // The Music app's album and playlist page on the Mac, at every width: the cover with the title,
+            // artist and Play / Shuffle beside it at the top, then the tracks across the page beneath.
+            // (A side column of its own left the cover a sliver once the sidebar took its share.)
+            val coverSize = (maxWidth * 0.2f).coerceIn(200.dp, 280.dp)
+            Box(Modifier.fillMaxSize()) {
+                LazyColumn(
+                    state = listState,
+                    contentPadding = PaddingValues(start = start, end = 40.dp, top = 20.dp, bottom = insets.bottom + 16.dp),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    item(key = "header") {
+                        Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(bottom = 30.dp)) {
+                            Cover(header.artwork, coverSize, sharedKey, RoundedCornerShape(12.dp))
+                            Spacer(Modifier.width(28.dp))
+                            CollectionInfo(
+                                header,
+                                songs = songs,
+                                player = player,
+                                onPlay = onPlay,
+                                titleStyle = MaterialTheme.typography.headlineMedium,
+                                modifier = Modifier.weight(1f),
+                            )
                         }
-                        tracks()
                     }
-                    PageScrollbar(listState, insets)
+                    tracks()
                 }
+                PageScrollbar(listState, insets)
+                // Better than the Music app, which makes you scroll back up to play: once the header has
+                // gone, its cover, title and Play / Shuffle wait at the top of the page.
+                val headerGone by remember(listState) { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
+                CompactHeader(
+                    header = header,
+                    visible = headerGone,
+                    canPlay = songs.isNotEmpty(),
+                    onPlay = onPlay,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(start = insets.start + 56.dp, end = 160.dp, top = 6.dp),
+                )
             }
         }
     }
@@ -488,65 +531,182 @@ private fun Cover(artwork: String?, size: Dp, sharedKey: String?, shape: Shape) 
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
             AsyncImage(artwork?.resizedThumbnail(544), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            AsyncImage(artwork?.resizedThumbnail(1080), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            // A sharper copy only where the screen has more pixels than that: at 150% a 280 dp cover is
+            // 420 px, which the 544 already covers, and a 1080 here was fetched and decoded for nothing.
+            val sharp = thumbnailSizeFor(size.value * LocalDensity.current.density)
+            if (sharp > 544) {
+                AsyncImage(artwork?.resizedThumbnail(sharp), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
         }
     }
 }
 
+/**
+ * The header in brief, at the top of the page once the real one has scrolled away: the cover, title
+ * and artist, and Play / Shuffle. A plain frosted plate rather than live glass, so scrolling the
+ * tracks under it re-blurs nothing.
+ */
 @Composable
-private fun CollectionInfo(header: CollectionHeader, canPlay: Boolean, onPlay: (Boolean) -> Unit, titleStyle: TextStyle) {
+private fun CompactHeader(header: CollectionHeader, visible: Boolean, canPlay: Boolean, onPlay: (Boolean) -> Unit, modifier: Modifier) {
+    val shown by animateFloatAsState(if (visible) 1f else 0f, spring(dampingRatio = 1f, stiffness = 600f), label = "compact_header")
+    if (shown < 0.01f) return
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        modifier
+            .widthIn(max = 620.dp)
+            .fillMaxWidth()
+            .graphicsLayer {
+                alpha = shown
+                translationY = (1f - shown) * -12.dp.toPx()
+            }
+            .height(46.dp)
+            .shadow(14.dp, shape)
+            .clip(shape)
+            .background(Color(0xF0222224))
+            .border(0.75.dp, Color.White.copy(alpha = 0.12f), shape)
+            .padding(start = 7.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(32.dp).clip(RoundedCornerShape(5.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+            AsyncImage(header.artwork?.resizedThumbnail(120), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(header.title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (header.artists.isNotEmpty()) {
+                Text(header.artists.joinToString { it.name }, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        CircleAction(TransportIcons.Shuffle, "Shuffle", filled = false, enabled = canPlay) { onPlay(true) }
+        Spacer(Modifier.width(6.dp))
+        CircleAction(TransportIcons.Play, "Play", filled = true, enabled = canPlay) { onPlay(false) }
+    }
+}
+
+/** A round button: the accent filled for the main action, a grey disc for the rest. */
+@Composable
+private fun CircleAction(icon: ImageVector, description: String, filled: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val base = if (filled) AppleColors.Accent else Color.White.copy(alpha = 0.12f)
+    Box(
+        Modifier
+            .graphicsLayer { alpha = if (enabled) 1f else 0.45f }
+            .size(32.dp)
+            .clip(CircleShape)
+            .background(if (hovered) lerp(base, Color.White, 0.12f) else base)
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, description, tint = Color.White, modifier = Modifier.size(16.dp))
+    }
+}
+
+@Composable
+private fun CollectionInfo(
+    header: CollectionHeader,
+    songs: List<SongItem>,
+    player: DesktopPlayer,
+    onPlay: (Boolean) -> Unit,
+    titleStyle: TextStyle,
+    modifier: Modifier = Modifier,
+) {
+    val canPlay = songs.isNotEmpty()
     // The header's lines rise in one after another, as on an artist's page.
     val reduced = LocalSettings.current.reducedMotion
     val settle = remember { Animatable(if (reduced) 1f else 0f) }
     LaunchedEffect(Unit) { settle.animateTo(1f, spring(dampingRatio = 1f, stiffness = 70f)) }
     val progress: () -> Float = { settle.value }
-    Column {
-        Text(
-            header.kind.uppercase(),
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 0.12.em,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.stage(0.05f, progress),
-        )
-        Spacer(Modifier.height(6.dp))
+    // The Music app's album header on macOS 27: the title, the artist in the accent beneath it, the
+    // kind and the facts in small grey capitals, its note cut to a couple of lines with MORE, then Play
+    // and Shuffle as two filled capsules and the ⋯ for everything else at the far end.
+    Column(modifier) {
         Text(
             header.title,
             style = titleStyle.copy(letterSpacing = (-0.02).em),
             fontWeight = FontWeight.Bold,
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.stage(0.12f, progress),
+            modifier = Modifier.stage(0.08f, progress),
         )
         if (header.artists.isNotEmpty()) {
-            Spacer(Modifier.height(6.dp))
-            ArtistLinks(header.artists, MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), MaterialTheme.colorScheme.primary, Modifier.stage(0.2f, progress))
+            Spacer(Modifier.height(4.dp))
+            ArtistLinks(header.artists, MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium), AppleColors.Accent, Modifier.stage(0.16f, progress))
         }
-        if (header.facts.isNotEmpty()) {
-            Spacer(Modifier.height(6.dp))
-            Text(
-                header.facts.joinToString(" · "),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.stage(0.26f, progress),
-            )
-        }
-        Spacer(Modifier.height(20.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.stage(0.34f, progress)) {
-            PlayCircle(diameter = 54.dp, enabled = canPlay, description = "Play ${header.title}") { onPlay(false) }
-            Spacer(Modifier.width(12.dp))
-            PillButton("Shuffle", TransportIcons.Shuffle, primary = false, enabled = canPlay) { onPlay(true) }
-        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            (listOf(header.kind) + header.facts).joinToString(" · ").uppercase(),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.04.em,
+            color = Color.White.copy(alpha = 0.5f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.stage(0.24f, progress),
+        )
         header.description?.takeIf { it.isNotBlank() }?.let { text ->
-            Spacer(Modifier.height(18.dp))
-            Box(Modifier.stage(0.42f, progress)) { ExpandableText(text, collapsedLines = 4) }
+            Spacer(Modifier.height(10.dp))
+            Box(Modifier.widthIn(max = 640.dp).stage(0.28f, progress)) { NoteText(text) }
+        }
+        Spacer(Modifier.height(18.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().stage(0.32f, progress)) {
+            AppleCapsule("Play", TransportIcons.Play, enabled = canPlay) { onPlay(false) }
+            Spacer(Modifier.width(10.dp))
+            AppleCapsule("Shuffle", TransportIcons.Shuffle, enabled = canPlay) { onPlay(true) }
+            Spacer(Modifier.weight(1f))
+            Box {
+                var menu by remember { mutableStateOf(false) }
+                CircleAction(NavIcons.More, "More", filled = false) { menu = true }
+                CollectionActionsMenu(
+                    songs = songs,
+                    pin = header.pin,
+                    artist = header.artists.firstOrNull { it.id != null },
+                    link = header.link,
+                    player = player,
+                    expanded = menu,
+                    onDismiss = { menu = false },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The album's note as the Music app sets it: a couple of grey lines, and MORE in small capitals at
+ * their end when there's more to read. Clicking opens the rest in place.
+ */
+@Composable
+private fun NoteText(text: String) {
+    var expanded by remember(text) { mutableStateOf(false) }
+    var overflowing by remember(text) { mutableStateOf(false) }
+    Column(Modifier.clip(RoundedCornerShape(6.dp)).clickable(enabled = overflowing || expanded) { expanded = !expanded }) {
+        Text(
+            text,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = if (expanded) Int.MAX_VALUE else 2,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { if (!expanded) overflowing = it.hasVisualOverflow },
+        )
+        if (overflowing || expanded) {
+            Text(
+                if (expanded) "LESS" else "MORE",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.04.em,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = 2.dp),
+            )
         }
     }
 }
 
 private fun LazyListScope.trackItems(songs: List<SongItem>, state: PlayerState, player: DesktopPlayer, cascade: () -> Float, showArtwork: Boolean) {
+    // An album whose every track is by the same artists lists them as the Music app does: single lines.
+    val oneArtist = !showArtwork && songs.map { song -> song.artists.joinToString { it.name } }.distinct().size <= 1
     itemsIndexed(songs, key = { i, song -> "$i:${song.id}" }) { index, song ->
         val active = song.id == state.current?.id
         TrackRow(
@@ -557,6 +717,8 @@ private fun LazyListScope.trackItems(songs: List<SongItem>, state: PlayerState, 
             showArtwork = showArtwork,
             onClick = { if (active) player.togglePlayPause() else player.play(songs, index) },
             modifier = Modifier.cascade(index, cascade),
+            compact = oneArtist,
+            player = player,
         )
     }
 }
@@ -621,7 +783,6 @@ fun ArtistItemsScreen(
         verticalArrangement = Arrangement.spacedBy(if (allSongs) 2.dp else 22.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        item(span = { GridItemSpan(maxLineSpan) }) { GlassIconButton(NavIcons.Back, "Back", onBack, Modifier.padding(bottom = 16.dp)) }
         item(span = { GridItemSpan(maxLineSpan) }) { LargeTitle(title, Modifier.padding(bottom = 14.dp)) }
         when {
             failed -> item(span = { GridItemSpan(maxLineSpan) }) { PageError { attempt++ } }
@@ -666,23 +827,24 @@ private fun ShelfSection(title: String, items: List<YTItem>, state: PlayerState,
 
 @Composable
 internal fun SectionTitle(title: String, onSeeAll: (() -> Unit)?, modifier: Modifier = Modifier) {
+    // The Music app's shelf header: "Title ›" on one line, the whole of it the way to see everything.
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-        if (onSeeAll != null) {
-            val interaction = remember { MutableInteractionSource() }
-            val hovered by interaction.collectIsHoveredAsState()
-            Text(
-                "See all",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = if (hovered) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = if (hovered) 0.12f else 0.06f))
-                    .hoverable(interaction)
-                    .clickable(interactionSource = interaction, indication = null, onClick = onSeeAll)
-                    .padding(horizontal = 14.dp, vertical = 7.dp),
-            )
+        Row(
+            Modifier
+                .then(if (onSeeAll != null) Modifier.hoverable(interaction).clickable(interactionSource = interaction, indication = null, onClick = onSeeAll) else Modifier),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = if (hovered) 0.75f else 1f))
+            if (onSeeAll != null) {
+                Icon(
+                    NavIcons.ChevronRight,
+                    contentDescription = "See all $title",
+                    tint = Color.White.copy(alpha = if (hovered) 0.75f else 0.55f),
+                    modifier = Modifier.padding(start = 2.dp).size(16.dp),
+                )
+            }
         }
     }
 }
@@ -700,13 +862,28 @@ fun TrackRow(
     showArtwork: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    // An album by one artist, as the Music app lists it: one line per track, the artist left out, a
+    // hairline between rows.
+    compact: Boolean = false,
+    // Given, a ⋯ for the song's actions shows under the pointer.
+    player: DesktopPlayer? = null,
 ) {
+    var menu by remember { mutableStateOf(false) }
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val pressed by interaction.collectIsPressedAsState()
     val press by pressScale(pressed, pressedScale = 0.985f)
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(if (compact) 8.dp else 12.dp)
     val accent = MaterialTheme.colorScheme.primary
+    // Flat fills, as the Music app's list rows: hover a grey wash. In an album's single-line list the
+    // playing track is marked by its bars and title alone, as there; elsewhere faintly in the accent.
+    val fill = when {
+        active && !compact -> accent.copy(alpha = 0.14f)
+        hovered -> Color.White.copy(alpha = 0.07f)
+        else -> Color.Transparent
+    }
+    val rule = Color.White.copy(alpha = 0.08f)
+    val ruleStart = if (number != null) 56.dp else 12.dp
 
     Row(
         modifier = modifier
@@ -716,16 +893,21 @@ fun TrackRow(
                 scaleY = press
             }
             .then(
-                when {
-                    active -> Modifier.glassPlate(shape, base = accent.copy(alpha = 0.14f))
-                    hovered -> Modifier.glassPlate(shape)
-                    else -> Modifier.clip(shape)
+                if (compact && !active && !hovered) {
+                    Modifier.drawBehind {
+                        val y = size.height - 0.5f
+                        drawLine(rule, Offset(ruleStart.toPx(), y), Offset(size.width - 12.dp.toPx(), y), strokeWidth = 1f)
+                    }
+                } else {
+                    Modifier
                 },
             )
+            .clip(shape)
+            .background(fill)
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .heightIn(min = 60.dp)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .heightIn(min = if (compact) 40.dp else 58.dp)
+            .padding(horizontal = 12.dp, vertical = if (compact) 4.dp else 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (number != null) {
@@ -754,7 +936,8 @@ fun TrackRow(
                 Text(
                     song.title,
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = if (compact) 14.sp else MaterialTheme.typography.titleSmall.fontSize,
+                    fontWeight = if (compact) FontWeight.Normal else FontWeight.SemiBold,
                     color = if (active) accent else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -765,8 +948,22 @@ fun TrackRow(
                     Icon(NavIcons.Explicit, contentDescription = "Explicit", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
                 }
             }
-            if (song.artists.isNotEmpty()) {
+            if (song.artists.isNotEmpty() && !compact) {
                 ArtistLinks(song.artists, MaterialTheme.typography.bodySmall, MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (player != null) {
+            // Its room is always kept, so a row doesn't shift as the pointer crosses it.
+            Box(Modifier.padding(start = 8.dp).size(28.dp)) {
+                if (hovered || menu) {
+                    Box(
+                        Modifier.matchParentSize().clip(CircleShape).clickable { menu = true },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(NavIcons.More, "More", tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f), modifier = Modifier.size(18.dp))
+                    }
+                }
+                SongActionsMenu(song, player, expanded = menu, onDismiss = { menu = false })
             }
         }
         song.duration?.let {
@@ -800,6 +997,41 @@ fun ArtistLinks(artists: List<Artist>, style: TextStyle, color: Color, modifier:
         }
     }
     Text(text, style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = modifier)
+}
+
+/**
+ * The Music app's Play and Shuffle: a compact capsule filled with the accent, a white symbol and
+ * label. Brightens under the pointer and dips when pressed; it doesn't grow.
+ */
+@Composable
+internal fun AppleCapsule(text: String, icon: ImageVector, enabled: Boolean = true, filled: Boolean = true, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val hovered by interaction.collectIsHoveredAsState()
+    // Unfilled, it's the quiet grey capsule the Music app uses for secondary actions.
+    val base = if (filled) AppleColors.Accent else Color.White.copy(alpha = 0.12f)
+    val fill = when {
+        pressed -> lerp(base, Color.Black, 0.18f)
+        hovered -> lerp(base, Color.White, 0.1f)
+        else -> base
+    }
+    Row(
+        Modifier
+            .graphicsLayer { alpha = if (enabled) 1f else 0.45f }
+            .height(34.dp)
+            .widthIn(min = 112.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(fill)
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+    }
 }
 
 @Composable

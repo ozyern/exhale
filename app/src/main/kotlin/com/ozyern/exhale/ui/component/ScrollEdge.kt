@@ -68,11 +68,14 @@ fun Modifier.topEdgeFade(active: () -> Boolean = { true }, height: () -> Float):
         if (!active()) return@drawWithContent
         val h = height()
         if (h <= 0f) return@drawWithContent
-        val end = h + 14.dp.toPx()
+        // Nothing at all behind the bar itself, then a short fade just under its edge, as iOS's
+        // scroll edge does. The fade used to start halfway up the bar, so a heading scrolled up
+        // behind the logo was still there at a fifth of its strength, a ghost beside the mark.
+        val end = h + 26.dp.toPx()
         drawRect(
             brush = Brush.verticalGradient(
                 0f to Color.Transparent,
-                (h * 0.55f / end) to Color.Transparent,
+                (h / end) to Color.Transparent,
                 1f to Color.Black,
                 endY = end,
             ),

@@ -554,6 +554,27 @@ fun Lyrics(
             }
         }
     }
+    // Hindi, and every other script without an engine of its own (Chinese, Cyrillic, Arabic, Thai…),
+    // in Latin letters under each line, as the newer lyrics view does.
+    val romanizeHindiLyrics by rememberPreference(com.ozyern.exhale.constants.LyricsRomanizeHindiKey, true)
+    val romanizeOtherLyrics by rememberPreference(com.ozyern.exhale.constants.LyricsRomanizeOtherKey, true)
+    androidx.compose.runtime.LaunchedEffect(lines, romanizeHindiLyrics, romanizeOtherLyrics) {
+        if (!romanizeHindiLyrics && !romanizeOtherLyrics) return@LaunchedEffect
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            lines.forEach { entry ->
+                val text = entry.text
+                if (text.isBlank() || entry.romanizedTextFlow.value != null || isKorean(text)) return@forEach
+                val devanagari = com.ozyern.exhale.lyrics.DevanagariRomanizer.isDevanagari(text)
+                val romanized = when {
+                    devanagari -> if (romanizeHindiLyrics) com.ozyern.exhale.lyrics.DevanagariRomanizer.romanize(text) else null
+                    romanizeOtherLyrics && (!isJapanese(text) || isChinese(text)) ->
+                        com.ozyern.exhale.lyrics.LyricsRomanizer.romanize(text)
+                    else -> null
+                }
+                if (romanized != null) entry.romanizedTextFlow.value = romanized
+            }
+        }
+    }
     val isSynced =
         remember(lyrics) {
             !lyrics.isNullOrEmpty() && (lyrics.startsWith("[") || isTtml(lyrics))
