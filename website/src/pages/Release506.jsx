@@ -484,11 +484,11 @@ function GetIt({ release }) {
           <p>One universal APK for Android 13 and later. After the first install it updates itself.</p>
           <span className="kh-pill kh-pill-primary">Download</span>
         </a>
-        {/* The Windows builds only: they are released as v1.0.xxx-windows, beside the Android ones. */}
-        <a className="a6-get-card reveal" href={`${REPO}/releases?q=windows&expanded=true`} target="_blank" rel="noreferrer">
+        {/* The same release as Android's: the setup is attached to it beside the APK. */}
+        <a className="a6-get-card reveal" href={RELEASES} target="_blank" rel="noreferrer">
           <p className="a6-eyebrow">Windows</p>
           <h3>Exhale for Windows</h3>
-          <p>A setup for Windows 10 and 11, released as 1.0.506-windows. It updates itself too.</p>
+          <p>A setup for Windows 10 and 11, in the same release as the Android app. It updates itself too.</p>
           <span className="kh-pill kh-pill-secondary">Download for Windows</span>
         </a>
       </div>

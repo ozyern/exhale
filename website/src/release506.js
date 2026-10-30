@@ -114,7 +114,7 @@ export const RELEASE_506 = {
       { k: 'Windows', t: 'At home on the desktop.', b: 'The keyboard’s media keys, the volume overlay and Windows’ own media panel all drive it; it can sit in the tray and play on with its window closed.' },
       { k: 'Together', t: 'Discord and Last.fm.', b: 'What you are playing on your Discord profile, and every song scrobbled to Last.fm.' },
       { k: 'Smooth', t: 'Built to keep up with the screen.', b: 'Scrolling, page changes and the glass are tuned for high refresh rate displays, and lighter on PCs that need it.' },
-      { k: 'Updates', t: 'Updates itself.', b: 'Released as 1.0.xxx-windows. Exhale finds a new one, checks it against its checksum and installs it.' },
+      { k: 'Updates', t: 'Updates itself.', b: 'Each release carries the Windows setup beside the Android app. Exhale finds a new one, checks it against its checksum and installs it.' },
     ],
   },
 
@@ -170,7 +170,7 @@ export const RELEASE_506 = {
         'WASAPI exclusive mode and a high-quality resampler',
         'Media keys, Windows media panel and tray',
         'Discord status and Last.fm scrobbling',
-        'In-app updates from -windows releases',
+        'In-app updates, from the same releases as Android',
       ],
     },
   ],

@@ -72,9 +72,9 @@ object AppLifecycle {
 }
 
 /**
- * Updates from GitHub releases, as the Android app fetches its own. The repository's releases are
- * shared with Android, so Windows has its own tags: v1.0.xxx-windows, named "Exhale 1.0.xxx-windows",
- * carrying the setup. Only those count here (and Android ignores them), newest version first.
+ * Updates from GitHub releases, as the Android app fetches its own. One release per version carries
+ * both apps: the APK, and the Windows setup attached once it is built. Only releases with a setup
+ * count here, so a release whose Windows build has not landed yet is not offered. Newest first.
  */
 object UpdateChecker {
     private val http = OkHttpClient()
@@ -88,7 +88,7 @@ object UpdateChecker {
 
     val download = MutableStateFlow<UpdateDownload>(UpdateDownload.Idle)
 
-    /** The tag suffix that marks a release as Windows'. */
+    /** An older tag form (v1.0.xxx-windows); still read as its version wherever it turns up. */
     const val WindowsTagSuffix = "-windows"
 
     /** Windows releases, newest version first. */
@@ -107,7 +107,6 @@ object UpdateChecker {
             val array = JSONArray(body)
             (0 until array.length()).map { array.getJSONObject(it) }
                 .filter { !it.optBoolean("draft") && !it.optBoolean("prerelease") }
-                .filter { it.optString("tag_name").endsWith(WindowsTagSuffix, ignoreCase = true) }
                 .mapNotNull { release ->
                     val assets = release.optJSONArray("assets") ?: JSONArray()
                     val files = (0 until assets.length()).map { assets.getJSONObject(it) }
