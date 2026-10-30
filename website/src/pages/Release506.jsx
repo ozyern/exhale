@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { SiteFooter } from '../components/Chrome.jsx'
 import { Link } from '../router.jsx'
 import { ALL_RELEASES, releasePath } from '../releases.js'
-import { RELEASES, REPO } from '../content.js'
+import { APK_URL, REPO, WINDOWS_URL } from '../content.js'
 import { useReveals } from '../hooks.js'
 import { SHOT506 } from '../release506.js'
 import '../components/keyhero.css'
@@ -478,14 +478,14 @@ function GetIt({ release }) {
     <section className="a6-chapter a6-get" id="get">
       <BigLine eyebrow="Get 1.0.506">Free. Open source. Yours.</BigLine>
       <div className="a6-get-cards">
-        <a className="a6-get-card reveal" href={RELEASES} target="_blank" rel="noreferrer">
+        <a className="a6-get-card reveal" href={APK_URL} target="_blank" rel="noreferrer">
           <p className="a6-eyebrow">Android</p>
           <h3>Exhale for Android</h3>
           <p>One universal APK for Android 13 and later. After the first install it updates itself.</p>
           <span className="kh-pill kh-pill-primary">Download</span>
         </a>
-        {/* The same release as Android's: the setup is attached to it beside the APK. */}
-        <a className="a6-get-card reveal" href={RELEASES} target="_blank" rel="noreferrer">
+        {/* The setup, attached to the same release beside the APK. */}
+        <a className="a6-get-card reveal" href={WINDOWS_URL} target="_blank" rel="noreferrer">
           <p className="a6-eyebrow">Windows</p>
           <h3>Exhale for Windows</h3>
           <p>A setup for Windows 10 and 11, in the same release as the Android app. It updates itself too.</p>

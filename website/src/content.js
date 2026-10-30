@@ -8,8 +8,9 @@
 
 export const REPO = 'https://github.com/ozyern/exhale'
 export const RELEASES = `${REPO}/releases/latest`
-export const APK_URL = 'https://github.com/ozyern/exhale/releases/download/v1.0.405/Exhale-1.0.405.apk'
-export const VERSION = '1.0.405'
+export const APK_URL = 'https://github.com/ozyern/exhale/releases/download/v1.0.506/Exhale-1.0.506.apk'
+export const WINDOWS_URL = 'https://github.com/ozyern/exhale/releases/download/v1.0.506/Exhale-Setup-1.0.506.exe'
+export const VERSION = '1.0.506'
 
 /**
  * Palettes. `rose` is the app's DefaultThemeColor; the other two are what
