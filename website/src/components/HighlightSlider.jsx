@@ -173,7 +173,7 @@ export default function HighlightSlider({ id = 'highlights', title = 'Get the hi
         ))}
       </div>
       <div className="hl-controls shell">
-        <div className="hl-dots" role="tablist" aria-label={title || 'Highlights'}>
+        <div className="hl-dots" role="tablist" aria-label={typeof title === 'string' ? title : 'Highlights'}>
           {items.map((item, index) => (
             <button
               key={item.lead}

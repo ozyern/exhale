@@ -8,6 +8,7 @@ import HighlightSlider from './components/HighlightSlider.jsx'
 import Segments from './components/Segments.jsx'
 import Phone from './components/Phone.jsx'
 import KeyHero from './components/KeyHero.jsx'
+import './home.css'
 import {
   ABOUT_FACTS,
   APK_URL,
@@ -156,7 +157,7 @@ function Film({ running }) {
         <div className="film-head">
           <p className="film-kicker">The system runs smoothly</p>
           <h2 className="film-title">
-            Ultra fluid. <span className="film-grad">Knows your music.</span>
+            Ultra fluid. <span className="gold">Knows your music.</span>
           </h2>
         </div>
         <div className="film-frame">
@@ -206,7 +207,9 @@ function LyricsPanel({ running }) {
           <span>Live Synced Audio</span>
         </div>
         <p className="kicker">Lyrics</p>
-        <h2 className="headline">Every word, on time.</h2>
+        <h2 className="headline">
+          Every word, <span className="gold">on time.</span>
+        </h2>
         <p className="lede">
           Synced lyrics that light a word at a time, with the lines you have
           not reached falling out of focus behind them. Matched on title and
@@ -278,7 +281,7 @@ function Design() {
         <h2 className="headline reveal" style={{ '--d': '80ms' }}>
           Built like the phone
           <br />
-          it runs on.
+          <span className="gold">it runs on.</span>
         </h2>
       </div>
 
@@ -442,7 +445,7 @@ export default function App() {
     <div id="top">
       <Bars active={section} onSelect={goToSection} />
 
-      <main>
+      <main className="home">
         <div className="ambient-mesh" aria-hidden="true">
           <div className="ambient-orb ambient-orb-1" />
           <div className="ambient-orb ambient-orb-2" />
@@ -468,7 +471,10 @@ export default function App() {
             </Link>
           }
         />
-        <HighlightSlider items={HIGHLIGHTS} />
+        <HighlightSlider
+          items={HIGHLIGHTS}
+          title={<>Get the <span className="gold">highlights.</span></>}
+        />
 
         <Film running={ambient} />
 
@@ -480,16 +486,17 @@ export default function App() {
 
         <section className="tour-features shell" id="features">
           <h2 className="bigtitle">
-            <Words text="And everything else." />
+            <Words text="And everything else." accent={2} />
           </h2>
           <Features items={FEATURES} />
         </section>
 
         <section className="finale shell" id="download">
           <div className="getit">
+            <div className="getit-ribbon" aria-hidden="true" />
             <img className="getit-icon reveal" src="/logo.png" alt="Exhale app icon" width="96" height="96" />
             <h2 className="headline">
-              <Words text="Put it on your phone." />
+              <Words text="Put it on your phone." accent={2} />
             </h2>
             <p className="lede reveal" style={{ '--d': '160ms' }}>
               One APK for every Android 13 phone. No account, no ads, nothing
