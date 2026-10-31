@@ -30,7 +30,13 @@ import { LATEST_RELEASE } from './releases.js'
 const SHOT_405 = {
   artist: { src: '/shots/405-artist.jpg', alt: 'Sabrina Carpenter’s artist page: her portrait full bleed, Play between follow and shuffle, the latest album, then Top songs.' },
   settings: { src: '/shots/405-settings.jpg', alt: 'Library: the Exhale card, then playlists, artists, albums and songs as grouped glass tables.' },
-  about: { src: '/shots/405-about.jpg', alt: 'About: the Exhale 1.0.405 card over gold light, saying Exhale is up to date, above the maintainer and Connect.' },
+}
+
+/** Screens from the 1.0.506 build, taken on a phone. */
+const SHOT_506 = {
+  home: { src: '/shots/506-home.jpg', alt: 'Home: Top Picks for You over Recents, the mini player above the glass tab bar.' },
+  lyrics: { src: '/shots/506-lyrics-word.jpg', alt: 'Word-synced lyrics for Good Graces, the sung words lit, above Spatial Audio and the 8D control.' },
+  about: { src: '/shots/506-about-card.jpg', alt: 'About: the Exhale 1.0.506 card over gold light, saying Exhale is up to date.' },
 }
 
 const SECTIONS = [
@@ -68,13 +74,13 @@ function Bars({ active, onSelect }) {
  * rising out of the bottom. Arrows and dots underneath, as on Apple's pages.
  */
 const HIGHLIGHTS = [
-  { shot: { src: '/shots/home-listen-now.jpg', alt: 'Listen Now: Top Picks for You over Recents, under the glass dock.' }, lead: 'Home leads with what you play.', rest: 'Top Picks for You is learned from your own listening, and says why each one is there.' },
+  { shot: SHOT_506.home, lead: 'Home leads with what you play.', rest: 'Top Picks for You is learned from your own listening, and says why each one is there.' },
   { shot: { src: '/shots/player-color.jpg', alt: 'The player tinted from the cover: Bad for Business, the controls in its warm brown.' }, lead: 'The song brings its own color.', rest: 'The cover fills the player, and the controls take their tint from it.' },
-  { shot: SHOTS_304[SHOT304.lyrics], lead: 'Lyrics land on the word.', rest: 'The line being sung lights up as it is sung, and the rest fall out of focus.' },
+  { shot: SHOT_506.lyrics, lead: 'Lyrics land on the word.', rest: 'The line being sung lights up as it is sung, and the rest fall out of focus.' },
   { shot: { src: '/shots/downloaded.jpg', alt: 'Downloaded: three songs saved to the phone, ready with no network.' }, lead: 'It plays with the radio off.', rest: 'Downloads play with no network at all, cover edge to edge.' },
   { shot: SHOT_405.artist, lead: 'Artists, the way they should look.', rest: 'Portrait, story and the songs that matter, on one page.' },
   { shot: SHOT_405.settings, lead: 'One material, everywhere.', rest: 'Grouped glass tables all the way down to Settings.' },
-  { shot: SHOT_405.about, lead: 'It updates itself.', rest: 'Check, download and install without leaving the app.' },
+  { shot: SHOT_506.about, lead: 'It updates itself.', rest: 'Check, download and install without leaving the app.' },
 ]
 
 /* ------------------------------------------------------------------ film */
@@ -156,13 +162,13 @@ function Film({ running }) {
         <div className="film-frame">
           <video
             ref={video}
-            src="/media/film-405.mp4"
-            poster="/media/film-405-poster.jpg"
+            src="/media/film-506.mp4"
+            poster="/media/film-506-poster.jpg"
             muted
             loop
             playsInline
             preload="metadata"
-            aria-label="Exhale 1.0.405: the player flying out of the dock, the dock folding as the page scrolls, lyrics lighting a word at a time, and horizontal lyrics."
+            aria-label="The Exhale 1.0.506 promo film."
           />
           <button type="button" className="film-watch" onClick={watch}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" /></svg>
