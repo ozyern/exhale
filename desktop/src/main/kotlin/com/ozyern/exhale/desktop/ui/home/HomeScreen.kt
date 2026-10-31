@@ -317,6 +317,7 @@ fun HomeScreen(
     val history by DesktopPrefs.history.collectAsState()
     val artists by DesktopPrefs.artists.collectAsState()
     val account by AccountSession.account.collectAsState()
+    val expired by AccountSession.expired.collectAsState()
     val listState = rememberLazyListState()
     BenchList(listState, home = true)
     LaunchedEffect(listState) {
@@ -413,6 +414,9 @@ fun HomeScreen(
                             transformOrigin = TransformOrigin(0f, 1f)
                         },
                 )
+            }
+            if (expired) item(key = "sign_in_expired") {
+                SignInExpiredNotice(onSignIn, Modifier.padding(start = start, end = 40.dp, top = 12.dp, bottom = 8.dp))
             }
             if (!sidebar) item(key = "subtitle") {
                 Text(
@@ -955,6 +959,27 @@ fun ShelfPlaceholder(rowPadding: PaddingValues, start: Dp) {
                 }
             }
         }
+    }
+}
+
+/** Shown once YouTube has turned the saved session away, so signing out on its own isn't a surprise. */
+@Composable
+private fun SignInExpiredNotice(onSignIn: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+            .padding(start = 18.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "Your YouTube sign-in expired, so Exhale is playing signed out.",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(12.dp))
+        FilledTonalButton(onClick = onSignIn) { Text("Sign in again") }
     }
 }
 

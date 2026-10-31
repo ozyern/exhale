@@ -134,6 +134,11 @@ object BrowserSignIn {
                     // The debugging port makes Chromium report navigator.webdriver = true, which is what
                     // Google reads as an automated browser and answers with "this app may not be secure".
                     "--disable-blink-features=AutomationControlled",
+                    // Chrome on Windows binds a Google session to a key that never leaves this profile,
+                    // and keeps it alive by re-signing with it every few minutes. The profile is deleted
+                    // the moment the cookies are read, so a bound session dies soon after — by the next
+                    // launch Exhale was sending a cookie YouTube had already dropped. Unbound, it lasts.
+                    "--disable-features=EnableBoundSessionCredentials,DeviceBoundSessions",
                     "--no-first-run",
                     "--no-default-browser-check",
                     "--disable-sync",

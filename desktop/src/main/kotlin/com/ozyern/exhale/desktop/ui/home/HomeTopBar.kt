@@ -189,6 +189,7 @@ private class BelowAnchorEnd(private val gap: Int) : PopupPositionProvider {
 @Composable
 private fun AccountMenu(onOpenSettings: () -> Unit, onOpenSoundChem: () -> Unit, onSignIn: () -> Unit, onSignOut: () -> Unit) {
     val account by AccountSession.account.collectAsState()
+    val expired by AccountSession.expired.collectAsState()
     val signedIn = account != null || AccountSession.isSignedIn
     val scheme = MaterialTheme.colorScheme
     val appear = remember { Animatable(0f) }
@@ -260,9 +261,17 @@ private fun AccountMenu(onOpenSettings: () -> Unit, onOpenSoundChem: () -> Unit,
                         Icon(NavIcons.Artists, contentDescription = null, tint = scheme.primary, modifier = Modifier.size(28.dp))
                     }
                     Spacer(Modifier.height(12.dp))
-                    Text("You're not signed in", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(
-                        "Sign in for your library, your likes and a Home built from your account instead of your location.",
+                        if (expired) "Your sign-in expired" else "You're not signed in",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        if (expired) {
+                            "YouTube ended the session Exhale had saved, so it's playing signed out. Sign in again for your library and likes."
+                        } else {
+                            "Sign in for your library, your likes and a Home built from your account instead of your location."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = scheme.onSurfaceVariant,
                     )

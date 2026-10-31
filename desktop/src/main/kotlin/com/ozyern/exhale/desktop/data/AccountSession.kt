@@ -7,6 +7,8 @@
 package com.ozyern.exhale.desktop.data
 
 import com.ozyern.exhale.innertube.YouTube
+import com.ozyern.exhale.innertube.models.AccountInfo
+import io.ktor.client.plugins.ClientRequestException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,8 +29,36 @@ object AccountSession {
     val isSignedIn: Boolean
         get() = DesktopPrefs.cookie?.contains("SAPISID") == true
 
+    private val _expired = MutableStateFlow(false)
+
+    /** True once YouTube has turned the saved session away; cleared by the next sign-in. */
+    val expired: StateFlow<Boolean> = _expired.asStateFlow()
+
     /** Set by the sign-in browser so signing out also forgets the browser's own cookies. */
     var clearBrowserCookies: (() -> Unit)? = null
+
+    /**
+     * Asks YouTube whether the saved session still stands, before anything is loaded with it.
+     *
+     * Google can end a session Exhale saved — a password change, a sign-out elsewhere, or a session
+     * bound to the browser that captured it. Sent anyway, the dead cookie fails every request, Home
+     * included, and the whole app reads as offline. So a session YouTube rejects is dropped here and
+     * the app carries on signed out. A failure to reach YouTube at all proves nothing and keeps it.
+     */
+    suspend fun verifySaved() {
+        if (!isSignedIn) return
+        withContext(Dispatchers.IO) { YouTube.accountInfo() }
+            .onSuccess(::storeAccount)
+            .onFailure { if (it.meansSignedOut()) expire() }
+    }
+
+    private fun Throwable.meansSignedOut(): Boolean =
+        this is IllegalStateException || (this is ClientRequestException && response.status.value in 401..403)
+
+    private fun expire() {
+        signOut()
+        _expired.value = true
+    }
 
     fun applySaved() {
         YouTube.cookie = DesktopPrefs.cookie
@@ -45,19 +75,22 @@ object AccountSession {
             DesktopPrefs.visitorDataLocale = "${YouTube.locale.hl}|${YouTube.locale.gl}"
             YouTube.visitorData = it
         }
+        _expired.value = false
         applySaved()
         refreshAccountInfo()
     }
 
     suspend fun refreshAccountInfo() {
         if (!isSignedIn) return
-        withContext(Dispatchers.IO) { YouTube.accountInfo() }.onSuccess { info ->
-            DesktopPrefs.accountName = info.name
-            DesktopPrefs.accountEmail = info.email
-            DesktopPrefs.accountHandle = info.channelHandle
-            DesktopPrefs.accountAvatar = info.thumbnailUrl
-            _account.value = YouTubeAccount(info.name, info.email, info.channelHandle, info.thumbnailUrl)
-        }
+        withContext(Dispatchers.IO) { YouTube.accountInfo() }.onSuccess(::storeAccount)
+    }
+
+    private fun storeAccount(info: AccountInfo) {
+        DesktopPrefs.accountName = info.name
+        DesktopPrefs.accountEmail = info.email
+        DesktopPrefs.accountHandle = info.channelHandle
+        DesktopPrefs.accountAvatar = info.thumbnailUrl
+        _account.value = YouTubeAccount(info.name, info.email, info.channelHandle, info.thumbnailUrl)
     }
 
     fun setUseAccountForHome(enabled: Boolean) {

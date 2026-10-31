@@ -300,8 +300,10 @@ fun ExhaleApp(player: DesktopPlayer) {
     }
 
     LaunchedEffect(Unit) {
+        // The saved session is checked before Home asks for anything with it: a dead one would fail
+        // the whole page.
+        AccountSession.verifySaved()
         if (DesktopPrefs.onboardingCompleted) reloadHome(force = false)
-        AccountSession.refreshAccountInfo()
     }
 
     if (signingIn) {
