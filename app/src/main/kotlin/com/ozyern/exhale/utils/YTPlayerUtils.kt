@@ -141,6 +141,27 @@ object YTPlayerUtils {
     /** The client whose stream last validated, tried first next time: the network's answer rarely changes song to song. */
     @Volatile private var lastWorkingClient: YouTubeClient? = null
 
+    /**
+     * Clients that can't serve this network and session right now: asking for a sign-in, offering no
+     * audio, failing to decipher, or handing out URLs that refuse. Which ones is decided by the network,
+     * not the song, and asking every one of them again for every song came to about 13 player requests a
+     * song from one address, which is what earns a bot check. They sit out a while; when nobody left
+     * has a stream, they are all asked again before the song is given up on.
+     */
+    private val deadClientsUntil = ConcurrentHashMap<String, Long>()
+    private const val DEAD_CLIENT_MS = 10 * 60 * 1000L
+
+    private fun deadKey(client: YouTubeClient, isLoggedIn: Boolean) =
+        "${client.clientName}@${client.clientVersion}|$isLoggedIn"
+
+    private fun isClientDead(client: YouTubeClient, isLoggedIn: Boolean): Boolean {
+        val key = deadKey(client, isLoggedIn)
+        val until = deadClientsUntil[key] ?: return false
+        if (until > System.currentTimeMillis()) return true
+        deadClientsUntil.remove(key)
+        return false
+    }
+
     private fun failedEverywhere(clientKey: String): Boolean {
         val key = normalizeStreamClientKey(clientKey)
         val until = failedClientsEverywhereUntil[key] ?: return false
@@ -419,6 +440,8 @@ object YTPlayerUtils {
         networkMetered: Boolean?,
         avoidCodecs: Set<String>,
         preferredCodec: AudioCodec,
+        /** The second pass, when no client still in the running had a stream. See [deadClientsUntil]. */
+        includeDeadClients: Boolean = false,
     ): PlaybackData {
         Timber.tag(logTag).i("Fetching player response for videoId: $videoId, playlistId: $playlistId")
         val signatureTimestamp = getSignatureTimestampOrNull(videoId)
@@ -453,7 +476,9 @@ object YTPlayerUtils {
                 }
 
             val metadataClient =
-                preferredYouTubeClient.takeIf { preferredStreamClient == PlayerStreamClient.ANDROID_VR } ?: MAIN_CLIENT
+                preferredYouTubeClient
+                    .takeIf { preferredStreamClient == PlayerStreamClient.ANDROID_VR && !isClientDead(it, isLoggedIn) }
+                    ?: MAIN_CLIENT
 
             Timber.tag(logTag).i("Fetching metadata response using client: ${metadataClient.clientName}")
             // Started, not awaited: it answers a different question from the stream clients (loudness,
@@ -466,7 +491,7 @@ object YTPlayerUtils {
                     YouTube.player(videoId, playlistId, metadataClient, signatureTimestamp).getOrNull()
                 }
 
-            val streamClientsInOrder =
+            val everyClient =
                 buildList {
                     add(preferredYouTubeClient)
                     lastWorkingClient?.let(::add)
@@ -475,6 +500,8 @@ object YTPlayerUtils {
                 }.distinct()
                     // Stable: within each half the order above stands.
                     .sortedBy { if (failedEverywhere(it.clientName)) 1 else 0 }
+            val streamClientsInOrder =
+                if (includeDeadClients) everyClient else everyClient.filterNot { isClientDead(it, isLoggedIn) }
 
             // In MAX mode we do not accept the first client that merely works — see
             // [MAX_MODE_TARGET_BITRATE_BPS]. This holds the best validated result seen so far
@@ -749,6 +776,23 @@ object YTPlayerUtils {
                 }
             }
 
+            // Nobody still in the running had a stream: before giving up, the ones sitting out get
+            // their say. A client's verdict can be about one song, or a network blip that has passed.
+            if (format == null && !includeDeadClients && streamClientsInOrder.size < everyClient.size) {
+                metadataRequest.cancel()
+                return@coroutineScope playerResponseForPlaybackOnce(
+                    videoId = videoId,
+                    playlistId = playlistId,
+                    audioQuality = audioQuality,
+                    connectivityManager = connectivityManager,
+                    preferredStreamClient = preferredStreamClient,
+                    networkMetered = networkMetered,
+                    avoidCodecs = avoidCodecs,
+                    preferredCodec = preferredCodec,
+                    includeDeadClients = true,
+                )
+            }
+
             if (streamPlayerResponse == null) {
                 gateFailure?.let { failure ->
                     Timber.tag(logTag).w(
@@ -837,6 +881,32 @@ object YTPlayerUtils {
      * unchanged whether this runs lazily or for all of them at once.
      */
     private suspend fun attemptClient(
+        client: YouTubeClient,
+        metadataClient: YouTubeClient,
+        metadataRequest: Deferred<PlayerResponse?>,
+        videoId: String,
+        playlistId: String?,
+        signatureTimestamp: Int?,
+        audioQuality: AudioQuality,
+        isMetered: Boolean,
+        isLoggedIn: Boolean,
+        avoidCodecs: Set<String>,
+        preferredCodec: AudioCodec,
+    ): ClientAttempt {
+        val attempt = askClient(
+            client, metadataClient, metadataRequest, videoId, playlistId, signatureTimestamp,
+            audioQuality, isMetered, isLoggedIn, avoidCodecs, preferredCodec,
+        )
+        val key = deadKey(client, isLoggedIn)
+        if (attempt.valid) {
+            deadClientsUntil.remove(key)
+        } else {
+            deadClientsUntil[key] = System.currentTimeMillis() + DEAD_CLIENT_MS
+        }
+        return attempt
+    }
+
+    private suspend fun askClient(
         client: YouTubeClient,
         metadataClient: YouTubeClient,
         metadataRequest: Deferred<PlayerResponse?>,

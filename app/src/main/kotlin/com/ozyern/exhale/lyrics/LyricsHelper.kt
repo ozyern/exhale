@@ -133,7 +133,13 @@ constructor(
                 // `withTimeoutOrNull`, a race still waiting out its grace for a better-timed source
                 // when the 20 s ran out threw away the answer it already had, and the song was saved
                 // as having no lyrics — while asking that same source by hand found them.
-                pickBest(jobs, preferWord, deadline = SystemClock.elapsedRealtime() + OVERALL_TIMEOUT_MS)
+                pickBest(
+                    jobs,
+                    preferWord,
+                    deadline = SystemClock.elapsedRealtime() + OVERALL_TIMEOUT_MS,
+                    title = SongQuery.cleanTitle(mediaMetadata.title),
+                    autoTranscribed = providers.map { it === YouTubeSubtitleLyricsProvider },
+                )
             } finally {
                 jobs.forEach { it.cancel() }
                 recording.cancel()
@@ -162,13 +168,12 @@ constructor(
     private val videoWords = Regex("""(?i)(official\s+(music\s+)?video|music\s+video|\bm/?v\b|visuali[sz]er|lyric\s+video|performance\s+video|\(video\)|\[video\])""")
 
     // A video is often titled just like the song ("drop dead"), so the title alone missed most of
-    // them and their lyrics ran early by the length of the intro. YouTube's own flag, and the
-    // absence of an album — a music video never has one — catch the rest; [videoLyrics] still
-    // checks against the catalogue song before moving anything.
+    // them and their lyrics ran early by the length of the intro; YouTube's own flag catches the
+    // rest. A missing album is not evidence: a plain song in a radio can arrive without one, and
+    // its correctly timed lyrics were then replaced by another release's, moved by a measurement.
     private fun looksLikeVideo(meta: MediaMetadata): Boolean =
         videoWords.containsMatchIn(meta.title) ||
             meta.id in com.ozyern.exhale.extensions.KnownMusicVideos ||
-            meta.album == null ||
             meta.artists.any { it.name.endsWith("VEVO", ignoreCase = true) }
 
     private suspend fun videoLyrics(meta: MediaMetadata): String? {
@@ -201,6 +206,7 @@ constructor(
                 val late = aligning.await() ?: return@launch
                 if (late == 0L) return@launch
                 val shifted = LyricsShift.shift(text, late)
+                if (!LyricsFit.fits(shifted, meta.duration)) return@launch
                 val shown = Uncensor.restore(shifted) ?: shifted
                 cache.put(meta.id, listOf(LyricsResult(PREFETCH_PROVIDER_NAME, shifted)))
                 GlobalLog.append(Log.DEBUG, "LyricsHelper", "Video ${meta.id} → song ${song.id}, lyrics moved ${late}ms (late)")
@@ -209,7 +215,8 @@ constructor(
         }
         val offset = timely ?: 0L
         GlobalLog.append(Log.DEBUG, "LyricsHelper", "Video ${meta.id} → song ${song.id}, lyrics moved ${offset}ms")
-        return LyricsShift.shift(text, offset)
+        // A measurement that pushes the lyrics out of the video's own length was a wrong one.
+        return LyricsShift.shift(text, offset).takeIf { LyricsFit.fits(it, meta.duration) }
     }
 
     /** The catalogue song a video is of: same title and artist, length within the video's. */
@@ -403,6 +410,10 @@ constructor(
                         GlobalLog.append(Log.DEBUG, "LyricsHelper", "${provider.name}: timing does not fit ${mediaMetadata.title} (${mediaMetadata.duration}s); passed over")
                         continue
                     }
+                    if (!provesItself(provider, lyrics, mediaMetadata.title)) {
+                        GlobalLog.append(Log.DEBUG, "LyricsHelper", "${provider.name}: answer is not ${mediaMetadata.title}; passed over")
+                        continue
+                    }
                     return lyrics
                 }
                 // A source that simply doesn't have the song is not an error worth reporting.
@@ -414,6 +425,19 @@ constructor(
             }
         }
         return null
+    }
+
+    /**
+     * Credits alone are never lyrics. KuGou, BetterLyrics' line-timed answers (which are KuGou's passed
+     * on) and YouTube's transcript answer searches they did not really match, so those also have to
+     * sound like the song asked for.
+     */
+    private fun provesItself(provider: LyricsProvider, lyrics: String, rawTitle: String): Boolean {
+        val lines = runCatching { LyricsWords.linesOf(lyrics) }.getOrNull() ?: return true
+        if (!LyricsJudge.isSong(lines)) return false
+        val loose = provider === KuGouLyricsProvider || provider === YouTubeSubtitleLyricsProvider ||
+            (provider === BetterLyricsProvider && syncLevel(lyrics) != 0)
+        return !loose || LyricsJudge.soundsLikeTitle(lines.joinToString(" "), SongQuery.cleanTitle(rawTitle))
     }
 
     /**
@@ -432,6 +456,9 @@ constructor(
         preferWord: Boolean,
         /** When to settle for the best answer in hand, whatever is still running. */
         deadline: Long = Long.MAX_VALUE,
+        title: String,
+        /** Per source: its timing and words are a machine's guess, so it ranks behind even plain text. */
+        autoTranscribed: List<Boolean>,
     ): Pair<Int, String>? {
         val n = jobs.size
         if (n == 0) return null
@@ -439,17 +466,29 @@ constructor(
         val done = BooleanArray(n)
         var graceDeadline = Long.MAX_VALUE
         var firstAnswerAt = Long.MAX_VALUE
+        val spoken = HashMap<Int, String>()
+        val vocabularies = HashMap<Int, Set<String>>()
+        var agreeing = emptySet<Int>()
         fun rank(i: Int): Int {
-            val level = syncLevel(results[i]!!)
-            // A source that masked its words ranks behind every one that didn't.
+            val level = if (autoTranscribed[i]) 3 else syncLevel(results[i]!!)
+            // In order of weight: an answer nobody backs up, one that never says the song's name, one
+            // that masked its words. Each ranks behind every answer free of it, however it is timed.
+            val contradicted = if (agreeing.isNotEmpty() && i !in agreeing) 12 * n * n else 0
+            val nameless = if (!LyricsJudge.echoesTitle(spoken.getValue(i), title)) 6 * n * n else 0
             val censored = if (Uncensor.isCensored(results[i])) 3 * n * n else 0
-            return censored + when {
+            return contradicted + nameless + censored + when {
                 preferWord -> level * n + i
                 level <= 1 -> i
-                else -> n + i
+                else -> (level - 1) * n + i
             }
         }
         while (true) {
+            (0 until n).filter { results[it] != null && it !in spoken }.forEach { i ->
+                val text = runCatching { LyricsWords.linesOf(results[i]!!).joinToString(" ") }.getOrDefault(results[i]!!)
+                spoken[i] = text
+                vocabularies[i] = LyricsJudge.vocabulary(text)
+                agreeing = LyricsJudge.agreeing(vocabularies)
+            }
             val best = (0 until n).filter { results[it] != null }.minByOrNull(::rank)
             // The best any unfinished source could still do is word-timed at its own place.
             val couldBeat = (0 until n).any { j -> !done[j] && (best == null || j < rank(best)) }

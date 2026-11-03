@@ -91,7 +91,8 @@ object SimpMusicLyrics {
                 }
 
             val lyrics =
-                bestMatch?.syncedLyrics ?: bestMatch?.plainLyrics
+                bestMatch?.richSyncLyrics?.takeIf { it.isNotBlank() }
+                    ?: bestMatch?.syncedLyrics ?: bestMatch?.plainLyrics
                 ?: throw IllegalStateException("Lyrics unavailable")
 
             lyrics

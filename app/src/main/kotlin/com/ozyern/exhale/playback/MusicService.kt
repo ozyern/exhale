@@ -426,6 +426,10 @@ class MusicService :
     /** The album or playlist the queue is playing, for per-collection settings; null for anything else. */
     val queueSourceId = MutableStateFlow<String?>(null)
 
+    /** Set once anything starts a queue, so the saved one's restore doesn't land on top of it. */
+    @Volatile
+    private var queueStartedSinceLaunch = false
+
     private var currentQueue: Queue = EmptyQueue
         set(value) {
             field = value
@@ -1058,7 +1062,10 @@ class MusicService :
                             val better = lyricsHelper.getLyrics(mediaMetadata, trackLookup = false, skipCache = true)
                             if (better != com.ozyern.exhale.db.entities.LyricsEntity.LYRICS_NOT_FOUND && (
                                     !com.ozyern.exhale.lyrics.LyricsWords.sameWords(cached.lyrics, better) ||
-                                        (preferWord && !lyricsHelper.isWordSynced(cached.lyrics) && lyricsHelper.isWordSynced(better))
+                                        (preferWord && !lyricsHelper.isWordSynced(cached.lyrics) && lyricsHelper.isWordSynced(better)) ||
+                                        // The right words on the wrong clock: saved once, it stayed off for good.
+                                        (com.ozyern.exhale.lyrics.LyricsWords.timingDriftMs(cached.lyrics, better)
+                                            ?.let { kotlin.math.abs(it) >= SAVED_LYRICS_DRIFT_MS } == true)
                                     )
                             ) {
                                 database.query { upsert(LyricsEntity(id = mediaMetadata.id, lyrics = better)) }
@@ -1609,7 +1616,9 @@ class MusicService :
                         player.shuffleModeEnabled = playerState.shuffleModeEnabled
                         playerVolume.value = playerState.volume
                         
-                        if (player.mediaItemCount > 0) {
+                        // Not over a queue started in the meantime: a song opened from a link took
+                        // the old song's position and began a minute in.
+                        if (player.mediaItemCount > 0 && !queueStartedSinceLaunch) {
                             val index =
                                 if (playerState.currentMediaItemIndex in 0 until player.mediaItemCount) {
                                     playerState.currentMediaItemIndex
@@ -1669,6 +1678,8 @@ class MusicService :
                 .filterVideo(hideVideo)
 
         withContext(Dispatchers.Main) {
+            // Looking the saved queue up takes a moment; a queue started during it stays.
+            if (queueStartedSinceLaunch) return@withContext
             currentQueue = restoredQueue
             queueTitle = initialStatus.title
 
@@ -2770,6 +2781,7 @@ class MusicService :
             ensureStartedAsForeground()
         }
         ensureScopesActive()
+        queueStartedSinceLaunch = true
         suppressAutoPlayback = false
         currentQueue = queue
         queueTitle = null
@@ -2963,6 +2975,16 @@ class MusicService :
         }
     }
 
+    /** Tops the queue up with suggestions: none already in it, and spaced like a radio. */
+    private fun appendSuggestions(suggestions: List<MediaItem>) {
+        val queued = (0 until player.mediaItemCount).map { player.getMediaItemAt(it) }
+        val shaper = com.ozyern.exhale.playback.queues.mediaItemRadioShaper().apply { keep(queued) }
+        val added = shaper.shape(suggestions).map { it.withQueueTier(QueueTier.AUTOPLAY) }
+        if (added.isEmpty()) return
+        player.addMediaItems(added)
+        added.forEach { autoAddedMediaIds.add(it.mediaId) }
+    }
+
     fun addToQueueAutomix(
         item: MediaItem,
         position: Int,
@@ -3097,6 +3119,15 @@ class MusicService :
                             automixError.value = getString(R.string.error_no_similar_songs)
                         }
                         automixLoading.value = false
+                        // The queue is running out now, not at the next song change: on a one-song
+                        // queue (a shared link) that change never came, so Next had nowhere to go.
+                        if (!suppressAutoPlayback && player.playbackState != STATE_IDLE &&
+                            player.mediaItemCount - player.currentMediaItemIndex <= 3 &&
+                            !currentQueue.hasNextPage()
+                        ) {
+                            appendSuggestions(pool)
+                            automixItems.value = emptyList()
+                        }
                     }
                     .onFailure { throwable ->
                         if (automixSeedMediaId == seedMediaId) {
@@ -5038,7 +5069,10 @@ class MusicService :
                 // A different queue started while this page was loading: it isn't this one's.
                 if (pagedQueue !== currentQueue) return@launch
                 if (player.playbackState != STATE_IDLE) {
-                    player.addMediaItems(mediaItems.drop(1))
+                    // Whatever is already queued, and nothing else: a page's first song is a new one,
+                    // and dropping it unseen lost a song from every page.
+                    val queued = (0 until player.mediaItemCount).mapTo(HashSet()) { player.getMediaItemAt(it).mediaId }
+                    player.addMediaItems(mediaItems.filterNot { it.mediaId in queued })
                 } else {
                     scope.launch { discordRpc?.stopActivity() }
                 }
@@ -5073,12 +5107,7 @@ class MusicService :
                 }
             if (existingAutomix.isNotEmpty()) {
                 if (player.playbackState == STATE_IDLE) return@launch
-                val filteredAutomix = existingAutomix.filter { it.mediaId !in queueIds }
-                    .map { it.withQueueTier(QueueTier.AUTOPLAY) }
-                if (filteredAutomix.isNotEmpty()) {
-                    player.addMediaItems(filteredAutomix)
-                    filteredAutomix.forEach { autoAddedMediaIds.add(it.mediaId) }
-                }
+                appendSuggestions(existingAutomix)
                 clearAutomix()
             } else {
                 if (currentMediaMetadata != null) {
@@ -5543,6 +5572,17 @@ class MusicService :
         val currentMediaId = player.currentMediaItem?.mediaId
         val httpStatusCode = error.httpStatusCodeOrNull()
 
+        // JioSaavn is an upgrade, never a dependency. Every recovery below renews YouTube's URL, which
+        // this song isn't using: each retry went back to the same failing JioSaavn file, and the song
+        // was skipped while YouTube could have played it.
+        if (currentMediaId != null && streamSource[currentMediaId].let { it != null && it != YOUTUBE_SOURCE }) {
+            Timber.tag("JioSaavn").w("%s failed from JioSaavn (code=%d); falling back to YouTube", currentMediaId, error.errorCode)
+            streamSource[currentMediaId] = YOUTUBE_SOURCE
+            player.prepare()
+            player.playWhenReady = true
+            return
+        }
+
         if (currentMediaId != null && YTPlayerUtils.isBotDetectionException(error)) {
             if (markAndCheckRecoveryAllowance(currentMediaId)) {
                 Timber.tag("MusicService").w(
@@ -5551,8 +5591,7 @@ class MusicService :
                 YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
                 playbackUrlCache.remove(currentMediaId)
                 pendingStreamRefreshValidationMediaId = currentMediaId
-                player.prepare()
-                player.playWhenReady = true
+                retryAfterPause(currentMediaId)
                 return
             }
         }
@@ -5635,8 +5674,7 @@ class MusicService :
             Timber.tag("MusicService").w(
                 "Transient IO error for $currentMediaId (code=${error.errorCode}) — resuming at ${player.currentPosition}ms",
             )
-            player.prepare()
-            player.playWhenReady = true
+            retryAfterPause(currentMediaId)
             return
         }
 
@@ -5676,6 +5714,21 @@ class MusicService :
             skipOnError()
         } else {
             stopOnError()
+        }
+    }
+
+    /**
+     * Retries [mediaId] after a moment. Retried at once, a blip of a few seconds used up a song's
+     * retries within a second, then the next song's, and ended the queue on "Several songs in a row
+     * couldn't play". Dropped if something else is playing by then.
+     */
+    private fun retryAfterPause(mediaId: String) {
+        val attempt = streamRecoveryState[mediaId]?.first ?: 1
+        scope.launch {
+            delay(if (attempt <= 1) FIRST_RETRY_DELAY_MS else SECOND_RETRY_DELAY_MS)
+            if (player.currentMediaItem?.mediaId != mediaId) return@launch
+            player.prepare()
+            player.playWhenReady = true
         }
     }
 
@@ -7340,6 +7393,13 @@ class MusicService :
         const val PERSISTENT_PLAYER_STATE_FILE = "persistent_player_state.data"
         /** Failures in a row, with nothing playing between them, before playback stops and says so. */
         const val MAX_CONSECUTIVE_ERR = 4
+
+        /** A saved copy this far off a fresh lookup is replaced. Sources of one recording sit well inside it. */
+        private const val SAVED_LYRICS_DRIFT_MS = 400L
+
+        /** The waits before a song's first and second retry after a failure that may pass on its own. */
+        private const val FIRST_RETRY_DELAY_MS = 1_000L
+        private const val SECOND_RETRY_DELAY_MS = 3_000L
 
         /**
          * The longest a song may wait for its stream to be found. Past this it is an error like any
