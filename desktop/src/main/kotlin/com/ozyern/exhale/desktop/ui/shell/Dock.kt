@@ -117,6 +117,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import com.ozyern.exhale.desktop.ui.typingField
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -742,10 +743,10 @@ private fun DockSearchField(
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focus)
+                    // While this holds focus, Space is a space — not play/pause.
+                    .typingField()
                     .onFocusChanged {
                         focused = it.isFocused
-                        // While this holds focus, Space is a space — not play/pause.
-                        AppShortcuts.setTyping(it.isFocused)
                         if (it.isFocused) onFocused()
                     }
                     .onPreviewKeyEvent {

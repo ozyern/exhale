@@ -155,9 +155,16 @@ object StreamResolver {
         return false
     }
 
-    private fun markDead(client: YouTubeClient) {
-        deadUntil[deadKey(client)] = System.currentTimeMillis() + DeadForMs
+    private fun markDead(client: YouTubeClient, forMs: Long = DeadForMs) {
+        deadUntil[deadKey(client)] = System.currentTimeMillis() + forMs
     }
+
+    /**
+     * A bot check can fall on one song and not the next, so it only sits a client out briefly. Benched
+     * for the full ten minutes, one refused song took the clients that work down with it, and every song
+     * after it failed without YouTube even being asked.
+     */
+    private const val BotCheckedForMs = 45_000L
 
     /** "Sign in to confirm you're not a bot": a verdict on this network, not on this song. */
     private fun isBotCheck(reason: String?): Boolean = reason != null && BotCheck.containsMatchIn(reason)
@@ -239,7 +246,10 @@ object StreamResolver {
                 if (status != "OK") {
                     val reason = response.playabilityStatus.reason.orEmpty()
                     failures += "$name: $status $reason"
-                    if (status == "LOGIN_REQUIRED" || isBotCheck(reason)) markDead(client)
+                    when {
+                        isBotCheck(reason) -> if (client != proven) markDead(client, BotCheckedForMs)
+                        status == "LOGIN_REQUIRED" -> markDead(client)
+                    }
                     return null
                 }
 
@@ -275,7 +285,8 @@ object StreamResolver {
                 .plus(clients)
                 .distinct()
                 .filter { !it.loginRequired || isLoggedIn }
-            val rested = everyClient.filter { !isDead(it) || it == lastWorkingClient }
+            // The clients known to work are always asked, so a song is never failed without asking anyone.
+            val rested = everyClient.filter { !isDead(it) || it == lastWorkingClient || it == proven }
 
             val lookingForLossless = System.currentTimeMillis() >= noLosslessUntil
             var settled: ResolvedStream? = null

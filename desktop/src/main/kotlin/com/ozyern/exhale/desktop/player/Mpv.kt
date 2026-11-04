@@ -172,11 +172,10 @@ class Mpv(private val listener: Listener, windowId: Long? = null, extraOptions: 
 
     fun load(url: String, headers: StreamHeaders, startSeconds: Double? = null, lossless: Boolean = false) {
         setStart(startSeconds)
-        // By default mpv starts at the first packet and, once it runs dry, resumes after a single second
-        // in hand. A FLAC stream arrives close to the speed it plays, so that is a stutter every few
-        // seconds. Holding out for a real cushion turns it into one short wait, or none at all.
+        // A short cushion, so the song starts as soon as it reasonably can. Most connections never touch
+        // it again. One that runs dry gets a bigger one each time: see DesktopPlayer.onBuffering.
         lib.mpv_set_property_string(ctx, "cache-pause-initial", "yes")
-        lib.mpv_set_property_string(ctx, "cache-pause-wait", if (lossless) "8" else "3")
+        lib.mpv_set_property_string(ctx, "cache-pause-wait", StartingCushionSeconds.toString())
         // A lossless file can be seeked by asking again, unlike YouTube's in-order streams, so it stays
         // in memory rather than writing tens of megabytes to the temp folder while it plays.
         lib.mpv_set_property_string(ctx, "cache-on-disk", if (lossless) "no" else "yes")
@@ -348,6 +347,9 @@ class Mpv(private val listener: Listener, windowId: Long? = null, extraOptions: 
     internal companion object {
         /** How often a playing song's position is read: often enough for progress, fades and the lyrics clock to steer by. */
         const val PositionPollSeconds = 0.2
+
+        /** Seconds of music in hand before a song starts. Holding out for eight made FLAC take ages to load. */
+        const val StartingCushionSeconds = 1.5
 
         const val FORMAT_FLAG = 3
         const val FORMAT_DOUBLE = 5

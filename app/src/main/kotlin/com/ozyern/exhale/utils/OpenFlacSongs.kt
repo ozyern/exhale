@@ -23,7 +23,12 @@ object OpenFlacSongs {
     fun isFlacId(id: String): Boolean = id.startsWith(Prefix)
 
     /** The FLAC file a song id stands for, or null if [id] isn't one. */
-    fun uriFor(id: String): Uri? = if (isFlacId(id)) Uri.parse(id.removePrefix(Prefix)) else null
+    fun uriFor(id: String): Uri? = if (isFlacId(id)) Uri.parse(OpenFlac.fastUrl(id.removePrefix(Prefix))) else null
+
+    /** The direct server for this song didn't work out; the next try goes through the ordinary link. */
+    fun forgetServer(id: String) {
+        if (isFlacId(id)) OpenFlac.forgetServerFor(id.removePrefix(Prefix))
+    }
 
     fun metadataFor(track: OpenFlac.Track) = MediaMetadata(
         id = Prefix + track.url,

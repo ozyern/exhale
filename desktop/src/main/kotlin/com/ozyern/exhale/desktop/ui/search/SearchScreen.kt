@@ -110,6 +110,7 @@ import com.ozyern.exhale.desktop.data.MusicLinks
 import com.ozyern.exhale.desktop.player.DesktopPlayer
 import com.ozyern.exhale.desktop.ui.typingField
 import com.ozyern.exhale.desktop.player.PlayerState
+import com.ozyern.exhale.desktop.player.TrackMatch
 import com.ozyern.exhale.desktop.ui.EqualizerBars
 import com.ozyern.exhale.desktop.ui.ItemCard
 import com.ozyern.exhale.desktop.ui.NavIcons
@@ -151,6 +152,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+
+/**
+ * Whether what was typed is a song's title. Any three words look like a lyric, and Genius will always
+ * find them in somebody's song, so "last one standing" came back as Bom Diggy Diggy and Dynamite.
+ */
+internal fun queryNamesASong(query: String, titles: List<String>): Boolean {
+    val typed = TrackMatch.normalize(query)
+    if (typed.isEmpty()) return false
+    return titles.any { title -> " ${TrackMatch.normalize(title)} ".contains(" $typed ") }
+}
 
 /** YouTube Music's own result filters, plus All (its summary page). */
 enum class SearchTab(val label: String, val filter: YouTube.SearchFilter?) {
@@ -321,7 +332,8 @@ class SearchModel(private val scope: CoroutineScope) {
                     .onFailure { if (it is CancellationException) throw it else error = it.message ?: "Search failed" }
                 searching = false
                 val matches = fromLyrics?.await().orEmpty()
-                if (matches.isNotEmpty() && searchedQuery == q && tab == SearchTab.All) {
+                // Words that are a song's own title are that song, however much they read like a lyric.
+                if (matches.isNotEmpty() && searchedQuery == q && tab == SearchTab.All && !namesASong(summary, q)) {
                     val merged = withLyricMatches(summary, matches.map { it.song })
                     summaries[key] = merged
                     summary = merged
@@ -390,9 +402,14 @@ class SearchModel(private val scope: CoroutineScope) {
         return SearchSummaryPage(rebuilt.filter { it.items.isNotEmpty() })
     }
 
+    private fun namesASong(page: SearchSummaryPage?, q: String): Boolean =
+        queryNamesASong(q, page?.summaries.orEmpty().flatMap { it.items }.filterIsInstance<SongItem>().map { it.title })
+
     /**
      * The song the line came from takes the top spot, unless YouTube's top result already is one of
-     * them; the other matches sit in their own shelf, first, so they are seen before the rest.
+     * them; the other matches sit in their own shelf, first, so they are seen before the rest. What
+     * YouTube had on top stays on the page: its song was moved up there from the Songs list, so
+     * dropping the section lost the song the search had actually found.
      */
     private fun withLyricMatches(page: SearchSummaryPage?, songs: List<SongItem>): SearchSummaryPage {
         val summaries = page?.summaries.orEmpty()
@@ -400,9 +417,11 @@ class SearchModel(private val scope: CoroutineScope) {
         val topIsMatch = top?.items?.firstOrNull()?.id in songs.map { it.id }
         val lead = if (topIsMatch) top!! else SearchSummary("Top result", listOf(songs.first()))
         val others = songs.filterNot { it.id == lead.items.firstOrNull()?.id }
+        val displaced = top?.takeUnless { topIsMatch }?.let { SearchSummary("More results", it.items) }
         return SearchSummaryPage(
             listOf(lead) +
                 (if (others.isNotEmpty()) listOf(SearchSummary("From the lyrics", others)) else emptyList()) +
+                listOfNotNull(displaced) +
                 summaries.filterNot { it === top },
         )
     }

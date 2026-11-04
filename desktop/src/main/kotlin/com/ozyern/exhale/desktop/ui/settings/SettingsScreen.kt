@@ -151,6 +151,7 @@ import com.ozyern.exhale.desktop.data.Settings
 import com.ozyern.exhale.desktop.data.SystemShell
 import com.ozyern.exhale.desktop.data.UpdateChecker
 import com.ozyern.exhale.desktop.integrations.LastFmAuth
+import com.ozyern.exhale.desktop.ui.typingField
 import com.ozyern.exhale.desktop.integrations.ListenBrainz
 import com.ozyern.exhale.desktop.lyrics.LyricsRepository
 import com.ozyern.exhale.desktop.player.AudioOutputStatus
@@ -993,11 +994,9 @@ private fun SearchPill(query: String, focus: FocusRequester, onChange: (String) 
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focus)
-                    .onFocusChanged {
-                        focused = it.isFocused
-                        // Typing here is typing, not shortcuts.
-                        AppShortcuts.setTyping(it.isFocused)
-                    }
+                    // Typing here is typing, not shortcuts.
+                    .typingField()
+                    .onFocusChanged { focused = it.isFocused }
                     .onPreviewKeyEvent {
                         if (it.type == KeyEventType.KeyDown && it.key == Key.Escape) {
                             if (query.isNotEmpty()) onChange("") else focusManager.clearFocus()
@@ -1470,7 +1469,7 @@ private fun TextSettingRow(title: String, placeholder: String, value: String, ac
             placeholder = { Text(placeholder) },
             singleLine = true,
             visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).typingField(),
         )
         Spacer(Modifier.width(12.dp))
         FilledTonalButton(onClick = { onSave(text) }, enabled = text != value) { Text(action) }
@@ -2035,8 +2034,8 @@ private fun LastFmCard(s: Settings) {
     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Sign in to scrobble", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(username, { username = it }, label = { Text("Username") }, singleLine = true, modifier = Modifier.weight(1f))
-            OutlinedTextField(password, { password = it }, label = { Text("Password") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.weight(1f))
+            OutlinedTextField(username, { username = it }, label = { Text("Username") }, singleLine = true, modifier = Modifier.weight(1f).typingField())
+            OutlinedTextField(password, { password = it }, label = { Text("Password") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.weight(1f).typingField())
             Button(
                 onClick = {
                     busy = true

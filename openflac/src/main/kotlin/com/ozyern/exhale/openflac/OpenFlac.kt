@@ -194,6 +194,36 @@ object OpenFlac {
 
     // ---- Internet Archive ------------------------------------------------------------------------
 
+    private const val ArchiveDownload = "https://archive.org/download/"
+
+    /** Item → "https://<its server><its folder>", as its metadata named them. */
+    private val archiveServers = ConcurrentHashMap<String, String>()
+
+    /** Remembers where an item's files really are. Its metadata says, so this costs no request. */
+    fun noteArchiveServer(identifier: String, server: String?, dir: String?) {
+        if (server.isNullOrBlank() || dir.isNullOrBlank()) return
+        if (archiveServers.size > 500) archiveServers.clear()
+        archiveServers[identifier.encodeURLPathPart()] = "https://$server$dir"
+    }
+
+    /**
+     * The quickest address for a file. A download link goes through archive.org, which only answers with
+     * a redirect to the server holding it: another connection and handshake, over a second on a distant
+     * network, before any music moves. Asking the server directly skips all that. A song's id keeps
+     * the ordinary link, because servers change and a saved queue has to keep working.
+     */
+    fun fastUrl(url: String): String {
+        if (!url.startsWith(ArchiveDownload)) return url
+        val path = url.removePrefix(ArchiveDownload)
+        val server = archiveServers[path.substringBefore('/')] ?: return url
+        return server + "/" + path.substringAfter('/')
+    }
+
+    /** That server wouldn't play it: go back to asking archive.org where the file is. */
+    fun forgetServerFor(url: String) {
+        if (url.startsWith(ArchiveDownload)) archiveServers.remove(url.removePrefix(ArchiveDownload).substringBefore('/'))
+    }
+
     private suspend fun archiveShelf(title: String, query: String): Shelf? = runCatching {
         val url = "https://archive.org/advancedsearch.php?q=${query.encodeURLParameter()}" +
             "&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=creator&fl%5B%5D=date" +
@@ -217,6 +247,7 @@ object OpenFlac {
 
     private suspend fun archiveTracks(identifier: String): List<Track> {
         val root = getJson("https://archive.org/metadata/${identifier.encodeURLPathPart()}")
+        noteArchiveServer(identifier, root.text("server"), root.text("dir"))
         val metadata = root.obj("metadata")
         val creator = metadata?.text("creator") ?: "Various Artists"
         val album = metadata?.text("title")

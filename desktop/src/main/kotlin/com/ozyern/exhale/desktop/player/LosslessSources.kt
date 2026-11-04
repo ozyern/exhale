@@ -8,6 +8,7 @@ package com.ozyern.exhale.desktop.player
 
 import com.ozyern.exhale.desktop.data.DesktopPrefs
 import com.ozyern.exhale.innertube.models.SongItem
+import com.ozyern.exhale.openflac.OpenFlac
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -795,6 +796,7 @@ object LosslessLibrary {
     /** One archive item's lossless files, as tracks. */
     private fun archiveTracks(identifier: String, sourceName: String): List<LosslessTrack> {
         val json = getJson("https://archive.org/metadata/${encode(identifier)}")
+        OpenFlac.noteArchiveServer(identifier, json.optString("server"), json.optString("dir"))
         val metadata = json.optJSONObject("metadata")
         val creator = metadata?.opt("creator")?.let { if (it is JSONArray) it.optString(0) else it.toString() }?.takeIf { it.isNotBlank() }
         val itemTitle = metadata?.optString("title")?.takeIf { it.isNotBlank() }

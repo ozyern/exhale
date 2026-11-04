@@ -70,6 +70,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import com.ozyern.exhale.desktop.ui.typingField
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -398,7 +399,7 @@ private fun ArtistSearchField(query: String, onQueryChange: (String) -> Unit, on
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                modifier = Modifier.fillMaxWidth().onPreviewKeyEvent {
+                modifier = Modifier.fillMaxWidth().typingField().onPreviewKeyEvent {
                     if (it.key == Key.Enter && it.type == KeyEventType.KeyDown) {
                         onSearch()
                         true

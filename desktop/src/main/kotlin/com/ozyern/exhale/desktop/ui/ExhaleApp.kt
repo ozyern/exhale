@@ -82,7 +82,9 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.composed
 import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -170,20 +172,48 @@ object AppShortcuts {
      */
     @Volatile var plain: ((KeyEvent) -> Boolean)? = null
 
-    private val fieldsFocused = java.util.concurrent.atomic.AtomicInteger(0)
+    private val fieldsFocused = java.util.concurrent.ConcurrentHashMap.newKeySet<Any>()
 
     /** True while any text field has focus: what's typed there is text, never a shortcut. */
-    val typing: Boolean get() = fieldsFocused.get() > 0
+    val typing: Boolean get() = fieldsFocused.isNotEmpty()
 
     /**
-     * Called by every text field as focus comes and goes. Counted rather than set, because focus moving
-     * from one field to another arrives as the new field gaining before the old one loses.
+     * Called by every text field as focus comes and goes. Each field holds its own place, because focus
+     * moving between fields arrives as the new one gaining before the old one loses, and a field closed
+     * while focused is never told it lost focus: as a plain count, that left the app "typing" for good.
      */
-    fun setTyping(focused: Boolean) {
-        if (focused) fieldsFocused.incrementAndGet() else fieldsFocused.updateAndGet { (it - 1).coerceAtLeast(0) }
+    fun setTyping(field: Any, focused: Boolean) {
+        if (focused) fieldsFocused += field else fieldsFocused -= field
     }
 
-    fun dispatch(event: KeyEvent): Boolean = overlay?.invoke(event) == true || handler?.invoke(event) == true
+    /** Space pressed and not yet let go, so holding it down is one press and not a stutter of them. */
+    private var spaceHeld = false
+
+    /**
+     * Space is decided here, before anything on screen sees it. A button keeps focus after being clicked
+     * and takes Space as another click, so a press meant to pause used to press whatever was clicked
+     * last: the minimize button, a menu, a tab. The release is swallowed along with the press, because
+     * that is when a button acts. Alt+Space stays Windows' own window menu.
+     */
+    internal fun onSpace(pressed: Boolean, press: () -> Unit): Boolean {
+        if (typing) return false
+        if (!pressed) {
+            spaceHeld = false
+        } else if (!spaceHeld) {
+            spaceHeld = true
+            press()
+        }
+        return true
+    }
+
+    fun dispatch(event: KeyEvent): Boolean {
+        if (event.key == Key.Spacebar && !event.isAltPressed && !event.isCtrlPressed && !event.isMetaPressed &&
+            (event.type == KeyEventType.KeyDown || event.type == KeyEventType.KeyUp)
+        ) {
+            return onSpace(event.type == KeyEventType.KeyDown) { plain?.invoke(event) }
+        }
+        return overlay?.invoke(event) == true || handler?.invoke(event) == true
+    }
 
     fun dispatchPlain(event: KeyEvent): Boolean = !typing && plain?.invoke(event) == true
 }
@@ -192,7 +222,11 @@ object AppShortcuts {
  * Marks a text field: while it (or anything inside it) has focus, the app-wide plain-key shortcuts
  * stand down, so a space typed into a search box is a space rather than a pause.
  */
-fun Modifier.typingField(): Modifier = onFocusChanged { AppShortcuts.setTyping(it.hasFocus) }
+fun Modifier.typingField(): Modifier = composed {
+    val field = remember { Any() }
+    DisposableEffect(field) { onDispose { AppShortcuts.setTyping(field, false) } }
+    onFocusChanged { AppShortcuts.setTyping(field, it.hasFocus) }
+}
 
 /** The main window's state, so F11 and full-screen lyrics can take the whole screen. */
 val LocalWindowState = staticCompositionLocalOf<WindowState?> { null }

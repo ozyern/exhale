@@ -17,6 +17,7 @@ import com.ozyern.exhale.innertube.models.PlaylistItem
 import com.ozyern.exhale.innertube.models.SongItem
 import com.ozyern.exhale.innertube.models.WatchEndpoint
 import com.ozyern.exhale.innertube.models.YTItem
+import com.ozyern.exhale.openflac.OpenFlac
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -127,6 +128,9 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
 
     /** The stream playing is lossless at all: a FLAC-page song, a library copy, or YouTube's own FLAC. */
     @Volatile private var playingLossless = false
+
+    /** The address the stream playing was issued under, before any shortcut to its server. */
+    @Volatile private var playingOriginalUrl: String? = null
 
     /** Times this load has run dry since it started playing. */
     private var rebuffers = 0
@@ -397,6 +401,9 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         if (loadedSongId != song.id || _videoMode.value) return false
         stallJob?.cancel()
         val at = _position.value.takeIf { it > 1.0 }
+        // If a direct server was at fault, the next try asks archive.org where the file is.
+        OpenFlac.forgetServerFor(song.id.removePrefix("flac:"))
+        playingOriginalUrl?.let(OpenFlac::forgetServerFor)
         if (playingFromLibrary) {
             println("Exhale: lossless copy of ${song.id} dropped, playing YouTube's — $reason")
             LosslessLibrary.reject(song.id)
@@ -421,7 +428,13 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         stallJob?.cancel()
         if (!buffering) return
         val started = _position.value > 1.0
-        if (started) rebuffers++
+        if (started) {
+            rebuffers++
+            // This connection is slower than the music: more in hand before carrying on, each time it
+            // happens, trades many stutters for one wait. Only ever after it has actually run dry.
+            val cushion = (Mpv.StartingCushionSeconds * (1 shl rebuffers.coerceAtMost(4))).coerceAtMost(MaxCushionSeconds)
+            mpv.setProperty("cache-pause-wait", cushion.toString())
+        }
         // Running dry over and over: this connection can't carry this copy. YouTube's stream can.
         if (playingFromLibrary && rebuffers >= MaxRebuffers && recover("kept running out of stream")) return
         // The cushion a lossless stream asks for takes longer to fill before it counts as stuck.
@@ -584,7 +597,8 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
                     playingLossless = stream.lossless
                     LosslessLibrary.announce(song.id.takeIf { playingFromLibrary })
                     applyVolume()
-                    mpv.load(stream.url, stream.headers, startAt?.takeIf { it > 1.0 }, lossless = stream.lossless)
+                    playingOriginalUrl = stream.url
+                    mpv.load(OpenFlac.fastUrl(stream.url), stream.headers, startAt?.takeIf { it > 1.0 }, lossless = stream.lossless)
                     persistQueue()
                     prefetchNext(index)
                 }
@@ -1070,6 +1084,7 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         const val StallMs = 20_000L
         const val LosslessStallMs = 25_000L
         const val MaxRebuffers = 3
+        const val MaxCushionSeconds = 12.0
         const val MaxFailuresInARow = 4
         const val RetryNoStreamMs = 3_000L
     }

@@ -44,6 +44,19 @@ class OpenFlacTest {
     }
 
     @Test
+    fun archiveFilesGoStraightToTheirServerOnceItIsKnown() {
+        val link = "https://archive.org/download/some-item/disc%201/track.flac"
+        assertEquals(link, OpenFlac.fastUrl(link))
+        OpenFlac.noteArchiveServer("some-item", "ia800000.us.archive.org", "/17/items/some-item")
+        assertEquals("https://ia800000.us.archive.org/17/items/some-item/disc%201/track.flac", OpenFlac.fastUrl(link))
+        // Any other address is left alone.
+        assertEquals("https://example.com/a.flac", OpenFlac.fastUrl("https://example.com/a.flac"))
+        // A server that failed goes back to the ordinary link.
+        OpenFlac.forgetServerFor(link)
+        assertEquals(link, OpenFlac.fastUrl(link))
+    }
+
+    @Test
     fun lengths() {
         assertEquals(274, OpenFlac.parseLength("274.45"))
         assertEquals(274, OpenFlac.parseLength("4:34"))

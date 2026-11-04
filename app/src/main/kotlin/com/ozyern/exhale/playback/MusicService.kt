@@ -5555,6 +5555,7 @@ class MusicService :
 
     override fun onPlayerError(error: PlaybackException) {
         super.onPlayerError(error)
+        player.currentMediaItem?.mediaId?.let(com.ozyern.exhale.utils.OpenFlacSongs::forgetServer)
         val isConnectionError = (error.cause?.cause is PlaybackException) &&
                 (error.cause?.cause as PlaybackException).errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
 
@@ -5818,7 +5819,8 @@ class MusicService :
             ioScope.async {
                 val (title, artist) = com.ozyern.exhale.lyrics.SongQuery.songAndArtist(song.title, song.artists.map { it.name })
                 withTimeoutOrNull(FLAC_LOOKUP_TIMEOUT_MS) {
-                    runCatching { com.ozyern.exhale.openflac.OpenFlac.findCopy(title, artist, song.duration) }.getOrNull()?.url
+                    runCatching { com.ozyern.exhale.openflac.OpenFlac.findCopy(title, artist, song.duration) }.getOrNull()
+                        ?.url?.let(com.ozyern.exhale.openflac.OpenFlac::fastUrl)
                 }
             }
         }
