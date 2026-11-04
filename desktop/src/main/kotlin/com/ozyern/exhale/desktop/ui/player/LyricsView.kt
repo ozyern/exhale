@@ -128,7 +128,7 @@ fun rememberSmoothPositionMs(state: PlayerState, playerPosition: StateFlow<Doubl
     val position = remember { mutableLongStateOf((playerPosition.value * 1000).toLong()) }
     // Read straight from the flow inside the frame loop: the clock follows it without recomposing anything.
     val source by rememberUpdatedState(playerPosition)
-    val running by rememberUpdatedState(state.isPlaying && !state.isLoading)
+    val running by rememberUpdatedState(state.isPlaying && !state.isLoading && !state.isBuffering)
     val speed by rememberUpdatedState(com.ozyern.exhale.desktop.player.AudioEffects.effectiveSpeed(LocalSettings.current).toDouble())
     LaunchedEffect(Unit) {
         var clock = position.longValue.toDouble()

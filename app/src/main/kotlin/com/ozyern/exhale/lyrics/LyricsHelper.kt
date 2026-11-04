@@ -137,7 +137,7 @@ constructor(
                     jobs,
                     preferWord,
                     deadline = SystemClock.elapsedRealtime() + OVERALL_TIMEOUT_MS,
-                    title = SongQuery.cleanTitle(mediaMetadata.title),
+                    title = phrasings.first().first,
                     autoTranscribed = providers.map { it === YouTubeSubtitleLyricsProvider },
                 )
             } finally {
@@ -221,8 +221,7 @@ constructor(
 
     /** The catalogue song a video is of: same title and artist, length within the video's. */
     private suspend fun catalogueSong(meta: MediaMetadata): com.ozyern.exhale.innertube.models.SongItem? {
-        val title = SongQuery.cleanTitle(meta.title)
-        val artist = meta.artists.firstOrNull()?.name.orEmpty().removeSuffix(" - Topic").removeSuffix("VEVO").trim()
+        val (title, artist) = SongQuery.songAndArtist(meta.title, meta.artists.map { it.name })
         val results = com.ozyern.exhale.innertube.YouTube.search(
             "$title $artist",
             com.ozyern.exhale.innertube.YouTube.SearchFilter.FILTER_SONG,
@@ -339,10 +338,9 @@ constructor(
     private fun phrasingsOf(mediaMetadata: MediaMetadata): List<Pair<String, String>> {
         val rawTitle = mediaMetadata.title
         val rawArtist = mediaMetadata.artists.joinToString { it.name }
-        val leadArtist = mediaMetadata.artists.firstOrNull()?.name?.removeSuffix(" - Topic")?.trim()
-            ?.takeIf { it.isNotBlank() } ?: rawArtist
+        val (title, artist) = SongQuery.songAndArtist(rawTitle, mediaMetadata.artists.map { it.name })
         return listOf(
-            SongQuery.cleanTitle(rawTitle) to (SongQuery.creditedArtist(rawTitle, mediaMetadata.artists.map { it.name }) ?: leadArtist),
+            title to artist.ifBlank { rawArtist },
             rawTitle to rawArtist,
         ).distinct()
     }
@@ -398,10 +396,11 @@ constructor(
                 // LRC, it won the race as word-timed and then showed whole lines, with the
                 // stamps printed in the text.
                 val lyrics = result.getOrNull()?.let { text ->
-                    if (text.trimStart().startsWith("[") && ENHANCED_LRC_REGEX.containsMatchIn(text)) {
-                        enhancedLrcToTtml(text) ?: text
+                    val tidy = if (text.trimStart().startsWith("[")) LyricsJudge.withoutPaperwork(text, phrasings.first().first) else text
+                    if (tidy.trimStart().startsWith("[") && ENHANCED_LRC_REGEX.containsMatchIn(tidy)) {
+                        enhancedLrcToTtml(tidy) ?: tidy
                     } else {
-                        text
+                        tidy
                     }
                 }
                 if (lyrics != null && isMeaningfulLyrics(lyrics)) {
@@ -410,7 +409,7 @@ constructor(
                         GlobalLog.append(Log.DEBUG, "LyricsHelper", "${provider.name}: timing does not fit ${mediaMetadata.title} (${mediaMetadata.duration}s); passed over")
                         continue
                     }
-                    if (!provesItself(provider, lyrics, mediaMetadata.title)) {
+                    if (!provesItself(provider, lyrics, phrasings.first().first)) {
                         GlobalLog.append(Log.DEBUG, "LyricsHelper", "${provider.name}: answer is not ${mediaMetadata.title}; passed over")
                         continue
                     }
@@ -432,12 +431,12 @@ constructor(
      * on) and YouTube's transcript answer searches they did not really match, so those also have to
      * sound like the song asked for.
      */
-    private fun provesItself(provider: LyricsProvider, lyrics: String, rawTitle: String): Boolean {
+    private fun provesItself(provider: LyricsProvider, lyrics: String, title: String): Boolean {
         val lines = runCatching { LyricsWords.linesOf(lyrics) }.getOrNull() ?: return true
         if (!LyricsJudge.isSong(lines)) return false
         val loose = provider === KuGouLyricsProvider || provider === YouTubeSubtitleLyricsProvider ||
             (provider === BetterLyricsProvider && syncLevel(lyrics) != 0)
-        return !loose || LyricsJudge.soundsLikeTitle(lines.joinToString(" "), SongQuery.cleanTitle(rawTitle))
+        return !loose || LyricsJudge.soundsLikeTitle(lines.joinToString(" "), title)
     }
 
     /**
@@ -492,15 +491,25 @@ constructor(
             val best = (0 until n).filter { results[it] != null }.minByOrNull(::rank)
             // The best any unfinished source could still do is word-timed at its own place.
             val couldBeat = (0 until n).any { j -> !done[j] && (best == null || j < rank(best)) }
-            if (!couldBeat) return best?.let { it to results[it]!! }
             if (best != null && firstAnswerAt == Long.MAX_VALUE) firstAnswerAt = SystemClock.elapsedRealtime()
+            // Nothing below can outrank it, but nobody has checked it either. Answers can only contradict
+            // one another once there are two, and the top source answering first used to end the race
+            // with whatever it said, in whatever language. It gets a moment's second opinion.
+            val secondOpinionUntil = if (
+                !couldBeat && best != null && results.count { it != null } < 2 && (0 until n).any { !done[it] }
+            ) {
+                firstAnswerAt + SECOND_OPINION_GRACE_MS
+            } else {
+                Long.MIN_VALUE
+            }
+            if (!couldBeat && secondOpinionUntil <= SystemClock.elapsedRealtime()) return best?.let { it to results[it]!! }
             // The Apple-catalogue sources wait on the recording being identified first, so they
             // are routinely the last to answer; a line-timed database back in a second used to
             // win on the clock alone, and a song every one of them has word-timed played
             // line by line. Until something word-timed is in, they get longer.
             if (best != null) {
                 val grace = if (preferWord && syncLevel(results[best]!!) > 0) WORD_SYNC_GRACE_MS else BETTER_ANSWER_GRACE_MS
-                graceDeadline = firstAnswerAt + grace
+                graceDeadline = if (couldBeat) firstAnswerAt + grace else secondOpinionUntil
             }
             val until = minOf(graceDeadline, deadline)
             val waitMs = if (until == Long.MAX_VALUE) null else until - SystemClock.elapsedRealtime()
@@ -609,6 +618,7 @@ constructor(
         private val ENHANCED_LRC_REGEX = Regex("""<\d{1,2}:\d{1,2}(?:\.\d{1,3})?>""")
         private const val BETTER_ANSWER_GRACE_MS = 3_000L
         private const val WORD_SYNC_GRACE_MS = 8_000L
+        private const val SECOND_OPINION_GRACE_MS = 1_500L
         private const val IDENTIFY_TIMEOUT_MS = 2_500L
 
         /** Video id to recording, for this session: a shortcut, never a store. */

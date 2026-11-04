@@ -1146,7 +1146,7 @@ fun MiniPlayerContent(state: PlayerState, player: DesktopPlayer, compact: Boolea
     Box(Modifier.fillMaxSize()) {
         MiniProgress(fraction, compact)
         Row(Modifier.fillMaxSize().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            MiniArtwork(song.thumbnail, state.isLoading, if (compact) 38.dp else 48.dp, playing = state.isPlaying)
+            MiniArtwork(song.thumbnail, state.isLoading || state.isBuffering, if (compact) 38.dp else 48.dp, playing = state.isPlaying)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f).padding(end = 8.dp), verticalArrangement = Arrangement.Center) {
                 AnimatedContent(targetState = song.title, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "mini_title") { title ->

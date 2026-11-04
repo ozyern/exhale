@@ -21,6 +21,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -192,10 +195,26 @@ object ListenBrainz {
 }
 
 /**
- * Discord Rich Presence through Kizzy — the Android app's gateway client, driven by the account token
- * from the Discord login window. Only re-sent when something Discord shows actually changes.
+ * Discord Rich Presence. With Discord running on this PC it goes through Discord's own local connection,
+ * which needs nothing from the listener ([DiscordIpc]). With Discord closed it falls back to Kizzy, the
+ * Android app's gateway client, driven by the account token from the login window. Only re-sent when
+ * something Discord shows actually changes.
  */
 object DiscordPresence {
+    /** The application the local connection speaks as; the name Discord displays is set per activity. */
+    private const val ApplicationId = "1165706613961789445"
+
+    /** Resent this often over the local connection, which is also how Discord quitting gets noticed. */
+    private const val IpcRefreshMs = 60_000L
+
+    private val ipc = DiscordIpc(ApplicationId)
+    private var shownLocally = false
+
+    private val _status = MutableStateFlow<String?>(null)
+
+    /** What's happening right now, in words, for Settings. Failures used to go unmentioned anywhere. */
+    val status: StateFlow<String?> = _status.asStateFlow()
+
     /**
      * Exhale's own mark, as the badge on the artwork — the dark one, which sits in a Discord card
      * without a yellow tile around it. Discord serves an application's uploaded assets by id, which
@@ -239,16 +258,20 @@ object DiscordPresence {
         val token = settings.discordToken
         val song = playback.current
         val paused = !playback.isPlaying && !playback.isLoading
-        val show = settings.discordEnabled && token != null && song != null && (!paused || settings.discordShowPaused)
+        val show = settings.discordEnabled && song != null && (!paused || settings.discordShowPaused)
 
-        if (!show || token == null || song == null) {
+        if (!show || song == null) {
             if (shownSong != null) {
+                if (ipc.isConnected) ipc.set(null)
                 // Only worth clearing if there is still a connection to clear it over; reconnecting to
                 // say nothing would hold this up for ten seconds at shutdown.
                 if (rpc?.isRpcRunning() == true) runCatching { rpc?.stopActivity() }
                 shownSong = null
             }
-            if (!settings.discordEnabled || token == null) close()
+            if (!settings.discordEnabled) {
+                close()
+                _status.value = null
+            }
             return
         }
 
@@ -258,20 +281,61 @@ object DiscordPresence {
 
         val now = System.currentTimeMillis()
         val startMs = now - (positionSeconds * 1000).toLong()
-        val changed = song.id != shownSong || paused != shownPaused
+        val local = ipc.connect()
+        val changed = song.id != shownSong || paused != shownPaused || local != shownLocally
         val seeked = !paused && abs(startMs - shownStartMs) > SeekToleranceMs
-        if (!changed && !seeked) return
+        val refresh = local && now - sentAt >= IpcRefreshMs
+        if (!changed && !seeked && !refresh) return
         // A seek waits its turn; a song or a pause doesn't.
-        if (!changed && now - sentAt < MinIntervalMs) return
+        if (!changed && !refresh && now - sentAt < MinIntervalMs) return
+
+        val duration = (playback.durationSeconds.takeIf { it > 0 } ?: song.duration?.toDouble() ?: 0.0) * 1000
+
+        if (local) {
+            // One voice at a time: the fallback's connection is dropped once Discord itself is there.
+            closeGateway()
+            val sent = ipc.set(
+                DiscordActivity(
+                    name = "Exhale",
+                    title = song.title,
+                    artist = song.artists.joinToString(", ") { it.name },
+                    image = song.thumbnail.takeIf { it.isNotBlank() }?.resizedThumbnail(544),
+                    imageText = song.album?.name ?: song.title,
+                    badge = AppIconUrl,
+                    badgeText = if (paused) "Paused" else "Exhale",
+                    startMs = if (paused) null else startMs,
+                    endMs = if (paused || duration <= 0) null else startMs + duration.toLong(),
+                ),
+            )
+            if (sent) {
+                shownSong = song.id
+                shownPaused = paused
+                shownStartMs = startMs
+                shownLocally = true
+                sentAt = now
+                _status.value = "Showing on your profile through the Discord app on this PC."
+                return
+            }
+            // Discord just quit. The next pass, moments away, takes the fallback below.
+            shownLocally = false
+            shownSong = null
+            return
+        }
+
+        if (token == null) {
+            shownSong = null
+            shownLocally = false
+            _status.value = "Open the Discord app to show what you're listening to, or log in below to show it without Discord open."
+            return
+        }
 
         val client = rpc.takeIf { rpcToken == token } ?: run {
-            close()
+            closeGateway()
             KizzyRPC(token).also {
                 rpc = it
                 rpcToken = token
             }
         }
-        val duration = (playback.durationSeconds.takeIf { it > 0 } ?: song.duration?.toDouble() ?: 0.0) * 1000
         runCatching {
             client.buildActivity(
                 // What Discord writes after "Listening to". No application id goes with it: an id makes
@@ -293,18 +357,28 @@ object DiscordPresence {
             shownSong = song.id
             shownPaused = paused
             shownStartMs = startMs
+            shownLocally = false
             sentAt = now
+            _status.value = "Showing on your profile through your Discord log-in. If it doesn't appear, open the Discord app."
         }.onFailure {
             // A socket that failed once goes on failing. Drop it so the next song reconnects.
-            close()
+            println("Exhale Discord: gateway failed — ${it.message}")
+            closeGateway()
+            _status.value = "Discord didn't accept the saved log-in. Open the Discord app, or log out and log in again."
         }
     }
 
-    fun close() {
+    private fun closeGateway() {
         runCatching { rpc?.closeRPC() }
         rpc = null
         rpcToken = null
+    }
+
+    fun close() {
+        closeGateway()
+        ipc.close()
         shownSong = null
+        shownLocally = false
         sentAt = 0
     }
 }

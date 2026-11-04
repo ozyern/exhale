@@ -2003,12 +2003,13 @@ private fun BackupRows(onHomeInputsChanged: () -> Unit) {
 
 @Composable
 private fun DiscordCard(s: Settings, onDiscordLogin: () -> Unit) {
+    val status by com.ozyern.exhale.desktop.integrations.DiscordPresence.status.collectAsState()
     if (s.discordToken == null) {
-        RowShell("Discord", "Log in to show what you're listening to on your profile.", NavIcons.Link) {
+        RowShell("Discord", status ?: "With the Discord app open, nothing else is needed. Log in as well to show it while Discord is closed.", NavIcons.Link) {
             Button(onClick = onDiscordLogin) { Text("Log in with Discord") }
         }
     } else {
-        RowShell("Logged in as ${s.discordUsername ?: "Discord user"}", "Exhale keeps your Discord token on this PC, like the Android app. Log out to remove it.", NavIcons.Link) {
+        RowShell("Logged in as ${s.discordUsername ?: "Discord user"}", status ?: "Exhale keeps your Discord token on this PC, like the Android app. Log out to remove it.", NavIcons.Link) {
             OutlinedButton(onClick = { update { it.copy(discordEnabled = false, discordToken = null, discordUsername = null) } }) { Text("Log out") }
         }
     }

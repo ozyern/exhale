@@ -594,7 +594,7 @@ private fun FullScreenLyrics(
                 Icon(TransportIcons.Previous, "Previous", tint = Color.White, modifier = Modifier.size(28.dp))
             }
             GlyphButton(60.dp, onClick = player::togglePlayPause, enabled = !state.isLoading) {
-                if (state.isLoading && LocalPlayerActive.current) {
+                if ((state.isLoading || state.isBuffering) && LocalPlayerActive.current) {
                     LoadingRing(Modifier.size(28.dp), color = Color.White, stroke = 2.5.dp)
                 } else {
                     PlayPauseIcon(state.isPlaying, Color.White, Modifier.size(40.dp))
@@ -986,7 +986,7 @@ private fun TransportRow(state: PlayerState, player: DesktopPlayer) {
         }
         Spacer(Modifier.width(34.dp))
         GlyphButton(80.dp, onClick = player::togglePlayPause, enabled = !state.isLoading) {
-            if (state.isLoading && LocalPlayerActive.current) {
+            if ((state.isLoading || state.isBuffering) && LocalPlayerActive.current) {
                 LoadingRing(Modifier.size(40.dp), color = Color.White, stroke = 3.dp)
             } else {
                 PlayPauseIcon(state.isPlaying, Color.White, Modifier.size(50.dp))

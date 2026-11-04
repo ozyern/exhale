@@ -26,8 +26,24 @@ internal object LyricsJudge {
     )
     private val writerList = Regex("""[^\s/]{2,}(/[^\s/]{2,}){2,}""")
     private val wordSplit = Regex("""[^\p{L}\p{N}']+""")
-    private val phraseNoise = Regex("""[^\p{L}\p{N}' ]+""")
+    private val phraseNoise = Regex("""[^\p{L}\p{N} ]+""")
     private val spaces = Regex("""\s+""")
+    private val marks = Regex("""\p{Mn}+""")
+    private val apostrophes = Regex("""['’‘`´ʼ]""")
+
+    /**
+     * Lower case with accents and apostrophes gone, so a title and its lyrics compare however each was
+     * typed: "Don't" and "Don’t", "Tití" and "Titi". Straight apostrophes against curly ones made
+     * "Hips Don't Lie" a stranger to its own chorus.
+     */
+    private fun folded(text: String): String =
+        java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFD)
+            .replace(marks, "")
+            .lowercase(Locale.ROOT)
+            .replace(apostrophes, "")
+
+    /** A word as sung: "cleanin'" is "cleaning", and "'til" is "till". */
+    private fun stem(word: String): String = if (word == "till") "til" else if (word.endsWith("ing")) word.removeSuffix("g") else word
     private val stopwords = setOf(
         "this", "that", "with", "your", "from", "have", "what", "when", "they", "them", "just",
         "like", "about", "into", "over", "been", "were", "will", "part", "remix", "live", "version",
@@ -45,24 +61,44 @@ internal object LyricsJudge {
 
     /** Most songs say their own name. Not all do, so failing this only ever demotes an answer. */
     fun echoesTitle(text: String, title: String): Boolean {
-        val words = title.lowercase(Locale.US).split(wordSplit).filter { it.length >= 4 && it !in stopwords }
+        val words = folded(title).split(wordSplit).filter { it.length >= 4 && it !in stopwords }
         if (words.isEmpty()) return true
-        val body = text.lowercase(Locale.US)
-        return words.any { it in body }
+        val body = folded(text)
+        return words.any { stem(it) in body || it in body }
     }
+
+    /**
+     * Takes out what a line-timed file carries that nobody sings: credit lines, a singer's name as a
+     * heading ("Rihanna："), and a first line naming the song ("Shakira - Waka Waka"). Windows has always
+     * done this; here those lines were being scrolled past as lyrics.
+     */
+    fun withoutPaperwork(lrc: String, title: String): String {
+        var headingChecked = false
+        val wanted = folded(title).replace(phraseNoise, "").replace(" ", "")
+        return lrc.lineSequence().filterNot { raw ->
+            val sung = stamps.replace(raw, "").trim()
+            if (sung.isEmpty()) return@filterNot false
+            if (isPaperwork(sung)) return@filterNot true
+            if (headingChecked) return@filterNot false
+            headingChecked = true
+            sung.split(" - ").any { folded(it).replace(phraseNoise, "").replace(" ", "") == wanted } && " - " in sung
+        }.joinToString("\n")
+    }
+
+    private val stamps = Regex("""\[[^\]]*]""")
 
     /**
      * The stricter test for a source that searches loosely: the title as a phrase, or every word of it,
      * somewhere in the lyrics. Such a source has to pass this to be considered at all.
      */
     fun soundsLikeTitle(text: String, title: String): Boolean {
-        val body = text.lowercase(Locale.US)
-        val phrase = title.lowercase(Locale.US).replace(phraseNoise, " ").replace(spaces, " ").trim()
+        val body = folded(text)
+        val phrase = folded(title).replace(phraseNoise, " ").replace(spaces, " ").trim()
         if (phrase.isNotEmpty() && phrase in body.replace(phraseNoise, " ").replace(spaces, " ")) return true
         val words = phrase.split(' ').filter { it.length >= 3 && it !in minorWords }
         if (words.isEmpty()) return true
-        val sung = body.split(wordSplit).toSet()
-        return words.all { it in sung }
+        val sung = body.split(wordSplit).mapTo(HashSet(), ::stem)
+        return words.all { stem(it) in sung }
     }
 
     /** The distinct words of an answer, to hold one source's against another's. */

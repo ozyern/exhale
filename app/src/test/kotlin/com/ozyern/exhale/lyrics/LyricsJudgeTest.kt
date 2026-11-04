@@ -23,6 +23,55 @@ class LyricsJudgeTest {
     }
 
     @Test
+    fun titlesMatchHoweverApostrophesAndAccentsAreTyped() {
+        assertTrue(LyricsJudge.soundsLikeTitle("and the hips don’t lie, no fighting", "Hips Don't Lie"))
+        assertTrue(LyricsJudge.soundsLikeTitle("titi me pregunto si tengo muchas novias", "Tití Me Preguntó"))
+        assertTrue(LyricsJudge.soundsLikeTitle("i'm gonna rap until the day i collapse, 'til then", "'Till I Collapse"))
+        assertTrue(LyricsJudge.soundsLikeTitle("i been cleaning out my closet, my closet", "Cleanin' Out My Closet"))
+        assertTrue(LyricsJudge.echoesTitle("una cancion de la tortura", "La Tórtura"))
+    }
+
+    @Test
+    fun aVideoUploadIsTheSongInsideIt() {
+        assertEquals("Without Me" to "Eminem", SongQuery.songAndArtist("Eminem - Without Me (Official Music Video)", listOf("EminemVEVO")))
+        assertEquals(
+            "Hips Don't Lie" to "Shakira",
+            SongQuery.songAndArtist("Shakira - Hips Don't Lie (Official 4K Video) ft. Wyclef Jean", listOf("shakiraVEVO")),
+        )
+        assertEquals(
+            "Espresso" to "Sabrina Carpenter",
+            SongQuery.songAndArtist("Sabrina Carpenter - Espresso (Official Video)", listOf("SabrinaCarpenterVEVO")),
+        )
+        // Catalogue songs stay as they are, and a dash that isn't the channel's stays in the title.
+        assertEquals("Lose Yourself" to "Eminem", SongQuery.songAndArtist("Lose Yourself", listOf("Eminem")))
+        assertEquals("Shakira" to "Shakira", SongQuery.songAndArtist("Shakira", listOf("Shakira - Topic")))
+        assertEquals("Part One - Part Two" to "Band", SongQuery.songAndArtist("Part One - Part Two", listOf("Band")))
+    }
+
+    @Test
+    fun anotherLanguageOrMixIsNotTheSong() {
+        assertFalse(SongQuery.sameSong("Despacito", "Luis Fonsi", "Despacito (Versión Portugués)", "Luis Fonsi, Israel Novaes"))
+        assertFalse(SongQuery.sameSong("Despacito", "Luis Fonsi", "Despacito (Mandarin Version) [feat. JJ Lin]", "Luis Fonsi"))
+        assertFalse(SongQuery.sameSong("Lose Yourself", "Eminem", "Lose Yourself (Mixed)", "Eminem"))
+        assertTrue(SongQuery.sameSong("Despacito", "Luis Fonsi", "Despacito", "Luis Fonsi, Daddy Yankee"))
+        assertTrue(SongQuery.sameSong("Hips Don't Lie", "Shakira", "Hips Don’t Lie (feat. Wyclef Jean)", "Shakira"))
+        // Asked for by name, a version is the song.
+        assertTrue(SongQuery.sameSong("Despacito (Remix)", "Luis Fonsi", "Despacito (feat. Justin Bieber) [Remix]", "Luis Fonsi"))
+    }
+
+    @Test
+    fun whatNobodySingsIsTakenOutOfTimedLyrics() {
+        val lrc = "[00:00.10]Shakira - Waka Waka\n[00:01.00]Rihanna：\n[00:02.00]You're a good soldier\n[00:04.00]Choosing your battles\n[00:06.00]作词 : Someone"
+        assertEquals(
+            "[00:02.00]You're a good soldier\n[00:04.00]Choosing your battles",
+            LyricsJudge.withoutPaperwork(lrc, "Waka Waka"),
+        )
+        // A first line that only happens to say the title is sung.
+        val sung = "[00:01.00]Stan is what they call me\n[00:03.00]Second line"
+        assertEquals(sung, LyricsJudge.withoutPaperwork(sung, "Stan"))
+    }
+
+    @Test
     fun missingTheNameIsOnlyDetectedForDistinctiveTitles() {
         assertFalse(LyricsJudge.echoesTitle("nothing of the sort is sung here", "Espresso"))
         assertTrue(LyricsJudge.echoesTitle("that's that me espresso", "Espresso"))

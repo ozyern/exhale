@@ -1149,6 +1149,9 @@ object YTPlayerUtils {
                 AudioQuality.HIGHEST -> null
                 AudioQuality.AUTO -> null
             }
+        // A lossless rendition goes first whenever YouTube offers one, ahead of a direct URL too: if it
+        // can't be deciphered, the next candidate is tried. Only the data-saving setting rules it out.
+        val losslessFirst = effectiveQuality != AudioQuality.LOW
 
         // Codec preference sits above bitrate: picking AAC has to mean AAC even when the Opus
         // rendition is the fatter one, which on a free account it always is. It sits *below*
@@ -1156,7 +1159,8 @@ object YTPlayerUtils {
         // and a codec preference is not worth a failed stream. With AudioCodec.AUTO the term is
         // constant and the order collapses back to pure bitrate.
         val preferHigher =
-            compareByDescending<PlayerResponse.StreamingData.Format> { it.url != null }
+            compareByDescending<PlayerResponse.StreamingData.Format> { losslessFirst && isLosslessMime(it.mimeType) }
+                .thenByDescending { it.url != null }
                 .thenByDescending { codecPriority(it, preferredCodec) }
                 .thenByDescending { it.bitrate }
                 .thenByDescending { codecRank(extractCodec(it.mimeType)) }
@@ -1173,7 +1177,7 @@ object YTPlayerUtils {
             if (targetBitrateBps == null) {
                 audioFormats.sortedWith(preferHigher)
             } else {
-                val belowOrEqual = audioFormats.filter { it.bitrate <= targetBitrateBps }
+                val belowOrEqual = audioFormats.filter { it.bitrate <= targetBitrateBps || (losslessFirst && isLosslessMime(it.mimeType)) }
                 if (belowOrEqual.isNotEmpty()) {
                     belowOrEqual.sortedWith(preferHigher)
                 } else {
@@ -1258,7 +1262,14 @@ object YTPlayerUtils {
     private fun formatScore(
         format: PlayerResponse.StreamingData.Format,
         preferred: AudioCodec,
-    ): Long = codecPriority(format, preferred) * 100_000_000L + format.bitrate.toLong()
+    ): Long =
+        (if (isLosslessMime(format.mimeType)) 200_000_000L else 0L) +
+            codecPriority(format, preferred) * 100_000_000L + format.bitrate.toLong()
+
+    fun isLosslessMime(mimeType: String): Boolean {
+        val mime = mimeType.lowercase()
+        return "flac" in mime || "alac" in mime
+    }
 
     private fun codecRank(codec: String?): Int =
         when {

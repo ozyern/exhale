@@ -56,6 +56,9 @@ class Mpv(private val listener: Listener, windowId: Long? = null, extraOptions: 
         fun onPositionChanged(seconds: Double) {}
         fun onDurationChanged(seconds: Double) {}
         fun onPauseChanged(paused: Boolean) {}
+
+        /** mpv has stopped the clock to wait for the network, or has enough again to carry on. */
+        fun onBufferingChanged(buffering: Boolean) {}
     }
 
     private val lib: LibMpv = loadLibrary()
@@ -107,6 +110,7 @@ class Mpv(private val listener: Listener, windowId: Long? = null, extraOptions: 
         // report a round trip through JNA and the player's state. See eventLoop.
         lib.mpv_observe_property(ctx, 0, "duration", FORMAT_DOUBLE)
         lib.mpv_observe_property(ctx, 0, "pause", FORMAT_FLAG)
+        lib.mpv_observe_property(ctx, 0, "paused-for-cache", FORMAT_FLAG)
 
         eventThread = thread(name = "mpv-events", isDaemon = true) { eventLoop() }
     }
@@ -137,6 +141,13 @@ class Mpv(private val listener: Listener, windowId: Long? = null, extraOptions: 
             "cache-secs" to "90",
             "demuxer-max-bytes" to (96L * 1024 * 1024).toString(),
             "demuxer-max-back-bytes" to (128L * 1024 * 1024).toString(),
+            // A server that has gone quiet is found out in seconds rather than the default minute, so
+            // the player can move to another copy of the song while someone is still listening.
+            "network-timeout" to "15",
+            // A dropped connection partway through a song is picked up from where it stopped.
+            "stream-lavf-o" to "reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=4",
+            // Room for a slow moment in the decoder or resampler without the sound breaking up.
+            "audio-buffer" to "0.4",
             // Opus through libopus, Xiph's reference decoder, ahead of ffmpeg's own; anything else as before.
             "ad" to "libopus",
             // The last buffer of one song runs straight into the next, with no reopened device between.
@@ -159,8 +170,16 @@ class Mpv(private val listener: Listener, windowId: Long? = null, extraOptions: 
         lib.mpv_set_property_string(ctx, "start", value)
     }
 
-    fun load(url: String, headers: StreamHeaders, startSeconds: Double? = null) {
+    fun load(url: String, headers: StreamHeaders, startSeconds: Double? = null, lossless: Boolean = false) {
         setStart(startSeconds)
+        // By default mpv starts at the first packet and, once it runs dry, resumes after a single second
+        // in hand. A FLAC stream arrives close to the speed it plays, so that is a stutter every few
+        // seconds. Holding out for a real cushion turns it into one short wait, or none at all.
+        lib.mpv_set_property_string(ctx, "cache-pause-initial", "yes")
+        lib.mpv_set_property_string(ctx, "cache-pause-wait", if (lossless) "8" else "3")
+        // A lossless file can be seeked by asking again, unlike YouTube's in-order streams, so it stays
+        // in memory rather than writing tens of megabytes to the temp folder while it plays.
+        lib.mpv_set_property_string(ctx, "cache-on-disk", if (lossless) "no" else "yes")
         lib.mpv_set_property_string(ctx, "user-agent", headers.userAgent)
         lib.mpv_set_property_string(ctx, "referrer", headers.referer.orEmpty())
         // http-header-fields is a comma-separated list, so only comma-free values go here.
@@ -177,6 +196,9 @@ class Mpv(private val listener: Listener, windowId: Long? = null, extraOptions: 
      */
     fun loadVideo(videoUrl: String, audioUrl: String?, headers: StreamHeaders, startSeconds: Double? = null) {
         setStart(startSeconds)
+        lib.mpv_set_property_string(ctx, "cache-pause-initial", "no")
+        lib.mpv_set_property_string(ctx, "cache-pause-wait", "1")
+        lib.mpv_set_property_string(ctx, "cache-on-disk", "yes")
         lib.mpv_set_property_string(ctx, "user-agent", headers.userAgent)
         lib.mpv_set_property_string(ctx, "referrer", headers.referer.orEmpty())
         lib.mpv_set_property_string(ctx, "http-header-fields", headers.origin?.let { "Origin: $it" }.orEmpty())
@@ -286,6 +308,7 @@ class Mpv(private val listener: Listener, windowId: Long? = null, extraOptions: 
                                 paused = value.getInt(0) != 0
                                 listener.onPauseChanged(paused)
                             }
+                            "paused-for-cache" -> if (format == FORMAT_FLAG) listener.onBufferingChanged(value.getInt(0) != 0)
                         }
                     }
                 }

@@ -128,6 +128,70 @@ object OpenFlac {
         tracks
     }
 
+    // ---- Finding a copy of a song -----------------------------------------------------------------
+
+    private val recordingNoise = Regex(
+        """\([^)]*\b(?:official|video|audio|lyrics?|visualizer|remaster(?:ed)?|explicit|clean|hd|hq|mv)\b[^)]*\)""" +
+            """|\[[^\]]*\b(?:official|video|audio|lyrics?|visualizer|remaster(?:ed)?|explicit|clean|hd|hq|mv)\b[^\]]*]""" +
+            """|\b(?:feat|ft|featuring)\b.*""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val combiningMarks = Regex("""\p{Mn}+""")
+    private val notWords = Regex("""[^\p{L}\p{N}]+""")
+
+    private fun plain(value: String): String =
+        java.text.Normalizer.normalize(value.lowercase(), java.text.Normalizer.Form.NFD)
+            .replace(combiningMarks, "")
+            .replace(recordingNoise, " ")
+            .replace(notWords, " ")
+            .trim()
+
+    /**
+     * Whether [track] is this recording rather than another performance of the song. These catalogues
+     * are full of concert tapes of the same title, so the runtime has to be stated and agree closely,
+     * and the artist has to be named.
+     */
+    internal fun isSameRecording(title: String, artist: String, durationSeconds: Int, track: Track): Boolean {
+        val length = track.durationSeconds ?: return false
+        if (kotlin.math.abs(length - durationSeconds) > MaxRuntimeGapSeconds) return false
+        val wanted = plain(title)
+        if (wanted.isEmpty() || wanted != plain(track.title)) return false
+        val theirs = plain(track.artist + " " + track.album.orEmpty())
+        val named = plain(artist)
+        return named.isNotEmpty() && (named in theirs || named.split(' ').any { it.length > 3 && it in theirs })
+    }
+
+    /**
+     * A FLAC of exactly this recording from the public catalogues, or null. Most commercial releases
+     * won't be there; this is for the ones that are. Failures just mean no copy.
+     */
+    suspend fun findCopy(title: String, artist: String, durationSeconds: Int): Track? {
+        if (title.isBlank() || artist.isBlank() || durationSeconds <= 0) return null
+        val quotedArtist = artist.replace('"', ' ')
+        val quotedTitle = title.replace('"', ' ')
+        val found = coroutineScope {
+            val archive = async {
+                runCatching {
+                    val query = "mediatype:(audio) AND format:(Flac) AND creator:(\"$quotedArtist\") AND title:(\"$quotedTitle\")"
+                    val url = "https://archive.org/advancedsearch.php?q=${query.encodeURLParameter()}" +
+                        "&fl%5B%5D=identifier&sort%5B%5D=${"downloads desc".encodeURLParameter()}&rows=3&page=1&output=json"
+                    getJson(url).obj("response")?.array("docs").orEmpty()
+                        .mapNotNull { (it as? JsonObject)?.text("identifier") }
+                        .flatMap { id -> runCatching { archiveTracks(id) }.getOrDefault(emptyList()) }
+                }.getOrDefault(emptyList())
+            }
+            val commons = async {
+                runCatching { wikimediaTracks("filetype:audio $quotedTitle $quotedArtist") }.getOrDefault(emptyList())
+            }
+            archive.await() + commons.await()
+        }
+        return found
+            .filter { isSameRecording(title, artist, durationSeconds, it) }
+            .maxByOrNull { (it.bitDepth ?: 16) * (it.sampleRate ?: 44_100) }
+    }
+
+    private const val MaxRuntimeGapSeconds = 2
+
     // ---- Internet Archive ------------------------------------------------------------------------
 
     private suspend fun archiveShelf(title: String, query: String): Shelf? = runCatching {
@@ -252,9 +316,9 @@ object OpenFlac {
     private suspend fun wikimediaAll(): List<Track> =
         wikimediaCache ?: wikimediaTracks().also { wikimediaCache = it }
 
-    private suspend fun wikimediaTracks(): List<Track> {
+    private suspend fun wikimediaTracks(search: String = WikimediaQuery): List<Track> {
         val url = "https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrlimit=40" +
-            "&gsrsearch=${WikimediaQuery.encodeURLParameter()}&prop=imageinfo" +
+            "&gsrsearch=${search.encodeURLParameter()}&prop=imageinfo" +
             "&iiprop=${"url|mime|metadata|extmetadata".encodeURLParameter()}&format=json"
         val pages = getJson(url).obj("query")?.obj("pages") ?: return emptyList()
         return pages.values.mapNotNull { element ->

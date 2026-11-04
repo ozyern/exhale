@@ -7,7 +7,9 @@
 package com.ozyern.exhale.openflac
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OpenFlacTest {
@@ -16,6 +18,29 @@ class OpenFlacTest {
         assertEquals("CC BY-NC-SA 3.0", OpenFlac.licenceName("https://creativecommons.org/licenses/by-nc-sa/3.0/"))
         assertEquals("Public Domain", OpenFlac.licenceName("https://creativecommons.org/publicdomain/mark/1.0/"))
         assertNull(OpenFlac.licenceName(null))
+    }
+
+    private fun track(title: String, artist: String, duration: Int?) = OpenFlac.Track(
+        title = title,
+        artist = artist,
+        album = null,
+        durationSeconds = duration,
+        url = "https://example.com/a.flac",
+        artworkUrl = null,
+        credit = OpenFlac.Credit(null, null, "https://example.com"),
+    )
+
+    /** A concert tape of the same song must never replace the studio recording. */
+    @Test
+    fun onlyTheSameRecordingCounts() {
+        fun same(track: OpenFlac.Track) = OpenFlac.isSameRecording("Ripple", "Grateful Dead", 260, track)
+        assertTrue(same(track("Ripple", "Grateful Dead", 261)))
+        assertTrue(same(track("Ripple (Remastered)", "The Grateful Dead", 259)))
+        assertFalse(same(track("Ripple", "Grateful Dead", 520)))
+        assertFalse(same(track("Ripple", "Grateful Dead", null)))
+        assertFalse(same(track("Ripple", "Someone Else", 260)))
+        assertFalse(same(track("Ripple Effect", "Grateful Dead", 260)))
+        assertTrue(OpenFlac.isSameRecording("Tití Me Preguntó", "Bad Bunny", 243, track("Titi Me Pregunto", "Bad Bunny", 243)))
     }
 
     @Test

@@ -22,7 +22,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,6 +44,8 @@ data class PlayerState(
     val queue: List<SongItem> = emptyList(),
     val index: Int = -1,
     val isLoading: Boolean = false,
+    /** The song is open but waiting on the network, so nothing can be heard. Pausing still works. */
+    val isBuffering: Boolean = false,
     val isPlaying: Boolean = false,
     val durationSeconds: Double = 0.0,
     /** Bumped on every seek, so what follows this state rather than [DesktopPlayer.position] (Discord) still hears about jumps. */
@@ -118,6 +122,19 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
     /** The song already given one fresh-URL retry after mpv failed on it; see onError. */
     @Volatile private var retriedSongId: String? = null
 
+    /** The copy playing came from a lossless source, so YouTube's stream is there to fall back on. */
+    @Volatile private var playingFromLibrary = false
+
+    /** The stream playing is lossless at all: a FLAC-page song, a library copy, or YouTube's own FLAC. */
+    @Volatile private var playingLossless = false
+
+    /** Times this load has run dry since it started playing. */
+    private var rebuffers = 0
+    private var stallJob: Job? = null
+
+    /** Songs in a row that wouldn't start; see [scheduleAutoSkip]. */
+    private var failuresInARow = 0
+
     // Your Sound Chem: how long the loaded song has actually been heard — playing time, not position,
     // so seeking around a song doesn't count as listening to it.
     @Volatile private var listenSong: SongItem? = null
@@ -146,22 +163,19 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         }
 
         override fun onError(message: String) {
-            // A cached or prefetched YouTube URL can go stale or get throttled when many songs are
-            // started in a row; mpv then reads nothing from it. Ask for a fresh URL once before giving up.
-            val failed = loadedSongId
-            if (failed != null && failed != retriedSongId && failed == _state.value.current?.id && !_videoMode.value) {
-                retriedSongId = failed
-                StreamResolver.forget(failed)
-                val at = _position.value.takeIf { it > 1.0 }
-                println("Exhale: retrying $failed with a fresh stream — $message")
-                scope.launch { load(_state.value.index, at) }
-                return
+            scope.launch {
+                if (recover(message)) return@launch
+                _state.update { it.copy(isLoading = false, isBuffering = false, isPlaying = false, error = message) }
+                scheduleAutoSkip()
             }
-            _state.update { it.copy(isLoading = false, isPlaying = false, error = message) }
-            scope.launch { scheduleAutoSkip() }
+        }
+
+        override fun onBufferingChanged(buffering: Boolean) {
+            scope.launch { onBuffering(buffering) }
         }
 
         override fun onPositionChanged(seconds: Double) {
+            if (failuresInARow != 0 && seconds > 1.0) scope.launch { failuresInARow = 0 }
             // Only called while playing, a few times a second; a gap longer than a second is a stall
             // or a resume, not listening.
             if (listenSong != null) {
@@ -373,6 +387,79 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         }
     }
 
+    /**
+     * A song that won't play, or has stopped: move it to another copy where there is one, keeping the
+     * place. A lossless copy goes first to YouTube's stream of the same song; a YouTube URL gets one
+     * fresh try, since they go stale and get throttled. False when nothing is left to try.
+     */
+    private fun recover(reason: String): Boolean {
+        val song = _state.value.current ?: return false
+        if (loadedSongId != song.id || _videoMode.value) return false
+        stallJob?.cancel()
+        val at = _position.value.takeIf { it > 1.0 }
+        if (playingFromLibrary) {
+            println("Exhale: lossless copy of ${song.id} dropped, playing YouTube's — $reason")
+            LosslessLibrary.reject(song.id)
+            load(_state.value.index, at)
+            return true
+        }
+        if (song.id == retriedSongId) return false
+        retriedSongId = song.id
+        StreamResolver.forget(song.id)
+        println("Exhale: retrying ${song.id} with a fresh stream — $reason")
+        load(_state.value.index, at)
+        return true
+    }
+
+    /**
+     * Keeps a song from sitting silent with the bar saying it plays. mpv stops the clock when it runs
+     * out of stream and says nothing more, so a server that has gone quiet, or a FLAC file arriving
+     * slower than it plays, used to look like a song that simply wasn't playing.
+     */
+    private fun onBuffering(buffering: Boolean) {
+        _state.update { it.copy(isBuffering = buffering) }
+        stallJob?.cancel()
+        if (!buffering) return
+        val started = _position.value > 1.0
+        if (started) rebuffers++
+        // Running dry over and over: this connection can't carry this copy. YouTube's stream can.
+        if (playingFromLibrary && rebuffers >= MaxRebuffers && recover("kept running out of stream")) return
+        // The cushion a lossless stream asks for takes longer to fill before it counts as stuck.
+        val patience = if (playingLossless) LosslessStallMs else StallMs
+        stallJob = scope.launch {
+            delay(patience)
+            if (_state.value.isPlaying && _state.value.isBuffering) recover("no data for ${patience / 1000} s")
+        }
+    }
+
+    /**
+     * What this song should play from. FLAC comes first wherever it can be had: a copy from the
+     * listener's sources, or YouTube's own FLAC rendition when it offers one. Both are asked at once.
+     * If YouTube's answer is itself FLAC there is nothing to wait for; otherwise the sources get a few
+     * seconds to find a copy before the song starts on the best YouTube has. A search still running
+     * then carries on, and its answer is ready the next time the song plays.
+     */
+    private suspend fun chooseStream(song: SongItem): Result<ResolvedStream> = coroutineScope {
+        val lookup = if (AppSettings.current.preferLossless) LosslessLibrary.lookup(song) else null
+        val youtube = async { StreamResolver.resolve(song.id) }
+        if (lookup == null) return@coroutineScope youtube.await()
+
+        val flac = withTimeoutOrNull(LosslessLookupMs) {
+            select<ResolvedStream?> {
+                lookup.onAwait { copy -> copy ?: youtube.await().getOrNull()?.takeIf { it.lossless } }
+                youtube.onAwait { answer -> answer.getOrNull()?.takeIf { it.lossless } ?: lookup.await() }
+            }
+        }
+        if (flac != null) {
+            youtube.cancel()
+            return@coroutineScope Result.success(flac)
+        }
+        val fromYouTube = youtube.await()
+        if (fromYouTube.isSuccess) return@coroutineScope fromYouTube
+        // YouTube has nothing to play: a copy that turns up late is still better than no song at all.
+        withTimeoutOrNull(LosslessLookupMs) { lookup.await() }?.let { Result.success(it) } ?: fromYouTube
+    }
+
     /** Starts [index] of [queue]. With shuffle on, everything after the chosen song is shuffled. */
     fun play(queue: List<SongItem>, index: Int) {
         val song = queue.getOrNull(index) ?: return
@@ -392,6 +479,10 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         if (song.id != retriedSongId) retriedSongId = null
         loadJob?.cancel()
         skipJob?.cancel()
+        stallJob?.cancel()
+        rebuffers = 0
+        playingFromLibrary = false
+        playingLossless = false
         mpv.stop()
         flushListen()
         listenSong = song
@@ -404,6 +495,7 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
             it.copy(
                 index = index,
                 isLoading = true,
+                isBuffering = false,
                 isPlaying = false,
                 durationSeconds = song.duration?.toDouble() ?: 0.0,
                 streamInfo = null,
@@ -480,22 +572,7 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
                     }
                 return@launch
             }
-            // Both are asked at once. A folder on this PC answers in milliseconds where a public
-            // catalogue can take seconds, and no song should ever wait on one: YouTube's stream is
-            // ready when it's ready, a lossless copy gets a moment's grace to beat it, and whatever
-            // hasn't answered by then is dropped.
-            val resolved = direct?.let { Result.success(it) } ?: run {
-                val youtube = async { StreamResolver.resolve(song.id) }
-                val lossless = if (AppSettings.current.preferLossless && LosslessLibrary.isConfigured) {
-                    async { runCatching { LosslessLibrary.resolve(song) }.getOrNull() }
-                } else {
-                    null
-                }
-                val fromYouTube = youtube.await()
-                val better = lossless?.let { withTimeoutOrNull(700) { it.await() } }
-                lossless?.cancel()
-                better?.let { Result.success(it) } ?: fromYouTube
-            }
+            val resolved = direct?.let { Result.success(it) } ?: chooseStream(song)
             resolved
                 .onSuccess { stream ->
                     ensureActive()
@@ -503,14 +580,30 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
                     _state.update { it.copy(streamInfo = stream.describe()) }
                     DesktopPrefs.recordPlayed(song)
                     loadedSongId = song.id
+                    playingFromLibrary = stream.sourceLabel != null
+                    playingLossless = stream.lossless
+                    LosslessLibrary.announce(song.id.takeIf { playingFromLibrary })
                     applyVolume()
-                    mpv.load(stream.url, stream.headers, startAt?.takeIf { it > 1.0 })
+                    mpv.load(stream.url, stream.headers, startAt?.takeIf { it > 1.0 }, lossless = stream.lossless)
                     persistQueue()
                     prefetchNext(index)
                 }
                 .onFailure { error ->
                     if (error is CancellationException) throw error
-                    _state.update { it.copy(isLoading = false, error = error.message ?: error::class.simpleName) }
+                    // YouTube turning a song down is usually a passing check on this network, and
+                    // walking down the queue straight away only asks it harder. One more go after a
+                    // breath, before this song is given up on.
+                    if (song.id != retriedSongId) {
+                        retriedSongId = song.id
+                        println("Exhale: no stream for ${song.id}, trying once more — ${error.message}")
+                        delay(RetryNoStreamMs)
+                        ensureActive()
+                        StreamResolver.forget(song.id)
+                        load(_state.value.index, startAt)
+                        return@launch
+                    }
+                    println("Exhale: giving up on ${song.id} — ${error.message}")
+                    _state.update { it.copy(isLoading = false, error = StreamResolver.explain(error, song.title)) }
                     scheduleAutoSkip()
                 }
         }
@@ -607,6 +700,8 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         val next = _state.value.queue.getOrNull(index + 1) ?: return
         if (OpenFlacSongs.isFlacId(next.id)) return
         scope.launch { runCatching { StreamResolver.warm(next.id) } }
+        // Its lossless copy too, so it starts in FLAC the moment this song ends rather than waiting.
+        if (AppSettings.current.preferLossless) LosslessLibrary.lookup(next)
     }
 
     /**
@@ -865,8 +960,18 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         }
     }
 
+    /**
+     * Moves past a song that wouldn't play, but not forever. With YouTube refusing this network every
+     * song fails the same way, and each one asked for is one more request to the thing doing the
+     * refusing. After a few in a row it stops and says so.
+     */
     private fun scheduleAutoSkip() {
         if (!AppSettings.current.autoSkipOnError || !_state.value.hasNext) return
+        if (++failuresInARow > MaxFailuresInARow) {
+            failuresInARow = 0
+            _state.update { it.copy(isPlaying = false, error = "Several songs in a row wouldn't play, so playback stopped. Try again in a few minutes.") }
+            return
+        }
         skipJob?.cancel()
         skipJob = scope.launch {
             delay(1_500)
@@ -957,5 +1062,15 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         loadJob?.cancel()
         MediaKeys.stop()
         mpv.close()
+    }
+
+    private companion object {
+        /** How long a song waits for a lossless copy to be found before starting on YouTube's stream. */
+        const val LosslessLookupMs = 2_500L
+        const val StallMs = 20_000L
+        const val LosslessStallMs = 25_000L
+        const val MaxRebuffers = 3
+        const val MaxFailuresInARow = 4
+        const val RetryNoStreamMs = 3_000L
     }
 }

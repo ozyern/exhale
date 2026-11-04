@@ -5137,6 +5137,7 @@ class MusicService :
 
     val activeMediaId = player.currentMediaItem?.mediaId
     clearStreamRefreshGuards(activeMediaId)
+    watchForStalledUpgrade(playbackState)
     if (
         playbackState == Player.STATE_READY &&
         player.playWhenReady &&
@@ -5475,7 +5476,10 @@ class MusicService :
    if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED)) {
         // A song that plays ends the run of failures. Never reset, the count only ever grew: three
         // songs that failed hours apart added up to "several in a row" and playback stopped.
-        if (player.isPlaying) consecutivePlaybackErr = 0
+        if (player.isPlaying) {
+            consecutivePlaybackErr = 0
+            networkRetries.clear()
+        }
         ensurePresenceManager()
         // Scrobble: Track play/pause state
         scrobbleManager?.onPlayerStateChanged(player.isPlaying, player.currentMetadata, duration = player.duration)
@@ -5561,11 +5565,7 @@ class MusicService :
         // run ended on "Several songs in a row couldn't play" — the wrong thing to tell anyone.
         // Android's own validation is the honest answer: no validated internet, no skipping.
         if (!isNetworkConnected.value || isConnectionError || !hasValidatedInternet()) {
-            // A local music player doesn't stop at a song it can't reach: offline, move on to the
-            // next one in the queue that is on the phone, and only wait when there is none.
-            if (!waitingForNetworkConnection.value) tellPlaybackProblem(getString(R.string.error_no_internet))
-            if (skipToNextPlayableOffline()) return
-            waitOnNetworkError()
+            handleSuspectedOffline(player.currentMediaItem?.mediaId)
             return
         }
 
@@ -5714,6 +5714,113 @@ class MusicService :
             skipOnError()
         } else {
             stopOnError()
+        }
+    }
+
+    /**
+     * A failure that looks like no internet, checked before anyone is told so.
+     *
+     * Android's flags lag behind: for a few seconds after waking up or moving between networks they
+     * say there is no validated internet, and one failed DNS lookup looks the same. Acting on that
+     * told people "no internet" and skipped a song that played fine when tried again a moment later.
+     * So the internet is actually tried. Reachable means the same song goes again; only when it stays
+     * unreachable does the offline behaviour start.
+     */
+    private fun handleSuspectedOffline(mediaId: String?) {
+        networkCheckJob?.cancel()
+        networkCheckJob = scope.launch {
+            val online = withContext(Dispatchers.IO) { reachesInternetWithin() }
+            if (player.currentMediaItem?.mediaId != mediaId) return@launch
+            if (!online) {
+                // A local music player doesn't stop at a song it can't reach: offline, move on to the
+                // next one in the queue that is on the phone, and only wait when there is none.
+                if (!waitingForNetworkConnection.value) tellPlaybackProblem(getString(R.string.error_no_internet))
+                if (!skipToNextPlayableOffline()) waitOnNetworkError()
+                return@launch
+            }
+            val attempt = if (mediaId == null) 1 else networkRetries.merge(mediaId, 1, Int::plus) ?: 1
+            if (attempt <= MAX_NETWORK_RETRIES) {
+                delay(attempt * NETWORK_RETRY_STEP_MS)
+                if (player.currentMediaItem?.mediaId != mediaId) return@launch
+                player.prepare()
+                player.playWhenReady = true
+                return@launch
+            }
+            // The internet is fine and this song still won't load: it isn't a connection problem.
+            if (mediaId != null) networkRetries.remove(mediaId)
+            if (dataStore.get(AutoSkipNextOnErrorKey, true)) skipOnError() else stopOnError()
+        }
+    }
+
+    private var networkCheckJob: kotlinx.coroutines.Job? = null
+
+    /** Failed connection attempts per song since it last played. */
+    private val networkRetries = ConcurrentHashMap<String, Int>()
+
+    /** Whether YouTube answers at all, given a few seconds to come back. Any HTTP answer counts. */
+    private suspend fun reachesInternetWithin(): Boolean {
+        val probe = mediaOkHttpClient.newBuilder().callTimeout(3, java.util.concurrent.TimeUnit.SECONDS).build()
+        val request = okhttp3.Request.Builder().url("https://www.youtube.com/generate_204").head().build()
+        repeat(CONNECTIVITY_CHECKS) { check ->
+            if (check > 0) delay(CONNECTIVITY_CHECK_GAP_MS)
+            if (runCatching { probe.newCall(request).execute().close() }.isSuccess) return true
+        }
+        return false
+    }
+
+    /**
+     * A FLAC copy or JioSaavn upgrade that has stopped arriving. It is an upgrade, so the song moves to
+     * YouTube's stream at the same place rather than sitting silent. Buffering on YouTube's own stream
+     * is left to the player.
+     */
+    private fun watchForStalledUpgrade(@Player.State playbackState: Int) {
+        upgradeStallJob?.cancel()
+        if (playbackState != Player.STATE_BUFFERING || !player.playWhenReady) return
+        val mediaId = player.currentMediaItem?.mediaId ?: return
+        if (streamSource[mediaId].let { it == null || it == YOUTUBE_SOURCE }) return
+        upgradeStallJob = scope.launch {
+            delay(UPGRADE_STALL_MS)
+            if (player.currentMediaItem?.mediaId != mediaId || player.playbackState != Player.STATE_BUFFERING) return@launch
+            Timber.tag("MusicService").w("%s stalled on its upgraded stream; moving to YouTube", mediaId)
+            streamSource[mediaId] = YOUTUBE_SOURCE
+            player.stop()
+            player.prepare()
+            player.playWhenReady = true
+        }
+    }
+
+    private var upgradeStallJob: kotlinx.coroutines.Job? = null
+
+    /** Started once per song; the answer waits for the song and for its replays. */
+    private val flacLookups = ConcurrentHashMap<String, kotlinx.coroutines.Deferred<String?>>()
+
+    /** Songs whose [streamSource] entry is a FLAC copy rather than JioSaavn's file. */
+    private val flacCopies = ConcurrentHashMap.newKeySet<String>()
+
+    /** YouTube's own answer for these songs is FLAC, which JioSaavn's AAC is no upgrade on. */
+    private val losslessFromYouTube = ConcurrentHashMap.newKeySet<String>()
+
+    private fun upgradeKey(mediaId: String) = (if (mediaId in flacCopies) "flac-copy:" else "saavn:") + mediaId
+
+    /**
+     * The search for a FLAC of this recording in the public catalogues, started if it has not been, or
+     * null where it does not apply: the setting off, the low-data setting, a phone file, or a song whose
+     * details are unknown.
+     */
+    private fun flacLookup(mediaId: String): kotlinx.coroutines.Deferred<String?>? {
+        if (!preferLocalLossless || audioQuality == com.ozyern.exhale.constants.AudioQuality.LOW) return null
+        if (com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaId)) return null
+        if (com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId)) return null
+        flacLookups[mediaId]?.let { return it }
+        val song = queueMetadata[mediaId] ?: return null
+        if (flacLookups.size > 400) flacLookups.clear()
+        return flacLookups.getOrPut(mediaId) {
+            ioScope.async {
+                val (title, artist) = com.ozyern.exhale.lyrics.SongQuery.songAndArtist(song.title, song.artists.map { it.name })
+                withTimeoutOrNull(FLAC_LOOKUP_TIMEOUT_MS) {
+                    runCatching { com.ozyern.exhale.openflac.OpenFlac.findCopy(title, artist, song.duration) }.getOrNull()?.url
+                }
+            }
         }
     }
 
@@ -6073,9 +6180,21 @@ class MusicService :
             // JioSaavn, when this song is already playing from there, or when an exact match is in
             // hand before YouTube's answer would be.
             streamSource[mediaId]?.takeIf { it != YOUTUBE_SOURCE }?.let { url ->
-                return@Factory dataSpec.buildUpon().setUri(url.toUri()).setKey("saavn:$mediaId").build()
+                return@Factory dataSpec.buildUpon().setUri(url.toUri()).setKey(upgradeKey(mediaId)).build()
             }
             if (streamSource[mediaId] == null) {
+                // FLAC first: a copy of this recording in the public catalogues, given a few seconds to
+                // turn up. The search goes on regardless, so a replay finds its answer waiting.
+                val flacCopy = flacLookup(mediaId)?.let { search ->
+                    runBlocking(Dispatchers.IO) { withTimeoutOrNull(FLAC_LOOKUP_GRACE_MS) { search.await() } }
+                }
+                if (flacCopy != null) {
+                    flacCopies += mediaId
+                    streamSource[mediaId] = flacCopy
+                    rememberFlacFormat(mediaId)
+                    Timber.tag("MusicService").i("%s playing a FLAC copy", mediaId)
+                    return@Factory dataSpec.buildUpon().setUri(flacCopy.toUri()).setKey(upgradeKey(mediaId)).build()
+                }
                 val lookup = saavnLookup(mediaId)
                 if (lookup != null) {
                     // A cached YouTube URL is a head start, not a reason to settle for less: a
@@ -6083,7 +6202,8 @@ class MusicService :
                     val picked = runBlocking(Dispatchers.IO) {
                         val cachedUrl = playbackUrlCache[mediaId]?.takeIf { it.second > System.currentTimeMillis() }
                         if (cachedUrl != null) {
-                            withTimeoutOrNull(SAAVN_HEAD_START_GRACE_MS) { lookup.await() }
+                            if (mediaId in losslessFromYouTube) null
+                            else withTimeoutOrNull(SAAVN_HEAD_START_GRACE_MS) { lookup.await() }
                         } else {
                             val youtube = ioScope.async {
                                 YTPlayerUtils.playerResponseForPlayback(
@@ -6097,11 +6217,18 @@ class MusicService :
                             }
                             val first = kotlinx.coroutines.selects.select<JioSaavn.Stream?> {
                                 lookup.onAwait { it }
-                                youtube.onAwait { withTimeoutOrNull(SAAVN_GRACE_MS) { lookup.await() } }
+                                youtube.onAwait { answer ->
+                                    if (answer.getOrNull()?.format?.let { YTPlayerUtils.isLosslessMime(it.mimeType) } == true) null
+                                    else withTimeoutOrNull(SAAVN_GRACE_MS) { lookup.await() }
+                                }
                             }
+                            // JioSaavn's 320 kbps landed first, but YouTube's own FLAC outranks it.
+                            val youtubeHasFlac = first != null &&
+                                withTimeoutOrNull(YOUTUBE_FLAC_GRACE_MS) { youtube.await() }
+                                    ?.getOrNull()?.format?.let { YTPlayerUtils.isLosslessMime(it.mimeType) } == true
                             // YouTube's answer still carries the loudness figure and the format row,
                             // and is the fallback: stored either way.
-                            if (first != null) {
+                            if (first != null && !youtubeHasFlac) {
                                 ioScope.launch {
                                     youtube.await().getOrNull()?.let { storeResolvedStream(mediaId, it) }
                                 }
@@ -6110,13 +6237,13 @@ class MusicService :
                                 withTimeoutOrNull(RESOLVE_TIMEOUT_MS) { youtube.await() }
                                     ?.getOrNull()?.let { storeResolvedStream(mediaId, it) }
                             }
-                            first
+                            first.takeUnless { youtubeHasFlac }
                         }
                     }
                     if (picked != null) {
                         streamSource[mediaId] = picked.url
                         Timber.tag("JioSaavn").i("%s playing from JioSaavn at %d kbps", mediaId, picked.kbps)
-                        return@Factory dataSpec.buildUpon().setUri(picked.url.toUri()).setKey("saavn:$mediaId").build()
+                        return@Factory dataSpec.buildUpon().setUri(picked.url.toUri()).setKey(upgradeKey(mediaId)).build()
                     }
                 }
                 streamSource[mediaId] = YOUTUBE_SOURCE
@@ -6244,6 +6371,7 @@ class MusicService :
         }
 
         dropCachedBytesOfOtherFile(mediaId, format)
+        if (YTPlayerUtils.isLosslessMime(format.mimeType)) losslessFromYouTube += mediaId else losslessFromYouTube -= mediaId
 
         database.query {
             upsert(
@@ -6377,6 +6505,8 @@ class MusicService :
         if (com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId)) return
 
         rememberQueueMetadata()
+        // Ahead of time, so the next song starts in FLAC without waiting on the search.
+        flacLookup(mediaId)
         saavnLookup(mediaId)
         if (mediaId == streamPrefetchMediaId && streamPrefetchJob?.isActive == true) return
         // Already covered: a URL that has not expired yet.
@@ -7315,6 +7445,17 @@ class MusicService :
         private const val SAAVN_GRACE_MS = 350L
         /** The same, when a prefetched YouTube URL is already in hand. */
         private const val SAAVN_HEAD_START_GRACE_MS = 600L
+        /** How long JioSaavn's answer waits to hear whether YouTube has FLAC of this song. */
+        private const val YOUTUBE_FLAC_GRACE_MS = 1_500L
+        /** How long a song waits at the start for a FLAC copy, and how long the search itself may run. */
+        private const val FLAC_LOOKUP_GRACE_MS = 2_500L
+        private const val FLAC_LOOKUP_TIMEOUT_MS = 12_000L
+        /** A FLAC copy or JioSaavn file that stops arriving for this long gives way to YouTube's stream. */
+        private const val UPGRADE_STALL_MS = 12_000L
+        private const val MAX_NETWORK_RETRIES = 3
+        private const val NETWORK_RETRY_STEP_MS = 1_000L
+        private const val CONNECTIVITY_CHECKS = 3
+        private const val CONNECTIVITY_CHECK_GAP_MS = 2_000L
         internal fun shouldStopServiceOnTaskRemoved(
             stopMusicOnTaskClearEnabled: Boolean,
             isHostSessionActive: Boolean,

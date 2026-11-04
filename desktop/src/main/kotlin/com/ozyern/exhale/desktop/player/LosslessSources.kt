@@ -8,7 +8,11 @@ package com.ozyern.exhale.desktop.player
 
 import com.ozyern.exhale.desktop.data.DesktopPrefs
 import com.ozyern.exhale.innertube.models.SongItem
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -121,14 +125,31 @@ data class LosslessTrack(
 ) {
     val lossless: Boolean get() = format.lowercase(Locale.US) in LosslessFormats
 
-    /** Bit depth × rate first, then bitrate: how good this copy is against another of the same song. */
+    /** A file on this PC, or on a server in the house: nothing a slow internet connection can interrupt. */
+    val nearby: Boolean get() = !url.startsWith("http", ignoreCase = true) || isPrivateAddress(url)
+
+    /**
+     * Lossless over lossy, then a copy close to home over one across the internet (a hi-res file that
+     * stutters is worth less than a CD-quality one that doesn't), then FLAC over the other lossless
+     * formats, then bit depth × rate and bitrate.
+     */
     val rank: Long
         get() {
             val depth = (bitDepth ?: if (lossless) 16 else 0).toLong()
             val rate = (sampleRate ?: if (lossless) 44_100 else 0).toLong()
-            return (if (lossless) 1L shl 60 else 0L) + depth * rate + (bitrate ?: 0).toLong()
+            return (if (lossless) 1L shl 60 else 0L) +
+                (if (nearby) 1L shl 58 else 0L) +
+                (if (format.equals("flac", ignoreCase = true)) 1L shl 56 else 0L) +
+                depth * rate + (bitrate ?: 0).toLong()
         }
+
+    /** Worked out once: a library of tens of thousands of files is compared with every song that starts. */
+    internal val matchTitle: String by lazy(LazyThreadSafetyMode.PUBLICATION) { TrackMatch.normalize(title) }
 }
+
+private val PrivateHost = Regex("""^https?://(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|[^/:]+\.local\b)""", RegexOption.IGNORE_CASE)
+
+private fun isPrivateAddress(url: String): Boolean = PrivateHost.containsMatchIn(url)
 
 private val LosslessFormats = setOf("flac", "alac", "wav", "wave", "aiff", "aif", "ape", "wv", "dsf", "dff", "shn")
 /** Dolby Digital, Dolby Digital Plus (the format Atmos music is streamed and sold in) and TrueHD. */
@@ -146,6 +167,7 @@ private val AudioExtensions = LosslessFormats + DolbyFormats + setOf("m4a", "mp3
  * against the song by title, artist and runtime, the best copy wins, and if nothing matches the song
  * plays from YouTube exactly as before.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 object LosslessLibrary {
     private const val KEY = "lossless_sources"
     private const val AUTO_KEY = "lossless_looked_in_music"
@@ -189,10 +211,12 @@ object LosslessLibrary {
 
     fun add(source: LosslessSource) {
         _sources.value = _sources.value.filterNot { it.id == source.id } + source
+        forgetLookups()
         save()
     }
 
     fun remove(id: String) {
+        forgetLookups()
         val removed = _sources.value.firstOrNull { it.id == id }
         _sources.value = _sources.value.filterNot { it.id == id }
         _health.value = _health.value - id
@@ -204,6 +228,7 @@ object LosslessLibrary {
 
     fun setEnabled(id: String, enabled: Boolean) {
         _sources.value = _sources.value.map { if (it.id == id) it.copy(enabled = enabled) else it }
+        forgetLookups()
         save()
     }
 
@@ -262,7 +287,8 @@ object LosslessLibrary {
     }
 
     /** Reads folder sources before the first song asks for one, so no song waits on the disk. */
-    suspend fun warm() {
+    suspend fun warm() = withContext(Dispatchers.IO) {
+        // Off the window's thread: this walks the whole library and opens every FLAC in it.
         _sources.value.filter { it.enabled && it.kind == LosslessKind.FOLDER }.forEach { source ->
             runCatching { FolderIndex.tracks(source) }
         }
@@ -359,31 +385,24 @@ object LosslessLibrary {
      * once, not in turn: a folder answers in milliseconds where a server takes a second, and a slow
      * source shouldn't hold up a song that's already started.
      */
-    suspend fun resolve(song: SongItem): ResolvedStream? {
+    private suspend fun resolve(song: SongItem): LosslessAnswer? {
         val enabled = _sources.value.filter { it.enabled }
         if (enabled.isEmpty()) return null
-        val candidates = withContext(Dispatchers.IO) {
+        // All of it off the window's thread, the matching too: a big library is tens of thousands of
+        // comparisons, and doing them where the window draws froze the app each time a song started.
+        val best = withContext(Dispatchers.IO) {
             supervisorScope {
                 enabled
                     .map { source -> async { withTimeoutOrNull(9_000) { runCatching { search(source, song) }.getOrDefault(emptyList()) }.orEmpty() } }
                     .awaitAll()
                     .flatten()
             }
-        }
-        val best = candidates
-            .filter { TrackMatch.matches(song, it) }
-            .maxByOrNull { it.rank }
-            ?: run {
-                _lastMatch.value = null
-                return null
-            }
-        // A lossy copy from someone's server is no better than YouTube's own stream.
-        if (!best.lossless) {
-            _lastMatch.value = null
-            return null
-        }
-        _lastMatch.value = "${best.title} — ${best.sourceName}"
-        return ResolvedStream(
+                .filter { TrackMatch.matches(song, it) }
+                // A lossy copy from someone's server is no better than YouTube's own stream.
+                .filter { it.lossless }
+                .maxByOrNull { it.rank }
+        } ?: return null
+        return LosslessAnswer("${best.title} — ${best.sourceName}", ResolvedStream(
             url = best.url,
             headers = StreamHeaders(userAgent = "Exhale", origin = null, referer = null),
             mimeType = "audio/${best.format.lowercase(Locale.US)}",
@@ -394,7 +413,55 @@ object LosslessLibrary {
             bitDepth = best.bitDepth,
             lossless = true,
             sourceLabel = best.sourceName,
-        )
+        ))
+    }
+
+    private class LosslessAnswer(val description: String, val stream: ResolvedStream)
+
+    private class Lookup(val startedAt: Long, val answer: Deferred<LosslessAnswer?>)
+
+    /** Outlives any one song's start, so a lookup a skip walked away from is still there for next time. */
+    private val lookupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val lookups = ConcurrentHashMap<String, Lookup>()
+
+    /** Copies that wouldn't play or couldn't keep up, not offered again this session. */
+    private val rejected = ConcurrentHashMap.newKeySet<String>()
+
+    /** How long "no copy of this song anywhere" is believed; the answer may only have been a bad network. */
+    private const val NothingFoundForMs = 15 * 60_000L
+
+    /**
+     * The search for a lossless copy of [song], started now unless it already has been. It carries on
+     * whether or not anyone waits for it, and its answer is kept, so the second play of a song and the
+     * song queued up next never wait at all.
+     */
+    fun lookup(song: SongItem): Deferred<ResolvedStream?>? {
+        if (!isConfigured || song.id in rejected) return null
+        val now = System.currentTimeMillis()
+        val existing = lookups[song.id]?.takeUnless {
+            it.answer.isCompleted && it.answer.getCompletionExceptionOrNull() == null &&
+                it.answer.getCompleted() == null && now - it.startedAt > NothingFoundForMs
+        }
+        if (lookups.size > 400) lookups.clear()
+        val running = existing ?: Lookup(now, lookupScope.async { runCatching { resolve(song) }.getOrNull() }).also { lookups[song.id] = it }
+        return lookupScope.async { running.answer.await()?.stream }
+    }
+
+    /** The copy of this song now playing, for the settings page; null when YouTube's stream is. */
+    fun announce(songId: String?) {
+        val answer = songId?.let { lookups[it] }?.answer?.takeIf { it.isCompleted && it.getCompletionExceptionOrNull() == null }
+        _lastMatch.value = answer?.getCompleted()?.description
+    }
+
+    /** This copy failed or couldn't keep up. The song falls back to the next best source from here on. */
+    fun reject(songId: String) {
+        rejected += songId
+        lookups.remove(songId)
+    }
+
+    private fun forgetLookups() {
+        lookups.clear()
+        rejected.clear()
     }
 
     private suspend fun search(source: LosslessSource, song: SongItem): List<LosslessTrack> = when (source.kind) {
@@ -548,7 +615,8 @@ object LosslessLibrary {
      */
     private fun dlnaSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
         val (found, servers) = dlnaServers
-        val fresh = if (System.currentTimeMillis() - found < 5 * 60_000L && servers.isNotEmpty()) {
+        // Believed either way: on a network with no media servers, every song used to shout and wait.
+        val fresh = if (System.currentTimeMillis() - found < 5 * 60_000L) {
             servers
         } else {
             discoverDlna().also { dlnaServers = System.currentTimeMillis() to it }
@@ -1058,7 +1126,7 @@ internal object TrackMatch {
 
     fun matches(song: SongItem, candidate: LosslessTrack, strict: Boolean = false): Boolean {
         val wanted = normalize(song.title)
-        val found = normalize(candidate.title)
+        val found = candidate.matchTitle
         if (wanted.isEmpty() || found.isEmpty()) return false
         val sameTitle = wanted == found || (wanted.length > 6 && found.length > 6 && (found.startsWith(wanted) || wanted.startsWith(found)))
         if (!sameTitle) return false

@@ -188,7 +188,7 @@ private fun NowPlayingSlot(
             ) {
                 if (song != null) {
                     AsyncImage(song.thumbnail.resizedThumbnail(240), contentDescription = "Open player", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                    if (state.isLoading) {
+                    if (state.isLoading || state.isBuffering) {
                         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.42f)), contentAlignment = Alignment.Center) {
                             LoadingRing(Modifier.size(16.dp), color = Color.White, stroke = 2.dp)
                         }

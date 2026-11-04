@@ -49,6 +49,52 @@ internal object SongQuery {
         } ?: lead
     }
 
+    private val channelSuffix = Regex("""(?i)(\s*-\s*topic|\s*vevo)\s*$""")
+    private val titleDash = Regex("""\s+[-–—]\s+""")
+
+    /** A channel as the artist it stands for: "EminemVEVO" is Eminem, "Shakira - Topic" is Shakira. */
+    fun artistOfChannel(channel: String): String = channelSuffix.replace(channel, "").trim().ifBlank { channel.trim() }
+
+    private fun squeezed(value: String) = normalized(value).replace(" ", "")
+
+    /**
+     * The song's title and artist as a lyrics site has them. Older catalogues live on YouTube as video
+     * uploads, "Eminem - Without Me (Official Music Video)" by EminemVEVO, and no site has a song of that
+     * title or an artist of that name, so every source came back empty. When the part before the dash
+     * is the channel, that part is the artist and the rest is the song.
+     */
+    fun songAndArtist(title: String, artists: List<String>): Pair<String, String> {
+        val cleaned = cleanTitle(title)
+        val channel = artistOfChannel(creditedArtist(title, artists).orEmpty())
+        val dash = titleDash.find(cleaned) ?: return cleaned to channel
+        val before = cleaned.substring(0, dash.range.first).trim()
+        val after = cleaned.substring(dash.range.last + 1).trim()
+        val named = squeezed(before)
+        val own = squeezed(channel)
+        val isChannel = named.isNotEmpty() && own.isNotEmpty() && (named == own || named.startsWith(own) || own.startsWith(named))
+        return if (isChannel && after.isNotEmpty()) after to before else cleaned to channel
+    }
+
+    /** Words that make a hit another recording of the song: another language, another mix, another take. */
+    private val otherVersionWords = setOf(
+        "version", "versao", "remix", "mix", "mixed", "live", "acoustic", "acustico", "acustica", "instrumental",
+        "karaoke", "cover", "demo", "sped", "slowed", "reverb", "edit", "portuguese", "portugues", "spanish",
+        "espanol", "english", "ingles", "french", "italian", "german", "mandarin", "korean", "japanese", "hindi",
+    )
+
+    /**
+     * Whether a hit's brackets or dash make it a different recording from the one asked for. Asked for
+     * "Despacito", the catalogue's first hit is "Despacito (Versión Portugués)", of the same length, and
+     * it won on the strength of everything outside its brackets: the song played in Spanish while
+     * Portuguese lyrics scrolled by.
+     */
+    fun isOtherVersion(wantedTitle: String, hitTitle: String): Boolean {
+        val wanted = normalized(wantedTitle).split(' ').toSet()
+        val extras = bracketedPart.findAll(hitTitle).joinToString(" ") { it.value } + " " +
+            hitTitle.replace(bracketedPart, " ").substringAfter(" - ", "")
+        return normalized(extras).split(' ').any { it in otherVersionWords && it !in wanted }
+    }
+
     private val bracketedPart = Regex("""[(\[][^)\]]*[)\]]""")
     private val combiningMarks = Regex("""\p{Mn}+""")
     private val artistSeparators = Regex(
@@ -79,6 +125,7 @@ internal object SongQuery {
         val wanted = coreOf(title)
         val got = coreOf(hitTitle ?: return false)
         if (wanted.isEmpty() || got.isEmpty()) return false
+        if (isOtherVersion(title, hitTitle)) return false
         val titleMatches = wanted == got ||
             (minOf(wanted.length, got.length) >= 4 && (wanted.startsWith(got) || got.startsWith(wanted)))
         if (!titleMatches) return false

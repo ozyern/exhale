@@ -80,6 +80,26 @@ class TrackMatchTest {
         assertTrue(cd.rank > lossy.rank)
     }
 
+    /** A file at hand never stutters, so it beats a better one across the internet; FLAC beats other lossless. */
+    @Test
+    fun nearbyCopiesAndFlacComeFirst() {
+        val onDisk = copy("x", "y", 100.0).copy(sampleRate = 44_100, bitDepth = 16)
+        val onLan = onDisk.copy(url = "http://192.168.1.5:8200/a.flac")
+        val remoteHiRes = onDisk.copy(url = "https://archive.org/download/a.flac", sampleRate = 96_000, bitDepth = 24)
+        val wav = onDisk.copy(format = "wav")
+        assertTrue(onDisk.rank > remoteHiRes.rank)
+        assertTrue(onLan.rank > remoteHiRes.rank)
+        assertTrue(onDisk.rank > wav.rank)
+    }
+
+    @Test
+    fun youTubeFlacIsRecognised() {
+        assertTrue(StreamResolver.isLosslessMime("audio/flac"))
+        assertTrue(StreamResolver.isLosslessMime("audio/mp4; codecs=\"fLaC\""))
+        assertFalse(StreamResolver.isLosslessMime("audio/webm; codecs=\"opus\""))
+        assertFalse(StreamResolver.isLosslessMime("audio/mp4; codecs=\"mp4a.40.2\""))
+    }
+
     /**
      * Strict matching, for a public catalogue full of other performances of the same song: the runtime
      * has to be there and has to agree, or a concert tape would quietly replace the studio single.

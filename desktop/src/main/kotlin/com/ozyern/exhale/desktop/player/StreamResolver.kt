@@ -144,15 +144,51 @@ object StreamResolver {
     private val deadUntil = ConcurrentHashMap<String, Long>()
     private const val DeadForMs = 10 * 60_000L
 
+    // By version as well as name: the three ANDROID_VR builds and the two iOS ones are separate clients
+    // as far as YouTube is concerned, and one being refused used to take all of them out.
+    private fun deadKey(client: YouTubeClient) = "${client.clientName}@${client.clientVersion}"
+
     private fun isDead(client: YouTubeClient): Boolean {
-        val until = deadUntil[client.clientName] ?: return false
+        val until = deadUntil[deadKey(client)] ?: return false
         if (System.currentTimeMillis() < until) return true
-        deadUntil.remove(client.clientName)
+        deadUntil.remove(deadKey(client))
         return false
     }
 
     private fun markDead(client: YouTubeClient) {
-        deadUntil[client.clientName] = System.currentTimeMillis() + DeadForMs
+        deadUntil[deadKey(client)] = System.currentTimeMillis() + DeadForMs
+    }
+
+    /** "Sign in to confirm you're not a bot": a verdict on this network, not on this song. */
+    private fun isBotCheck(reason: String?): Boolean = reason != null && BotCheck.containsMatchIn(reason)
+    private val BotCheck = Regex("not a bot|confirm you.re not|unusual traffic|Sign in to confirm", RegexOption.IGNORE_CASE)
+
+    /** What a failure means to someone listening; the clients' own answers go to the log. */
+    fun explain(error: Throwable, title: String): String =
+        when {
+            isBotCheck(error.message) -> "YouTube is asking this network to confirm it isn't a bot, so \"$title\" couldn't start. Signing in may help; otherwise try again in a few minutes."
+            else -> "\"$title\" couldn't start. YouTube didn't offer a stream that plays."
+        }
+
+    /** The client that last offered a lossless rendition, asked first from then on. */
+    @Volatile private var losslessClient: YouTubeClient? = null
+
+    /**
+     * Until when no client is expected to have a lossless rendition. Only some clients are ever offered
+     * one, so while it may be out there a song asks a couple more before settling. A scan that finds
+     * none isn't repeated for a while, because every extra request counts toward a bot check.
+     */
+    @Volatile private var noLosslessUntil = 0L
+    private const val NoLosslessForMs = 30 * 60_000L
+    private const val ClientsAskedForLossless = 3
+
+    /** When the clients sitting out were last given a second chance after everyone else failed. */
+    @Volatile private var secondChanceAt = 0L
+    private const val SecondChanceEveryMs = 60_000L
+
+    internal fun isLosslessMime(mimeType: String): Boolean {
+        val mime = mimeType.lowercase(Locale.US)
+        return "flac" in mime || "alac" in mime
     }
 
     /** The client known to deliver whole files here, tried before the long list. */
@@ -189,19 +225,22 @@ object StreamResolver {
             val isLoggedIn = YouTube.cookie != null
             // Why each client/format fell through, so a failure says more than "no stream".
             val failures = mutableListOf<String>()
-            val ordered = listOfNotNull(preferredClient(), lastWorkingClient, proven).plus(clients).distinct()
 
-            for (client in ordered) {
-                if (client.loginRequired && !isLoggedIn) continue
-                if (isDead(client) && client != lastWorkingClient) continue
+            suspend fun ask(client: YouTubeClient): ResolvedStream? {
                 val name = client.clientName
-
                 val response = YouTube.player(videoId, null, client, signatureTimestamp)
-                    .getOrElse { failures += "$name: ${it.message}"; continue }
-                if (response.playabilityStatus.status != "OK") {
-                    failures += "$name: ${response.playabilityStatus.status} ${response.playabilityStatus.reason.orEmpty()}"
-                    if (response.playabilityStatus.status == "LOGIN_REQUIRED") markDead(client)
-                    continue
+                    .getOrElse { failure ->
+                        failures += "$name: ${failure.message?.take(120)}"
+                        // Turned away outright (a client version YouTube no longer accepts), not a network blip.
+                        if (failure.message?.startsWith("Client request") == true) markDead(client)
+                        return null
+                    }
+                val status = response.playabilityStatus.status
+                if (status != "OK") {
+                    val reason = response.playabilityStatus.reason.orEmpty()
+                    failures += "$name: $status $reason"
+                    if (status == "LOGIN_REQUIRED" || isBotCheck(reason)) markDead(client)
+                    return null
                 }
 
                 val candidates = audioCandidates(response)
@@ -211,20 +250,68 @@ object StreamResolver {
                 var refused = 0
                 for (format in candidates.take(4)) {
                     val url = NewPipeUtils.getStreamUrl(format, videoId, client)
-                        .getOrElse { failures += "$name/${format.itag}: ${it.message}"; continue }
+                        .getOrElse { failures += "$name/${format.itag}: ${it.message?.take(120)}"; continue }
                         .replace(Regex("cver=[^&]+"), "cver=${client.clientVersion}")
-                    val status = probe(url, headers)
-                    if (status in 200..399 || status == 416) {
-                        lastWorkingClient = client
+                    val code = probe(url, headers)
+                    if (code in 200..399 || code == 416) {
                         val loudness = response.playerConfig?.audioConfig?.let { it.loudnessDb ?: it.perceptualLoudnessDb }
                             ?: format.loudnessDb
-                        return@runCatching ResolvedStream(playable(url, headers, client), headers, format.mimeType, format.bitrate, name, loudness, format.audioSampleRate)
+                        return ResolvedStream(
+                            playable(url, headers, client), headers, format.mimeType, format.bitrate, name, loudness,
+                            format.audioSampleRate, lossless = isLosslessMime(format.mimeType),
+                        )
                     }
-                    failures += "$name/${format.itag}: HTTP $status"
+                    failures += "$name/${format.itag}: HTTP $code"
                     // Two refusals in a row and the rest of this client's formats are the same wall.
-                    if (status == 403 && ++refused >= 2) {
+                    if (code == 403 && ++refused >= 2) {
                         markDead(client)
                         break
+                    }
+                }
+                return null
+            }
+
+            val everyClient = listOfNotNull(preferredClient(), losslessClient, lastWorkingClient, proven)
+                .plus(clients)
+                .distinct()
+                .filter { !it.loginRequired || isLoggedIn }
+            val rested = everyClient.filter { !isDead(it) || it == lastWorkingClient }
+
+            val lookingForLossless = System.currentTimeMillis() >= noLosslessUntil
+            var settled: ResolvedStream? = null
+            var settledClient: YouTubeClient? = null
+            var asked = 0
+            for (client in rested) {
+                val stream = ask(client) ?: continue
+                if (stream.lossless) {
+                    losslessClient = client
+                    lastWorkingClient = client
+                    return@runCatching stream
+                }
+                if (settled == null) {
+                    settled = stream
+                    settledClient = client
+                }
+                if (!lookingForLossless || ++asked >= ClientsAskedForLossless) break
+            }
+            settled?.let { stream ->
+                lastWorkingClient = settledClient
+                if (lookingForLossless) noLosslessUntil = System.currentTimeMillis() + NoLosslessForMs
+                return@runCatching stream
+            }
+
+            // Nobody in the running had it. The clients sitting out get another say before the song is
+            // given up on: they were benched for ten minutes, and a bot check often passes long before
+            // that. Without this, every song kept failing after YouTube had stopped refusing.
+            val now = System.currentTimeMillis()
+            if (now - secondChanceAt >= SecondChanceEveryMs) {
+                secondChanceAt = now
+                for (client in everyClient - rested.toSet()) {
+                    ask(client)?.let { stream ->
+                        deadUntil.remove(deadKey(client))
+                        lastWorkingClient = client
+                        if (stream.lossless) losslessClient = client
+                        return@runCatching stream
                     }
                 }
             }
@@ -253,12 +340,18 @@ object StreamResolver {
             "HIGH" -> 256_000
             else -> null
         }
-        val pool = ceiling?.let { cap -> formats.filter { it.bitrate <= cap }.ifEmpty { formats } } ?: formats
+        // A lossless rendition is what "prefer FLAC" asks for, so only the data-saving setting rules it out.
+        val pool = ceiling?.let { cap ->
+            formats.filter { it.bitrate <= cap || (settings.audioQuality != "LOW" && isLosslessMime(it.mimeType)) }.ifEmpty { formats }
+        } ?: formats
         // At Max, the best rendition goes first even when it needs deciphering (a Premium 256 kbps
         // Opus usually does); the loop in resolve() falls through to a direct URL if that fails.
         val bitrateFirst = settings.audioQuality == "MAX"
         return pool.sortedWith(
-            compareByDescending<PlayerResponse.StreamingData.Format> {
+            // FLAC ahead of everything, even a codec picked by hand or a URL that needs no deciphering:
+            // if it can't be opened, the loop in resolve() falls through to the next one.
+            compareByDescending<PlayerResponse.StreamingData.Format> { settings.preferLossless && isLosslessMime(it.mimeType) }
+                .thenByDescending {
                 when (settings.audioCodec) {
                     "OPUS" -> "opus" in it.mimeType
                     "AAC" -> "mp4a" in it.mimeType
