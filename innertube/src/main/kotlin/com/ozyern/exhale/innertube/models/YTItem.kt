@@ -169,7 +169,7 @@ fun List<YTItem>.audioTrackFor(video: YTItem): SongItem? {
 }
 
 private val titleDressing = Regex(
-    """\s*[(\[](?:[^)\]]*\b(?:official|video|audio|lyrics?|visuali[sz]er|4k|hd|mv|m/v|live|from)\b[^)\]]*)[)\]]""",
+    """\s*[(\[](?:[^)\]]*\b(?:official|video|audio|lyrics?|visuali[sz]er|4k|hd|mv|m/v|live|from|feat|ft|featuring)\b[^)\]]*)[)\]]""",
     RegexOption.IGNORE_CASE,
 )
 
@@ -195,6 +195,8 @@ private val alternateVersions = listOf(
     "instrumental", "acoustic", "unplugged", "mashup", "edit", "version", "reprise", "remaster",
     "remastered", "extended", "bass", "boosted", "mix", "rework", "flip", "dj", "female", "male",
 )
+
+private val videoWords = listOf("video", "lyric", "lyrics", "visualizer", "visualiser")
 
 /**
  * The song a search for [query] is most likely after, among these results: the plain studio
@@ -236,6 +238,13 @@ fun List<YTItem>.bestSongFor(query: String): SongItem? {
             val rawTitle = song.title.searchWords().toSet()
             val unasked = alternateVersions.count { it in rawTitle && it !in typedSet }
             score -= 70 * unasked
+            // YouTube marks its audio tracks as such. The top card for a song's video can come with no
+            // mark at all, so "cindy lou who (Lyric Video)" passed as audio and won on being listed first,
+            // over the album track of the same name right beside it.
+            val knownAudio = song.endpoint?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType == WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.MUSIC_VIDEO_TYPE_ATV
+            if (knownAudio) score += 25
+            // A title that calls itself a video is one, whatever its mark says.
+            score -= 40 * videoWords.count { it in rawTitle && it !in typedSet }
             score -= rank.coerceAtMost(20)
             song to score
         }

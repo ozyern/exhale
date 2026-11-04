@@ -165,6 +165,7 @@ object StreamResolver {
      * after it failed without YouTube even being asked.
      */
     private const val BotCheckedForMs = 45_000L
+    private const val BotChecksBeforeStopping = 3
 
     /** "Sign in to confirm you're not a bot": a verdict on this network, not on this song. */
     private fun isBotCheck(reason: String?): Boolean = reason != null && BotCheck.containsMatchIn(reason)
@@ -232,8 +233,12 @@ object StreamResolver {
             val isLoggedIn = YouTube.cookie != null
             // Why each client/format fell through, so a failure says more than "no stream".
             val failures = mutableListOf<String>()
+            var botChecks = 0
 
             suspend fun ask(client: YouTubeClient): ResolvedStream? {
+                // Refused a few times running means this network is being refused. Every further ask
+                // from a client that isn't signed in is another request toward keeping it that way.
+                if (botChecks >= BotChecksBeforeStopping && !client.loginSupported) return null
                 val name = client.clientName
                 val response = YouTube.player(videoId, null, client, signatureTimestamp)
                     .getOrElse { failure ->
@@ -247,7 +252,10 @@ object StreamResolver {
                     val reason = response.playabilityStatus.reason.orEmpty()
                     failures += "$name: $status $reason"
                     when {
-                        isBotCheck(reason) -> if (client != proven) markDead(client, BotCheckedForMs)
+                        isBotCheck(reason) -> {
+                            botChecks++
+                            if (client != proven) markDead(client, BotCheckedForMs)
+                        }
                         status == "LOGIN_REQUIRED" -> markDead(client)
                     }
                     return null
