@@ -255,6 +255,10 @@ fun FoldingDock(
     openGap: Dp = ComponentSpacing,
 ) {
     val inSearch = searchMode && searchBarContent != null && hasSearchTab
+    // The field as it last was, kept for its fade out: the caller withdraws it the moment search
+    // closes, and the row shrank back as an empty capsule, then rebuilt itself around nothing.
+    val lastSearchBar = remember { arrayOfNulls<@Composable (Modifier) -> Unit>(1) }
+    if (searchBarContent != null) lastSearchBar[0] = searchBarContent
     val searchTab = if (hasSearchTab) tabs.lastOrNull() else null
     val contentTabs = if (hasSearchTab) tabs.dropLast(1) else tabs
     val hasPlayer = accessory != null
@@ -599,7 +603,7 @@ fun FoldingDock(
                     .then(if (visual != DockVisual.Search) Modifier.clearAndSetSemantics {} else Modifier),
             ) {
                 if (visual == DockVisual.Search || visual == DockVisual.Typing || fieldAlpha.value > 0f) {
-                    searchBarContent?.invoke(Modifier.fillMaxSize())
+                    (searchBarContent ?: lastSearchBar[0])?.invoke(Modifier.fillMaxSize())
                 }
             }
             // 4: the page glyph, travelling between its tab and the circle. It passes under the player.
