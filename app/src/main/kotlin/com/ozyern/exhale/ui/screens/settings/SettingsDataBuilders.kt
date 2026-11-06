@@ -430,6 +430,7 @@ private fun buildIndexItems(
         "settings/appearance" to R.drawable.palette,
         "settings/player" to R.drawable.play,
         "settings/player/equalizer" to R.drawable.equalizer,
+        "settings/player/lossless_servers" to R.drawable.storage,
         "settings/content" to R.drawable.language,
         "settings/content/lyrics_sources" to R.drawable.lyrics,
         "settings/storage" to R.drawable.storage,

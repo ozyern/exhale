@@ -436,7 +436,7 @@ fun PlayerSettings(
             PreferenceGroupDivider()
             SwitchPreference(
                 title = { Text("Prefer lossless files") },
-                description = "Plays a FLAC, WAV or AIFF of the same song from this phone instead of streaming it, when there is one.",
+                description = "Plays a FLAC, WAV or AIFF of the same song — from this phone, your own servers or the free catalogues — instead of streaming it, when there is one.",
                 icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
                 checked = preferLocalLossless,
                 onCheckedChange = { on ->
@@ -445,6 +445,19 @@ fun PlayerSettings(
                         askForAudio.launch(com.ozyern.exhale.utils.LocalMediaScanner.PermissionName)
                     }
                 },
+            )
+
+            PreferenceGroupDivider()
+            val losslessServers by com.ozyern.exhale.playback.lossless.ServerLibrary.servers.collectAsState()
+            PreferenceEntry(
+                title = { Text("Lossless servers") },
+                description = losslessServers.count { it.enabled }.let { on ->
+                    if (on == 0) "Stream FLAC from your own Navidrome, Jellyfin or Plex server"
+                    else "$on server${if (on == 1) "" else "s"} on"
+                },
+                icon = { Icon(painterResource(R.drawable.storage), null) },
+                onClick = { navController.navigate("settings/player/lossless_servers") },
+                isEnabled = preferLocalLossless,
             )
 
             PreferenceGroupDivider()

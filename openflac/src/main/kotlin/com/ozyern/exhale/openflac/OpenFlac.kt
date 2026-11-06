@@ -195,7 +195,12 @@ object OpenFlac {
             val commons = async {
                 runCatching { wikimediaTracks("filetype:audio $quotedTitle $quotedArtist") }.getOrDefault(emptyList())
             }
-            archive.await() + commons.await()
+            // Jamendo's Creative Commons catalogue, in FLAC where the artist allowed downloads. Only
+            // its browse shelf used it before; a song playing from YouTube never looked there.
+            val jamendo = async {
+                runCatching { jamendoSearch(title, artist) }.getOrDefault(emptyList())
+            }
+            archive.await() + commons.await() + jamendo.await()
         }
         return found
             .filter { isSameRecording(title, artist, durationSeconds, it) }
@@ -310,6 +315,30 @@ object OpenFlac {
                 },
             )
         }.getOrNull()
+    }
+
+    /** Tracks named [title] by [artist], with a FLAC download, for [findCopy]. Empty without a client ID. */
+    private suspend fun jamendoSearch(title: String, artist: String): List<Track> {
+        val clientId = jamendoClientId.ifBlank { return emptyList() }
+        val url = "https://api.jamendo.com/v3.0/tracks/?client_id=${clientId.encodeURLParameter()}&format=json&limit=10" +
+            "&audiodlformat=flac&namesearch=${title.encodeURLParameter()}&artist_name=${artist.encodeURLParameter()}"
+        return getJson(url).array("results").orEmpty()
+            .mapNotNull { it as? JsonObject }
+            .mapNotNull { track ->
+                // Only artists who allowed downloads have a FLAC; the rest stream MP3 alone.
+                if (track.text("audiodownload_allowed") == "false") return@mapNotNull null
+                val download = track.text("audiodownload") ?: return@mapNotNull null
+                val licenceUrl = track.text("license_ccurl")
+                Track(
+                    title = track.text("name") ?: return@mapNotNull null,
+                    artist = track.text("artist_name") ?: return@mapNotNull null,
+                    album = track.text("album_name"),
+                    durationSeconds = track.text("duration")?.toIntOrNull(),
+                    url = if ("format=" in download) download else "$download&format=flac",
+                    artworkUrl = track.text("image"),
+                    credit = Credit(licenceName(licenceUrl), licenceUrl, "https://www.jamendo.com/track/${track.text("id").orEmpty()}"),
+                )
+            }
     }
 
     private suspend fun jamendoTracks(albumId: String): List<Track> {

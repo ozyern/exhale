@@ -5832,6 +5832,31 @@ class MusicService :
 
     private fun upgradeKey(mediaId: String) = (if (mediaId in flacCopies) "flac-copy:" else "saavn:") + mediaId
 
+    /** Where each FLAC copy found came from, for the song's details. */
+    private val flacOrigins = ConcurrentHashMap<String, String>()
+
+    private fun catalogueName(url: String): String = when {
+        "archive.org" in url -> "Internet Archive"
+        "jamendo" in url -> "Jamendo"
+        "wikimedia" in url -> "Wikimedia Commons"
+        else -> "Free catalogue"
+    }
+
+    /**
+     * Where [mediaId] is actually playing from, in words: the phone, a server of the listener's, a free
+     * catalogue, JioSaavn, or YouTube Music and whether YouTube's copy is lossless. Shown in the song's
+     * details, so a song that played lossy can be told apart from one that had no lossless copy at all.
+     */
+    fun playbackSourceLabel(mediaId: String): String = when {
+        com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaId) -> "This phone"
+        com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId) -> "Free FLAC catalogue"
+        com.ozyern.exhale.export.SavedFiles.uriFor(this, mediaId) != null -> "Saved on this phone"
+        mediaId in flacCopies -> flacOrigins[mediaId] ?: "Lossless copy · FLAC"
+        streamSource[mediaId]?.let { it != YOUTUBE_SOURCE } == true -> "JioSaavn · 320 kbps AAC"
+        mediaId in losslessFromYouTube -> "YouTube Music · lossless"
+        else -> "YouTube Music"
+    }
+
     /**
      * The search for a FLAC of this recording in the public catalogues, started if it has not been, or
      * null where it does not apply: the setting off, the low-data setting, a phone file, or a song whose
@@ -5848,8 +5873,22 @@ class MusicService :
             ioScope.async {
                 val (title, artist) = com.ozyern.exhale.lyrics.SongQuery.songAndArtist(song.title, song.artists.map { it.name })
                 withTimeoutOrNull(FLAC_LOOKUP_TIMEOUT_MS) {
-                    runCatching { com.ozyern.exhale.openflac.OpenFlac.findCopy(title, artist, song.duration, song.album?.title) }.getOrNull()
-                        ?.url?.let(com.ozyern.exhale.openflac.OpenFlac::fastUrl)
+                    kotlinx.coroutines.coroutineScope {
+                        // The listener's own servers and the public catalogues, asked at once. Their
+                        // own copy wins: it is theirs, and usually on the same network as the phone.
+                        val own = async {
+                            runCatching { com.ozyern.exhale.playback.lossless.ServerLibrary.find(song) }.getOrNull()
+                                ?.also { flacOrigins[mediaId] = "${it.serverName} (your server) · ${it.format.uppercase()}" }
+                                ?.url
+                        }
+                        val open = async {
+                            runCatching { com.ozyern.exhale.openflac.OpenFlac.findCopy(title, artist, song.duration, song.album?.title) }.getOrNull()
+                                ?.url
+                                ?.also { flacOrigins.putIfAbsent(mediaId, "${catalogueName(it)} · FLAC") }
+                                ?.let(com.ozyern.exhale.openflac.OpenFlac::fastUrl)
+                        }
+                        own.await()?.also { open.cancel() } ?: open.await()
+                    }
                 }
             }
         }

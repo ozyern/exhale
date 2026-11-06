@@ -445,6 +445,9 @@ fun NavGraphBuilder.navigationBuilder(
     settingsComposable("settings/content/lyrics_sources") {
         com.ozyern.exhale.ui.screens.settings.LyricsSourcesScreen(navController, scrollBehavior)
     }
+    settingsComposable("settings/player/lossless_servers") {
+        com.ozyern.exhale.ui.screens.settings.LosslessServersScreen(navController, scrollBehavior)
+    }
     settingsComposable("settings/player/equalizer") {
         com.ozyern.exhale.ui.screens.settings.SoundEqualizerScreen(navController, scrollBehavior)
     }

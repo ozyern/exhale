@@ -172,6 +172,8 @@ val SettingsIndex: List<SettingsIndexEntry> = listOf(
     SettingsIndexEntry("settings/player/equalizer", "Equalizer", IndexText.Plain("None"), IndexText.Plain("Device effects")),
     SettingsIndexEntry("settings/player/equalizer", "Equalizer", IndexText.Plain("None"), IndexText.Res(R.string.system_audio_effects)),
     SettingsIndexEntry("settings/player/equalizer", "Equalizer", IndexText.Plain("None"), IndexText.Plain("Equalizer")),
+    SettingsIndexEntry("settings/player/lossless_servers", "Lossless servers", IndexText.Plain("None"), IndexText.Plain("Lossless servers")),
+    SettingsIndexEntry("settings/player/lossless_servers", "Lossless servers", IndexText.Plain("None"), IndexText.Plain("Navidrome, Jellyfin, Plex")),
     SettingsIndexEntry("settings/player", "Player & audio", IndexText.Plain("Sound"), IndexText.Plain("Crossfade")),
     SettingsIndexEntry("settings/player", "Player & audio", IndexText.Plain("Sound"), IndexText.Plain("Automix performance")),
     SettingsIndexEntry("settings/appearance/player_style", "Player style", null, IndexText.Plain("Player style")),

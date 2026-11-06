@@ -130,6 +130,9 @@ fun ShowMediaInfo(videoId: String) {
 
     val audioFacts = buildList {
         val format = currentFormat ?: return@buildList
+        // Where it is actually playing from: a lossy play and a song with no lossless copy anywhere
+        // looked the same until now.
+        playerConnection?.service?.playbackSourceLabel(videoId)?.let { add("Source" to it) }
         add(stringResource(R.string.mime_type) to (format.mimeType ?: unknown))
         add(stringResource(R.string.codecs) to (format.codecs ?: unknown))
         add("Itag" to (format.itag?.toString() ?: unknown))
