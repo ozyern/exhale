@@ -62,6 +62,8 @@ fun ExhaleFlowLyrics(
     LaunchedEffect(player) {
         var lastSlider: Long? = null
         while (isActive) {
+            // Asleep with the app: these readings only steer what is drawn.
+            com.ozyern.exhale.utils.awaitAppVisible()
             val dragged = slider()
             if (dragged != null && dragged != lastSlider) position.seeks++
             lastSlider = dragged

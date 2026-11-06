@@ -306,18 +306,15 @@ fun BottomSheetPlayer(
     }
     LaunchedEffect(aodAutoTimeoutSeconds, state.isExpanded, lastInteractionTime, isAodActive) {
         if (aodAutoTimeoutSeconds > 0 && state.isExpanded && !isAodActive) {
-            delay(100L)
-            while (isActive) {
-                com.ozyern.exhale.utils.awaitAppVisible()
-                delay(100L)
-                val elapsedSeconds = (System.currentTimeMillis() - lastInteractionTime) / 1000f
-                if (elapsedSeconds >= aodAutoTimeoutSeconds) {
-                    isAodActive = true
-                    navController.navigate("always_on_display") {
-                        launchSingleTop = true
-                    }
-                    break
-                }
+            // One wait to the deadline rather than a check ten times a second: every interaction
+            // restarts this effect (it is keyed on lastInteractionTime), so the deadline is fixed.
+            val deadline = lastInteractionTime + aodAutoTimeoutSeconds * 1000L
+            delay((deadline - System.currentTimeMillis()).coerceAtLeast(100L))
+            // In the background it waits for the app to come back, then switches at once, as before.
+            com.ozyern.exhale.utils.awaitAppVisible()
+            isAodActive = true
+            navController.navigate("always_on_display") {
+                launchSingleTop = true
             }
         }
     }

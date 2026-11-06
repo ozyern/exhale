@@ -78,15 +78,28 @@ class AbRepeat(
             while (isActive) {
                 val loop = _loop.value ?: break
                 val end = loop.endMs ?: break
-                if (player.isPlaying && player.currentPosition >= end) player.seekTo(loop.startMs)
-                // Fine enough that the jump lands within a beat of B; cheap enough to leave running.
-                delay(PollMs)
+                val playing = player.isPlaying
+                val position = player.currentPosition
+                if (playing && position >= end) {
+                    player.seekTo(loop.startMs)
+                    continue
+                }
+                // Sleep until B is due rather than waking 25 times a second for the whole loop:
+                // the jump still lands on B, since the wait shrinks as B comes near. Capped so a
+                // seek made meanwhile is still noticed soon, and slow while paused.
+                val speed = player.playbackParameters.speed.takeIf { it > 0.05f } ?: 1f
+                delay(
+                    if (!playing) PausedPollMs
+                    else ((end - position) / speed).toLong().coerceIn(MinWaitMs, MaxWaitMs),
+                )
             }
         }
     }
 
     private companion object {
-        const val PollMs = 40L
+        const val MinWaitMs = 10L
+        const val MaxWaitMs = 250L
+        const val PausedPollMs = 250L
 
         /** A loop shorter than this is almost certainly a double tap, not a phrase. */
         const val MinLoopMs = 500L

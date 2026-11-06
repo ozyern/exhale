@@ -151,6 +151,10 @@ private fun LockLyricsScreen(player: Player, onUnlock: () -> Unit) {
 
     LaunchedEffect(player) {
         while (isActive) {
+            // This screen lives over the lock screen, and the display turns off under it: the
+            // composition stays alive, so without this it polled twelve times a second, screen
+            // dark, for as long as the music played.
+            com.ozyern.exhale.utils.awaitAppVisible()
             position = player.currentPosition
             playing = player.isPlaying
             val meta = player.currentMediaItem?.mediaMetadata

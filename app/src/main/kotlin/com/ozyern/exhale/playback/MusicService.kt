@@ -5819,7 +5819,7 @@ class MusicService :
             ioScope.async {
                 val (title, artist) = com.ozyern.exhale.lyrics.SongQuery.songAndArtist(song.title, song.artists.map { it.name })
                 withTimeoutOrNull(FLAC_LOOKUP_TIMEOUT_MS) {
-                    runCatching { com.ozyern.exhale.openflac.OpenFlac.findCopy(title, artist, song.duration) }.getOrNull()
+                    runCatching { com.ozyern.exhale.openflac.OpenFlac.findCopy(title, artist, song.duration, song.album?.title) }.getOrNull()
                         ?.url?.let(com.ozyern.exhale.openflac.OpenFlac::fastUrl)
                 }
             }
@@ -7015,11 +7015,12 @@ class MusicService :
         }
     }
 
-    private fun writePersistentObject(fileName: String, payload: Serializable) {
+    /** Writes [payload] atomically; true when it reached the disk. */
+    private fun writePersistentObject(fileName: String, payload: Serializable): Boolean {
         val persistentFile = filesDir.resolve(fileName)
         val tempFile = filesDir.resolve("$fileName.tmp")
 
-        synchronized(persistentStateLock) {
+        return synchronized(persistentStateLock) {
             runCatching {
                 FileOutputStream(tempFile).use { fos ->
                     ObjectOutputStream(fos).use { output ->
@@ -7041,7 +7042,7 @@ class MusicService :
             }.onFailure {
                 runCatching { tempFile.delete() }
                 reportException(it)
-            }
+            }.isSuccess
         }
     }
 
@@ -7127,11 +7128,40 @@ class MusicService :
                 playbackState = playbackState
             )
             
-            writePersistentObject(PERSISTENT_QUEUE_FILE, persistQueue)
-            writePersistentObject(PERSISTENT_AUTOMIX_FILE, persistAutomix)
-            writePersistentObject(PERSISTENT_PLAYER_STATE_FILE, persistPlayerState)
+            // Each file only when what it holds has changed. This runs every ten seconds while
+            // music plays, and rewriting (and fsyncing) a queue of hundreds of songs that had not
+            // changed woke the flash for nothing. Where the song is lives in the player state,
+            // which is what a restore seeks to, so the queue file's own position going stale
+            // between real changes loses nothing.
+            val queueSignature = listOf(
+                System.identityHashCode(currentQueue),
+                queueTitle,
+                currentMediaItemIndex,
+                mediaItemsSnapshot.map { it.id },
+            ).hashCode()
+            val automixSignature = automixSnapshot.map { it.id }.hashCode()
+            if (queueSignature != lastSavedQueueSignature &&
+                writePersistentObject(PERSISTENT_QUEUE_FILE, persistQueue)
+            ) {
+                lastSavedQueueSignature = queueSignature
+            }
+            if (automixSignature != lastSavedAutomixSignature &&
+                writePersistentObject(PERSISTENT_AUTOMIX_FILE, persistAutomix)
+            ) {
+                lastSavedAutomixSignature = automixSignature
+            }
+            if (persistPlayerState != lastSavedPlayerState &&
+                writePersistentObject(PERSISTENT_PLAYER_STATE_FILE, persistPlayerState)
+            ) {
+                lastSavedPlayerState = persistPlayerState
+            }
         }
     }
+
+    // What saveQueueToDisk last wrote; touched only from its IO block, one save at a time.
+    @Volatile private var lastSavedQueueSignature: Int? = null
+    @Volatile private var lastSavedAutomixSignature: Int? = null
+    @Volatile private var lastSavedPlayerState: PersistPlayerState? = null
 
 
     override fun onDestroy() {

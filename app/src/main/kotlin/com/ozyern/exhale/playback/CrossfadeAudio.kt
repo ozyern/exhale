@@ -194,15 +194,18 @@ internal class CrossfadeAudio(
 
             val fadeMs = crossfadeDurationMs.value
 
+            // Crossfade off, or nothing playing: nothing to time, so the loop wakes rarely. It ran
+            // four to seven times a second here, for as long as the service lived — with the screen
+            // off, for most people, who never turn crossfade on.
             if (fadeMs <= 0) {
                 stopOverlapCrossfade(resetMainFade = true)
-                delay(250)
+                delay(IDLE_TICK_MS)
                 continue
             }
 
             if (!player.playWhenReady) {
                 stopOverlapCrossfade(resetMainFade = true)
-                delay(150)
+                delay(PAUSED_TICK_MS)
                 continue
             }
 
@@ -306,7 +309,13 @@ internal class CrossfadeAudio(
             }
 
             if (playbackFadeFactor.value != 1f) playbackFadeFactor.value = 1f
-            delay(100)
+            // Far from the end there is nothing to do until the priming window opens: sleep toward
+            // it instead of checking ten times a second through the whole song. Capped at a second,
+            // so a seek toward the end is still caught well inside the 12 s priming lead; inside
+            // the window it stays at the old 100 ms.
+            val speed = player.playbackParameters.speed.takeIf { it > 0.05f } ?: 1f
+            val untilWindowMs = ((remainingMs - preloadWindowMs) / speed).toLong()
+            delay(untilWindowMs.coerceIn(100L, FAR_TICK_MAX_MS))
         }
     }
 
@@ -772,6 +781,15 @@ internal class CrossfadeAudio(
 
         /** How long before the fade the arriving song is looked up and buffered (paused). */
         const val CROSSFADE_PRIME_LEAD_MS = 12_000L
+
+        /** The loop's wait with crossfade off: only to notice it being turned on. */
+        const val IDLE_TICK_MS = 1_000L
+
+        /** The loop's wait while paused: only to notice play being pressed. */
+        const val PAUSED_TICK_MS = 500L
+
+        /** The longest wait while a song plays far from its end. */
+        const val FAR_TICK_MAX_MS = 1_000L
 
         /** How far ahead the player must have buffered before Automix may read the song. */
         private const val ANALYSIS_BUFFER_AHEAD_MS = 30_000L

@@ -350,12 +350,16 @@ fun AlwaysOnDisplayScreen(navController: NavController) {
     // ── System clock (optional) ──────────────────────────────────────────
     var clockText by remember { mutableStateOf("") }
     val clockPattern = if (clockFormat24h) "HH:mm" else "hh:mm a"
-    LaunchedEffect(showClock) {
+    LaunchedEffect(showClock, clockPattern) {
         if (showClock) {
+            val format = SimpleDateFormat(clockPattern, Locale.getDefault())
             while (isActive) {
                 com.ozyern.exhale.utils.awaitAppVisible()
-                clockText = SimpleDateFormat(clockPattern, Locale.getDefault()).format(Date())
-                delay(10_000L)
+                val now = System.currentTimeMillis()
+                clockText = format.format(Date(now))
+                // On the turn of each minute: a fixed ten-second step showed the old minute for up
+                // to ten seconds after it changed, and woke six times as often.
+                delay(60_000L - now % 60_000L + 50L)
             }
         }
     }
@@ -1381,6 +1385,7 @@ private fun rememberWordLitLine(
     var now by remember(entry) { mutableLongStateOf(position()) }
     LaunchedEffect(entry) {
         while (isActive) {
+            com.ozyern.exhale.utils.awaitAppVisible()
             now = position()
             delay(60L)
         }

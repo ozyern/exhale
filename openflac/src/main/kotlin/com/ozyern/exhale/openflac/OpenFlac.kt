@@ -165,19 +165,31 @@ object OpenFlac {
      * A FLAC of exactly this recording from the public catalogues, or null. Most commercial releases
      * won't be there; this is for the ones that are. Failures just mean no copy.
      */
-    suspend fun findCopy(title: String, artist: String, durationSeconds: Int): Track? {
+    suspend fun findCopy(title: String, artist: String, durationSeconds: Int, album: String? = null): Track? {
         if (title.isBlank() || artist.isBlank() || durationSeconds <= 0) return null
         val quotedArtist = artist.replace('"', ' ')
         val quotedTitle = title.replace('"', ' ')
+        val quotedAlbum = album?.replace('"', ' ')?.takeIf { it.isNotBlank() && plain(it) != plain(title) }
         val found = coroutineScope {
             val archive = async {
                 runCatching {
-                    val query = "mediatype:(audio) AND format:(Flac) AND creator:(\"$quotedArtist\") AND title:(\"$quotedTitle\")"
+                    // An archive item is a whole release, and its title is the release's: a song is
+                    // one of its files. Asked for the song's name alone, the search only ever found
+                    // singles, so the album the song is on is asked for alongside it.
+                    val titles = listOfNotNull("\"$quotedTitle\"", quotedAlbum?.let { "\"$it\"" })
+                        .joinToString(" OR ")
+                    val query = "mediatype:(audio) AND format:(Flac) AND creator:(\"$quotedArtist\") AND title:($titles)"
                     val url = "https://archive.org/advancedsearch.php?q=${query.encodeURLParameter()}" +
-                        "&fl%5B%5D=identifier&sort%5B%5D=${"downloads desc".encodeURLParameter()}&rows=3&page=1&output=json"
-                    getJson(url).obj("response")?.array("docs").orEmpty()
+                        "&fl%5B%5D=identifier&sort%5B%5D=${"downloads desc".encodeURLParameter()}&rows=4&page=1&output=json"
+                    val ids = getJson(url).obj("response")?.array("docs").orEmpty()
                         .mapNotNull { (it as? JsonObject)?.text("identifier") }
-                        .flatMap { id -> runCatching { archiveTracks(id) }.getOrDefault(emptyList()) }
+                    // Each item's file list at once: one after another they outlasted the few seconds
+                    // a song waits for its FLAC, and it started on the lossy stream instead.
+                    coroutineScope {
+                        ids.map { id -> async { runCatching { archiveTracks(id) }.getOrDefault(emptyList()) } }
+                            .awaitAll()
+                            .flatten()
+                    }
                 }.getOrDefault(emptyList())
             }
             val commons = async {

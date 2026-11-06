@@ -89,6 +89,39 @@ object NewPipeUtils {
         NewPipe.init(NewPipeDownloaderImpl(YouTube.proxy))
     }
 
+    /**
+     * When each player-code function last failed to be found, by kind. NewPipe caches a function
+     * once it has found one, but not its failure to: when YouTube's player code changes shape past
+     * its known patterns, every stream resolved ran those regexes over the whole multi-megabyte
+     * script again, to fail the same way. The failure is the script's, so it is remembered for a
+     * while and the caller falls back at once. Only parse failures — a network error is retried.
+     */
+    private val parseFailedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private const val PARSE_FAILURE_MEMORY_MS = 10 * 60_000L
+
+    private inline fun <T> rememberingParseFailure(kind: String, block: () -> T): T {
+        val failedAt = parseFailedAt[kind]
+        if (failedAt != null && System.currentTimeMillis() - failedAt < PARSE_FAILURE_MEMORY_MS) {
+            throw ParsingException("$kind unavailable (failed ${(System.currentTimeMillis() - failedAt) / 1000}s ago)")
+        }
+        return try {
+            block().also { parseFailedAt.remove(kind) }
+        } catch (e: ParsingException) {
+            parseFailedAt[kind] = System.currentTimeMillis()
+            throw e
+        }
+    }
+
+    private fun deobfuscateSignature(videoId: String, signature: String): String =
+        rememberingParseFailure("signature") {
+            YoutubeJavaScriptPlayerManager.deobfuscateSignature(videoId, signature)
+        }
+
+    private fun deobfuscateThrottling(videoId: String, url: String): String =
+        rememberingParseFailure("throttling") {
+            YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(videoId, url)
+        }
+
     fun getSignatureTimestamp(videoId: String): Result<Int> = runCatching {
         YoutubeJavaScriptPlayerManager.getSignatureTimestamp(videoId)
     }
@@ -133,7 +166,7 @@ object NewPipeUtils {
                                 initialDelayMs = 250L,
                                 maxDelayMs = 2_000L
                             ) {
-                                YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(
+                                deobfuscateThrottling(
                                     videoId,
                                     directUrl
                                 )
@@ -162,7 +195,7 @@ object NewPipeUtils {
                 val url = params["url"]?.let { URLBuilder(it) }
                     ?: throw ParsingException("Could not parse cipher url")
                 url.parameters[signatureParam] =
-                    YoutubeJavaScriptPlayerManager.deobfuscateSignature(
+                    deobfuscateSignature(
                         videoId,
                         obfuscatedSignature
                     )
@@ -175,7 +208,7 @@ object NewPipeUtils {
                     initialDelayMs = 250L,
                     maxDelayMs = 2_000L
                 ) {
-                    YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(videoId, url)
+                    deobfuscateThrottling(videoId, url)
                 }
             }.getOrElse { url }
 

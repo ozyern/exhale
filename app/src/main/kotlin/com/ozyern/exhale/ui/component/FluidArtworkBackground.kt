@@ -27,6 +27,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.platform.LocalContext
 import coil3.imageLoader
@@ -88,7 +92,11 @@ half3 field(float2 p, float time, float aspect, bool useCover) {
 half4 main(float2 fragCoord) {
     float aspect = size.x / size.y;
     float2 p = (fragCoord / size - 0.5) * float2(aspect, 1.0);
-    half3 col = mix(field(p, time, aspect, false), field(p, time, aspect, true), half(blend));
+    // Settled on one cover, the outgoing field is weighted zero: skipping it is the same picture
+    // at half the texture reads. A uniform, so every pixel takes the same branch.
+    half3 col = blend >= 1.0
+        ? field(p, time, aspect, true)
+        : mix(field(p, time, aspect, false), field(p, time, aspect, true), half(blend));
 
     // Light moving through it, rather than paint laid over it. Three slow pools brighten where they
     // fall and leave the rest alone — added flat, they only washed the colour out.
@@ -145,7 +153,9 @@ fun FluidArtworkBackground(
     var previous by remember { mutableStateOf<Cover?>(null) }
     val blend = remember { Animatable(1f) }
     val clock = remember { mutableFloatStateOf(0f) }
-    val isPaused by rememberUpdatedState(paused)
+    // Inside the player while it is only pre-built behind the dock, nobody can see it move.
+    val shown = LocalPlayerShown.current
+    val isPaused by rememberUpdatedState(paused || !shown)
 
     LaunchedEffect(url) {
         if (url == null) return@LaunchedEffect
@@ -186,17 +196,48 @@ fun FluidArtworkBackground(
     Box(
         modifier
             .fillMaxSize()
-            .background(Color.Black)
-            .drawBehind {
-                val now = current ?: return@drawBehind
-                if (shader == null || brush == null) return@drawBehind
-                shader.setInputShader("cover", now.shader)
-                shader.setInputShader("previous", (previous ?: now).shader)
-                shader.setFloatUniform("size", size.width, size.height)
-                shader.setFloatUniform("time", clock.floatValue)
-                shader.setFloatUniform("blend", blend.value)
-                shader.setFloatUniform("brightness", brightness)
-                drawRect(brush)
-            },
-    )
+            .background(Color.Black),
+    ) {
+        // Rendered at half the screen's resolution and scaled up with filtering. The field is soft
+        // gradients sampled from a 48-pixel cover: a full-resolution pass worked out the same smooth
+        // colour four times over, on every step, behind every page while music plays.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .layout { measurable, constraints ->
+                    val w = constraints.maxWidth
+                    val h = constraints.maxHeight
+                    val placeable = measurable.measure(
+                        Constraints.fixed(
+                            ((w + RenderScale - 1) / RenderScale).coerceAtLeast(1),
+                            ((h + RenderScale - 1) / RenderScale).coerceAtLeast(1),
+                        ),
+                    )
+                    layout(w, h) {
+                        placeable.placeWithLayer(0, 0) {
+                            // Its own buffer at the small size, so the scale stretches finished
+                            // pixels rather than the drawing (which would be redone at full size).
+                            compositingStrategy = CompositingStrategy.Offscreen
+                            transformOrigin = TransformOrigin(0f, 0f)
+                            scaleX = RenderScale.toFloat()
+                            scaleY = RenderScale.toFloat()
+                        }
+                    }
+                }
+                .drawBehind {
+                    val now = current ?: return@drawBehind
+                    if (shader == null || brush == null) return@drawBehind
+                    shader.setInputShader("cover", now.shader)
+                    shader.setInputShader("previous", (previous ?: now).shader)
+                    shader.setFloatUniform("size", size.width, size.height)
+                    shader.setFloatUniform("time", clock.floatValue)
+                    shader.setFloatUniform("blend", blend.value)
+                    shader.setFloatUniform("brightness", brightness)
+                    drawRect(brush)
+                },
+        )
+    }
 }
+
+/** How many screen pixels each side of one field pixel covers. */
+private const val RenderScale = 2

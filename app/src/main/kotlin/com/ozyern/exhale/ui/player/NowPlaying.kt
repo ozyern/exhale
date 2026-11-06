@@ -125,6 +125,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
@@ -4160,11 +4161,31 @@ internal fun LandscapeNowPlaying(
         }
     }
 
-    Box(modifier.fillMaxSize().background(Color.Black)) {
+    var showOutputSheet by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
+    val safeInsets = WindowInsets.safeDrawing
+    BoxWithConstraints(modifier.fillMaxSize().background(Color.Black)) {
+        // A phone on its side: the window left once the bars and the cutout have had their share is
+        // too short for the stacked tablet layout. Decided here, on the whole window, because the
+        // phone layout's ground (the cover, full-bleed) is laid under those insets too.
+        val insetHeight = with(density) { (safeInsets.getTop(density) + safeInsets.getBottom(density)).toDp() }
+        val phoneSide = tabletopHinge == null && maxHeight - insetHeight < 440.dp
+        // The sleeve's side on a phone on its side: the full height of the screen, cover to cover.
+        val phoneArtSide = minOf(maxHeight, maxWidth * 0.55f)
+
         // The cover is the room the two columns sit in: the lock-screen ground the portrait player
         // stands on, recorded for the glass.
         Box(Modifier.fillMaxSize().layerBackdrop(glassBackdrop)) {
-            LiveArtworkBackdrop(artUrl = artUrl, palette = palette)
+            if (phoneSide) {
+                PhoneLandscapeGround(
+                    artUrl = artUrl,
+                    artSide = phoneArtSide,
+                    canvas = canvas,
+                    isPlaying = isPlaying,
+                )
+            } else {
+                LiveArtworkBackdrop(artUrl = artUrl, palette = palette)
+            }
         }
 
         CompositionLocalProvider(
@@ -4177,7 +4198,7 @@ internal fun LandscapeNowPlaying(
                 .windowInsetsPadding(WindowInsets.safeDrawing),
             contentAlignment = Alignment.TopCenter,
         ) {
-            val compact = maxHeight < 440.dp
+            val compact = phoneSide
 
             // ---- Pieces shared by both arrangements ----
             val sleeve: @Composable (androidx.compose.ui.unit.Dp) -> Unit = { side ->
@@ -4468,30 +4489,29 @@ internal fun LandscapeNowPlaying(
                         }
                     }
                 }
-            } else Row(
-                modifier = Modifier
-                    .widthIn(max = 1100.dp)
-                    .fillMaxSize()
-                    .padding(top = 20.dp, bottom = 8.dp),
-            ) {
-                // ---- A phone on its side: the sleeve, and a page that turns ----
-                BoxWithConstraints(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .padding(horizontal = 20.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    sleeve(minOf(maxWidth, maxHeight))
+            } else {
+                // ---- A phone on its side: the iOS music app's landscape player ----
+                //
+                // The cover fills the left of the screen top to bottom and dissolves into its own
+                // edge colour (see PhoneLandscapeGround); everything else is one column on the
+                // right, set in plain glyphs on that colour — no glass, no second card. The page
+                // turns in place for the lyrics or the queue; the toolbar at its foot stays.
+                val safeStart = with(density) {
+                    safeInsets.getLeft(density, androidx.compose.ui.unit.LayoutDirection.Ltr).toDp()
                 }
-
-                // ---- The page: controls, lyrics or the queue ----
+                val columnStart = (phoneArtSide - safeStart + 6.dp).coerceAtLeast(0.dp)
                 Column(
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .padding(end = 20.dp),
+                        .fillMaxSize()
+                        .padding(start = columnStart, end = 28.dp, bottom = 4.dp),
                 ) {
+                    // The sheet's grabber, where the iOS player puts it: over the column's start.
+                    Box(
+                        Modifier
+                            .padding(top = 6.dp, start = 2.dp)
+                            .size(width = 36.dp, height = 5.dp)
+                            .background(Color.White.copy(alpha = 0.35f), CircleShape),
+                    )
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         AnimatedContent(
                             targetState = panel,
@@ -4509,36 +4529,361 @@ internal fun LandscapeNowPlaying(
                                     playerSheetState = playerSheetState,
                                     modifier = Modifier.fillMaxSize(),
                                 )
-                                NowPlayingPanel.None -> Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier = Modifier.fillMaxSize(),
-                                ) { songControls() }
+                                NowPlayingPanel.None -> PhoneLandscapeControls(
+                                    mediaMetadata = mediaMetadata,
+                                    liked = liked,
+                                    playbackState = playbackState,
+                                    isPlaying = isPlaying,
+                                    canSkipPrevious = canSkipPrevious,
+                                    canSkipNext = canSkipNext,
+                                    currentFormat = currentFormat,
+                                    playerVolume = playerVolume,
+                                    positionProvider = positionProvider,
+                                    durationProvider = durationProvider,
+                                    sliderPositionProvider = sliderPositionProvider,
+                                    onSliderValueChange = onSliderValueChange,
+                                    onSliderValueChangeFinished = onSliderValueChangeFinished,
+                                    onToggleLike = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        playerConnection.toggleLike()
+                                    },
+                                    onMore = {
+                                        menuState.show {
+                                            PlayerMenu(
+                                                mediaMetadata = mediaMetadata,
+                                                navController = navController,
+                                                playerBottomSheetState = playerSheetState,
+                                                onShowDetailsDialog = {
+                                                    bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
+                                                },
+                                                onDismiss = menuState::dismiss,
+                                            )
+                                        }
+                                    },
+                                )
                             }
                         }
                     }
-                    // Lyrics and the queue, always here, whichever page is showing.
+                    // Lyrics, where the sound goes, and the queue: always here, whichever page shows.
                     Row(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
-                        LandscapeToggle(
-                            icon = R.drawable.lyrics,
+                        PhoneLandscapeGlyph(
+                            icon = R.drawable.lyrics_apple,
                             active = panel == NowPlayingPanel.Lyrics,
                             onClick = { panel = if (panel == NowPlayingPanel.Lyrics) NowPlayingPanel.None else NowPlayingPanel.Lyrics },
                         )
-                        LandscapeToggle(
-                            icon = R.drawable.queue_music,
+                        if (videoFound) {
+                            PhoneLandscapeGlyph(
+                                icon = R.drawable.music_video,
+                                active = false,
+                                onClick = { FullscreenVideoState.requested = true },
+                            )
+                        }
+                        PhoneLandscapeGlyph(
+                            icon = R.drawable.airplay,
+                            active = false,
+                            onClick = { showOutputSheet = true },
+                        )
+                        PhoneLandscapeGlyph(
+                            icon = R.drawable.list,
                             active = panel == NowPlayingPanel.Queue,
                             onClick = { panel = if (panel == NowPlayingPanel.Queue) NowPlayingPanel.None else NowPlayingPanel.Queue },
                         )
-                        videoToggle()
                     }
                 }
             }
         }
         }
     }
+    if (showOutputSheet) {
+        val devices = rememberOutputDevices()
+        DeviceSelectionBottomSheet(
+            onDismiss = { showOutputSheet = false },
+            availableDevices = devices.all,
+            activeDevice = devices.active,
+            onDeviceSelected = { showOutputSheet = false },
+        )
+    }
+}
+
+/**
+ * The ground of the phone's landscape player: the cover at the full height of the screen against
+ * its left edge, its right side dissolving into the colour of that edge, which fills the rest.
+ *
+ * Cheaper than the portrait ground on purpose as well as truer to the reference: one flat colour
+ * and one image in a cached layer, where the moving field was a full-screen shader pass thirty
+ * times a second behind controls that, here, have no glass to show it through.
+ */
+@Composable
+private fun PhoneLandscapeGround(
+    artUrl: String?,
+    artSide: Dp,
+    canvas: com.ozyern.exhale.canvas.CanvasArtwork?,
+    isPlaying: Boolean,
+) {
+    val edge = rememberArtworkEdgeColor(artUrl)
+    val ground by animateColorAsState(edge, tween(600), label = "landscapeGround")
+    Box(Modifier.fillMaxSize().drawBehind { drawRect(ground) }) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(artSide)
+                // Its own layer, so the fade is a mask over the finished cover rather than a
+                // second draw of it, and is only redone when the picture changes.
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            0f to Color.Black,
+                            0.62f to Color.Black,
+                            0.86f to Color.Black.copy(alpha = 0.45f),
+                            1f to Color.Transparent,
+                        ),
+                        blendMode = BlendMode.DstIn,
+                    )
+                },
+        ) {
+            Crossfade(targetState = artUrl, animationSpec = tween(450), label = "landscapeCover") { url ->
+                AsyncImage(
+                    model = url,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            // The animated cover, as the phone player plays it: over the still one, which stays
+            // underneath until the clip's first frame is up.
+            canvas?.let { clip ->
+                var clipRendered by remember(clip) { mutableStateOf(false) }
+                CanvasHeroVideo(
+                    primaryUrl = clip.animated,
+                    fallbackUrl = clip.videoUrl,
+                    isPlaying = isPlaying,
+                    bottomFade = 0f,
+                    alpha = { if (clipRendered) 1f else 0f },
+                    onRenderedChanged = { clipRendered = it },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+    }
+}
+
+/** The song on a phone on its side: credits, the scrubber, the transport and the volume. */
+@Composable
+private fun PhoneLandscapeControls(
+    mediaMetadata: MediaMetadata,
+    liked: Boolean,
+    playbackState: Int,
+    isPlaying: Boolean,
+    canSkipPrevious: Boolean,
+    canSkipNext: Boolean,
+    currentFormat: FormatEntity?,
+    playerVolume: Float,
+    positionProvider: () -> Long,
+    durationProvider: () -> Long,
+    sliderPositionProvider: () -> Long?,
+    onSliderValueChange: (Long) -> Unit,
+    onSliderValueChangeFinished: () -> Unit,
+    onToggleLike: () -> Unit,
+    onMore: () -> Unit,
+) {
+    val playerConnection = LocalPlayerConnection.current ?: return
+    val haptic = LocalHapticFeedback.current
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                MarqueeText(
+                    text = mediaMetadata.title,
+                    style = TextStyle(fontFamily = SfPro, fontWeight = FontWeight.Bold, fontSize = 18.sp),
+                    color = Color.White,
+                    trailing = if (mediaMetadata.explicit) {
+                        { ExplicitBadge(color = Color.White.copy(alpha = 0.6f)) }
+                    } else null,
+                )
+                Text(
+                    text = mediaMetadata.artists.joinToString { it.name },
+                    style = TextStyle(fontWeight = FontWeight.Medium, fontSize = 18.sp),
+                    color = Color.White.copy(alpha = 0.72f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            PhoneLandscapeGlyph(
+                icon = if (liked) R.drawable.star_filled else R.drawable.star,
+                active = liked,
+                size = 36.dp,
+                iconSize = 21.dp,
+                onClick = onToggleLike,
+            )
+            PhoneLandscapeGlyph(
+                icon = R.drawable.more_horiz,
+                active = false,
+                size = 36.dp,
+                iconSize = 22.dp,
+                onClick = onMore,
+            )
+        }
+        Spacer(Modifier.height(14.dp))
+        PlayerScrubber(
+            positionProvider = positionProvider,
+            durationProvider = durationProvider,
+            sliderPositionProvider = sliderPositionProvider,
+            onScrub = onSliderValueChange,
+            onScrubFinished = {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onSliderValueChangeFinished()
+            },
+            onScrubbingChange = {},
+        ) {
+            Row(Modifier.align(Alignment.Center)) { PlayerSoundLine(format = currentFormat) }
+        }
+        // The transport at the size the landscape player sets it: smaller than portrait's, as the
+        // column is shorter, with the same press and the same glyphs.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TransportGlyph(
+                icon = R.drawable.ic_np_previous,
+                size = 36.dp,
+                touchSize = 52.dp,
+                heightScale = 0.85f,
+                enabled = canSkipPrevious,
+                onClick = playerConnection::seekToPrevious,
+            )
+            if (playbackState == Player.STATE_BUFFERING) {
+                Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
+                    LoadingRing(modifier = Modifier.size(28.dp), color = Color.White, stroke = 2.5.dp)
+                }
+            } else {
+                TransportGlyph(
+                    icon = when {
+                        playbackState == Player.STATE_ENDED -> R.drawable.replay
+                        isPlaying -> R.drawable.ic_np_pause
+                        else -> R.drawable.ic_np_play
+                    },
+                    size = 46.dp,
+                    touchSize = 64.dp,
+                    onClick = {
+                        if (playbackState == Player.STATE_ENDED) {
+                            playerConnection.player.seekTo(0, 0)
+                            playerConnection.player.playWhenReady = true
+                        } else {
+                            playerConnection.player.togglePlayPause()
+                        }
+                    },
+                )
+            }
+            TransportGlyph(
+                icon = R.drawable.ic_np_next,
+                size = 36.dp,
+                touchSize = 52.dp,
+                heightScale = 0.85f,
+                enabled = canSkipNext,
+                onClick = playerConnection::seekToNext,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        VolumeRow(
+            value = playerVolume,
+            onValueChange = { playerConnection.service.playerVolume.value = it },
+            onDraggingChange = {},
+        )
+    }
+}
+
+/** A plain glyph on the landscape ground, as the iOS player sets its toolbar: no disc behind it. */
+@Composable
+private fun PhoneLandscapeGlyph(
+    icon: Int,
+    active: Boolean,
+    onClick: () -> Unit,
+    size: Dp = 44.dp,
+    iconSize: Dp = 22.dp,
+) {
+    val haptic = LocalHapticFeedback.current
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(if (active) Color.White.copy(alpha = 0.18f) else Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            },
+    ) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = null,
+            tint = Color.White.copy(alpha = if (active) 1f else 0.85f),
+            modifier = Modifier.size(iconSize),
+        )
+    }
+}
+
+/** Edge colours already worked out, by artwork address. */
+private val EdgeColorCache = object : LinkedHashMap<String, Color>(16, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Color>?) = size > 32
+}
+
+/**
+ * The colour of the cover's right-hand edge — what the landscape cover dissolves into — kept dark
+ * and light enough for white type to read on it whatever the sleeve.
+ */
+@Composable
+private fun rememberArtworkEdgeColor(imageUrl: String?): Color {
+    val context = LocalContext.current
+    val fallback = Color(0xFF2A2A2E)
+    val cached = imageUrl?.let { synchronized(EdgeColorCache) { EdgeColorCache[it] } }
+    val color by produceState(cached ?: fallback, imageUrl) {
+        if (imageUrl == null || cached != null) return@produceState
+        val request = ImageRequest.Builder(context).data(imageUrl).size(32, 32).allowHardware(false).build()
+        val bitmap = runCatching { context.imageLoader.execute(request).image?.toBitmap() }.getOrNull()
+            ?: return@produceState
+        value = withContext(Dispatchers.Default) { edgeColorOf(bitmap) }
+            .also { synchronized(EdgeColorCache) { EdgeColorCache[imageUrl] = it } }
+    }
+    return color
+}
+
+private fun edgeColorOf(bitmap: Bitmap): Color {
+    val w = bitmap.width
+    val h = bitmap.height
+    if (w == 0 || h == 0) return Color(0xFF2A2A2E)
+    // The right-most eighth of the cover, averaged: the strip the fade runs into.
+    val from = (w * 7 / 8).coerceAtMost(w - 1)
+    var r = 0L
+    var g = 0L
+    var b = 0L
+    var n = 0
+    for (x in from until w) for (y in 0 until h) {
+        val p = bitmap.getPixel(x, y)
+        r += (p shr 16) and 0xFF
+        g += (p shr 8) and 0xFF
+        b += p and 0xFF
+        n++
+    }
+    val avg = android.graphics.Color.rgb((r / n).toInt(), (g / n).toInt(), (b / n).toInt())
+    val hsl = FloatArray(3).also { ColorUtils.colorToHSL(avg, it) }
+    // Muted and settled, as the reference's ground is beside a bright sleeve, and never so light
+    // that the white controls wash out nor so dark that it reads as black.
+    hsl[1] = (hsl[1] * 0.8f).coerceAtMost(0.55f)
+    hsl[2] = (hsl[2] * 0.85f).coerceIn(0.22f, 0.56f)
+    return Color(ColorUtils.HSLToColor(hsl))
 }
 
 @Composable

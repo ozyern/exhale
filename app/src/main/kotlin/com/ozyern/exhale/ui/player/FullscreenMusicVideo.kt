@@ -616,6 +616,7 @@ private fun VideoScrubber(player: androidx.media3.common.Player, onTouched: () -
     var dragValue by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(player) {
         while (true) {
+            com.ozyern.exhale.utils.awaitAppVisible()
             position = player.currentPosition
             duration = player.duration.coerceAtLeast(0L)
             delay(250)
