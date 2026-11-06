@@ -4179,6 +4179,7 @@ internal fun LandscapeNowPlaying(
             if (phoneSide) {
                 PhoneLandscapeGround(
                     artUrl = artUrl,
+                    palette = palette,
                     artSide = phoneArtSide,
                     canvas = canvas,
                     isPlaying = isPlaying,
@@ -4493,8 +4494,8 @@ internal fun LandscapeNowPlaying(
                 // ---- A phone on its side: the iOS music app's landscape player ----
                 //
                 // The cover fills the left of the screen top to bottom and dissolves into its own
-                // edge colour (see PhoneLandscapeGround); everything else is one column on the
-                // right, set in plain glyphs on that colour — no glass, no second card. The page
+                // moving field of colours (see PhoneLandscapeGround); everything else is one column on the
+                // right, its buttons the portrait player's liquid glass over that field. The page
                 // turns in place for the lyrics or the queue; the toolbar at its foot stays.
                 val safeStart = with(density) {
                     safeInsets.getLeft(density, androidx.compose.ui.unit.LayoutDirection.Ltr).toDp()
@@ -4611,22 +4612,19 @@ internal fun LandscapeNowPlaying(
 
 /**
  * The ground of the phone's landscape player: the cover at the full height of the screen against
- * its left edge, its right side dissolving into the colour of that edge, which fills the rest.
- *
- * Cheaper than the portrait ground on purpose as well as truer to the reference: one flat colour
- * and one image in a cached layer, where the moving field was a full-screen shader pass thirty
- * times a second behind controls that, here, have no glass to show it through.
+ * its left edge, its right side dissolving into the same moving field of its colours the portrait
+ * player stands on — which the glass controls on the right refract, as they do in portrait.
  */
 @Composable
 private fun PhoneLandscapeGround(
     artUrl: String?,
+    palette: MeshPalette,
     artSide: Dp,
     canvas: com.ozyern.exhale.canvas.CanvasArtwork?,
     isPlaying: Boolean,
 ) {
-    val edge = rememberArtworkEdgeColor(artUrl)
-    val ground by animateColorAsState(edge, tween(600), label = "landscapeGround")
-    Box(Modifier.fillMaxSize().drawBehind { drawRect(ground) }) {
+    Box(Modifier.fillMaxSize()) {
+        LiveArtworkBackdrop(artUrl = artUrl, palette = palette)
         Box(
             modifier = Modifier
                 .fillMaxHeight()
@@ -4716,19 +4714,16 @@ private fun PhoneLandscapeControls(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Spacer(Modifier.width(8.dp))
-            PhoneLandscapeGlyph(
+            Spacer(Modifier.width(10.dp))
+            // The portrait player's glass circles, refracting the field behind them.
+            CircleGlyph(
                 icon = if (liked) R.drawable.star_filled else R.drawable.star,
                 active = liked,
-                size = 36.dp,
-                iconSize = 21.dp,
                 onClick = onToggleLike,
             )
-            PhoneLandscapeGlyph(
+            Spacer(Modifier.width(8.dp))
+            CircleGlyph(
                 icon = R.drawable.more_horiz,
-                active = false,
-                size = 36.dp,
-                iconSize = 22.dp,
                 onClick = onMore,
             )
         }
@@ -4802,22 +4797,22 @@ private fun PhoneLandscapeControls(
     }
 }
 
-/** A plain glyph on the landscape ground, as the iOS player sets its toolbar: no disc behind it. */
+/** A toolbar button on the landscape ground: the portrait player's liquid glass disc, lit when on. */
 @Composable
 private fun PhoneLandscapeGlyph(
     icon: Int,
     active: Boolean,
     onClick: () -> Unit,
-    size: Dp = 44.dp,
-    iconSize: Dp = 22.dp,
+    size: Dp = BOTTOM_ACTION_SIZE,
+    iconSize: Dp = 23.dp,
 ) {
     val haptic = LocalHapticFeedback.current
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .size(size)
+            .playerGlass(CircleShape, lit = active)
             .clip(CircleShape)
-            .background(if (active) Color.White.copy(alpha = 0.18f) else Color.Transparent)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -4833,57 +4828,6 @@ private fun PhoneLandscapeGlyph(
             modifier = Modifier.size(iconSize),
         )
     }
-}
-
-/** Edge colours already worked out, by artwork address. */
-private val EdgeColorCache = object : LinkedHashMap<String, Color>(16, 0.75f, true) {
-    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Color>?) = size > 32
-}
-
-/**
- * The colour of the cover's right-hand edge — what the landscape cover dissolves into — kept dark
- * and light enough for white type to read on it whatever the sleeve.
- */
-@Composable
-private fun rememberArtworkEdgeColor(imageUrl: String?): Color {
-    val context = LocalContext.current
-    val fallback = Color(0xFF2A2A2E)
-    val cached = imageUrl?.let { synchronized(EdgeColorCache) { EdgeColorCache[it] } }
-    val color by produceState(cached ?: fallback, imageUrl) {
-        if (imageUrl == null || cached != null) return@produceState
-        val request = ImageRequest.Builder(context).data(imageUrl).size(32, 32).allowHardware(false).build()
-        val bitmap = runCatching { context.imageLoader.execute(request).image?.toBitmap() }.getOrNull()
-            ?: return@produceState
-        value = withContext(Dispatchers.Default) { edgeColorOf(bitmap) }
-            .also { synchronized(EdgeColorCache) { EdgeColorCache[imageUrl] = it } }
-    }
-    return color
-}
-
-private fun edgeColorOf(bitmap: Bitmap): Color {
-    val w = bitmap.width
-    val h = bitmap.height
-    if (w == 0 || h == 0) return Color(0xFF2A2A2E)
-    // The right-most eighth of the cover, averaged: the strip the fade runs into.
-    val from = (w * 7 / 8).coerceAtMost(w - 1)
-    var r = 0L
-    var g = 0L
-    var b = 0L
-    var n = 0
-    for (x in from until w) for (y in 0 until h) {
-        val p = bitmap.getPixel(x, y)
-        r += (p shr 16) and 0xFF
-        g += (p shr 8) and 0xFF
-        b += p and 0xFF
-        n++
-    }
-    val avg = android.graphics.Color.rgb((r / n).toInt(), (g / n).toInt(), (b / n).toInt())
-    val hsl = FloatArray(3).also { ColorUtils.colorToHSL(avg, it) }
-    // Muted and settled, as the reference's ground is beside a bright sleeve, and never so light
-    // that the white controls wash out nor so dark that it reads as black.
-    hsl[1] = (hsl[1] * 0.8f).coerceAtMost(0.55f)
-    hsl[2] = (hsl[2] * 0.85f).coerceIn(0.22f, 0.56f)
-    return Color(ColorUtils.HSLToColor(hsl))
 }
 
 @Composable

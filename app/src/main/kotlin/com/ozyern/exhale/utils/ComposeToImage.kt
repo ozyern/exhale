@@ -1170,24 +1170,15 @@ object ComposeToImage {
     // Saving a bitmap
     // ─────────────────────────────────────────────────────────────────────────
 
+    /**
+     * A private copy of [bitmap] for a share sheet. On Android 10 and up this used to go into
+     * Pictures/Exhale, so every image shared also landed in the gallery; sharing is not saving.
+     */
     fun saveBitmapAsFile(context: Context, bitmap: Bitmap, fileName: String): Uri {
         val safeBitmap = ensureSoftwareBitmap(bitmap)
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val contentValues = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, "$fileName.png")
-                put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
-                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Exhale")
-            }
-            val uri = context.contentResolver.insert(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues
-            ) ?: throw IllegalStateException("Failed to create new MediaStore record")
-            context.contentResolver.openOutputStream(uri)?.use { safeBitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            uri
-        } else {
-            val cachePath = File(context.cacheDir, "images").also { it.mkdirs() }
-            val imageFile = File(cachePath, "$fileName.png")
-            FileOutputStream(imageFile).use { safeBitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            FileProvider.getUriForFile(context, "${context.packageName}.FileProvider", imageFile)
-        }
+        val cachePath = File(context.cacheDir, "images").also { it.mkdirs() }
+        val imageFile = File(cachePath, "$fileName.png")
+        FileOutputStream(imageFile).use { safeBitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        return FileProvider.getUriForFile(context, "${context.packageName}.FileProvider", imageFile)
     }
 }
