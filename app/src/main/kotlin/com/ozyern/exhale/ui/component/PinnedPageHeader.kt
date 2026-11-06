@@ -104,9 +104,10 @@ fun PinnedPageHeader(
         Text(
             text = title,
             style = MaterialTheme.typography.headlineLarge.copy(
+                fontFamily = AppleTitleFont,
                 fontSize = if (long) 34.sp else largeTitle,
                 lineHeight = 46.sp,
-                letterSpacing = (-0.8).sp,
+                letterSpacing = (-0.4).sp,
                 // Over artwork the word needs its own shadow; the scrim alone is too light at rest.
                 shadow = Shadow(
                     color = Color.Black.copy(alpha = 0.45f),
@@ -161,6 +162,11 @@ fun PinnedPageHeader(
 
 /** Space a page leaves at its top so its content starts below the pinned header. */
 val PinnedPageHeaderHeight = 78.dp
+
+/** Apple's large-title and shelf-title face: SF Pro Display Bold, which the app bundles. */
+val AppleTitleFont = androidx.compose.ui.text.font.FontFamily(
+    androidx.compose.ui.text.font.Font(com.ozyern.exhale.R.font.sfprodisplaybold, FontWeight.Bold),
+)
 
 /** Whether a list has moved off its top, for [PinnedPageHeader]. */
 fun LazyListState.isScrolledFromTop(): Boolean = firstVisibleItemIndex > 0 || firstVisibleItemScrollOffset > 0

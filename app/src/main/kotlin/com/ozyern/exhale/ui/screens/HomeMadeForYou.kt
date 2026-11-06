@@ -6,11 +6,8 @@
 
 package com.ozyern.exhale.ui.screens
 
-import android.graphics.Bitmap
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -39,42 +36,37 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.graphics.ColorUtils
 import coil3.compose.AsyncImage
-import coil3.imageLoader
-import coil3.request.ImageRequest
-import coil3.request.allowHardware
-import coil3.toBitmap
 import com.ozyern.exhale.innertube.models.SongItem
 import com.ozyern.exhale.models.Recommendation
+import com.ozyern.exhale.ui.component.AppleTitleFont
 import com.ozyern.exhale.ui.component.PlayingIndicatorBox
 import com.ozyern.exhale.ui.utils.resize
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /** The page margin the title "Home" sits on; both shelves line up with it, as Apple's do. */
 internal val HomeShelfMargin = 20.dp
 
 /**
  * Apple Music's "Top Picks for You": tall 3:4 cards three fifths of the phone wide, so the next one
- * peeks in. Each card is washed in its cover's own background colour, the cover sits square at its
- * top, and three lines run along its foot — why it is here in grey, the title, the artist in grey.
- * Tap plays, long-press queues it next.
+ * peeks in. Each card stands on its own cover — blurred and dimmed, so it carries the cover's real
+ * colours rather than one averaged tint — with the cover square at its top and three lines along its
+ * foot: why it is here in grey, the title, the artist in grey. Tap plays, long-press queues it next.
  */
 @Composable
 fun HomeMadeForYou(
@@ -116,15 +108,15 @@ fun HomeMadeForYou(
     }
 }
 
-/** A Home shelf's heading: Apple's Title 2, 22pt bold, on the page margin. */
+/** A Home shelf's heading: Apple's Title 2, 22pt SF bold, on the page margin. */
 @Composable
 internal fun HomeShelfTitle(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
-        style = MaterialTheme.typography.titleLarge,
+        fontFamily = AppleTitleFont,
         fontSize = 22.sp,
         lineHeight = 26.sp,
-        letterSpacing = (-0.3).sp,
+        letterSpacing = (-0.2).sp,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onSurface,
         maxLines = 1,
@@ -148,13 +140,10 @@ private fun PickCard(
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        if (pressed) 0.96f else 1f,
-        spring(dampingRatio = 0.55f, stiffness = 520f),
+        if (pressed) 0.97f else 1f,
+        spring(dampingRatio = 0.6f, stiffness = 520f),
         label = "pickCardPress",
     )
-    val art = song.thumbnail.resize(720, 720)
-    val tint = rememberCoverBackground(song.thumbnail.resize(48, 48))
-    val ground by animateColorAsState(tint ?: Color(0xFF1C1C1E), tween(350), label = "pickCardGround")
     val shape = RoundedCornerShape(16.dp)
     BoxWithConstraints(
         modifier
@@ -164,9 +153,7 @@ private fun PickCard(
                 scaleY = scale
             }
             .clip(shape)
-            .background(ground)
-            // A hairline, as Apple rims the cards whose colour is the page's own.
-            .border(0.5.dp, Color.White.copy(alpha = 0.16f), shape)
+            .background(Color(0xFF1C1C1E))
             .combinedClickable(
                 interactionSource = source,
                 indication = null,
@@ -177,8 +164,35 @@ private fun PickCard(
                 },
             ),
     ) {
-        // The reference's proportions, as shares of the card: the cover inset by a ninth of the card's
-        // width on three sides, the words inset by a thirteenth.
+        // The ground: the cover itself, enlarged past the card's edges and blurred to its colours.
+        // Read at a small size — the blur leaves no detail to spend pixels on — and drawn once into
+        // its own layer, so scrolling the shelf moves a finished picture.
+        AsyncImage(
+            model = song.thumbnail.resize(160, 160),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = 1.5f
+                    scaleY = 1.5f
+                }
+                .blur(42.dp),
+        )
+        // Deeper toward the words, so white type reads on any cover.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.18f),
+                        0.55f to Color.Black.copy(alpha = 0.30f),
+                        1f to Color.Black.copy(alpha = 0.58f),
+                    ),
+                ),
+        )
+        // The reference's proportions, as shares of the card: the cover inset by a ninth of the
+        // card's width on three sides, the words inset by a thirteenth.
         val coverInset = maxWidth * 0.11f
         val textInset = maxWidth * 0.075f
         Box(
@@ -186,11 +200,12 @@ private fun PickCard(
                 .padding(start = coverInset, end = coverInset, top = coverInset)
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .clip(RoundedCornerShape(4.dp)),
+                .shadow(18.dp, RoundedCornerShape(3.dp), ambientColor = Color.Black.copy(alpha = 0.5f), spotColor = Color.Black.copy(alpha = 0.5f))
+                .clip(RoundedCornerShape(3.dp)),
             contentAlignment = Alignment.Center,
         ) {
             AsyncImage(
-                model = art,
+                model = song.thumbnail.resize(720, 720),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
@@ -214,21 +229,22 @@ private fun PickCard(
             if (reason.isNotBlank()) {
                 Text(
                     reason,
-                    fontSize = 14.sp,
-                    lineHeight = 18.sp,
-                    color = Color.White.copy(alpha = 0.62f),
+                    fontSize = 15.sp,
+                    lineHeight = 19.sp,
+                    color = Color.White.copy(alpha = 0.6f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(1.dp))
             }
+            // Apple sets the title in the regular weight and lets it take a second line.
             Text(
                 song.title,
                 fontSize = 17.sp,
                 lineHeight = 21.sp,
-                fontWeight = FontWeight.Medium,
+                fontWeight = FontWeight.Normal,
                 color = Color.White,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             val artists = song.artists.joinToString { it.name }
@@ -237,59 +253,13 @@ private fun PickCard(
                     artists,
                     fontSize = 17.sp,
                     lineHeight = 21.sp,
-                    color = Color.White.copy(alpha = 0.62f),
+                    color = Color.White.copy(alpha = 0.7f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
         }
+        // A hairline over everything, as Apple rims its cards.
+        Box(Modifier.fillMaxSize().border(0.5.dp, Color.White.copy(alpha = 0.14f), shape))
     }
-}
-
-/** Card colours already worked out, by cover address. */
-private val CoverBackgroundCache = object : LinkedHashMap<String, Color>(32, 0.75f, true) {
-    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Color>?) = size > 64
-}
-
-/**
- * The colour a cover's own background is — the average of its outer edge — kept dark enough that
- * white words read on it. Null until known. Read from a 48-pixel copy, once per cover.
- */
-@Composable
-private fun rememberCoverBackground(url: String?): Color? {
-    val context = LocalContext.current
-    val cached = url?.let { synchronized(CoverBackgroundCache) { CoverBackgroundCache[it] } }
-    val color by produceState(cached, url) {
-        if (url == null || cached != null) return@produceState
-        val request = ImageRequest.Builder(context).data(url).size(48, 48).allowHardware(false).build()
-        val bitmap = runCatching { context.imageLoader.execute(request).image?.toBitmap() }.getOrNull()
-            ?: return@produceState
-        value = withContext(Dispatchers.Default) { edgeColor(bitmap) }
-            .also { synchronized(CoverBackgroundCache) { CoverBackgroundCache[url] = it } }
-    }
-    return color
-}
-
-private fun edgeColor(bitmap: Bitmap): Color {
-    val w = bitmap.width
-    val h = bitmap.height
-    if (w == 0 || h == 0) return Color(0xFF1C1C1E)
-    val band = maxOf(1, minOf(w, h) / 12)
-    var r = 0L
-    var g = 0L
-    var b = 0L
-    var n = 0
-    for (y in 0 until h) for (x in 0 until w) {
-        if (x >= band && x < w - band && y >= band && y < h - band) continue
-        val p = bitmap.getPixel(x, y)
-        r += (p shr 16) and 0xFF
-        g += (p shr 8) and 0xFF
-        b += p and 0xFF
-        n++
-    }
-    val hsl = FloatArray(3)
-    ColorUtils.colorToHSL(android.graphics.Color.rgb((r / n).toInt(), (g / n).toInt(), (b / n).toInt()), hsl)
-    // White words must read on it: a pale sleeve gives a deep version of its own colour.
-    hsl[2] = hsl[2].coerceIn(0.06f, 0.36f)
-    return Color(ColorUtils.HSLToColor(hsl))
 }

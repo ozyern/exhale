@@ -286,6 +286,10 @@ object YTPlayerUtils {
      * waited out every slow client before starting it — seconds, on every song not played before.
      */
     private fun tierScore(format: PlayerResponse.StreamingData.Format, preferred: AudioCodec): Long =
+        // Lossless above every lossy tier. It had no term here, so a FLAC rendition ranked under the
+        // 256 kbps AAC (774): whenever that AAC answered first, MAX took it as the best there was and
+        // stopped listening — the same song played lossless one time and lossy the next.
+        (if (isLosslessMime(format.mimeType)) LOSSLESS_TIER else 0L) +
         codecPriority(format, preferred) * 100L + when (format.itag) {
             774 -> 60
             141 -> 50
@@ -323,6 +327,34 @@ object YTPlayerUtils {
      * song started. Answers that arrive inside the window are compared exactly as before.
      */
     private const val STRAGGLER_GRACE_MS = 1_200L
+
+    /** Above any codec preference (×100) and rendition (<100) in [tierScore]. */
+    private const val LOSSLESS_TIER = 10_000L
+
+    /**
+     * How long MAX mode waits, after a lossy stream is ready, for a client that has served this
+     * account FLAC before and has not answered yet. Longer than [STRAGGLER_GRACE_MS] because those
+     * clients are the slow ones; only ever spent waiting on those clients, never as a flat delay.
+     */
+    private const val LOSSLESS_GRACE_MS = 3_500L
+
+    /** Clients that have handed this account a lossless rendition, kept across launches. */
+    private val losslessClients: MutableSet<String> by lazy {
+        java.util.concurrent.ConcurrentHashMap.newKeySet<String>().apply {
+            ceilingPrefs?.getStringSet(LOSSLESS_CLIENTS_KEY, null)?.let(::addAll)
+        }
+    }
+
+    private const val LOSSLESS_CLIENTS_KEY = "losslessClients"
+
+    /** Whether YouTube has ever handed this account a lossless rendition: worth waiting for it. */
+    val hasServedLossless: Boolean get() = losslessClients.isNotEmpty()
+
+    private fun noteLosslessClient(clientName: String) {
+        if (losslessClients.add(clientName)) {
+            ceilingPrefs?.edit()?.putStringSet(LOSSLESS_CLIENTS_KEY, losslessClients.toSet())?.apply()
+        }
+    }
 
     /** How long a validated stream waits for the separate metadata answer before going without it. */
     private const val METADATA_GRACE_MS = 600L
@@ -559,13 +591,25 @@ object YTPlayerUtils {
                 val pending = attempts.values.toMutableSet()
                 var firstValidAt = 0L
                 while (pending.isNotEmpty()) {
-                    val done = attempts.values.filter { it.isCompleted && !it.isCancelled }
-                        .mapNotNull { runCatching { it.getCompleted() }.getOrNull() }
-                        .filter { it.valid && it.format != null }
+                    val doneByClient = attempts.entries
+                        .filter { it.value.isCompleted && !it.value.isCancelled }
+                        .mapNotNull { (client, deferred) -> runCatching { deferred.getCompleted() }.getOrNull()?.let { client to it } }
+                        .filter { (_, attempt) -> attempt.valid && attempt.format != null }
+                    doneByClient.forEach { (client, attempt) ->
+                        if (isLosslessMime(attempt.format!!.mimeType)) noteLosslessClient(client.clientName)
+                    }
+                    val done = doneByClient.map { it.second }
                     if (done.isNotEmpty() && firstValidAt == 0L) firstValidAt = System.currentTimeMillis()
-                    if (ceiling > 0L && done.any { tierScore(it.format!!, preferredCodec) >= ceiling }) break
+                    if (done.any { isLosslessMime(it.format!!.mimeType) }) break
+                    // A client that has given this account FLAC before and has not answered yet is
+                    // worth waiting for, a little longer than any other straggler.
+                    val losslessPending = attempts.any { (client, deferred) ->
+                        !deferred.isCompleted && client.clientName in losslessClients
+                    }
+                    if (!losslessPending && ceiling > 0L && done.any { tierScore(it.format!!, preferredCodec) >= ceiling }) break
+                    val grace = if (losslessPending) LOSSLESS_GRACE_MS else STRAGGLER_GRACE_MS
                     val graceLeft = if (firstValidAt == 0L) Long.MAX_VALUE
-                    else STRAGGLER_GRACE_MS - (System.currentTimeMillis() - firstValidAt)
+                    else grace - (System.currentTimeMillis() - firstValidAt)
                     if (graceLeft <= 0L) break
                     select<Unit> {
                         pending.forEach { deferred -> deferred.onAwait { pending.remove(deferred) } }

@@ -559,8 +559,17 @@ fun FoldingDock(
                     }
                     .then(if (!expanded) Modifier.clearAndSetSemantics {} else Modifier),
             ) {
-                val selectedState = rememberUpdatedState(selectedIndex)
                 val groupTabs = if (searchInBar) tabs else contentTabs
+                // The group's own idea of the selected cell. Search rides in it as its last cell, so
+                // on Search it is Search — not the page before it, which [selectedIndex] keeps for
+                // the folded circle. Reported as that page, coming back to it changed nothing the
+                // group could see, and its slot stayed parked on Search, lighting two tabs at once.
+                val groupSelected = if (searchInBar && searchTab != null && selectedKey == searchTab.key) {
+                    groupTabs.lastIndex
+                } else {
+                    selectedIndex
+                }
+                val selectedState = rememberUpdatedState(groupSelected)
                 if (openBar != null) openBar(Modifier.fillMaxSize()) else FoldingTabGroup(
                     selectedTabIndex = { selectedState.value },
                     onTabSelected = { index -> groupTabs.getOrNull(index)?.onClick?.invoke() },

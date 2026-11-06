@@ -266,6 +266,13 @@ import kotlin.math.sin
 
 private enum class NowPlayingPanel { None, Lyrics, Queue }
 
+/**
+ * The page the player has open — the lyrics, the queue or neither — held once for both layouts. The
+ * portrait and landscape players are separate screens, and each kept its own: turning the phone
+ * swapped in the other one, which opened on the song, closing whatever you had been reading.
+ */
+private val SharedNowPlayingPanel = androidx.compose.runtime.mutableStateOf(NowPlayingPanel.None)
+
 /** Collapsed-header geometry, shared by the layout and its animation. */
 private val THUMB_SIZE = 54.dp
 private val GLASS_THUMB_SIZE = 48.dp
@@ -385,7 +392,8 @@ internal fun NowPlayingScreen(
     var infiniteQueue by rememberPreference(AutoLoadMoreKey, defaultValue = true)
     val playerVolume by playerConnection.service.playerVolume.collectAsState()
 
-    var panel by rememberSaveable { mutableStateOf(NowPlayingPanel.None) }
+    // Shared with the other orientation's layout: turning the phone keeps the lyrics or the queue open.
+    var panel by SharedNowPlayingPanel
     // Closed behind the dock, the player is kept built; it reopens on the song, as it always did.
     val panelPlayerShown = com.ozyern.exhale.ui.component.LocalPlayerShown.current
     LaunchedEffect(panelPlayerShown) { if (!panelPlayerShown) panel = NowPlayingPanel.None }
@@ -4119,7 +4127,8 @@ internal fun LandscapeNowPlaying(
     val bottomSheetPageState = LocalBottomSheetPageState.current
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
     val liked = currentSong?.song?.liked == true
-    var panel by rememberSaveable { mutableStateOf(NowPlayingPanel.None) }
+    // Shared with the other orientation's layout: turning the phone keeps the lyrics or the queue open.
+    var panel by SharedNowPlayingPanel
     // Closed behind the dock, the player is kept built; it reopens on the song, as it always did.
     val panelPlayerShown = com.ozyern.exhale.ui.component.LocalPlayerShown.current
     LaunchedEffect(panelPlayerShown) { if (!panelPlayerShown) panel = NowPlayingPanel.None }

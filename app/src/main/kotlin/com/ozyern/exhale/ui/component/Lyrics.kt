@@ -633,8 +633,6 @@ fun Lyrics(
     var shareDialogData by remember { mutableStateOf<Triple<String, String, String>?>(null) }
 
     var showColorPickerDialog by remember { mutableStateOf(false) }
-    var selectedGlassStyle by remember { mutableStateOf(LyricsGlassStyle.FrostedDark) }
-    var paletteGlassStyle by remember { mutableStateOf<LyricsGlassStyle?>(null) }
     val lyricsLineBlur by rememberPreference(LyricsLineBlurKey, true)
 
     var isSelectionModeActive by rememberSaveable { mutableStateOf(false) }

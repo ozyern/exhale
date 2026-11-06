@@ -2576,17 +2576,29 @@ class MusicService :
     private fun updateNotification() {
         try {
             val liked = currentSong.value?.song?.liked == true
-            // Like, alone, in the space left of the transport. The output picker used to be the
-            // second button, but the lock screen draws its own output switcher on the right, and
-            // ColorOS gives a player's custom buttons that one left-hand slot: with two, it was
-            // the picker that took it (and only while previous was missing) and Like never showed.
+            val hasSong = player.currentMediaItem != null
+            // Spotify's pair, in Spotify's order: where the sound goes, then Like. The lock-screen
+            // card seats a player's first two buttons either side of the transport — the first on
+            // the left, the second on the right in place of the system's own output chip.
+            //
+            // Like used to be published alone and disabled until the song had been written to the
+            // library, and a disabled button is not published at all: for anything just streamed,
+            // the card's left side sat empty. toggleLike now adds the song itself, so it is on.
             val customLayout = listOf(
+                CommandButton
+                    .Builder()
+                    .setDisplayName(getString(R.string.output_device))
+                    .setIconResId(R.drawable.output_devices)
+                    .setSessionCommand(CommandOutputSwitcher)
+                    .setEnabled(hasSong)
+                    .setSlots(CommandButton.SLOT_OVERFLOW)
+                    .build(),
                 CommandButton
                     .Builder()
                     .setDisplayName(getString(if (liked) R.string.action_remove_like else R.string.action_like))
                     .setIconResId(if (liked) R.drawable.favorite else R.drawable.favorite_border)
                     .setSessionCommand(CommandToggleLike)
-                    .setEnabled(currentSong.value != null)
+                    .setEnabled(hasSong)
                     .setSlots(CommandButton.SLOT_OVERFLOW)
                     .build(),
             )
@@ -4650,10 +4662,27 @@ class MusicService :
     }
 
     fun toggleLike() {
+         // Read on the caller's (main) thread: the player is not to be touched from the query's.
+         val playing = player.currentMetadata
+         val known = currentSong.value?.takeIf { it.song.id == playing?.id || playing == null }
          database.query {
-             currentSong.value?.let {
-                 val song = it.song.toggleLike()
-                 update(song)
+             // A song only just streamed is not in the library yet, and liking it did nothing at
+             // all — from the player or the lock screen. It is added, liked, in that case.
+             val song = when {
+                 known != null -> known.song.toggleLike().also { update(it) }
+                 playing != null -> {
+                     val stored = getSongByIdBlocking(playing.id)
+                     if (stored != null) {
+                         stored.song.toggleLike().also { update(it) }
+                     } else {
+                         var inserted: com.ozyern.exhale.db.entities.SongEntity? = null
+                         insert(playing) { entity -> entity.toggleLike().also { inserted = it } }
+                         inserted
+                     }
+                 }
+                 else -> null
+             }
+             song?.let { song ->
                  syncUtils.likeSong(song)
 
                  // Check if auto-download on like is enabled and the song is now liked
@@ -6226,7 +6255,7 @@ class MusicService :
                             }
                             // JioSaavn's 320 kbps landed first, but YouTube's own FLAC outranks it.
                             val youtubeHasFlac = first != null &&
-                                withTimeoutOrNull(YOUTUBE_FLAC_GRACE_MS) { youtube.await() }
+                                withTimeoutOrNull(if (YTPlayerUtils.hasServedLossless) YOUTUBE_FLAC_KNOWN_GRACE_MS else YOUTUBE_FLAC_GRACE_MS) { youtube.await() }
                                     ?.getOrNull()?.format?.let { YTPlayerUtils.isLosslessMime(it.mimeType) } == true
                             // YouTube's answer still carries the loudness figure and the format row,
                             // and is the fallback: stored either way.
@@ -7479,6 +7508,12 @@ class MusicService :
         private const val SAAVN_HEAD_START_GRACE_MS = 600L
         /** How long JioSaavn's answer waits to hear whether YouTube has FLAC of this song. */
         private const val YOUTUBE_FLAC_GRACE_MS = 1_500L
+        /**
+         * The same, once YouTube has served this account FLAC at all: its lossless clients are the
+         * slow ones, and 1.5 s handed most of those songs to JioSaavn's lossy copy. Ends the moment
+         * YouTube answers, FLAC or not, so it is only ever as long as YouTube takes.
+         */
+        private const val YOUTUBE_FLAC_KNOWN_GRACE_MS = 4_500L
         /** How long a song waits at the start for a FLAC copy, and how long the search itself may run. */
         private const val FLAC_LOOKUP_GRACE_MS = 2_500L
         private const val FLAC_LOOKUP_TIMEOUT_MS = 12_000L
