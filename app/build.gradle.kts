@@ -115,6 +115,19 @@ android {
                 ?: ""
         buildConfigField("String", "JAMENDO_CLIENT_ID", "\"$jamendoClientId\"")
 
+        // Telegram's API app (my.telegram.org), for playing audio from the listener's own chats.
+        // Without it the Telegram source is simply not offered.
+        val telegramApiId =
+            localProperties.getProperty("TELEGRAM_API_ID")
+                ?: System.getenv("TELEGRAM_API_ID")
+                ?: "0"
+        val telegramApiHash =
+            localProperties.getProperty("TELEGRAM_API_HASH")
+                ?: System.getenv("TELEGRAM_API_HASH")
+                ?: ""
+        buildConfigField("int", "TELEGRAM_API_ID", telegramApiId.toIntOrNull()?.toString() ?: "0")
+        buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
+
         buildConfigField("String", "GIT_COMMIT", "\"$gitCommit\"")
     }
 
