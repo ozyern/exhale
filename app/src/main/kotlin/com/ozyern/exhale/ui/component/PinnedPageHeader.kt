@@ -96,10 +96,15 @@ fun PinnedPageHeader(
         // Long titles ("Mood & Genres") step down to the iOS large-title size, or they would run
         // under the account button.
         val long = title.length > (if (showGear) 6 else 8)
+        // Apple Music's large title is about a tenth of the window wide in height; sized to this
+        // window the same way rather than to a fixed point size.
+        val screenWidth = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
+        val largeTitle = (screenWidth * 0.097f).coerceIn(34f, 44f).sp
+        val avatarSize = (screenWidth * 0.111f).coerceIn(40f, 50f).dp
         Text(
             text = title,
             style = MaterialTheme.typography.headlineLarge.copy(
-                fontSize = if (long) 34.sp else 42.sp,
+                fontSize = if (long) 34.sp else largeTitle,
                 lineHeight = 46.sp,
                 letterSpacing = (-0.8).sp,
                 // Over artwork the word needs its own shadow; the scrim alone is too light at rest.
@@ -114,7 +119,7 @@ fun PinnedPageHeader(
             maxLines = 1,
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .padding(top = 14.dp, end = if (showGear) 120.dp else 64.dp),
+                .padding(top = 14.dp, end = if (showGear) avatarSize + 72.dp else avatarSize + 16.dp),
         )
         if (chrome != null && showGear) {
             // Apple's toolbar button: a circle of thin glass — a light translucent fill and a hairline
@@ -124,8 +129,8 @@ fun PinnedPageHeader(
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 12.dp, end = 58.dp)
+                    .align(Alignment.CenterEnd)
+                    .padding(top = 14.dp, end = avatarSize + 10.dp)
                     .size(44.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f))
@@ -141,13 +146,14 @@ fun PinnedPageHeader(
             }
         }
         if (chrome != null) {
+            // Apple's: flat, no drop shadow, centred on the title's line, on the page's right margin
+            // (Apple's own ⋮ button beside it is deliberately not copied).
             AppleAvatar(
                 onClick = chrome.openAccount,
-                size = 48.dp,
+                size = avatarSize,
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 10.dp)
-                    .shadow(10.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.4f), spotColor = Color.Black.copy(alpha = 0.4f)),
+                    .align(Alignment.CenterEnd)
+                    .padding(top = 14.dp, end = 2.dp),
             )
         }
     }
