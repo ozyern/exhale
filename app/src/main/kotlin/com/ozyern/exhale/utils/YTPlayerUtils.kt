@@ -350,6 +350,22 @@ object YTPlayerUtils {
     /** Whether YouTube has ever handed this account a lossless rendition: worth waiting for it. */
     val hasServedLossless: Boolean get() = losslessClients.isNotEmpty()
 
+    /**
+     * Until when no client is expected to have a lossless rendition. Only some clients are ever offered
+     * one, and which is not known until one of them is, so while it may be out there a song hears more
+     * clients out before settling for lossy, as the desktop app does. A song that finds none pauses the
+     * hunt for a while (not every song has a FLAC rendition); clients known to serve one are still
+     * waited for in the meantime.
+     */
+    @Volatile private var noLosslessUntil = 0L
+    private const val NO_LOSSLESS_FOR_MS = 10 * 60_000L
+
+    /** Outside MAX mode: how many clients are asked in turn for a lossless rendition before settling. */
+    private const val CLIENTS_ASKED_FOR_LOSSLESS = 3
+
+    private fun huntingLossless(audioQuality: AudioQuality) =
+        audioQuality != AudioQuality.LOW && System.currentTimeMillis() >= noLosslessUntil
+
     private fun noteLosslessClient(clientName: String) {
         if (losslessClients.add(clientName)) {
             ceilingPrefs?.edit()?.putStringSet(LOSSLESS_CLIENTS_KEY, losslessClients.toSet())?.apply()
@@ -526,6 +542,12 @@ object YTPlayerUtils {
             val everyClient =
                 buildList {
                     add(preferredYouTubeClient)
+                    // Clients that have served this account FLAC go next, ahead of the one that
+                    // merely worked: asked one at a time, the first asked is the one that decides,
+                    // and in MAX mode they are the first to get a slot.
+                    if (audioQuality != AudioQuality.LOW) {
+                        addAll((orderedFallbackClients + MAIN_CLIENT).filter { it.clientName in losslessClients })
+                    }
                     lastWorkingClient?.let(::add)
                     addAll(orderedFallbackClients)
                     if (preferredYouTubeClient != MAIN_CLIENT) add(MAIN_CLIENT)
@@ -584,6 +606,7 @@ object YTPlayerUtils {
             // account has ever been given — or a short grace after the first working stream.
             // Reading them in rank order meant the fastest answer sat unread behind the slowest.
             val ceilingName = ceilingKey(isLoggedIn, preferredCodec)
+            val hunting = huntingLossless(audioQuality)
             if (probeForBest && attempts.isNotEmpty()) {
                 // Every tenth song still hears every client out, so a better stream the account
                 // has since become entitled to (a new subscription, say) raises the ceiling.
@@ -603,9 +626,13 @@ object YTPlayerUtils {
                     if (done.any { isLosslessMime(it.format!!.mimeType) }) break
                     // A client that has given this account FLAC before and has not answered yet is
                     // worth waiting for, a little longer than any other straggler.
+                    // While the hunt is on, any client still answering may be the one with it.
                     val losslessPending = attempts.any { (client, deferred) ->
-                        !deferred.isCompleted && client.clientName in losslessClients
+                        !deferred.isCompleted && (hunting || client.clientName in losslessClients)
                     }
+                    // A lossy ceiling is only the best this account has been given so far, not
+                    // proof there is nothing better: it used to end the wait the moment a lossy
+                    // stream matched it, before the client with the FLAC had answered.
                     if (!losslessPending && ceiling > 0L && done.any { tierScore(it.format!!, preferredCodec) >= ceiling }) break
                     val grace = if (losslessPending) LOSSLESS_GRACE_MS else STRAGGLER_GRACE_MS
                     val graceLeft = if (firstValidAt == 0L) Long.MAX_VALUE
@@ -654,6 +681,7 @@ object YTPlayerUtils {
             var gateFailure: PlaybackGateFailure? = null
 
             var best: ValidatedStream? = null
+            var lossyAnswers = 0
 
             for ((index, client) in streamClients.withIndex()) {
                 format = null
@@ -746,9 +774,7 @@ object YTPlayerUtils {
                         "Stream validated successfully with client: ${client.clientName} @ ${validated.format.bitrate}bps"
                     )
 
-                    if (!probeForBest) break
-
-                    // MAX mode: keep the better of what we had and what this client offered.
+                    // Keep the better of what we had and what this client offered.
                     val incumbent = best
                     if (incumbent == null ||
                         formatScore(validated.format, preferredCodec) >
@@ -756,8 +782,32 @@ object YTPlayerUtils {
                     ) {
                         best = validated
                     }
-
                     val bestSoFar = best!!
+
+                    if (!probeForBest) {
+                        // One client at a time, but not settling for the first lossy answer while a
+                        // lossless one may be a client or two away: the desktop app's rule.
+                        if (isLosslessMime(bestSoFar.format.mimeType) || !hunting ||
+                            ++lossyAnswers >= CLIENTS_ASKED_FOR_LOSSLESS
+                        ) break
+                        format = null
+                        streamUrl = null
+                        streamExpiresInSeconds = null
+                        streamPlayerResponse = null
+                        continue
+                    }
+
+                    // Every answer here is already in, so stopping early saves nothing and could
+                    // skip a FLAC answer from a client ranked further down. The two checks below
+                    // only shorten a probe that asks clients one by one (all of them blocked from
+                    // the parallel round).
+                    if (pending != null) {
+                        format = null
+                        streamUrl = null
+                        streamExpiresInSeconds = null
+                        streamPlayerResponse = null
+                        continue
+                    }
                     // The best stream this account has been given all session: once a song's
                     // stream is as good as that, no client still answering can beat it, so there
                     // is nothing left to wait for. The same stream MAX mode would have picked,
@@ -899,8 +949,16 @@ object YTPlayerUtils {
 
             Timber.tag(logTag).i("Successfully obtained playback data with format: ${format.mimeType}, bitrate: ${format.bitrate}")
             val servedBy = streamUrl.toHttpUrlOrNull()?.queryParameter("c")
-            streamClientsInOrder.firstOrNull { it.clientName.equals(servedBy, ignoreCase = true) }?.let { lastWorkingClient = it }
+            val servedClient = streamClientsInOrder.firstOrNull { it.clientName.equals(servedBy, ignoreCase = true) }
+            servedClient?.let { lastWorkingClient = it }
             if (probeForBest) recordBestScore(ceilingName, tierScore(format, preferredCodec))
+            if (isLosslessMime(format.mimeType)) {
+                servedClient?.let { noteLosslessClient(it.clientName) }
+            } else if (hunting) {
+                // Heard out and none had it: this song has no lossless rendition, or nobody here is
+                // offered one. Either way the next songs don't wait for it for a while.
+                noLosslessUntil = System.currentTimeMillis() + NO_LOSSLESS_FOR_MS
+            }
 
             streamUrlCache[buildCacheKey(videoId, format.itag)] =
                 CachedStreamUrl(
