@@ -145,7 +145,13 @@ $uninstaller = Join-Path $stageDir 'Uninstall Exhale.exe'
 
 if ($Stage -ne 'Package') {
     if (-not $SkipApp) {
-        if (-not $env:JAVA_HOME) { $env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr' }
+        if (-not $env:JAVA_HOME -or -not (Test-Path "$env:JAVA_HOME\bin\java.exe")) {
+            if (Test-Path 'C:\Users\ozyern\.jdks\jbrsdk-21.0.11\bin\java.exe') {
+                $env:JAVA_HOME = 'C:\Users\ozyern\.jdks\jbrsdk-21.0.11'
+            } else {
+                $env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
+            }
+        }
         & "$root\gradlew.bat" -p $root :desktop:createDistributable --console=plain
         if ($LASTEXITCODE -ne 0) { throw "createDistributable failed" }
     }

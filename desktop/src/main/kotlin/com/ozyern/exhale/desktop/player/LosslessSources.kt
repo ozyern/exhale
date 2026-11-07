@@ -78,6 +78,12 @@ enum class LosslessKind {
 
     /** Whatever media servers answer on this network: a NAS, Plex's DLNA, Windows media sharing. */
     DLNA,
+
+    /** Free CD-quality FLAC (44.1 kHz / 16-bit) streamed from public Monochrome mirrors. */
+    MONOCHROME,
+
+    /** Free CD-quality & Hi-Res FLAC streamed from public Tidal streaming instances. */
+    TIDAL,
 }
 
 data class LosslessSource(
@@ -101,6 +107,8 @@ data class LosslessSource(
             LosslessKind.PLEX -> "Plex server"
             LosslessKind.JELLYFIN -> "Jellyfin server"
             LosslessKind.DLNA -> "Servers on this network"
+            LosslessKind.MONOCHROME -> "Monochrome FLAC"
+            LosslessKind.TIDAL -> "Tidal FLAC"
         }
 }
 
@@ -176,18 +184,28 @@ object LosslessLibrary {
     private const val UserAgent = "Exhale (+https://github.com/ozyern/exhale)"
 
     /** Sources that cost nothing and need no account, so they're there from the first song. */
-    private val BuiltIn = listOf(LosslessKind.ARCHIVE, LosslessKind.WIKIMEDIA, LosslessKind.DLNA)
+    private val BuiltIn = listOf(
+        LosslessKind.MONOCHROME,
+        LosslessKind.TIDAL,
+        LosslessKind.ARCHIVE,
+        LosslessKind.WIKIMEDIA,
+        LosslessKind.DLNA,
+    )
 
     private fun removedKey(kind: LosslessKind): String =
         if (kind == LosslessKind.ARCHIVE) ARCHIVE_KEY else "lossless_removed_${kind.name.lowercase(Locale.US)}"
 
     private fun builtInName(kind: LosslessKind): String = when (kind) {
+        LosslessKind.MONOCHROME -> "Monochrome FLAC"
+        LosslessKind.TIDAL -> "Tidal (Public FLAC)"
         LosslessKind.ARCHIVE -> "Internet Archive"
         LosslessKind.WIKIMEDIA -> "Wikimedia Commons"
         else -> "Servers on this network"
     }
 
     private fun builtInLocation(kind: LosslessKind): String = when (kind) {
+        LosslessKind.MONOCHROME -> "tracks.monochrome.st"
+        LosslessKind.TIDAL -> "tidal.kinoplus.online"
         LosslessKind.ARCHIVE -> "archive.org"
         LosslessKind.WIKIMEDIA -> "commons.wikimedia.org"
         else -> "this network"
@@ -374,6 +392,40 @@ object LosslessLibrary {
                             SourceHealth.Failed("That addon doesn't offer search.")
                         }
                     }
+                    LosslessKind.MONOCHROME -> {
+                        val mirrors = if (source.location.startsWith("http", ignoreCase = true)) {
+                            listOf(source.location.trimEnd('/')) + MONOCHROME_MIRRORS
+                        } else {
+                            MONOCHROME_MIRRORS
+                        }
+                        val anyUp = mirrors.any { mirror ->
+                            runCatching {
+                                val req = Request.Builder()
+                                    .url("$mirror/search/tracks?q=test&limit=1")
+                                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+                                    .build()
+                                http.newCall(req).execute().use { it.isSuccessful }
+                            }.getOrDefault(false)
+                        }
+                        if (anyUp) SourceHealth.Ok("Monochrome mirrors active") else SourceHealth.Failed("Monochrome mirrors unreachable")
+                    }
+                    LosslessKind.TIDAL -> {
+                        val instances = if (source.location.startsWith("http", ignoreCase = true)) {
+                            listOf(source.location.trimEnd('/')) + TIDAL_INSTANCES
+                        } else {
+                            TIDAL_INSTANCES
+                        }
+                        val anyUp = instances.any { inst ->
+                            runCatching {
+                                val req = Request.Builder()
+                                    .url("$inst/search?s=test&limit=1")
+                                    .header("User-Agent", "ArchiveTune-Android")
+                                    .build()
+                                http.newCall(req).execute().use { it.isSuccessful }
+                            }.getOrDefault(false)
+                        }
+                        if (anyUp) SourceHealth.Ok("Tidal instances active") else SourceHealth.Failed("Tidal instances unreachable")
+                    }
                 }
             }.getOrElse { SourceHealth.Failed(it.message ?: "Couldn't reach it.") }
         }
@@ -475,6 +527,211 @@ object LosslessLibrary {
         LosslessKind.PLEX -> plexSearch(source, song)
         LosslessKind.JELLYFIN -> jellyfinSearch(source, song)
         LosslessKind.DLNA -> dlnaSearch(source, song)
+        LosslessKind.MONOCHROME -> monochromeSearch(source, song)
+        LosslessKind.TIDAL -> tidalSearch(source, song)
+    }
+
+    // ---- Monochrome FLAC ---------------------------------------------------------------------
+
+    private val MONOCHROME_MIRRORS = listOf(
+        "https://tracks.monochrome.st",
+        "https://api.monochrome.tf",
+        "https://wolf.qqdl.site",
+        "https://maus.qqdl.site",
+        "https://vogel.qqdl.site",
+    )
+
+    private fun monochromeSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
+        val artist = song.artists.firstOrNull()?.name.orEmpty()
+        val query = listOfNotNull(artist.takeIf { it.isNotBlank() }, song.title).joinToString(" ")
+        val encodedQuery = encode(query)
+        val mirrors = if (source.location.startsWith("http", ignoreCase = true)) {
+            listOf(source.location.trimEnd('/')) + MONOCHROME_MIRRORS
+        } else {
+            MONOCHROME_MIRRORS
+        }
+
+        val results = mutableListOf<LosslessTrack>()
+        for (mirror in mirrors.distinct()) {
+            val url = "$mirror/search/tracks?q=$encodedQuery&limit=8"
+            val json = runCatching {
+                val req = Request.Builder()
+                    .url(url)
+                    .header("Accept", "application/json")
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+                    .build()
+                http.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) return@use null
+                    val body = resp.body.string()
+                    if (body.isBlank()) null else JSONObject(body)
+                }
+            }.getOrNull() ?: continue
+
+            val tracks = json.optJSONArray("tracks") ?: json.optJSONArray("data") ?: continue
+            for (i in 0 until tracks.length()) {
+                val item = tracks.optJSONObject(i) ?: continue
+                if (item.optBoolean("playable", true) == false) continue
+                val id = item.optString("id").ifBlank { item.optString("trackId") }
+                if (id.isBlank()) continue
+                val title = item.optString("title").ifBlank { continue }
+                val artistNamesArray = item.optJSONArray("artistNames")
+                val trackArtist = if (artistNamesArray != null && artistNamesArray.length() > 0) {
+                    (0 until artistNamesArray.length()).map { artistNamesArray.optString(it) }.joinToString(", ")
+                } else {
+                    item.optString("artist").ifBlank { null }
+                }
+                val album = item.optString("albumTitle").ifBlank { item.optString("album").ifBlank { null } }
+                val rawDuration = item.optDouble("duration", Double.NaN)
+                val duration = if (!rawDuration.isNaN() && rawDuration > 0) {
+                    if (rawDuration > 10_000) rawDuration / 1000.0 else rawDuration
+                } else null
+
+                results += LosslessTrack(
+                    title = title,
+                    artist = trackArtist,
+                    album = album,
+                    durationSeconds = duration,
+                    url = "$mirror/track/$id",
+                    format = "flac",
+                    sampleRate = 44100,
+                    bitDepth = 16,
+                    bitrate = 1411000,
+                    sourceName = source.name,
+                )
+            }
+            if (results.isNotEmpty()) break
+        }
+        return results
+    }
+
+    // ---- Tidal Public Streaming --------------------------------------------------------------
+
+    private val TIDAL_INSTANCES = listOf(
+        "https://tidal.kinoplus.online",
+        "https://wolf.qqdl.site",
+        "https://maus.qqdl.site",
+        "https://vogel.qqdl.site",
+        "https://katze.qqdl.site",
+        "https://hund.qqdl.site",
+        "https://api.monochrome.tf",
+        "https://monochrome.tf",
+    )
+
+    private fun tidalSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
+        val artist = song.artists.firstOrNull()?.name.orEmpty()
+        val query = listOfNotNull(artist.takeIf { it.isNotBlank() }, song.title).joinToString(" ")
+        val encodedQuery = encode(query)
+        val instances = if (source.location.startsWith("http", ignoreCase = true)) {
+            listOf(source.location.trimEnd('/')) + TIDAL_INSTANCES
+        } else {
+            TIDAL_INSTANCES
+        }
+
+        val results = mutableListOf<LosslessTrack>()
+        for (instance in instances.distinct()) {
+            val searchUrl = "$instance/search?s=$encodedQuery&limit=8"
+            val json = runCatching {
+                val req = Request.Builder()
+                    .url(searchUrl)
+                    .header("Accept", "application/json")
+                    .header("User-Agent", "ArchiveTune-Android")
+                    .build()
+                http.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) return@use null
+                    val body = resp.body.string()
+                    if (body.isBlank()) null else JSONObject(body)
+                }
+            }.getOrNull() ?: continue
+
+            val items = json.optJSONObject("data")?.optJSONArray("items")
+                ?: json.optJSONArray("items")
+                ?: continue
+
+            for (i in 0 until items.length()) {
+                val item = items.optJSONObject(i) ?: continue
+                val trackId = item.optString("id").ifBlank { continue }
+                val title = item.optString("title").ifBlank { continue }
+                val trackArtist = item.optJSONObject("artist")?.optString("name")
+                    ?: item.optJSONArray("artists")?.optJSONObject(0)?.optString("name")
+                    ?: item.optString("artist").ifBlank { null }
+                val album = item.optJSONObject("album")?.optString("title")
+                    ?: item.optString("album").ifBlank { null }
+                val duration = item.optDouble("duration", Double.NaN).takeIf { !it.isNaN() && it > 0 }
+                val audioQuality = item.optString("audioQuality", "LOSSLESS").uppercase(Locale.US)
+
+                val candidate = LosslessTrack(
+                    title = title,
+                    artist = trackArtist,
+                    album = album,
+                    durationSeconds = duration,
+                    url = "",
+                    format = "flac",
+                    sampleRate = if (audioQuality.contains("HI_RES") || audioQuality.contains("MAX")) 96000 else 44100,
+                    bitDepth = if (audioQuality.contains("HI_RES") || audioQuality.contains("MAX")) 24 else 16,
+                    bitrate = if (audioQuality.contains("HI_RES") || audioQuality.contains("MAX")) 2304000 else 1411000,
+                    sourceName = source.name,
+                )
+                if (!TrackMatch.matches(song, candidate)) continue
+
+                val streamTrack = resolveTidalTrackStream(instance, trackId, candidate, source.name)
+                if (streamTrack != null) {
+                    results += streamTrack
+                    break
+                }
+            }
+            if (results.isNotEmpty()) break
+        }
+        return results
+    }
+
+    private fun resolveTidalTrackStream(
+        instance: String,
+        trackId: String,
+        candidate: LosslessTrack,
+        sourceName: String,
+    ): LosslessTrack? {
+        val streamUrl = "$instance/track?id=$trackId&quality=LOSSLESS"
+        return runCatching {
+            val req = Request.Builder()
+                .url(streamUrl)
+                .header("Accept", "application/json")
+                .header("User-Agent", "ArchiveTune-Android")
+                .build()
+            val json = http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@use null
+                val body = resp.body.string()
+                if (body.isBlank()) null else JSONObject(body)
+            } ?: return null
+
+            val data = json.optJSONObject("data") ?: return null
+            val manifestB64 = data.optString("manifest").takeIf { it.isNotBlank() }
+            if (manifestB64 != null) {
+                val manifestText = String(java.util.Base64.getDecoder().decode(manifestB64.trim()), Charsets.UTF_8).trim()
+                if (manifestText.startsWith("{")) {
+                    val root = JSONObject(manifestText)
+                    val urls = root.optJSONArray("urls")
+                    val directUrl = (0 until (urls?.length() ?: 0)).mapNotNull { urls?.optString(it) }.firstOrNull { it.isNotBlank() }
+                    if (directUrl != null) {
+                        val sampleRate = root.optInt("sampleRate").takeIf { it > 0 } ?: candidate.sampleRate
+                        val bitDepth = root.optInt("bitDepth").takeIf { it > 0 } ?: candidate.bitDepth
+                        val bitrate = root.optInt("bitrate").takeIf { it > 0 } ?: candidate.bitrate
+                        return candidate.copy(
+                            url = directUrl,
+                            format = "flac",
+                            sampleRate = sampleRate,
+                            bitDepth = bitDepth,
+                            bitrate = bitrate,
+                            sourceName = sourceName,
+                        )
+                    }
+                }
+            }
+            val directUrl = data.optString("url").takeIf { it.isNotBlank() }
+                ?: data.optJSONArray("urls")?.optString(0)?.takeIf { it.isNotBlank() }
+            if (directUrl != null) {
+                candidate.copy(url = directUrl, format = "flac", sourceName = sourceName)
+            } else null
+        }.getOrNull()
     }
 
     // ---- Wikimedia Commons -------------------------------------------------------------------

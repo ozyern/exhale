@@ -585,6 +585,7 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
                     }
                 return@launch
             }
+            val pendingFlac = if (AppSettings.current.preferLossless) LosslessLibrary.lookup(song) else null
             val resolved = direct?.let { Result.success(it) } ?: chooseStream(song)
             resolved
                 .onSuccess { stream ->
@@ -601,6 +602,25 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
                     mpv.load(OpenFlac.fastUrl(stream.url), stream.headers, startAt?.takeIf { it > 1.0 }, lossless = stream.lossless)
                     persistQueue()
                     prefetchNext(index)
+
+                    // If started on lossy audio, wait for FLAC in background and seamlessly hot-swap
+                    if (!stream.lossless && pendingFlac != null) {
+                        scope.launch {
+                            val flac = runCatching { pendingFlac.await() }.getOrNull()
+                            if (flac != null && flac.lossless && loadedSongId == song.id) {
+                                println("Exhale: hot-swapping to lossless FLAC stream from ${flac.sourceLabel}")
+                                val curPos = _position.value
+                                normalizationDb = flac.loudnessDb?.let { (-it).coerceIn(-20.0, 0.0) } ?: 0.0
+                                _state.update { it.copy(streamInfo = flac.describe()) }
+                                playingFromLibrary = flac.sourceLabel != null
+                                playingLossless = true
+                                LosslessLibrary.announce(song.id.takeIf { playingFromLibrary })
+                                applyVolume()
+                                playingOriginalUrl = flac.url
+                                mpv.load(OpenFlac.fastUrl(flac.url), flac.headers, curPos.takeIf { it > 1.0 }, lossless = true)
+                            }
+                        }
+                    }
                 }
                 .onFailure { error ->
                     if (error is CancellationException) throw error
@@ -1080,7 +1100,7 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
 
     private companion object {
         /** How long a song waits for a lossless copy to be found before starting on YouTube's stream. */
-        const val LosslessLookupMs = 2_500L
+        const val LosslessLookupMs = 3_500L
         const val StallMs = 20_000L
         const val LosslessStallMs = 25_000L
         const val MaxRebuffers = 3

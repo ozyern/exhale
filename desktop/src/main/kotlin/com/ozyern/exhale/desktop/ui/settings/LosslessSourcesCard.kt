@@ -155,6 +155,7 @@ private fun SourceRow(
         LosslessKind.WIKIMEDIA -> NavIcons.Language
         LosslessKind.JAMENDO -> NavIcons.Radio
         LosslessKind.DLNA -> NavIcons.Chip
+        LosslessKind.MONOCHROME, LosslessKind.TIDAL -> NavIcons.HighQuality
     }
     Row(
         Modifier
@@ -244,6 +245,8 @@ private fun AddSourceForm(onAdded: () -> Unit, modifier: Modifier = Modifier) {
                                 LosslessKind.PLEX -> "Plex"
                                 LosslessKind.JELLYFIN -> "Jellyfin"
                                 LosslessKind.DLNA -> "This network"
+                                LosslessKind.MONOCHROME -> "Monochrome"
+                                LosslessKind.TIDAL -> "Tidal"
                             },
                         )
                     },
@@ -261,6 +264,8 @@ private fun AddSourceForm(onAdded: () -> Unit, modifier: Modifier = Modifier) {
                 LosslessKind.PLEX -> "Your own Plex server. The token is the X-Plex-Token from any Plex web URL, and it stays on this PC."
                 LosslessKind.JELLYFIN -> "Your own Jellyfin server. Make an API key under Dashboard → API Keys."
                 LosslessKind.DLNA -> "Media servers that answer on this network — a NAS, Plex's DLNA, Windows media sharing. Nothing to type, and nothing leaves your network."
+                LosslessKind.MONOCHROME -> "Monochrome FLAC: Free CD-quality FLAC (44.1 kHz / 16-bit) streamed from public mirrors with no account needed. On by default."
+                LosslessKind.TIDAL -> "Tidal: Free CD-quality & Hi-Res FLAC streamed from public Tidal instances with no account needed. On by default."
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
