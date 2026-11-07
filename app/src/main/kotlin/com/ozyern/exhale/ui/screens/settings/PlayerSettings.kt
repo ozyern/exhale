@@ -462,6 +462,15 @@ fun PlayerSettings(
 
             PreferenceGroupDivider()
             PreferenceEntry(
+                title = { Text("Lossless streaming sources") },
+                description = "Tidal, Qobuz, Deezer, Apple Music & Monochrome FLAC",
+                icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                onClick = { navController.navigate("settings/player/lossless_sources") },
+                isEnabled = preferLocalLossless,
+            )
+
+            PreferenceGroupDivider()
+            PreferenceEntry(
                 title = { Text(stringResource(R.string.player_stream_client)) },
                 description =
                 when (playerStreamClient) {

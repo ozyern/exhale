@@ -129,6 +129,24 @@ android {
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$telegramApiHash\"")
 
         buildConfigField("String", "GIT_COMMIT", "\"$gitCommit\"")
+
+        val sourceProviderUrl =
+            (localProperties.getProperty("SOURCE_PROVIDER_URL")?.takeIf { it.isNotBlank() }
+                ?: System.getenv("SOURCE_PROVIDER_URL")?.takeIf { it.isNotBlank() }
+                ?: "https://archivepool.vercel.app").trim().trimEnd('/')
+        buildConfigField("String", "SOURCE_PROVIDER_URL", "\"$sourceProviderUrl\"")
+
+        val sourceProviderKey =
+            (localProperties.getProperty("SOURCE_PROVIDER_KEY")
+                ?: System.getenv("SOURCE_PROVIDER_KEY")
+                ?: "").trim()
+        buildConfigField("String", "SOURCE_PROVIDER_KEY", "\"$sourceProviderKey\"")
+
+        val poolClientKey =
+            (localProperties.getProperty("POOL_CLIENT_KEY")
+                ?: System.getenv("POOL_CLIENT_KEY")
+                ?: "").trim()
+        buildConfigField("String", "POOL_CLIENT_KEY", "\"$poolClientKey\"")
     }
 
     flavorDimensions += "abi"
@@ -294,6 +312,7 @@ dependencies {
     implementation("androidx.mediarouter:mediarouter:1.8.1")
     // Applies baseline-prof.txt on install for a sideloaded APK too, not only one from a store.
     implementation(libs.androidx.profileinstaller)
+    implementation("androidx.webkit:webkit:1.12.0")
     implementation(libs.guava)
     implementation(libs.coroutines.guava)
     implementation(libs.concurrent.futures)

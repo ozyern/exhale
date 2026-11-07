@@ -448,6 +448,21 @@ fun NavGraphBuilder.navigationBuilder(
     settingsComposable("settings/player/lossless_servers") {
         com.ozyern.exhale.ui.screens.settings.LosslessServersScreen(navController, scrollBehavior)
     }
+    settingsComposable("settings/player/lossless_sources") {
+        com.ozyern.exhale.ui.screens.settings.lossless.LosslessSourcesSettingsScreen(navController, scrollBehavior)
+    }
+    settingsComposable("settings/player/lossless_sources/tidal_login") {
+        com.ozyern.exhale.ui.screens.settings.lossless.TidalLoginScreen(onBack = { navController.popBackStack() })
+    }
+    settingsComposable("settings/player/lossless_sources/deezer_login") {
+        com.ozyern.exhale.ui.screens.settings.lossless.DeezerLoginScreen(onBack = { navController.popBackStack() })
+    }
+    settingsComposable("settings/player/lossless_sources/qobuz_login") {
+        com.ozyern.exhale.ui.screens.settings.lossless.QobuzLoginScreen(onBack = { navController.popBackStack() })
+    }
+    settingsComposable("settings/player/lossless_sources/applemusic_login") {
+        com.ozyern.exhale.ui.screens.settings.lossless.AppleMusicLoginScreen(onBack = { navController.popBackStack() })
+    }
     settingsComposable("settings/player/equalizer") {
         com.ozyern.exhale.ui.screens.settings.SoundEqualizerScreen(navController, scrollBehavior)
     }

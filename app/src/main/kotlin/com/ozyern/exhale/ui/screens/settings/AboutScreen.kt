@@ -15,6 +15,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.withTransform
 import com.ozyern.exhale.utils.DeviceNames
+import com.ozyern.exhale.extensions.directorySizeBytes
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -232,6 +233,11 @@ private fun AboutScreenContent(
             )
         },
     ) { innerPadding ->
+      androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+        // The pane, not the screen: in the tablet split this page gets what the sidebar leaves.
+        // An unfolded foldable or a tablet pane is wide enough for ColorOS's tablet About page.
+        val wide = maxWidth >= AboutWideMinWidth
+        val storage = rememberAboutStorage()
         LazyColumn(
             // The bar's height goes inside the list, not around it, so the rows scroll up under the
             // transparent bar instead of being cut off at its lower edge.
@@ -246,9 +252,10 @@ private fun AboutScreenContent(
         ) {
             item(key = "hero") {
                 AboutHero(
+                    wide = wide,
                     onSecretUnlocked = { showEasterEgg = true },
                     onUpdateClick = { navController.navigate("settings/update") },
-                    modifier = Modifier.padding(bottom = 10.dp),
+                    modifier = Modifier.padding(bottom = if (wide) 12.dp else 10.dp),
                 )
             }
 
@@ -263,11 +270,20 @@ private fun AboutScreenContent(
                         onClick = { navController.navigate("settings/update") },
                     )
                     AboutPlainDivider()
-                    ColorOsRow(
-                        title = stringResource(R.string.view_changelog),
-                        value = null,
-                        onClick = { navController.navigate("settings/changelog") },
-                    )
+                    if (wide) {
+                        // ColorOS's tablet card: Device name, then Storage with its usage bar.
+                        // The changelog moves down into the build card to make room.
+                        AboutStorageRow(
+                            storage = storage,
+                            onClick = { navController.navigate("settings/storage") },
+                        )
+                    } else {
+                        ColorOsRow(
+                            title = stringResource(R.string.view_changelog),
+                            value = null,
+                            onClick = { navController.navigate("settings/changelog") },
+                        )
+                    }
                 }
             }
 
@@ -309,6 +325,14 @@ private fun AboutScreenContent(
                         ColorOsSpec(stringResource(R.string.about_device), buildFacts.device)
                     }
                     AboutPlainDivider()
+                    if (wide) {
+                        ColorOsRow(
+                            title = stringResource(R.string.view_changelog),
+                            value = null,
+                            onClick = { navController.navigate("settings/changelog") },
+                        )
+                        AboutPlainDivider()
+                    }
                     // One tap instead of eight fields transcribed by hand into a bug report. No
                     // chevron: it does something here rather than going somewhere.
                     ColorOsRow(
@@ -357,10 +381,14 @@ private fun AboutScreenContent(
                 }
             }
         }
+      }
     }
 }
 
-// ─── Build facts ──────────────────────────────────────────────────────────────
+/** A pane at least this wide gets ColorOS's tablet About layout: a banner, and the storage bar. */
+private val AboutWideMinWidth = 560.dp
+
+// ─── Build facts──────────────────────────────────────────────────────────────
 
 /**
  * Everything the Information table states, in one immutable object.
@@ -414,6 +442,7 @@ private const val SecretTapCount = 7
  */
 @Composable
 private fun AboutHero(
+    wide: Boolean,
     onSecretUnlocked: () -> Unit,
     onUpdateClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -460,7 +489,8 @@ private fun AboutHero(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(1f)
+            // ColorOS's tablet About card is a banner (696 × 200 in the reference), not a square.
+            .aspectRatio(if (wide) AboutBannerAspect else 1f)
             .graphicsLayer {
                 scaleX = press
                 scaleY = press
@@ -504,19 +534,25 @@ private fun AboutHero(
             modifier = Modifier.fillMaxSize(),
         ) { hidden ->
             if (!hidden) {
-                AboutReleaseCard(status = status, modifier = Modifier.fillMaxSize())
+                AboutReleaseCard(status = status, wide = wide, modifier = Modifier.fillMaxSize())
             } else {
                 AboutConfettiEgg(
                     tagline = stringResource(R.string.about_tagline).replace(", ", ",\n"),
                     burst = burst,
                     modifier = Modifier
                         .fillMaxSize()
-                        .clip(RoundedCornerShape(30.dp)),
+                        .clip(RoundedCornerShape(if (wide) AboutBannerCorner else 30.dp)),
                 )
             }
         }
     }
 }
+
+/** The tablet banner's width over its height, measured off ColorOS 17 on a OnePlus Pad. */
+private const val AboutBannerAspect = 3.48f
+
+/** The banner's corners: ColorOS rounds it like its cards below, not like the phone's square. */
+private val AboutBannerCorner = 24.dp
 
 /**
  * The front of the About card, laid out like ColorOS 17's "About device": the release's gold
@@ -524,8 +560,8 @@ private fun AboutHero(
  * light figures, and a frosted pill at the foot saying whether this release is current.
  */
 @Composable
-private fun AboutReleaseCard(status: String?, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(30.dp)
+private fun AboutReleaseCard(status: String?, wide: Boolean, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(if (wide) AboutBannerCorner else 30.dp)
     // ColorOS lights its About card up as the page opens: the card arrives as dark navy with only
     // the wordmark on it, then the artwork sweeps in from the bottom-left corner while it settles
     // from a slight zoom.
@@ -594,34 +630,87 @@ private fun AboutReleaseCard(status: String?, modifier: Modifier = Modifier) {
                     ),
                 ),
         )
+        if (wide) {
+            AboutBannerContent(status)
+        } else {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp, vertical = 22.dp),
+            ) {
+                Spacer(Modifier.weight(1f))
+                com.ozyern.exhale.ui.component.ExhaleGlowWordmark(fontSize = 58.sp)
+                com.ozyern.exhale.ui.component.ColorOsVersionText(BuildConfig.VERSION_NAME, fontSize = 19.sp, modifier = Modifier.padding(top = 10.dp))
+                Spacer(Modifier.weight(1f))
+                if (status != null) {
+                    AboutStatusPill(status, fontSize = 14.sp, horizontal = 18.dp, vertical = 8.dp)
+                } else {
+                    Spacer(Modifier.height(36.dp))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The banner's words, sized off its height the way ColorOS sizes them on a tablet: the wordmark a
+ * quarter of the banner tall and just above centre, the version small beneath it, and the pill
+ * sitting in the lower fifth. Scaling from the height keeps those proportions on a foldable's
+ * narrower pane and on a 13" tablet alike.
+ */
+@Composable
+private fun AboutBannerContent(status: String?) {
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+        val h = maxHeight.value
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 22.dp),
+                .padding(top = (h * 0.27f).dp),
         ) {
-            Spacer(Modifier.weight(1f))
-            com.ozyern.exhale.ui.component.ExhaleGlowWordmark(fontSize = 58.sp)
-            com.ozyern.exhale.ui.component.ColorOsVersionText(BuildConfig.VERSION_NAME, fontSize = 19.sp, modifier = Modifier.padding(top = 10.dp))
-            Spacer(Modifier.weight(1f))
-            if (status != null) {
-                val pillShape = RoundedCornerShape(50)
-                Text(
-                    text = status,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.White,
-                    modifier = Modifier
-                        .clip(pillShape)
-                        .background(Color.White.copy(alpha = 0.16f))
-                        .border(0.5.dp, Color.White.copy(alpha = 0.28f), pillShape)
-                        .padding(horizontal = 18.dp, vertical = 8.dp),
-                )
-            } else {
-                Spacer(Modifier.height(36.dp))
-            }
+            com.ozyern.exhale.ui.component.ExhaleGlowWordmark(fontSize = (h * 0.25f).sp)
+            com.ozyern.exhale.ui.component.ColorOsVersionText(
+                BuildConfig.VERSION_NAME,
+                fontSize = (h * 0.065f).sp,
+                modifier = Modifier.padding(top = (h * 0.035f).dp),
+            )
+        }
+        if (status != null) {
+            AboutStatusPill(
+                status,
+                fontSize = (h * 0.062f).sp,
+                horizontal = (h * 0.07f).dp,
+                vertical = (h * 0.032f).dp,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = (h * 0.085f).dp),
+            )
         }
     }
+}
+
+/** The frosted "Version up to date" pill at the foot of the card. */
+@Composable
+private fun AboutStatusPill(
+    status: String,
+    fontSize: androidx.compose.ui.unit.TextUnit,
+    horizontal: androidx.compose.ui.unit.Dp,
+    vertical: androidx.compose.ui.unit.Dp,
+    modifier: Modifier = Modifier,
+) {
+    val pillShape = RoundedCornerShape(50)
+    Text(
+        text = status,
+        fontSize = fontSize,
+        fontWeight = FontWeight.Medium,
+        color = Color.White,
+        modifier = modifier
+            .clip(pillShape)
+            .background(Color.White.copy(alpha = 0.16f))
+            .border(0.5.dp, Color.White.copy(alpha = 0.28f), pillShape)
+            .padding(horizontal = horizontal, vertical = vertical),
+    )
 }
 
 private data class ConfettiShape(
@@ -832,6 +921,126 @@ private fun ColorOsSpec(label: String, value: String) {
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
         )
+    }
+}
+
+// ─── Storage (tablet card) ────────────────────────────────────────────────────
+
+/**
+ * What the Storage row states: the volume Exhale lives on, and Exhale's three stores on it. Read
+ * from the same places the Storage page reads them, so the two pages never disagree.
+ */
+private data class AboutStorage(
+    val total: Long,
+    val free: Long,
+    val downloads: Long,
+    val songCache: Long,
+    val images: Long,
+) {
+    val used: Long get() = (total - free).coerceAtLeast(0L)
+    /** Everything on the volume that is not Exhale's: the long blue run of ColorOS's bar. */
+    val other: Long get() = (used - downloads - songCache - images).coerceAtLeast(0L)
+}
+
+/** Measured once on arrival, off the main thread; null until the numbers are in. */
+@Composable
+private fun rememberAboutStorage(): AboutStorage? {
+    val context = LocalContext.current
+    val service = com.ozyern.exhale.LocalPlayerConnection.current?.service
+    var storage by remember { mutableStateOf<AboutStorage?>(null) }
+    LaunchedEffect(service) {
+        storage = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.ozyern.exhale.extensions.tryOrNull {
+                val stat = android.os.StatFs(context.filesDir.path)
+                // ExoPlayer reports 0 until its index is loaded; the folder's size is right then.
+                fun cacheBytes(space: Long?, dir: String): Long =
+                    space?.takeIf { it > 0L } ?: context.filesDir.resolve(dir).directorySizeBytes()
+                AboutStorage(
+                    total = stat.totalBytes,
+                    free = stat.availableBytes,
+                    downloads = cacheBytes(service?.downloadCache?.let { c -> com.ozyern.exhale.extensions.tryOrNull { c.cacheSpace } }, "download"),
+                    songCache = cacheBytes(service?.playerCache?.let { c -> com.ozyern.exhale.extensions.tryOrNull { c.cacheSpace } }, "exoplayer"),
+                    images = com.ozyern.exhale.extensions.tryOrNull {
+                        coil3.SingletonImageLoader.get(context).diskCache?.size
+                    } ?: 0L,
+                )
+            }
+        }
+    }
+    return storage
+}
+
+/** ColorOS's bar colours: its blue-violet for the rest of the device, then a sliver per store. */
+private val StorageOtherColor = Color(0xFF3A4CF5)
+private val StorageDownloadsColor = Color(0xFFB36BFF)
+private val StorageSongCacheColor = Color(0xFFFF9F2E)
+private val StorageImagesColor = Color(0xFFD9D9DE)
+
+/**
+ * The tablet card's second row, copied from ColorOS's "Storage": the title and "used / total" with
+ * a chevron, and under them a thin bar of the whole volume. Exhale's own stores sit at the end of
+ * the blue run as slivers, kept at least 2dp wide so they show even when they are a rounding error
+ * of a 512 GB disk, which is how ColorOS draws its small categories too.
+ */
+@Composable
+private fun AboutStorageRow(storage: AboutStorage?, onClick: () -> Unit) {
+    AboutRowScaffold(onClick = onClick) {
+        Column(Modifier.weight(1f).padding(vertical = 4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(R.string.storage),
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                if (storage != null) {
+                    Text(
+                        text = "${com.ozyern.exhale.ui.utils.formatFileSize(storage.used)} / " +
+                            com.ozyern.exhale.ui.utils.formatFileSize(storage.total),
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+                Spacer(Modifier.width(4.dp))
+                AboutChevron()
+            }
+            Spacer(Modifier.height(12.dp))
+            StorageBar(storage)
+        }
+    }
+}
+
+@Composable
+private fun StorageBar(storage: AboutStorage?) {
+    val track = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f)
+    val reveal by animateFloatAsState(
+        targetValue = if (storage != null) 1f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(700),
+        label = "aboutStorageBar",
+    )
+    Canvas(
+        Modifier
+            .fillMaxWidth()
+            .height(6.dp)
+            .clip(RoundedCornerShape(50)),
+    ) {
+        drawRect(track)
+        if (storage == null || storage.total <= 0L) return@Canvas
+        val minSliver = 2.dp.toPx()
+        var x = 0f
+        listOf(
+            storage.other to StorageOtherColor,
+            storage.downloads to StorageDownloadsColor,
+            storage.songCache to StorageSongCacheColor,
+            storage.images to StorageImagesColor,
+        ).forEach { (bytes, color) ->
+            if (bytes <= 0L) return@forEach
+            val w = maxOf(size.width * bytes / storage.total * reveal, minSliver * reveal)
+            drawRect(color, topLeft = Offset(x, 0f), size = Size(w, size.height))
+            x += w
+        }
     }
 }
 

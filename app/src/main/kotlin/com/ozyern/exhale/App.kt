@@ -143,6 +143,7 @@ class App : Application(), SingletonImageLoader.Factory {
         com.ozyern.exhale.openflac.OpenFlac.jamendoClientId = BuildConfig.JAMENDO_CLIENT_ID
         // The listener's own music servers, read once so the first song can be looked up on them.
         com.ozyern.exhale.playback.lossless.ServerLibrary.init(this)
+        com.ozyern.exhale.playback.lossless.sources.LosslessSources.start(this, applicationScope)
     }
 
     /**
