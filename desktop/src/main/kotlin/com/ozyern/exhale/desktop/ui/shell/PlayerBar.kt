@@ -73,6 +73,7 @@ import com.ozyern.exhale.desktop.ui.SongActionsMenu
 import com.ozyern.exhale.desktop.ui.TransportIcons
 import com.ozyern.exhale.desktop.ui.glass.LocalAppBackdrop
 import com.ozyern.exhale.desktop.ui.glass.liquidGlass
+import com.ozyern.exhale.desktop.ui.player.AudioFormatBadges
 import com.ozyern.exhale.desktop.ui.player.GlassTrack
 import com.ozyern.exhale.desktop.ui.player.PlayerPanel
 import com.ozyern.exhale.desktop.ui.rememberPosition
@@ -209,7 +210,13 @@ private fun NowPlayingSlot(
                     if (current == null) {
                         Text("Not Playing", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
-                        Text(current.title, fontSize = 15.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(current.title, fontSize = 15.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                            if (state.isLossless || state.immersive != null) {
+                                Spacer(Modifier.width(6.dp))
+                                AudioFormatBadges(state, compact = true, contentColor = MaterialTheme.colorScheme.onSurface)
+                            }
+                        }
                         val line = listOfNotNull(
                             current.artists.joinToString { it.name }.takeIf { it.isNotBlank() },
                             current.album?.name?.takeIf { it.isNotBlank() },

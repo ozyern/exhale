@@ -290,6 +290,9 @@ fun ReleaseHeader(
     palette: ArtworkPalette,
     artHeight: Dp,
     onCreditClick: (() -> Unit)?,
+    explicit: Boolean = false,
+    lossless: Boolean = false,
+    losslessLabel: String? = "Lossless",
     badges: @Composable () -> Unit = {},
     /** The sleeve, for the two-pane layout, where the header carries its own artwork. */
     artworkUrl: String? = null,
@@ -302,6 +305,9 @@ fun ReleaseHeader(
             credit = credit,
             palette = palette,
             onCreditClick = onCreditClick,
+            explicit = explicit,
+            lossless = lossless,
+            losslessLabel = losslessLabel,
             artwork = {
                 AsyncImage(
                     model = artworkUrl,
@@ -332,16 +338,30 @@ fun ReleaseHeader(
                 .padding(bottom = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = palette.onBackground,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+            Row(
                 modifier = Modifier.padding(horizontal = ReleaseGutter),
-            )
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = palette.onBackground,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (explicit) {
+                    Spacer(Modifier.width(6.dp))
+                    Icon(
+                        painter = painterResource(R.drawable.explicit),
+                        contentDescription = null,
+                        tint = palette.onBackgroundVariant,
+                        modifier = Modifier.size(17.dp),
+                    )
+                }
+            }
             if (!credit.isNullOrBlank()) {
                 Spacer(Modifier.height(2.dp))
                 Text(
@@ -357,18 +377,47 @@ fun ReleaseHeader(
                         .let { if (onCreditClick != null) it.clickable(onClick = onCreditClick) else it },
                 )
             }
-            if (meta.isNotBlank()) {
+            if (meta.isNotBlank() || lossless) {
                 Spacer(Modifier.height(5.dp))
-                Text(
-                    text = meta,
-                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.7.sp),
-                    fontWeight = FontWeight.SemiBold,
-                    color = palette.onBackgroundVariant,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Row(
                     modifier = Modifier.padding(horizontal = ReleaseGutter),
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    if (meta.isNotBlank()) {
+                        Text(
+                            text = meta,
+                            style = MaterialTheme.typography.bodyMedium.copy(letterSpacing = 0.3.sp),
+                            fontWeight = FontWeight.Medium,
+                            color = palette.onBackgroundVariant,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    if (lossless) {
+                        if (meta.isNotBlank()) {
+                            Text(
+                                text = " \u2022 ",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = palette.onBackgroundVariant,
+                            )
+                        }
+                        Icon(
+                            painter = painterResource(R.drawable.ic_apple_lossless),
+                            contentDescription = null,
+                            tint = palette.onBackgroundVariant,
+                            modifier = Modifier.size(15.dp),
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = losslessLabel ?: "Lossless",
+                            style = MaterialTheme.typography.bodyMedium.copy(letterSpacing = 0.2.sp),
+                            fontWeight = FontWeight.SemiBold,
+                            color = palette.onBackgroundVariant,
+                        )
+                    }
+                }
             }
             badges()
             Spacer(Modifier.height(14.dp))

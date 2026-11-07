@@ -767,6 +767,10 @@ private fun NowPlayingColumn(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (state.isLossless || state.immersive != null) {
+                    Spacer(Modifier.height(8.dp))
+                    AudioFormatBadges(state, contentColor = Color.White)
+                }
             }
         }
         Spacer(Modifier.height(16.dp))
@@ -965,7 +969,10 @@ private fun QualityBadge(state: PlayerState, settings: Settings) {
     ) { (icon, text) ->
         val ink = Color.White.copy(alpha = 0.6f)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (icon != null) {
+            if (state.isLossless || state.immersive != null) {
+                AudioFormatBadges(state, compact = true, contentColor = Color.White)
+                Spacer(Modifier.width(8.dp))
+            } else if (icon != null) {
                 Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(4.dp))
             }

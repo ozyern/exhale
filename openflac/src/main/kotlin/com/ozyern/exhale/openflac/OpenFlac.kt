@@ -167,9 +167,18 @@ object OpenFlac {
      */
     suspend fun findCopy(title: String, artist: String, durationSeconds: Int, album: String? = null): Track? {
         if (title.isBlank() || artist.isBlank() || durationSeconds <= 0) return null
-        val quotedArtist = artist.replace('"', ' ')
-        val quotedTitle = title.replace('"', ' ')
-        val quotedAlbum = album?.replace('"', ' ')?.takeIf { it.isNotBlank() && plain(it) != plain(title) }
+        val cleanTitle = title
+            .replace(Regex("""\s*[\(\[\{].*?[\)\]\}]"""), "")
+            .replace(Regex("""(?i)\b(feat\.?|ft\.?)\b.*"""), "")
+            .replace('"', ' ')
+            .trim()
+        val cleanArtist = artist
+            .replace(Regex("""(?i)\b(feat\.?|ft\.?)\b.*"""), "")
+            .replace('"', ' ')
+            .trim()
+        val quotedArtist = cleanArtist.ifBlank { artist.replace('"', ' ') }
+        val quotedTitle = cleanTitle.ifBlank { title.replace('"', ' ') }
+        val quotedAlbum = album?.replace(Regex("""\s*[\(\[\{].*?[\)\]\}]"""), "")?.replace('"', ' ')?.trim()?.takeIf { it.isNotBlank() && plain(it) != plain(title) }
         val found = coroutineScope {
             val archive = async {
                 runCatching {
@@ -264,7 +273,9 @@ object OpenFlac {
 
     private suspend fun archiveTracks(identifier: String): List<Track> {
         val root = getJson("https://archive.org/metadata/${identifier.encodeURLPathPart()}")
-        noteArchiveServer(identifier, root.text("server"), root.text("dir"))
+        val server = root.text("server")
+        val dir = root.text("dir")
+        noteArchiveServer(identifier, server, dir)
         val metadata = root.obj("metadata")
         val creator = metadata?.text("creator") ?: "Various Artists"
         val album = metadata?.text("title")
@@ -278,14 +289,19 @@ object OpenFlac {
             .sortedWith(compareBy({ it.text("track")?.substringBefore('/')?.trim()?.toIntOrNull() ?: Int.MAX_VALUE }, { it.text("name") }))
             .mapNotNull { file ->
                 val name = file.text("name") ?: return@mapNotNull null
+                val encodedPath = name.split('/').joinToString("/") { it.encodeURLPathPart() }
+                val downloadUrl = if (!server.isNullOrBlank() && !dir.isNullOrBlank()) {
+                    "https://$server$dir/$encodedPath"
+                } else {
+                    "https://archive.org/download/${identifier.encodeURLPathPart()}/$encodedPath"
+                }
                 Track(
                     // A taper's file name — "gd77-05-08d2t05" — says little; the file's own title says more.
                     title = file.text("title") ?: name.substringAfterLast('/').substringBeforeLast('.'),
                     artist = file.text("artist") ?: file.text("creator") ?: creator,
                     album = file.text("album") ?: album,
                     durationSeconds = parseLength(file.text("length")),
-                    url = "https://archive.org/download/${identifier.encodeURLPathPart()}/" +
-                        name.split('/').joinToString("/") { it.encodeURLPathPart() },
+                    url = downloadUrl,
                     artworkUrl = art,
                     bitDepth = if (file.text("format")?.startsWith("24bit") == true) 24 else 16,
                     sampleRate = file.text("sample_rate")?.toIntOrNull(),

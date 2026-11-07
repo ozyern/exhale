@@ -44,6 +44,13 @@ object QobuzAudioProvider {
         val baseUrl: String,
     )
 
+    val defaultInstanceUrls: List<String> =
+        listOf(
+            "https://qobuz.kinoplus.online",
+            "https://qobuz.play.kinoplus.online",
+            "https://api.zarz.moe/v2/qbz",
+        )
+
     @Volatile
     private var instances: List<Instance> = emptyList()
 
@@ -51,7 +58,7 @@ object QobuzAudioProvider {
     private var tokens: List<QobuzToken> = emptyList()
 
     val activeInstanceUrls: List<String>
-        get() = instances.map { it.baseUrl }
+        get() = if (instances.isNotEmpty()) instances.map { it.baseUrl } else defaultInstanceUrls
 
     fun setTokens(newTokens: List<QobuzToken>) {
         val seen = LinkedHashSet<String>()
@@ -475,8 +482,14 @@ object QobuzAudioProvider {
                     isPoolPremium = token.poolId != null && token.subscription.equals("premium", ignoreCase = true),
                 )
             }
+        val effectiveInstances = if (instances.isNotEmpty()) instances else {
+            defaultInstanceUrls.mapNotNull { raw ->
+                val normalized = normalizeInstanceUrl(raw) ?: return@mapNotNull null
+                Instance(instanceLabel(normalized), normalized)
+            }
+        }
         val proxyBackends =
-            instances.map { instance ->
+            effectiveInstances.map { instance ->
                 Backend(
                     id = instance.baseUrl,
                     label = instance.label,

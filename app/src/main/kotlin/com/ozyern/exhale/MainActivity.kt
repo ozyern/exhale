@@ -3315,12 +3315,12 @@ private val TabEnter =fadeIn(tween(200, delayMillis = 40, easing = androidx.comp
     slideInVertically(spring(dampingRatio = 0.86f, stiffness = 520f)) { it / 60 }
 private val TabExit = fadeOut(tween(90, easing = androidx.compose.animation.core.FastOutLinearInEasing))
 
-// UIKit's push is a critically damped spring of about half a second: the same curve the artwork
-// pages land on, so every page in the app moves the one way.
-private const val PushMillis = 500
+// UIKit's push is a critically damped spring of about ~380ms: the same curve the artwork
+// pages land on, tuned for buttery 120Hz high refresh displays.
+private const val PushMillis = 380
 
 /** Longest a tab tap waits for the page under it to settle: past the push, so only a stuck page hits it. */
-private const val DockTabSettleTimeoutMs = 700L
+private const val DockTabSettleTimeoutMs = 500L
 private val PushEasing = com.ozyern.exhale.ui.utils.ArtworkMotion.Easing
 private const val PushParallax = 0.30f
 private const val PushDimAlpha = 0.85f

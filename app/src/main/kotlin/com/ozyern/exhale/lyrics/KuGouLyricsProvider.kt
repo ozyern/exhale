@@ -25,7 +25,15 @@ object KuGouLyricsProvider : LyricsProvider {
         artist: String,
         album: String?,
         duration: Int,
-    ): Result<String> = KuGou.getLyrics(title, artist, duration)
+    ): Result<String> {
+        val exact = KuGou.getLyrics(title, artist, duration)
+        if (exact.isSuccess) return exact
+        if (duration > 0) {
+            val relaxed = KuGou.getLyrics(title, artist, -1)
+            if (relaxed.isSuccess) return relaxed
+        }
+        return exact
+    }
 
     override suspend fun getAllLyrics(
         id: String,

@@ -238,7 +238,7 @@ object LosslessStreamResolver {
         val hasTidal = !p[TidalAccessTokenKey].isNullOrBlank() || (p[TidalEnabledKey] ?: true)
         val hasDeezer = !p[DeezerArlKey].isNullOrBlank() || (p[DeezerEnabledKey] ?: true && DeezerAudioProvider.hasAccounts())
         val hasApple = !p[AppleMusicMediaUserTokenKey].isNullOrBlank() || (p[AppleMusicSourceEnabledKey] ?: true && AppleMusicAudioProvider.isAvailable())
-        val hasQobuz = !p[QobuzTokensKey].isNullOrBlank() || (p[QobuzEnabledKey] ?: true && (PoolAccountManager.hasAccounts() || !p[QobuzInstancesKey].isNullOrBlank()))
+        val hasQobuz = (p[QobuzEnabledKey] ?: true)
 
         return hasMonochrome || hasBuildKey || hasPoolKey || hasTidal || hasDeezer || hasApple || hasQobuz
     }
@@ -261,7 +261,8 @@ object LosslessStreamResolver {
             uri.startsWith("monochrome://") ||
             uri.contains("monochrome.st/track/") ||
             uri.contains("monochrome.tf/track/") ||
-            (uri.contains("/track/") && (uri.contains("qqdl.site") || uri.contains("kinoplus"))) ||
+            uri.contains("qobuz") ||
+            (uri.contains("/track/") && (uri.contains("qqdl.site") || uri.contains("kinoplus") || uri.contains("zarz.moe"))) ||
             resolvedByMediaId.values.any { it.uri == uri }
     }
 
@@ -320,13 +321,13 @@ object LosslessStreamResolver {
     private suspend fun prefs(context: Context) = context.dataStore.data.first()
 
     private fun parseTidalAudioQuality(stored: String?): TidalAudioQuality =
-        runCatching { TidalAudioQuality.valueOf(stored ?: TidalAudioQuality.FLAC.name) }.getOrDefault(TidalAudioQuality.FLAC)
+        runCatching { TidalAudioQuality.valueOf(stored ?: TidalAudioQuality.HI_RES_LOSSLESS.name) }.getOrDefault(TidalAudioQuality.HI_RES_LOSSLESS)
 
     private fun parseAppleMusicQuality(stored: String?): AppleMusicQuality =
-        runCatching { AppleMusicQuality.valueOf(stored ?: AppleMusicQuality.LOSSLESS.name) }.getOrDefault(AppleMusicQuality.LOSSLESS)
+        runCatching { AppleMusicQuality.valueOf(stored ?: AppleMusicQuality.HI_RES_LOSSLESS.name) }.getOrDefault(AppleMusicQuality.HI_RES_LOSSLESS)
 
     private fun parseQobuzAudioQuality(stored: String?): QobuzAudioQuality =
-        runCatching { QobuzAudioQuality.valueOf(stored ?: QobuzAudioQuality.FLAC.name) }.getOrDefault(QobuzAudioQuality.FLAC)
+        runCatching { QobuzAudioQuality.valueOf(stored ?: QobuzAudioQuality.MAX.name) }.getOrDefault(QobuzAudioQuality.MAX)
 
     private fun parseDeezerAudioQuality(stored: String?): DeezerAudioQuality =
         runCatching { DeezerAudioQuality.valueOf(stored ?: DeezerAudioQuality.FLAC.name) }.getOrDefault(DeezerAudioQuality.FLAC)
@@ -915,10 +916,12 @@ object LosslessStreamResolver {
     ): DirectStream? {
         val userInstances = settings.qobuzInstances
         val discoveredInstances = runCatching { QobuzAudioProvider.discoverInstances() }.getOrDefault(emptyList())
+        val defaultInstances = QobuzAudioProvider.defaultInstanceUrls
         val configuredInstances =
             LinkedHashSet<String>().apply {
                 addAll(userInstances)
                 addAll(discoveredInstances)
+                addAll(defaultInstances)
             }.toList()
 
         val poolTokens =

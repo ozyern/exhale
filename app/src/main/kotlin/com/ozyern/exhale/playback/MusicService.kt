@@ -398,7 +398,23 @@ class MusicService :
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
-            .proxy(YouTube.streamProxy)
+            .proxySelector(object : java.net.ProxySelector() {
+                override fun select(uri: java.net.URI?): List<java.net.Proxy> {
+                    val host = uri?.host.orEmpty()
+                    val isYouTubeHost = host.endsWith("googlevideo.com") ||
+                        host.endsWith("googleusercontent.com") ||
+                        host.endsWith("youtube.com") ||
+                        host.endsWith("youtube-nocookie.com") ||
+                        host.endsWith("ytimg.com")
+                    val ytProxy = YouTube.streamProxy
+                    if (isYouTubeHost && ytProxy != null) {
+                        return listOf(ytProxy)
+                    }
+                    return listOf(java.net.Proxy.NO_PROXY)
+                }
+
+                override fun connectFailed(uri: java.net.URI?, sa: java.net.SocketAddress?, ioe: java.io.IOException?) {}
+            })
             .followRedirects(true)
             .followSslRedirects(true)
             .addInterceptor { chain ->
@@ -411,7 +427,20 @@ class MusicService :
                         host.endsWith("youtube-nocookie.com") ||
                         host.endsWith("ytimg.com")
 
-                if (!isYouTubeMediaHost) return@addInterceptor chain.proceed(request)
+                if (!isYouTubeMediaHost) {
+                    val builder = request.newBuilder()
+                    val userAgent = request.header("User-Agent")
+                    if (userAgent.isNullOrBlank() || userAgent.startsWith("okhttp", ignoreCase = true)) {
+                        builder.header(
+                            "User-Agent",
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                        )
+                    }
+                    if (request.header("Accept").isNullOrBlank()) {
+                        builder.header("Accept", "*/*")
+                    }
+                    return@addInterceptor chain.proceed(builder.build())
+                }
 
                 val clientParam = request.url.queryParameter("c")?.trim().orEmpty()
 
@@ -5605,12 +5634,19 @@ class MusicService :
         val currentMediaId = player.currentMediaItem?.mediaId
         val httpStatusCode = error.httpStatusCodeOrNull()
 
-        // JioSaavn is an upgrade, never a dependency. Every recovery below renews YouTube's URL, which
-        // this song isn't using: each retry went back to the same failing JioSaavn file, and the song
-        // was skipped while YouTube could have played it.
+        // Upgraded lossless / JioSaavn stream failed. Clean up and fall back cleanly to YouTube.
         if (currentMediaId != null && streamSource[currentMediaId].let { it != null && it != YOUTUBE_SOURCE }) {
-            Timber.tag("JioSaavn").w("%s failed from JioSaavn (code=%d); falling back to YouTube", currentMediaId, error.errorCode)
+            Timber.tag("MusicService").w("%s failed from upgraded stream (code=%d); falling back to YouTube", currentMediaId, error.errorCode)
+            flacCopies.remove(currentMediaId)
             streamSource[currentMediaId] = YOUTUBE_SOURCE
+            val currentIndex = player.currentMediaItemIndex
+            val currentItem = runCatching { player.getMediaItemAt(currentIndex) }.getOrNull()
+            if (currentItem != null && currentItem.mediaId == currentMediaId) {
+                val fallbackItem = currentItem.buildUpon()
+                    .setUri(currentMediaId)
+                    .build()
+                player.replaceMediaItem(currentIndex, fallbackItem)
+            }
             player.prepare()
             player.playWhenReady = true
             return
@@ -5815,7 +5851,16 @@ class MusicService :
             delay(UPGRADE_STALL_MS)
             if (player.currentMediaItem?.mediaId != mediaId || player.playbackState != Player.STATE_BUFFERING) return@launch
             Timber.tag("MusicService").w("%s stalled on its upgraded stream; moving to YouTube", mediaId)
+            flacCopies.remove(mediaId)
             streamSource[mediaId] = YOUTUBE_SOURCE
+            val currentIndex = player.currentMediaItemIndex
+            val currentItem = runCatching { player.getMediaItemAt(currentIndex) }.getOrNull()
+            if (currentItem != null && currentItem.mediaId == mediaId) {
+                val fallbackItem = currentItem.buildUpon()
+                    .setUri(mediaId)
+                    .build()
+                player.replaceMediaItem(currentIndex, fallbackItem)
+            }
             player.stop()
             player.prepare()
             player.playWhenReady = true
@@ -5885,9 +5930,17 @@ class MusicService :
             Timber.tag("MusicService").i("Seamlessly upgrading %s to FLAC (%s) at %d ms", mediaId, flacOrigins[mediaId], currentPos)
 
             val currentIndex = player.currentMediaItemIndex
-            player.seekTo(currentIndex, currentPos)
-            player.prepare()
-            player.playWhenReady = wasPlaying
+            val currentItem = runCatching { player.getMediaItemAt(currentIndex) }.getOrNull()
+            if (currentItem != null && currentItem.mediaId == mediaId) {
+                val targetPos = if (currentPos < 3_000L) 0L else currentPos
+                val newItem = currentItem.buildUpon()
+                    .setUri(flacUrl.toUri())
+                    .build()
+                player.replaceMediaItem(currentIndex, newItem)
+                player.seekTo(currentIndex, targetPos)
+                player.prepare()
+                player.playWhenReady = wasPlaying
+            }
         }
     }
 

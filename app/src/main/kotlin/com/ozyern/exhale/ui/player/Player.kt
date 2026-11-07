@@ -759,14 +759,14 @@ fun BottomSheetPlayer(
             androidx.compose.animation.AnimatedVisibility(
                 visible = !hideMiniPlayer,
                 enter = if (instantMiniPlayerSwap) androidx.compose.animation.EnterTransition.None else androidx.compose.animation.fadeIn(
-                    androidx.compose.animation.core.tween(220, delayMillis = 120),
+                    androidx.compose.animation.core.tween(200, delayMillis = 80),
                 ) + androidx.compose.animation.slideInVertically(
-                    androidx.compose.animation.core.spring(dampingRatio = 0.82f, stiffness = 160f),
+                    androidx.compose.animation.core.spring(dampingRatio = 0.82f, stiffness = 380f),
                 ) { it / 3 },
                 exit = if (instantMiniPlayerSwap) androidx.compose.animation.ExitTransition.None else androidx.compose.animation.fadeOut(
-                    androidx.compose.animation.core.tween(160),
+                    androidx.compose.animation.core.tween(140),
                 ) + androidx.compose.animation.slideOutVertically(
-                    androidx.compose.animation.core.spring(dampingRatio = 0.82f, stiffness = 160f),
+                    androidx.compose.animation.core.spring(dampingRatio = 0.82f, stiffness = 380f),
                 ) { it / 3 },
             ) {
                 MiniPlayer(

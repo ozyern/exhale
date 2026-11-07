@@ -134,16 +134,15 @@ class Mpv(private val listener: Listener, windowId: Long? = null, extraOptions: 
             "cache-dir" to streamCacheDir,
             // Read ahead by the clock, not to the end of the file. Given room for the whole video mpv
             // takes it at once, several megabytes a second — and pulled that hard these URLs stop
-            // answering partway through, for minutes, which ends the song mid-play. A minute and a
-            // half in hand covers any slow moment on the network and keeps the asking near the pace
-            // the picture is actually watched at.
-            "demuxer-readahead-secs" to "30",
-            "cache-secs" to "90",
-            "demuxer-max-bytes" to (96L * 1024 * 1024).toString(),
+            // answering partway through, for minutes, which ends the song mid-play. A generous buffer
+            // covers any slow moment on the network and keeps lossless playback smooth.
+            "demuxer-readahead-secs" to "60",
+            "cache-secs" to "120",
+            "demuxer-max-bytes" to (256L * 1024 * 1024).toString(),
             "demuxer-max-back-bytes" to (128L * 1024 * 1024).toString(),
             // A server that has gone quiet is found out in seconds rather than the default minute, so
             // the player can move to another copy of the song while someone is still listening.
-            "network-timeout" to "15",
+            "network-timeout" to "25",
             // A dropped connection partway through a song is picked up from where it stopped.
             "stream-lavf-o" to "reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=4",
             // Room for a slow moment in the decoder or resampler without the sound breaking up.

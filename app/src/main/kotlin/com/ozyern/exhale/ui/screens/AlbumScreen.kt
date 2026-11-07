@@ -580,13 +580,23 @@ fun AlbumScreen(
             val hasSongs = albumWithSongs?.songs?.isNotEmpty() == true
             if (hasSongs) {
                 item(key = "header") {
-                    val totalDuration = albumWithSongs.songs.sumOf { it.song.duration }
+                    val typeStr = when (wrappedSongs.size) {
+                        1 -> "Single"
+                        in 2..6 -> "EP"
+                        else -> "Album"
+                    }
                     val meta = buildList {
-                        add("Album")
+                        add(typeStr)
                         albumWithSongs.album.year?.let { add(it.toString()) }
-                        add(pluralStringResource(R.plurals.n_song, wrappedSongs.size, wrappedSongs.size))
-                        if (totalDuration > 0) add(makeTimeString(totalDuration * 1000L))
-                    }.joinToString(" \u2022 ").uppercase()
+                    }.joinToString(" \u2022 ")
+                    val isExplicit = albumWithSongs.album.explicit || albumWithSongs.songs.any { it.song.explicit }
+                    val isPlayingThisAlbum = mediaMetadata?.album?.id == albumWithSongs.album.id
+                    val losslessLabel = if (isPlayingThisAlbum && currentFormat != null &&
+                        com.ozyern.exhale.ui.component.audioBadgesFor(currentFormat).any { it == com.ozyern.exhale.ui.component.AudioBadge.HIRES_LOSSLESS }) {
+                        "Hi-Res Lossless"
+                    } else {
+                        "Lossless"
+                    }
                     com.ozyern.exhale.ui.component.ReleaseHeader(
                         title = albumWithSongs.album.title,
                         credit = albumWithSongs.artists.joinToString(", ") { it.name },
@@ -594,15 +604,13 @@ fun AlbumScreen(
                         palette = palette,
                         artHeight = artHeight,
                         artworkUrl = albumWithSongs.album.thumbnailUrl,
+                        explicit = isExplicit,
+                        lossless = true,
+                        losslessLabel = losslessLabel,
                         onCreditClick = albumWithSongs.artists.firstOrNull()?.let { artist ->
                             { navController.navigate("artist/${artist.id}") }
                         },
-                        badges = {
-                            if (mediaMetadata?.album?.id == albumWithSongs.album.id) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                com.ozyern.exhale.ui.component.AudioFormatBadges(format = currentFormat)
-                            }
-                        },
+                        badges = {},
                     ) {
                         val circle = 50.dp
                         // Save · Play · Shuffle · More, as Apple Music sets a release: the two capsules

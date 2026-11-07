@@ -72,7 +72,11 @@ internal object SongQuery {
         val named = squeezed(before)
         val own = squeezed(channel)
         val isChannel = named.isNotEmpty() && own.isNotEmpty() && (named == own || named.startsWith(own) || own.startsWith(named))
-        return if (isChannel && after.isNotEmpty()) after to before else cleaned to channel
+        if (isChannel && after.isNotEmpty()) return after to before
+        if (before.isNotEmpty() && after.isNotEmpty()) {
+            return after to before
+        }
+        return cleaned to channel
     }
 
     /** Words that make a hit another recording of the song: another language, another mix, another take. */

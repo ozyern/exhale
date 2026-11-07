@@ -25,7 +25,23 @@ object LrcLibLyricsProvider : LyricsProvider {
         artist: String,
         album: String?,
         duration: Int,
-    ): Result<String> = LrcLib.getLyrics(title, artist, duration)
+    ): Result<String> {
+        val exact = LrcLib.getLyrics(title, artist, duration, album)
+        if (exact.isSuccess) return exact
+        if (album != null) {
+            val withoutAlbum = LrcLib.getLyrics(title, artist, duration, null)
+            if (withoutAlbum.isSuccess) return withoutAlbum
+        }
+        if (duration > 0) {
+            val relaxed = LrcLib.getLyrics(title, artist, -1, album)
+            if (relaxed.isSuccess) return relaxed
+            if (album != null) {
+                val relaxedNoAlbum = LrcLib.getLyrics(title, artist, -1, null)
+                if (relaxedNoAlbum.isSuccess) return relaxedNoAlbum
+            }
+        }
+        return exact
+    }
 
     override suspend fun getAllLyrics(
         id: String,

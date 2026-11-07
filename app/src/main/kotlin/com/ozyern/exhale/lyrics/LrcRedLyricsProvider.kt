@@ -39,7 +39,7 @@ object LrcRedLyricsProvider : LyricsProvider {
     private const val TTML = "application/ttml+xml, application/xml, text/xml, */*"
 
     /** YouTube reports whole seconds; a different recording is usually further off than this. */
-    private const val DURATION_TOLERANCE_SECONDS = 3.0
+    private const val DURATION_TOLERANCE_SECONDS = 8.0
 
     private val ISRC = Regex("""[A-Z]{2}[A-Z0-9]{3}\d{7}""")
 

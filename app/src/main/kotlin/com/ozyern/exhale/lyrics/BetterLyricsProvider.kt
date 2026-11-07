@@ -34,7 +34,15 @@ object BetterLyricsProvider : LyricsProvider {
         artist: String,
         album: String?,
         duration: Int,
-    ): Result<String> = BetterLyrics.getLyrics(title = title, artist = artist, album = null, durationSeconds = duration)
+    ): Result<String> {
+        val exact = BetterLyrics.getLyrics(title = title, artist = artist, album = album, durationSeconds = duration)
+        if (exact.isSuccess) return exact
+        if (duration > 0) {
+            val relaxed = BetterLyrics.getLyrics(title = title, artist = artist, album = null, durationSeconds = 0)
+            if (relaxed.isSuccess) return relaxed
+        }
+        return exact
+    }
 
     override suspend fun getAllLyrics(
         id: String,

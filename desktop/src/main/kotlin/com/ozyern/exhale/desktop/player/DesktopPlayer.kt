@@ -52,6 +52,11 @@ data class PlayerState(
     /** Bumped on every seek, so what follows this state rather than [DesktopPlayer.position] (Discord) still hears about jumps. */
     val seekGeneration: Int = 0,
     val streamInfo: String? = null,
+    val isLossless: Boolean = false,
+    val isHiRes: Boolean = false,
+    val bitDepth: Int? = null,
+    val sampleRate: Int? = null,
+    val sourceLabel: String? = null,
     /** The immersive format the music itself is in — Dolby Atmos, TrueHD… — or null for ordinary stereo. */
     val immersive: ImmersiveFormat? = null,
     /** True while a Dolby track goes out to the receiver as it is, decoded there rather than here. */
@@ -512,6 +517,11 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
                 isPlaying = false,
                 durationSeconds = song.duration?.toDouble() ?: 0.0,
                 streamInfo = null,
+                isLossless = false,
+                isHiRes = false,
+                bitDepth = null,
+                sampleRate = null,
+                sourceLabel = null,
                 immersive = null,
                 passthrough = false,
                 error = null,
@@ -591,7 +601,17 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
                 .onSuccess { stream ->
                     ensureActive()
                     normalizationDb = stream.loudnessDb?.let { (-it).coerceIn(-20.0, 0.0) } ?: 0.0
-                    _state.update { it.copy(streamInfo = stream.describe()) }
+                    val isHiRes = stream.lossless && ((stream.sampleRate ?: 0) > 48_000 || (stream.bitDepth ?: 0) > 16 || stream.describe().contains("HI_RES", true))
+                    _state.update {
+                        it.copy(
+                            streamInfo = stream.describe(),
+                            isLossless = stream.lossless,
+                            isHiRes = isHiRes,
+                            bitDepth = stream.bitDepth,
+                            sampleRate = stream.sampleRate,
+                            sourceLabel = stream.sourceLabel,
+                        )
+                    }
                     DesktopPrefs.recordPlayed(song)
                     loadedSongId = song.id
                     playingFromLibrary = stream.sourceLabel != null
@@ -611,7 +631,17 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
                                 println("Exhale: hot-swapping to lossless FLAC stream from ${flac.sourceLabel}")
                                 val curPos = _position.value
                                 normalizationDb = flac.loudnessDb?.let { (-it).coerceIn(-20.0, 0.0) } ?: 0.0
-                                _state.update { it.copy(streamInfo = flac.describe()) }
+                                val flacHiRes = flac.lossless && ((flac.sampleRate ?: 0) > 48_000 || (flac.bitDepth ?: 0) > 16 || flac.describe().contains("HI_RES", true))
+                                _state.update {
+                                    it.copy(
+                                        streamInfo = flac.describe(),
+                                        isLossless = true,
+                                        isHiRes = flacHiRes,
+                                        bitDepth = flac.bitDepth,
+                                        sampleRate = flac.sampleRate,
+                                        sourceLabel = flac.sourceLabel,
+                                    )
+                                }
                                 playingFromLibrary = flac.sourceLabel != null
                                 playingLossless = true
                                 LosslessLibrary.announce(song.id.takeIf { playingFromLibrary })

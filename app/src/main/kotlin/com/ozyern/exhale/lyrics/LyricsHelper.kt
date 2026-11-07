@@ -216,19 +216,30 @@ constructor(
         val offset = timely ?: 0L
         GlobalLog.append(Log.DEBUG, "LyricsHelper", "Video ${meta.id} → song ${song.id}, lyrics moved ${offset}ms")
         // A measurement that pushes the lyrics out of the video's own length was a wrong one.
-        return LyricsShift.shift(text, offset).takeIf { LyricsFit.fits(it, meta.duration) }
+        val shifted = LyricsShift.shift(text, offset)
+        return shifted.takeIf { LyricsFit.fits(it, meta.duration) } ?: text
     }
 
     /** The catalogue song a video is of: same title and artist, length within the video's. */
     private suspend fun catalogueSong(meta: MediaMetadata): com.ozyern.exhale.innertube.models.SongItem? {
-        val (title, artist) = SongQuery.songAndArtist(meta.title, meta.artists.map { it.name })
+        val names = meta.artists.map { it.name }.filter { it.isNotBlank() }
+        val (title, artist) = SongQuery.songAndArtist(meta.title, names)
+        val lead = names.firstOrNull().orEmpty()
+        val credited = SongQuery.creditedArtist(meta.title, names)
+        val clean = SongQuery.cleanTitle(meta.title)
+
+        val query = if (artist.isNotBlank() && title.isNotBlank() && title != meta.title) {
+            "$title $artist"
+        } else {
+            "$clean $lead"
+        }
         val results = com.ozyern.exhale.innertube.YouTube.search(
-            "$title $artist",
+            query.trim(),
             com.ozyern.exhale.innertube.YouTube.SearchFilter.FILTER_SONG,
         ).getOrNull()?.items?.filterIsInstance<com.ozyern.exhale.innertube.models.SongItem>().orEmpty()
-        fun norm(text: String) = text.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
-        val wantedTitle = norm(title)
-        val wantedArtist = norm(artist)
+        fun norm(text: String) = text.lowercase().replace(Regex("""[^\p{L}\p{N}]+"""), " ").trim()
+        val wantedTitle = norm(title).ifBlank { norm(clean) }
+        val candidateArtists = listOfNotNull(artist, lead, credited).map(::norm).filter { it.isNotBlank() }
         return results.mapNotNull { song ->
             val name = norm(SongQuery.cleanTitle(song.title))
             val titleScore = when {
@@ -236,14 +247,14 @@ constructor(
                 name.isNotEmpty() && (name.contains(wantedTitle) || wantedTitle.contains(name)) -> 30
                 else -> return@mapNotNull null
             }
-            val artists = song.artists.joinToString(" ") { norm(it.name) }
-            val artistScore = if (wantedArtist.isNotEmpty() && (artists.contains(wantedArtist) || wantedArtist.contains(artists))) 30 else 0
+            val songArtists = song.artists.joinToString(" ") { norm(it.name) }
+            val artistScore = if (candidateArtists.any { it.isNotEmpty() && (songArtists.contains(it) || it.contains(songArtists)) }) 30 else 0
             // A video runs longer than its song, never much shorter.
             val lengthOk = song.duration == null || meta.duration <= 0 ||
-                (meta.duration - song.duration!!) in -8..150
+                (meta.duration - song.duration!!) in -15..180
             if (!lengthOk) return@mapNotNull null
             song to titleScore + artistScore
-        }.filter { it.second >= 60 }.maxByOrNull { it.second }?.first
+        }.filter { it.second >= 50 }.maxByOrNull { it.second }?.first
     }
 
     suspend fun getAllLyrics(
@@ -338,11 +349,34 @@ constructor(
     private fun phrasingsOf(mediaMetadata: MediaMetadata): List<Pair<String, String>> {
         val rawTitle = mediaMetadata.title
         val rawArtist = mediaMetadata.artists.joinToString { it.name }
-        val (title, artist) = SongQuery.songAndArtist(rawTitle, mediaMetadata.artists.map { it.name })
-        return listOf(
-            title to artist.ifBlank { rawArtist },
-            rawTitle to rawArtist,
-        ).distinct()
+        val names = mediaMetadata.artists.map { it.name }.filter { it.isNotBlank() }
+        val lead = names.firstOrNull().orEmpty()
+        val clean = SongQuery.cleanTitle(rawTitle)
+        val credited = SongQuery.creditedArtist(rawTitle, names)?.takeIf { !it.equals(lead, ignoreCase = true) }
+        val (title, artist) = SongQuery.songAndArtist(rawTitle, names)
+
+        val list = mutableListOf<Pair<String, String>>()
+        if (title.isNotBlank() && artist.isNotBlank()) {
+            list.add(title to artist)
+        }
+        if (clean.isNotBlank() && lead.isNotBlank()) {
+            list.add(clean to lead)
+        }
+        if (clean.isNotBlank() && credited != null) {
+            list.add(clean to credited)
+        }
+        val dash = Regex("""\s+[-–—]\s+""").find(clean)
+        if (dash != null) {
+            val before = clean.substring(0, dash.range.first).trim()
+            val after = clean.substring(dash.range.last + 1).trim()
+            if (before.isNotBlank() && after.isNotBlank()) {
+                list.add(after to before)
+                list.add(before to after)
+            }
+        }
+        list.add(title to artist.ifBlank { rawArtist })
+        list.add(rawTitle to rawArtist)
+        return list.filter { it.first.isNotBlank() && it.second.isNotBlank() }.distinct()
     }
 
     /**
@@ -382,6 +416,7 @@ constructor(
         } else {
             null
         }
+        var fallbackLyrics: String? = null
         for ((title, artist) in phrasings) {
             try {
                 val result = provider.getLyrics(
@@ -404,13 +439,14 @@ constructor(
                     }
                 }
                 if (lyrics != null && isMeaningfulLyrics(lyrics)) {
-                    // Timed for another cut of the song: not shown, so a source that has this one wins.
-                    if (!LyricsFit.fits(lyrics, mediaMetadata.duration)) {
-                        GlobalLog.append(Log.DEBUG, "LyricsHelper", "${provider.name}: timing does not fit ${mediaMetadata.title} (${mediaMetadata.duration}s); passed over")
-                        continue
-                    }
                     if (!provesItself(provider, lyrics, phrasings.first().first)) {
                         GlobalLog.append(Log.DEBUG, "LyricsHelper", "${provider.name}: answer is not ${mediaMetadata.title}; passed over")
+                        continue
+                    }
+                    // Timed for another cut of the song: not shown, so a source that has this one wins.
+                    if (!LyricsFit.fits(lyrics, mediaMetadata.duration)) {
+                        GlobalLog.append(Log.DEBUG, "LyricsHelper", "${provider.name}: timing does not fit ${mediaMetadata.title} (${mediaMetadata.duration}s); saving as video fallback")
+                        if (fallbackLyrics == null) fallbackLyrics = lyrics
                         continue
                     }
                     return lyrics
@@ -423,7 +459,7 @@ constructor(
                 reportException(e)
             }
         }
-        return null
+        return fallbackLyrics
     }
 
     /**

@@ -24,8 +24,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,6 +45,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.LocalPinnableContainer
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -132,6 +135,9 @@ fun CollectionPaneHero(
     palette: ArtworkPalette?,
     artwork: @Composable BoxScope.() -> Unit,
     onCreditClick: (() -> Unit)? = null,
+    explicit: Boolean = false,
+    lossless: Boolean = false,
+    losslessLabel: String? = "Lossless",
     badges: @Composable () -> Unit = {},
     /** Lay the sleeve's wash over the ground, for pages whose list sits on one (an album's). */
     wash: Boolean = false,
@@ -168,16 +174,30 @@ fun CollectionPaneHero(
                     artwork()
                 }
                 Spacer(Modifier.height(18.dp))
-                Text(
-                    text = title,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = (-0.3).sp,
-                    color = ink,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Text(
+                        text = title,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.3).sp,
+                        color = ink,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (explicit) {
+                        Spacer(Modifier.width(6.dp))
+                        Icon(
+                            painter = painterResource(com.ozyern.exhale.R.drawable.explicit),
+                            contentDescription = null,
+                            tint = quiet,
+                            modifier = Modifier.size(17.dp),
+                        )
+                    }
+                }
                 if (!credit.isNullOrBlank()) {
                     Spacer(Modifier.height(2.dp))
                     Text(
@@ -192,17 +212,46 @@ fun CollectionPaneHero(
                             .let { if (onCreditClick != null) it.clickable(onClick = onCreditClick) else it },
                     )
                 }
-                if (meta.isNotBlank()) {
+                if (meta.isNotBlank() || lossless) {
                     Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = meta.replace("  ·  ", " • ").uppercase(),
-                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.7.sp),
-                        fontWeight = FontWeight.SemiBold,
-                        color = quiet,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        if (meta.isNotBlank()) {
+                            Text(
+                                text = meta,
+                                style = MaterialTheme.typography.bodyMedium.copy(letterSpacing = 0.3.sp),
+                                fontWeight = FontWeight.Medium,
+                                color = quiet,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        if (lossless) {
+                            if (meta.isNotBlank()) {
+                                Text(
+                                    text = " \u2022 ",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = quiet,
+                                )
+                            }
+                            Icon(
+                                painter = painterResource(com.ozyern.exhale.R.drawable.ic_apple_lossless),
+                                contentDescription = null,
+                                tint = quiet,
+                                modifier = Modifier.size(15.dp),
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = losslessLabel ?: "Lossless",
+                                style = MaterialTheme.typography.bodyMedium.copy(letterSpacing = 0.2.sp),
+                                fontWeight = FontWeight.SemiBold,
+                                color = quiet,
+                            )
+                        }
+                    }
                 }
                 badges()
                 Spacer(Modifier.height(16.dp))

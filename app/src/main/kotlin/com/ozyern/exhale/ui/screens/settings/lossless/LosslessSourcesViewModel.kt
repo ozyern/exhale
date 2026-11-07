@@ -86,7 +86,7 @@ data class LosslessSourcesUiState(
     val monochromeEnabled: Boolean = true,
     // Tidal
     val tidalEnabled: Boolean = true,
-    val tidalQuality: TidalAudioQuality = TidalAudioQuality.FLAC,
+    val tidalQuality: TidalAudioQuality = TidalAudioQuality.HI_RES_LOSSLESS,
     val tidalAccountFirst: Boolean = true,
     val tidalAccountName: String = "",
     val tidalSignedIn: Boolean = false,
@@ -96,7 +96,7 @@ data class LosslessSourcesUiState(
     val tidalHealthyInstances: Int = 0,
     // Qobuz
     val qobuzEnabled: Boolean = true,
-    val qobuzQuality: QobuzAudioQuality = QobuzAudioQuality.FLAC,
+    val qobuzQuality: QobuzAudioQuality = QobuzAudioQuality.MAX,
     val qobuzTokens: List<QobuzToken> = emptyList(),
     val qobuzInstances: String = "",
     // Deezer
@@ -107,7 +107,7 @@ data class LosslessSourcesUiState(
     val deezerAccountPremium: Boolean = false,
     // Apple Music
     val appleEnabled: Boolean = true,
-    val appleQuality: AppleMusicQuality = AppleMusicQuality.LOSSLESS,
+    val appleQuality: AppleMusicQuality = AppleMusicQuality.HI_RES_LOSSLESS,
     val appleMediaUserToken: String = "",
     val appleDevToken: String = "",
 )
@@ -149,7 +149,7 @@ class LosslessSourcesViewModel @Inject constructor(
                     sourceOrder = AudioSourceConfig.parseOrder(p[AudioSourceOrderKey]?.ifBlank { null }).filter { it in LOSSLESS_TYPES },
                     monochromeEnabled = p[MonochromeEnabledKey] ?: true,
                     tidalEnabled = p[TidalEnabledKey] ?: true,
-                    tidalQuality = enumOrDefault(p[TidalAudioQualityKey], TidalAudioQuality.FLAC),
+                    tidalQuality = enumOrDefault(p[TidalAudioQualityKey], TidalAudioQuality.HI_RES_LOSSLESS),
                     tidalAccountFirst = p[TidalAccountFirstKey] ?: true,
                     tidalAccountName = p[TidalAccountNameKey].orEmpty(),
                     tidalSignedIn = !p[TidalAccessTokenKey].isNullOrBlank(),
@@ -158,7 +158,7 @@ class LosslessSourcesViewModel @Inject constructor(
                     tidalInstances = p[TidalInstancesKey].orEmpty(),
                     tidalHealthyInstances = runCatching { TidalInstanceHealthManager.healthyUrls(context).size }.getOrDefault(0),
                     qobuzEnabled = p[QobuzEnabledKey] ?: true,
-                    qobuzQuality = enumOrDefault(p[QobuzAudioQualityKey], QobuzAudioQuality.FLAC),
+                    qobuzQuality = enumOrDefault(p[QobuzAudioQualityKey], QobuzAudioQuality.MAX),
                     qobuzTokens = QobuzToken.listFromJson(p[QobuzTokensKey]),
                     qobuzInstances = p[QobuzInstancesKey].orEmpty(),
                     deezerEnabled = p[DeezerEnabledKey] ?: true,
@@ -167,7 +167,7 @@ class LosslessSourcesViewModel @Inject constructor(
                     deezerSignedIn = !p[DeezerArlKey].isNullOrBlank(),
                     deezerAccountPremium = p[DeezerAccountPremiumKey] ?: false,
                     appleEnabled = p[AppleMusicSourceEnabledKey] ?: true,
-                    appleQuality = enumOrDefault(p[AppleMusicQualityKey], AppleMusicQuality.LOSSLESS),
+                    appleQuality = enumOrDefault(p[AppleMusicQualityKey], AppleMusicQuality.HI_RES_LOSSLESS),
                     appleMediaUserToken = p[AppleMusicMediaUserTokenKey].orEmpty(),
                     appleDevToken = p[AppleMusicDevTokenKey].orEmpty(),
                 )

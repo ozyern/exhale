@@ -155,7 +155,7 @@ private fun SourceRow(
         LosslessKind.WIKIMEDIA -> NavIcons.Language
         LosslessKind.JAMENDO -> NavIcons.Radio
         LosslessKind.DLNA -> NavIcons.Chip
-        LosslessKind.MONOCHROME, LosslessKind.TIDAL -> NavIcons.HighQuality
+        LosslessKind.MONOCHROME, LosslessKind.TIDAL, LosslessKind.QOBUZ -> NavIcons.HighQuality
     }
     Row(
         Modifier
@@ -247,6 +247,7 @@ private fun AddSourceForm(onAdded: () -> Unit, modifier: Modifier = Modifier) {
                                 LosslessKind.DLNA -> "This network"
                                 LosslessKind.MONOCHROME -> "Monochrome"
                                 LosslessKind.TIDAL -> "Tidal"
+                                LosslessKind.QOBUZ -> "Qobuz"
                             },
                         )
                     },
@@ -266,6 +267,7 @@ private fun AddSourceForm(onAdded: () -> Unit, modifier: Modifier = Modifier) {
                 LosslessKind.DLNA -> "Media servers that answer on this network — a NAS, Plex's DLNA, Windows media sharing. Nothing to type, and nothing leaves your network."
                 LosslessKind.MONOCHROME -> "Monochrome FLAC: Free CD-quality FLAC (44.1 kHz / 16-bit) streamed from public mirrors with no account needed. On by default."
                 LosslessKind.TIDAL -> "Tidal: Free CD-quality & Hi-Res FLAC streamed from public Tidal instances with no account needed. On by default."
+                LosslessKind.QOBUZ -> "Qobuz Studio FLAC: Studio Master Hi-Res (up to 24-bit / 192 kHz) streamed from public Qobuz endpoints. On by default."
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
