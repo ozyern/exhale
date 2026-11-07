@@ -84,7 +84,7 @@ class LoudnessBoostProcessor(private val boost: () -> Float) : BaseAudioProcesso
 
     companion object {
         /** +6 dB: as far as a quiet master is ever lifted. */
-        const val MAX_BOOST = 1.995f
+        const val MAX_BOOST = 2.0f
 
         /** -0.3 dBFS, under the inter-sample peaks a codec adds back. */
         private const val CEILING = 0.966f

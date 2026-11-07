@@ -1693,7 +1693,10 @@ internal fun NowPlayingScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                             ) {
-                                PlayerSoundLine(format = currentFormat)
+                                PlayerSoundLine(
+                                    format = currentFormat,
+                                    onClick = openMenu,
+                                )
                             }
                         }
 
@@ -2628,7 +2631,10 @@ private fun outputName(context: Context, device: AudioDeviceInfo?): String {
  * the sound: off, or on a stream it cannot read, there is nothing to claim.
  */
 @Composable
-private fun PlayerSoundLine(format: com.ozyern.exhale.db.entities.FormatEntity?) {
+private fun PlayerSoundLine(
+    format: com.ozyern.exhale.db.entities.FormatEntity?,
+    onClick: (() -> Unit)? = null,
+) {
     val (spatial) = rememberPreference(SpatialAudioKey, com.ozyern.exhale.utils.DeviceAudio.defaultSpatialAudio)
     val badges = remember(format) { com.ozyern.exhale.ui.component.audioBadgesFor(format) }
     // the iOS music app's way of saying it: a glyph and a word in the scrubber's own grey, set in the
@@ -2637,9 +2643,18 @@ private fun PlayerSoundLine(format: com.ozyern.exhale.db.entities.FormatEntity?)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = if (onClick != null) {
+            Modifier.clip(RoundedCornerShape(4.dp)).clickable(onClick = onClick).padding(horizontal = 4.dp, vertical = 2.dp)
+        } else {
+            Modifier
+        },
     ) {
         badges.forEach { badge ->
-            SoundTag(iconRes = R.drawable.waves, label = badge.label)
+            val icon = when (badge) {
+                com.ozyern.exhale.ui.component.AudioBadge.DOLBY_ATMOS -> R.drawable.ic_dolby
+                else -> R.drawable.ic_apple_lossless
+            }
+            SoundTag(iconRes = icon, label = badge.label)
         }
         AnimatedVisibility(visible = spatial, enter = fadeIn(), exit = fadeOut()) {
             SoundTag(iconRes = R.drawable.ic_dolby, label = "Spatial Audio")
@@ -2655,7 +2670,7 @@ private fun SoundTag(iconRes: Int, label: String) {
             painter = painterResource(iconRes),
             contentDescription = null,
             tint = ink,
-            modifier = Modifier.size(13.dp),
+            modifier = if (iconRes == R.drawable.ic_apple_lossless) Modifier.size(width = 16.dp, height = 11.dp) else Modifier.size(13.dp),
         )
         Spacer(Modifier.width(4.dp))
         Text(
@@ -4310,7 +4325,24 @@ internal fun LandscapeNowPlaying(
                         },
                         onScrubbingChange = {},
                     ) {
-                        Row(Modifier.align(Alignment.Center)) { PlayerSoundLine(format = currentFormat) }
+                        Row(Modifier.align(Alignment.Center)) {
+                            PlayerSoundLine(
+                                format = currentFormat,
+                                onClick = {
+                                    menuState.show {
+                                        PlayerMenu(
+                                            mediaMetadata = mediaMetadata,
+                                            navController = navController,
+                                            playerBottomSheetState = playerSheetState,
+                                            onShowDetailsDialog = {
+                                                bottomSheetPageState.show { ShowMediaInfo(mediaMetadata.id) }
+                                            },
+                                            onDismiss = menuState::dismiss,
+                                        )
+                                    }
+                                },
+                            )
+                        }
                     }
                     TransportRow(
                         isPlaying = isPlaying,
@@ -4748,7 +4780,12 @@ private fun PhoneLandscapeControls(
             },
             onScrubbingChange = {},
         ) {
-            Row(Modifier.align(Alignment.Center)) { PlayerSoundLine(format = currentFormat) }
+            Row(Modifier.align(Alignment.Center)) {
+                PlayerSoundLine(
+                    format = currentFormat,
+                    onClick = onMore,
+                )
+            }
         }
         // The transport at the size the landscape player sets it: smaller than portrait's, as the
         // column is shorter, with the same press and the same glyphs.

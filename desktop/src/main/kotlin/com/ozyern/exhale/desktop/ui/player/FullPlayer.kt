@@ -767,10 +767,6 @@ private fun NowPlayingColumn(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (state.isLossless || state.immersive != null) {
-                    Spacer(Modifier.height(8.dp))
-                    AudioFormatBadges(state, contentColor = Color.White)
-                }
             }
         }
         Spacer(Modifier.height(16.dp))
@@ -943,40 +939,91 @@ private fun RowScope.BarProgress(player: DesktopPlayer, state: PlayerState, dura
 }
 
 /**
- * The line under the scrubber, as the Android app writes it: a glyph and a word in the scrubber's own
- * grey, no chip. The music's own format first: "Dolby Atmos" only when the track really is Atmos (or
- * TrueHD, Dolby Digital Plus…), with "Passthrough" while the receiver decodes it. Then "Spatial Audio"
- * for stereo laid out as a surround bed — the Dolby mark when Dolby Access renders it — and otherwise
- * the codec.
+ * The line under the scrubber, as the Apple Music app writes it: a glyph and a word in the scrubber's own
+ * grey, no chip, no outline box. Lossless and Spatial Audio appear side by side when active.
+ * Tapping the Lossless badge opens the AudioQualityFlyout showing format details and provenance ("Sabrina's Basement").
  */
 @Composable
 private fun QualityBadge(state: PlayerState, settings: Settings) {
     val output by AudioOutputStatus.state.collectAsState()
     val spatial = settings.spatialAudio != "OFF" && output?.isSurround == true
     val immersive = state.immersive
-    val tag = when {
-        immersive == ImmersiveFormat.Eclipsa -> SoundTag(NavIcons.SpatialAudio, immersive.label)
-        immersive != null -> SoundTag(NavIcons.DolbyAtmos, immersive.label + if (state.passthrough) " · Passthrough" else "")
-        spatial && DolbyAccess.isInstalled -> SoundTag(NavIcons.DolbyAtmos, "Spatial Audio")
-        spatial -> SoundTag(NavIcons.SpatialAudio, "Spatial Audio")
-        state.streamInfo != null -> SoundTag(null, state.streamInfo)
-        else -> return
-    }
-    AnimatedContent(
-        targetState = tag,
-        transitionSpec = { fadeIn(tween(260)) togetherWith fadeOut(tween(140)) },
-        label = "quality_badge",
-    ) { (icon, text) ->
-        val ink = Color.White.copy(alpha = 0.6f)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (state.isLossless || state.immersive != null) {
-                AudioFormatBadges(state, compact = true, contentColor = Color.White)
-                Spacer(Modifier.width(8.dp))
-            } else if (icon != null) {
-                Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(14.dp))
-                Spacer(Modifier.width(4.dp))
+    val ink = Color.White.copy(alpha = 0.6f)
+    var showQualityInfo by remember { mutableStateOf(false) }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (state.isLossless) {
+            Box {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable { showQualityInfo = !showQualityInfo }
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                ) {
+                    LosslessWaveformIcon(
+                        tint = ink,
+                        modifier = Modifier.size(width = 16.dp, height = 11.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        if (state.isHiRes) "Hi-Res Lossless" else "Lossless",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.1.sp,
+                        color = ink,
+                        maxLines = 1,
+                    )
+                }
+
+                if (showQualityInfo) {
+                    AudioQualityFlyout(
+                        state = state,
+                        onDismiss = { showQualityInfo = false },
+                    )
+                }
             }
-            Text(text, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.1.sp, color = ink, maxLines = 1)
+        }
+
+        if (immersive != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(NavIcons.DolbyAtmos, contentDescription = null, tint = ink, modifier = Modifier.size(13.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    immersive.label + if (state.passthrough) " · Passthrough" else "",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.1.sp,
+                    color = ink,
+                    maxLines = 1,
+                )
+            }
+        } else if (spatial) {
+            val dolbyIcon = if (DolbyAccess.isInstalled) NavIcons.DolbyAtmos else NavIcons.SpatialAudio
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(dolbyIcon, contentDescription = null, tint = ink, modifier = Modifier.size(13.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    "Spatial Audio",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.1.sp,
+                    color = ink,
+                    maxLines = 1,
+                )
+            }
+        } else if (!state.isLossless && state.streamInfo != null) {
+            Text(
+                state.streamInfo,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.1.sp,
+                color = ink,
+                maxLines = 1,
+            )
         }
     }
 }

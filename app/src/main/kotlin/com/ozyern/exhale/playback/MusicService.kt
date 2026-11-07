@@ -5897,6 +5897,7 @@ class MusicService :
     private fun isFlacStream(mediaId: String): Boolean {
         if (mediaId in flacCopies) return true
         if (flacOrigins.containsKey(mediaId)) return true
+        if (flacFormatsWritten.contains(mediaId)) return true
         val src = streamSource[mediaId] ?: return false
         if (src == YOUTUBE_SOURCE) return mediaId in losslessFromYouTube
         return src.contains(".flac", ignoreCase = true) || src.contains("flac", ignoreCase = true) ||
@@ -6418,15 +6419,17 @@ class MusicService :
                     }
                 }
 
-            // When a FLAC copy or JioSaavn stream is already playing or selected for this song, route to it.
-            streamSource[mediaId]?.takeIf { it != YOUTUBE_SOURCE }?.let { url ->
-                return@Factory dataSpec.buildUpon().setUri(url.toUri()).setKey(upgradeKey(mediaId)).build()
+            // When a FLAC copy is already playing or selected for this song, route to it.
+            if (mediaId in flacCopies) {
+                streamSource[mediaId]?.takeIf { it != YOUTUBE_SOURCE }?.let { url ->
+                    return@Factory dataSpec.buildUpon().setUri(url.toUri()).setKey(upgradeKey(mediaId)).build()
+                }
             }
 
             // FLAC first: when lossless streaming / local lossless is enabled, give lossless sources
             // (personal server, Tidal, Qobuz, Deezer, Apple Music, Monochrome FLAC, OpenFlac) priority
             // over YouTube Music or JioSaavn.
-            if ((streamSource[mediaId] == null || streamSource[mediaId] == YOUTUBE_SOURCE) && preferLocalLossless && audioQuality != com.ozyern.exhale.constants.AudioQuality.LOW) {
+            if (preferLocalLossless && audioQuality != com.ozyern.exhale.constants.AudioQuality.LOW) {
                 val flacCopy = flacLookup(mediaId)?.let { search ->
                     runBlocking(Dispatchers.IO) { withTimeoutOrNull(FLAC_LOOKUP_GRACE_MS) { search.await() } }
                 }
@@ -6437,6 +6440,11 @@ class MusicService :
                     Timber.tag("MusicService").i("%s playing a FLAC copy: %s", mediaId, flacOrigins[mediaId])
                     return@Factory dataSpec.buildUpon().setUri(flacCopy.toUri()).setKey(upgradeKey(mediaId)).build()
                 }
+            }
+
+            // When a JioSaavn stream is already playing or selected for this song, route to it.
+            streamSource[mediaId]?.takeIf { it != YOUTUBE_SOURCE }?.let { url ->
+                return@Factory dataSpec.buildUpon().setUri(url.toUri()).setKey(upgradeKey(mediaId)).build()
             }
 
             if (requiredCachedLength != null) {

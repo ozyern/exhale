@@ -1137,7 +1137,7 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
 
     private companion object {
         /** How long a song waits for a lossless copy to be found before starting on YouTube's stream. */
-        const val LosslessLookupMs = 6_000L
+        const val LosslessLookupMs = 8_000L
         const val StallMs = 20_000L
         const val LosslessStallMs = 25_000L
         const val MaxRebuffers = 3

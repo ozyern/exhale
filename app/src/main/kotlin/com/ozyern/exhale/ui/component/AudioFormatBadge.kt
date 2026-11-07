@@ -10,17 +10,24 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ozyern.exhale.R
 import com.ozyern.exhale.db.entities.FormatEntity
 
 /**
@@ -89,14 +96,8 @@ fun AudioFormatBadges(
 @Composable
 private fun AudioFormatPill(badge: AudioBadge, compact: Boolean) {
     val contentColor = MaterialTheme.colorScheme.onSurface
-    Text(
-        text = badge.label,
-        style = MaterialTheme.typography.labelSmall.copy(
-            fontWeight = FontWeight.SemiBold,
-            fontSize = if (compact) 9.sp else 10.sp,
-            letterSpacing = 0.4.sp,
-        ),
-        color = contentColor.copy(alpha = 0.9f),
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
             .border(
@@ -107,5 +108,32 @@ private fun AudioFormatPill(badge: AudioBadge, compact: Boolean) {
                 horizontal = if (compact) 5.dp else 7.dp,
                 vertical = if (compact) 1.dp else 2.dp,
             ),
-    )
+    ) {
+        if (badge == AudioBadge.LOSSLESS || badge == AudioBadge.HIRES_LOSSLESS) {
+            Icon(
+                painter = painterResource(R.drawable.ic_apple_lossless),
+                contentDescription = null,
+                tint = contentColor.copy(alpha = 0.9f),
+                modifier = Modifier.size(width = if (compact) 12.dp else 14.dp, height = if (compact) 8.dp else 10.dp),
+            )
+            Spacer(Modifier.width(3.dp))
+        } else if (badge == AudioBadge.DOLBY_ATMOS) {
+            Icon(
+                painter = painterResource(R.drawable.ic_dolby),
+                contentDescription = null,
+                tint = contentColor.copy(alpha = 0.9f),
+                modifier = Modifier.size(if (compact) 11.dp else 13.dp),
+            )
+            Spacer(Modifier.width(3.dp))
+        }
+        Text(
+            text = badge.label,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.SemiBold,
+                fontSize = if (compact) 9.sp else 10.sp,
+                letterSpacing = 0.4.sp,
+            ),
+            color = contentColor.copy(alpha = 0.9f),
+        )
+    }
 }
