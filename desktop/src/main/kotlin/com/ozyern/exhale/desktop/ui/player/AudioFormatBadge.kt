@@ -93,3 +93,31 @@ fun AudioFormatPill(
             ),
     )
 }
+
+@Composable
+fun LosslessWaveformIcon(
+    modifier: Modifier = Modifier,
+    tint: Color = Color.White,
+) {
+    androidx.compose.foundation.Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val midY = h * 0.52f
+        val amp = h * 0.32f
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.08f, midY)
+            cubicTo(w * 0.18f, midY - amp, w * 0.28f, midY - amp, w * 0.38f, midY)
+            cubicTo(w * 0.48f, midY + amp, w * 0.58f, midY + amp, w * 0.68f, midY)
+            cubicTo(w * 0.78f, midY - amp, w * 0.88f, midY - amp, w * 0.95f, midY + amp * 0.3f)
+        }
+        drawPath(
+            path = path,
+            color = tint,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = 1.8.dp.toPx(),
+                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                join = androidx.compose.ui.graphics.StrokeJoin.Round,
+            ),
+        )
+    }
+}

@@ -14,6 +14,8 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -210,9 +212,9 @@ object LosslessLibrary {
     }
 
     private fun builtInLocation(kind: LosslessKind): String = when (kind) {
-        LosslessKind.MONOCHROME -> "tracks.monochrome.st"
-        LosslessKind.TIDAL -> "tidal.kinoplus.online"
-        LosslessKind.QOBUZ -> "qobuz.kinoplus.online"
+        LosslessKind.MONOCHROME -> "wolf.qqdl.site"
+        LosslessKind.TIDAL -> "tidal.com"
+        LosslessKind.QOBUZ -> "api.zarz.moe"
         LosslessKind.ARCHIVE -> "archive.org"
         LosslessKind.WIKIMEDIA -> "commons.wikimedia.org"
         else -> "this network"
@@ -229,8 +231,8 @@ object LosslessLibrary {
     val lastMatch: StateFlow<String?> = _lastMatch.asStateFlow()
 
     private val http = OkHttpClient.Builder()
-        .connectTimeout(6, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
+        .connectTimeout(3, TimeUnit.SECONDS)
+        .readTimeout(4, TimeUnit.SECONDS)
         .build()
 
     val isConfigured: Boolean get() = _sources.value.any { it.enabled }
@@ -465,19 +467,34 @@ object LosslessLibrary {
     private suspend fun resolve(song: SongItem): LosslessAnswer? {
         val enabled = _sources.value.filter { it.enabled }
         if (enabled.isEmpty()) return null
-        // All of it off the window's thread, the matching too: a big library is tens of thousands of
-        // comparisons, and doing them where the window draws froze the app each time a song started.
         val best = withContext(Dispatchers.IO) {
             supervisorScope {
-                enabled
-                    .map { source -> async { withTimeoutOrNull(9_000) { runCatching { search(source, song) }.getOrDefault(emptyList()) }.orEmpty() } }
-                    .awaitAll()
-                    .flatten()
+                val channel = Channel<List<LosslessTrack>>(Channel.UNLIMITED)
+                val jobs = enabled.map { source ->
+                    launch {
+                        val found = withTimeoutOrNull(3_500) {
+                            runCatching { search(source, song) }.getOrDefault(emptyList())
+                        }.orEmpty()
+                        channel.send(found)
+                    }
+                }
+                val candidates = mutableListOf<LosslessTrack>()
+                var completed = 0
+                while (completed < enabled.size) {
+                    val batch = channel.receive()
+                    completed++
+                    val matched = batch.filter { it.lossless && TrackMatch.matches(song, it) }
+                    if (matched.isNotEmpty()) {
+                        candidates.addAll(matched)
+                        val top = candidates.maxByOrNull { it.rank }
+                        if (top != null && (top.sampleRate ?: 0) >= 44_100) {
+                            jobs.forEach { it.cancel() }
+                            return@supervisorScope top
+                        }
+                    }
+                }
+                candidates.maxByOrNull { it.rank }
             }
-                .filter { TrackMatch.matches(song, it) }
-                // A lossy copy from someone's server is no better than YouTube's own stream.
-                .filter { it.lossless }
-                .maxByOrNull { it.rank }
         } ?: return null
         return LosslessAnswer("${best.title} — ${best.sourceName}", ResolvedStream(
             url = best.url,
@@ -603,11 +620,12 @@ object LosslessLibrary {
     // ---- Monochrome FLAC ---------------------------------------------------------------------
 
     private val MONOCHROME_MIRRORS = listOf(
-        "https://tracks.monochrome.st",
-        "https://api.monochrome.tf",
         "https://wolf.qqdl.site",
         "https://maus.qqdl.site",
         "https://vogel.qqdl.site",
+        "https://katze.qqdl.site",
+        "https://hund.qqdl.site",
+        "https://tracks.monochrome.st",
     )
 
     private fun monochromeSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
@@ -683,14 +701,11 @@ object LosslessLibrary {
     private const val TIDAL_BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 
     private val TIDAL_INSTANCES = listOf(
-        "https://tidal.kinoplus.online",
         "https://wolf.qqdl.site",
         "https://maus.qqdl.site",
         "https://vogel.qqdl.site",
         "https://katze.qqdl.site",
         "https://hund.qqdl.site",
-        "https://api.monochrome.tf",
-        "https://monochrome.tf",
     )
 
     private fun tidalSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
@@ -872,8 +887,6 @@ object LosslessLibrary {
     // ---- Qobuz Studio Hi-Res -----------------------------------------------------------------
 
     private val QOBUZ_INSTANCES = listOf(
-        "https://qobuz.kinoplus.online",
-        "https://qobuz.play.kinoplus.online",
         "https://api.zarz.moe/v2/qbz",
     )
 
@@ -1291,6 +1304,10 @@ object LosslessLibrary {
         val cTitle = cleanTitle(song.title)
 
         val queries = mutableListOf<String>()
+        val cAlbum = song.album?.name?.let { cleanTitle(it) }?.takeIf { it.isNotBlank() }
+        if (cArtist.isNotBlank() && cAlbum != null) {
+            queries += "mediatype:(audio) AND format:(Flac) AND creator:(${quoted(cArtist)}) AND title:(${quoted(cAlbum)})"
+        }
         if (cArtist.isNotBlank() && cTitle.isNotBlank()) {
             queries += "mediatype:(audio) AND format:(Flac) AND creator:(${quoted(cArtist)}) AND title:(${quoted(cTitle)})"
             queries += "mediatype:(audio) AND format:(Flac) AND creator:(${quoted(cArtist)})"
@@ -1670,13 +1687,13 @@ internal object TrackMatch {
 
         val wantedDuration = song.duration?.toDouble()
         val foundDuration = candidate.durationSeconds
-        // Both runtimes known and more than four seconds apart: a different recording, live or extended.
-        if (wantedDuration != null && foundDuration != null && abs(wantedDuration - foundDuration) > 4.0) return false
+        // Both runtimes known and more than five seconds apart: a different recording, live or extended.
+        if (wantedDuration != null && foundDuration != null && abs(wantedDuration - foundDuration) > 5.5) return false
         // Strict (a public catalogue full of live takes of the same song): the runtime has to be there,
-        // and it has to agree closely, or this is another performance rather than another copy.
+        // and it has to agree within reasonable tolerance (4.5s) to account for master silence differences.
         if (strict) {
             if (wantedDuration == null || foundDuration == null) return false
-            if (abs(wantedDuration - foundDuration) > 2.5) return false
+            if (abs(wantedDuration - foundDuration) > 4.5) return false
         }
 
         val artists = song.artists.map { normalize(it.name) }.filter { it.isNotEmpty() }

@@ -216,7 +216,7 @@ object OpenFlac {
             .maxByOrNull { (it.bitDepth ?: 16) * (it.sampleRate ?: 44_100) }
     }
 
-    private const val MaxRuntimeGapSeconds = 2
+    private const val MaxRuntimeGapSeconds = 5
 
     // ---- Internet Archive ------------------------------------------------------------------------
 

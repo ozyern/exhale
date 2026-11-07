@@ -136,10 +136,10 @@ class Mpv(private val listener: Listener, windowId: Long? = null, extraOptions: 
             // takes it at once, several megabytes a second — and pulled that hard these URLs stop
             // answering partway through, for minutes, which ends the song mid-play. A generous buffer
             // covers any slow moment on the network and keeps lossless playback smooth.
-            "demuxer-readahead-secs" to "60",
-            "cache-secs" to "120",
-            "demuxer-max-bytes" to (256L * 1024 * 1024).toString(),
-            "demuxer-max-back-bytes" to (128L * 1024 * 1024).toString(),
+            "demuxer-readahead-secs" to "20",
+            "cache-secs" to "40",
+            "demuxer-max-bytes" to (128L * 1024 * 1024).toString(),
+            "demuxer-max-back-bytes" to (64L * 1024 * 1024).toString(),
             // A server that has gone quiet is found out in seconds rather than the default minute, so
             // the player can move to another copy of the song while someone is still listening.
             "network-timeout" to "25",
@@ -173,8 +173,9 @@ class Mpv(private val listener: Listener, windowId: Long? = null, extraOptions: 
         setStart(startSeconds)
         // A short cushion, so the song starts as soon as it reasonably can. Most connections never touch
         // it again. One that runs dry gets a bigger one each time: see DesktopPlayer.onBuffering.
-        lib.mpv_set_property_string(ctx, "cache-pause-initial", "yes")
-        lib.mpv_set_property_string(ctx, "cache-pause-wait", StartingCushionSeconds.toString())
+        // For lossless or hot-swap, do not pause playback: begin decoding immediately
+        lib.mpv_set_property_string(ctx, "cache-pause-initial", if (lossless || startSeconds != null) "no" else "yes")
+        lib.mpv_set_property_string(ctx, "cache-pause-wait", if (lossless || startSeconds != null) "0.2" else StartingCushionSeconds.toString())
         // A lossless file can be seeked by asking again, unlike YouTube's in-order streams, so it stays
         // in memory rather than writing tens of megabytes to the temp folder while it plays.
         lib.mpv_set_property_string(ctx, "cache-on-disk", if (lossless) "no" else "yes")

@@ -7,6 +7,7 @@
 package com.ozyern.exhale.desktop.ui.pages
 
 import com.ozyern.exhale.desktop.ui.pressScale
+import com.ozyern.exhale.desktop.ui.player.LosslessWaveformIcon
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -166,6 +167,7 @@ private class CollectionHeader(
     val pin: Pin? = null,
     // Copy Link, in the same menu.
     val link: String? = null,
+    val explicit: Boolean = false,
 )
 
 /** How long a list of songs runs, said plainly: "43 min", "1 hr 12 min". */
@@ -230,6 +232,7 @@ fun AlbumScreen(
         description = description,
         pin = Pin(Pin.Kind.Album, browseId, album?.title ?: title.orEmpty(), album?.artists?.joinToString { it.name }, album?.thumbnail ?: thumbnail),
         link = album?.shareLink,
+        explicit = album?.explicit == true || songs.any { it.explicit },
     )
     // "More by …": the lead artist's other albums and singles, fetched once the album itself is known.
     val leadArtist = header.artists.firstOrNull { it.id != null }
@@ -623,29 +626,70 @@ private fun CollectionInfo(
     // kind and the facts in small grey capitals, its note cut to a couple of lines with MORE, then Play
     // and Shuffle as two filled capsules and the ⋯ for everything else at the far end.
     Column(modifier) {
-        Text(
-            header.title,
-            style = titleStyle.copy(letterSpacing = (-0.02).em),
-            fontWeight = FontWeight.Bold,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.stage(0.08f, progress),
-        )
+        ) {
+            Text(
+                header.title,
+                style = titleStyle.copy(letterSpacing = (-0.02).em),
+                fontWeight = FontWeight.Bold,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (header.explicit) {
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Color.White.copy(alpha = 0.2f))
+                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "E",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.85f),
+                    )
+                }
+            }
+        }
         if (header.artists.isNotEmpty()) {
             Spacer(Modifier.height(4.dp))
             ArtistLinks(header.artists, MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium), AppleColors.Accent, Modifier.stage(0.16f, progress))
         }
         Spacer(Modifier.height(6.dp))
-        Text(
-            (listOf(header.kind) + header.facts).joinToString(" · ").uppercase(),
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 0.04.em,
-            color = Color.White.copy(alpha = 0.5f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.stage(0.24f, progress),
-        )
+        ) {
+            val facts = header.facts.firstOrNull()
+            val metaParts = listOfNotNull(header.kind, facts).joinToString(" • ")
+            Text(
+                metaParts,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.White.copy(alpha = 0.65f),
+            )
+            Text(
+                " • ",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.White.copy(alpha = 0.65f),
+            )
+            LosslessWaveformIcon(
+                tint = Color.White.copy(alpha = 0.65f),
+                modifier = Modifier.size(14.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                "Lossless",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White.copy(alpha = 0.65f),
+            )
+        }
         header.description?.takeIf { it.isNotBlank() }?.let { text ->
             Spacer(Modifier.height(10.dp))
             Box(Modifier.widthIn(max = 640.dp).stage(0.28f, progress)) { NoteText(text) }

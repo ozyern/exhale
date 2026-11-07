@@ -1210,11 +1210,12 @@ object LosslessStreamResolver {
     }
 
     private val MONOCHROME_MIRRORS = listOf(
-        "https://tracks.monochrome.st",
-        "https://api.monochrome.tf",
         "https://wolf.qqdl.site",
         "https://maus.qqdl.site",
         "https://vogel.qqdl.site",
+        "https://katze.qqdl.site",
+        "https://hund.qqdl.site",
+        "https://tracks.monochrome.st",
     )
 
     private fun resolveMonochromeStream(request: Request, settings: SourceSettings): DirectStream? {

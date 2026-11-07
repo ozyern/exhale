@@ -463,10 +463,7 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
         if (lookup == null) return@coroutineScope youtube.await()
 
         val flac = withTimeoutOrNull(LosslessLookupMs) {
-            select<ResolvedStream?> {
-                lookup.onAwait { copy -> copy ?: youtube.await().getOrNull()?.takeIf { it.lossless } }
-                youtube.onAwait { answer -> answer.getOrNull()?.takeIf { it.lossless } ?: lookup.await() }
-            }
+            lookup.await() ?: youtube.await().getOrNull()?.takeIf { it.lossless }
         }
         if (flac != null) {
             youtube.cancel()

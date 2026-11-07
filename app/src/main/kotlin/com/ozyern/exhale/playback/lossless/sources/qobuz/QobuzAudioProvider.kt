@@ -46,8 +46,6 @@ object QobuzAudioProvider {
 
     val defaultInstanceUrls: List<String> =
         listOf(
-            "https://qobuz.kinoplus.online",
-            "https://qobuz.play.kinoplus.online",
             "https://api.zarz.moe/v2/qbz",
         )
 

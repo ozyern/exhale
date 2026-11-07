@@ -98,14 +98,11 @@ object TidalAudioProvider {
     private val XML_UNESCAPED_AMPERSAND_REGEX = Regex("""&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)""")
 
     private val DEFAULT_DOWNLOAD_API_ENDPOINTS = listOf(
-        TidalDownloadEndpoint("Tidal Kinoplus", "https://tidal.kinoplus.online"),
         TidalDownloadEndpoint("Monochrome QQDL (Wolf)", "https://wolf.qqdl.site"),
         TidalDownloadEndpoint("Monochrome QQDL (Maus)", "https://maus.qqdl.site"),
         TidalDownloadEndpoint("Monochrome QQDL (Vogel)", "https://vogel.qqdl.site"),
         TidalDownloadEndpoint("Monochrome QQDL (Katze)", "https://katze.qqdl.site"),
         TidalDownloadEndpoint("Monochrome QQDL (Hund)", "https://hund.qqdl.site"),
-        TidalDownloadEndpoint("Monochrome API", "https://api.monochrome.tf"),
-        TidalDownloadEndpoint("Monochrome TF", "https://monochrome.tf"),
     )
 
     // Exhale: evaluated on each call so a pool URL entered at runtime is honoured.
