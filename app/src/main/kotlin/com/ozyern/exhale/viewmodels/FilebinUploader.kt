@@ -111,27 +111,21 @@ class FilebinService(
                 .addHeader("Accept", "application/json")
                 .build()
             
-            val response = client.newCall(request).execute()
-            
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    Exception("Filebin error: ${response.code} - ${response.message}")
-                )
-            }
-            
-            response.body?.string()?.let { responseBody ->
-                // Parsear la respuesta JSON para obtener la URL
-                val json = JSONObject(responseBody)
-                val url = json.optString("url")
-                
-                if (url.isNotEmpty()) {
-                    Result.success(url)
-                } else {
-                    // Si no viene URL en la respuesta, construirla manualmente
-                    Result.success("$FILEBIN_API_URL/$binName/$fileName")
+            // Closed on every path: the failure return used to leave the connection open.
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        Exception("Filebin error: ${response.code} - ${response.message}")
+                    )
                 }
-            } ?: Result.failure(Exception("Empty response from Filebin"))
-            
+                // The upload has succeeded by now; a body that is not JSON only means the URL is
+                // built by hand, not that the upload failed.
+                val url = response.body?.string()
+                    ?.let { runCatching { JSONObject(it).optString("url") }.getOrNull() }
+                    .orEmpty()
+                Result.success(url.ifEmpty { "$FILEBIN_API_URL/$binName/$fileName" })
+            }
+
         } catch (e: Exception) {
             reportException(e)
             Result.failure(e)
@@ -147,8 +141,7 @@ class FilebinService(
                 .url("$FILEBIN_API_URL")
                 .head()
                 .build()
-            val response = client.newCall(request).execute()
-            response.isSuccessful
+            client.newCall(request).execute().use { it.isSuccessful }
         } catch (e: Exception) {
             false
         }

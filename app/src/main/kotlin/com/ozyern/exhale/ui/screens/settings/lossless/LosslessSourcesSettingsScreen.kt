@@ -229,7 +229,7 @@ fun LosslessSourcesSettingsScreen(
         PreferenceGroup {
             SwitchPreference(
                 title = { Text("Enable Monochrome") },
-                description = "Free direct FLAC stream provider from tracks.monochrome.st (no account required).",
+                description = "Free FLAC streams from the Monochrome mirrors. No account needed.",
                 icon = { Icon(Icons.Outlined.GraphicEq, null) },
                 checked = state.monochromeEnabled,
                 onCheckedChange = viewModel::setMonochromeEnabled,

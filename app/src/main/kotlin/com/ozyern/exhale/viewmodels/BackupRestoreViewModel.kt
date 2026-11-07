@@ -859,12 +859,13 @@ class BackupRestoreViewModel @Inject constructor(
             val response = client.newCall(request).execute()
 
             if (!response.isSuccessful) {
+                response.close()
                 return@withContext Result.failure(
                     Exception("Filebin error: ${response.code} - ${response.message}")
                 )
             }
 
-            response.body?.string()?.let { responseBody ->
+            response.use { it.body?.string() }?.let { responseBody ->
                 // Intentar parsear la respuesta JSON
                 try {
                     val json = JSONObject(responseBody)

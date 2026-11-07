@@ -84,8 +84,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -97,6 +96,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import timber.log.Timber
@@ -123,6 +123,15 @@ object LosslessStreamResolver {
      * only tracks that finished long ago are dropped (they simply re-resolve if replayed).
      */
     private const val MAX_RESOLVED_ENTRIES = 256
+
+    /** The most one source may take to answer; past it the race goes on without that source. */
+    private const val SOURCE_TIMEOUT_MS = 9_000L
+
+    /** Once a lower-ranked source has a match, how long the sources ranked above it still get. */
+    private const val PRIORITY_GRACE_MS = 1_200L
+
+    /** How long a Monochrome mirror that failed is skipped. */
+    private const val MIRROR_BACKOFF_MS = 2 * 60 * 1000L
 
     /** What the player receives: a URI plus enough format info for caches, badges and ExoPlayer. */
     data class Result(
@@ -199,6 +208,27 @@ object LosslessStreamResolver {
             .followRedirects(true)
             .build()
     }
+
+    /**
+     * Searches only. A mirror that does not answer in a few seconds is not going to; with the shared
+     * client's 15 s connect timeout one dead mirror alone outlasted the whole wait at a song's start,
+     * so the song began on YouTube's lossy stream and changed to FLAC part-way through.
+     */
+    private val searchClient: OkHttpClient by lazy {
+        httpClient
+            .newBuilder()
+            .connectTimeout(3, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
+            .callTimeout(7, TimeUnit.SECONDS)
+            .build()
+    }
+
+    /** Until when the public Tidal mirrors are left alone, after all of them failed. */
+    @Volatile
+    private var tidalPublicDownUntilMs = 0L
+
+    /** Monochrome mirrors that failed recently, skipped until the time stored. */
+    private val mirrorDownUntil = ConcurrentHashMap<String, Long>()
 
     // ── Public helpers used by the player / YoutubeHelper ─────────────────────────────────────
 
@@ -441,9 +471,16 @@ object LosslessStreamResolver {
             val mutex = inFlight.getOrPut(mediaId) { Mutex() }
             try {
                 mutex.withLock {
-                    runCatching { resolveLocked(appContext, request, lowDataMode) }
-                        .onFailure { Timber.tag(TAG).w(it, "Lossless resolve crashed for %s", mediaId) }
-                        .getOrNull()
+                    try {
+                        resolveLocked(appContext, request, lowDataMode)
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        // Another source won and this search was called off: not a crash, and the
+                        // cancellation has to carry on up.
+                        throw cancelled
+                    } catch (e: Exception) {
+                        Timber.tag(TAG).w(e, "Lossless resolve crashed for %s", mediaId)
+                        null
+                    }
                 }
             } finally {
                 inFlight.remove(mediaId, mutex)
@@ -535,78 +572,12 @@ object LosslessStreamResolver {
         val overrideIsSourceOverride = override != null && override != AudioSourceType.YOUTUBE
         val sourcesToTry = if (overrideIsSourceOverride) listOf(override) else chain
 
-        // Query candidate sources concurrently in parallel so resolution latency is bound by the fastest match
-        val streamsBySource: Map<AudioSourceType, DirectStream?> =
-            if (sourcesToTry.size == 1) {
-                val s = sourcesToTry.first()
-                val stream = resolveSingleSource(context, s, request, settings, overrideIsSourceOverride, override)
-                mapOf(s to stream)
-            } else {
-                coroutineScope {
-                    sourcesToTry.map { source ->
-                        async(Dispatchers.IO) {
-                            val stream = resolveSingleSource(context, source, request, settings, overrideIsSourceOverride, override)
-                            source to stream
-                        }
-                    }.awaitAll().toMap()
-                }
-            }
-
-        var best: DirectStream? = null
-        var bestSource: AudioSourceType? = null
-        var bestScore = 0.0
-        for (source in sourcesToTry) {
-            val stream = streamsBySource[source]
-            if (stream == null) {
-                Timber.tag(TAG).d("Source %s did not resolve \"%s\"", source.name, request.title)
-                continue
-            }
-            val match =
-                if (overrideIsSourceOverride && source == override) {
-                    Timber.tag(TAG).i(
-                        "Source %s ACCEPTED for \"%s\" via per-song override (skipping metadata gate) [%s]",
-                        source.name,
-                        request.title,
-                        stream.label,
-                    )
-                    TitleMatch.Result(true, 1.0, 1.0, 1.0, 1.0, "per-song override bypass")
-                } else {
-                    TitleMatch.evaluate(
-                        wantedTitle = request.title,
-                        wantedArtists = request.artists,
-                        wantedAlbum = request.album,
-                        wantedDurationMs = request.durationMs,
-                        stream = stream,
-                    )
-                }
-            if (!match.accepted) {
-                Timber.tag(TAG).i(
-                    "Source %s rejected for \"%s\": %s score=%.1f%% title=%.1f%% artist=%s duration=%s matched=\"%s\"",
-                    source.name,
-                    request.title,
-                    match.reason,
-                    match.score * 100,
-                    match.title * 100,
-                    match.artist?.let { "%.1f%%".format(it * 100) } ?: "?",
-                    match.duration?.let { "%.1f%%".format(it * 100) } ?: "?",
-                    stream.matchedTitle ?: "?",
-                )
-                continue
-            }
-            Timber.tag(TAG).d(
-                "Source %s candidate for \"%s\": match %.1f%% (%s) [%s]",
-                source.name,
-                request.title,
-                match.score * 100,
-                match.reason,
-                stream.label,
-            )
-            recordResolvedSource(mediaId, source)
-            best = stream
-            bestSource = source
-            bestScore = match.score
-            break
-        }
+        // Every source asked at once; the first in the listener's order with a match wins.
+        val race = raceSources(context, sourcesToTry, request, settings, overrideIsSourceOverride, override)
+        val bestSource: AudioSourceType? = race?.first
+        val best: DirectStream? = race?.second?.first
+        val bestScore = race?.second?.second ?: 0.0
+        if (bestSource != null) recordResolvedSource(mediaId, bestSource)
 
         val winningStream = best
         val winningSource = bestSource
@@ -634,6 +605,97 @@ object LosslessStreamResolver {
         Timber.tag(TAG).w("No lossless source cleared the metadata match gate for \"%s\"; falling back", request.title)
         return null
     }
+
+    /**
+     * Asks every source at once and returns the first one, in the listener's order, whose stream
+     * clears the match gate. This used to wait for all of them, so the slowest source (often a public
+     * instance that never answered) set the time to the first lossless byte. Now a source wins as soon
+     * as every source ranked above it has answered, and once any source has a match the ones above it
+     * get [PRIORITY_GRACE_MS] more, no longer. The source calls run outside the caller's scope:
+     * blocking HTTP cannot be cancelled, and a caller's timeout must not have to wait for it.
+     */
+    private suspend fun raceSources(
+        context: Context,
+        sourcesToTry: List<AudioSourceType>,
+        request: Request,
+        settings: SourceSettings,
+        overrideIsSourceOverride: Boolean,
+        override: AudioSourceType?,
+    ): Pair<AudioSourceType, Pair<DirectStream, Double>>? {
+        if (sourcesToTry.isEmpty()) return null
+        val answers = Channel<Pair<AudioSourceType, DirectStream?>>(Channel.UNLIMITED)
+        val jobs = sourcesToTry.map { source ->
+            ioScope.launch {
+                val stream = withTimeoutOrNull(SOURCE_TIMEOUT_MS) {
+                    resolveSingleSource(context, source, request, settings, overrideIsSourceOverride, override)
+                }
+                answers.trySend(source to stream)
+            }
+        }
+        try {
+            val finished = HashSet<AudioSourceType>()
+            val accepted = HashMap<AudioSourceType, Pair<DirectStream, Double>>()
+            var graceEndsAt = Long.MAX_VALUE
+            while (finished.size < sourcesToTry.size) {
+                val answer =
+                    if (graceEndsAt == Long.MAX_VALUE) {
+                        answers.receive()
+                    } else {
+                        val left = graceEndsAt - System.currentTimeMillis()
+                        if (left <= 0L) break
+                        withTimeoutOrNull(left) { answers.receive() } ?: break
+                    }
+                val (source, stream) = answer
+                finished += source
+                if (stream == null) {
+                    Timber.tag(TAG).d("Source %s did not resolve \"%s\"", source.name, request.title)
+                } else {
+                    val match = matchOf(source, stream, request, overrideIsSourceOverride, override)
+                    if (match.accepted) {
+                        Timber.tag(TAG).d(
+                            "Source %s candidate for \"%s\": match %.1f%% (%s) [%s]",
+                            source.name, request.title, match.score * 100, match.reason, stream.label,
+                        )
+                        accepted[source] = stream to match.score
+                    } else {
+                        Timber.tag(TAG).i(
+                            "Source %s rejected for \"%s\": %s score=%.1f%% matched=\"%s\"",
+                            source.name, request.title, match.reason, match.score * 100, stream.matchedTitle ?: "?",
+                        )
+                    }
+                }
+                // The first source in order that is still out, or has a match, decides.
+                val leader = sourcesToTry.firstOrNull { it !in finished || it in accepted }
+                if (leader != null && leader in accepted) return leader to accepted.getValue(leader)
+                if (accepted.isNotEmpty() && graceEndsAt == Long.MAX_VALUE) {
+                    graceEndsAt = System.currentTimeMillis() + PRIORITY_GRACE_MS
+                }
+            }
+            val winner = sourcesToTry.firstOrNull { it in accepted } ?: return null
+            return winner to accepted.getValue(winner)
+        } finally {
+            jobs.forEach { it.cancel() }
+        }
+    }
+
+    private fun matchOf(
+        source: AudioSourceType,
+        stream: DirectStream,
+        request: Request,
+        overrideIsSourceOverride: Boolean,
+        override: AudioSourceType?,
+    ): TitleMatch.Result =
+        if (overrideIsSourceOverride && source == override) {
+            TitleMatch.Result(true, 1.0, 1.0, 1.0, 1.0, "per-song override bypass")
+        } else {
+            TitleMatch.evaluate(
+                wantedTitle = request.title,
+                wantedArtists = request.artists,
+                wantedAlbum = request.album,
+                wantedDurationMs = request.durationMs,
+                stream = stream,
+            )
+        }
 
     private fun streamStillUsable(stream: DirectStream): Boolean {
         if (stream.uri.startsWith("file:")) {
@@ -870,6 +932,10 @@ object LosslessStreamResolver {
             Timber.tag(TAG).d("Tidal skip: no instances configured (account path disabled or exhausted)")
             return null
         }
+        if (System.currentTimeMillis() < tidalPublicDownUntilMs) {
+            Timber.tag(TAG).d("Tidal skip: every public mirror failed a moment ago")
+            return null
+        }
         TidalAudioProvider.setInstances(mergedInstances)
         val resolved =
             runCatching {
@@ -891,6 +957,11 @@ object LosslessStreamResolver {
             }.onFailure { error ->
                 if (error is kotlinx.coroutines.CancellationException) throw error
                 Timber.tag(TAG).w(error, "TIDAL stream resolution failed for %s", request.mediaId)
+                // Not "this song isn't there" but "no mirror answered": asking again for the next song
+                // only costs it another six seconds of silence before it starts.
+                if (error.message?.contains("failed on all mirrors", ignoreCase = true) == true) {
+                    tidalPublicDownUntilMs = System.currentTimeMillis() + MIRROR_BACKOFF_MS
+                }
             }.getOrNull() ?: return null
 
         return DirectStream(
@@ -1218,88 +1289,212 @@ object LosslessStreamResolver {
         "https://tracks.monochrome.st",
     )
 
+    /** The mirror that answered last, asked first next time. */
+    @Volatile
+    private var lastGoodMirror: String? = null
+
+    private const val BROWSER_UA =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+
+    /**
+     * The searches worth making for a song, most exact first: artist and title, then the title
+     * without its bracketed extras ("(feat. …)", "(Extended)"), then the title alone. One query of
+     * the raw title missed songs whose YouTube title carries extras the catalogue does not.
+     */
+    internal fun monochromeQueries(request: Request): List<String> {
+        val artist = request.artists.firstOrNull()?.trim().orEmpty()
+        val rawTitle = request.title.trim()
+        val cleanTitle = rawTitle
+            .replace(Regex("""\s*[\[(].*?[\])]"""), "")
+            .replace(Regex("""\s+-\s+.*$"""), "")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+            .ifBlank { rawTitle }
+        return buildList {
+            if (artist.isNotBlank()) add("$artist $rawTitle")
+            if (artist.isNotBlank() && cleanTitle != rawTitle) add("$artist $cleanTitle")
+            add(cleanTitle)
+        }.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+    }
+
+    /** What a health check of the Monochrome mirrors found: the one that answered, or why none did. */
+    data class MirrorProbe(val mirror: String?, val failure: String?)
+
+    /**
+     * Asks each Monochrome mirror for a search until one answers, the way playback does. The check
+     * used to ask only tracks.monochrome.st — the last mirror playback tries — and marked the whole
+     * service down for five minutes when that one did not answer, while the others were fine.
+     */
+    fun probeMonochromeMirrors(): MirrorProbe {
+        var failure: String? = null
+        for (mirror in MONOCHROME_MIRRORS) {
+            val req = okhttp3.Request.Builder()
+                .url("$mirror/search/tracks?q=test&limit=1")
+                .header("User-Agent", BROWSER_UA)
+                .build()
+            val ok = runCatching { searchClient.newCall(req).execute().use { it.isSuccessful.also { s -> if (!s) failure = "HTTP ${it.code}" } } }
+                .onFailure { failure = it.message ?: it.javaClass.simpleName }
+                .getOrDefault(false)
+            if (ok) {
+                mirrorDownUntil.remove(mirror)
+                lastGoodMirror = mirror
+                markMonochromeUp()
+                return MirrorProbe(mirror, null)
+            }
+            mirrorDownUntil[mirror] = System.currentTimeMillis() + MIRROR_BACKOFF_MS
+        }
+        markMonochromeDown(60 * 1000L)
+        return MirrorProbe(null, failure)
+    }
+
     private fun resolveMonochromeStream(request: Request, settings: SourceSettings): DirectStream? {
         if (!settings.monochromeEnabled || !isMonochromeUp()) return null
-        val query = if (request.artists.isNotEmpty()) {
-            "${request.artists.first()} ${request.title}"
-        } else {
-            request.title
-        }
-        val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+        val now = System.currentTimeMillis()
+        val healthy = MONOCHROME_MIRRORS.filter { (mirrorDownUntil[it] ?: 0L) <= now }
+            .ifEmpty { MONOCHROME_MIRRORS }
+        val mirrors = (listOfNotNull(lastGoodMirror?.takeIf { it in healthy }) + healthy).distinct()
 
-        for (mirror in MONOCHROME_MIRRORS) {
-            try {
-                val url = "$mirror/search/tracks?q=$encodedQuery&limit=5"
-                val req = okhttp3.Request.Builder()
-                    .url(url)
-                    .header(
-                        "User-Agent",
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
-                    )
-                    .build()
-                val resp = httpClient.newCall(req).execute()
-                if (!resp.isSuccessful) {
-                    continue
-                }
-                markMonochromeUp()
-                val body = resp.body?.string().orEmpty()
-                if (body.isBlank()) continue
-                val json = org.json.JSONObject(body)
-                val tracks = json.optJSONArray("tracks") ?: continue
-
-                var bestStream: DirectStream? = null
-                var bestScore = 0.0
-
-                for (i in 0 until tracks.length()) {
-                    val item = tracks.optJSONObject(i) ?: continue
-                    if (item.optBoolean("playable", true) == false) continue
-                    val trackId = item.optString("id").ifBlank { item.optString("trackId") }
-                    if (trackId.isBlank()) continue
-                    val title = item.optString("title")
-                    val artistNamesArray = item.optJSONArray("artistNames")
-                    val artists = mutableListOf<String>()
-                    if (artistNamesArray != null) {
-                        for (a in 0 until artistNamesArray.length()) {
-                            artists.add(artistNamesArray.optString(a))
+        var anyMirrorAnswered = false
+        for (query in monochromeQueries(request)) {
+            val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+            for (mirror in mirrors) {
+                val tracks = try {
+                    val req = okhttp3.Request.Builder()
+                        .url("$mirror/search/tracks?q=$encodedQuery&limit=8")
+                        .header("Accept", "application/json")
+                        .header("User-Agent", BROWSER_UA)
+                        .build()
+                    searchClient.newCall(req).execute().use { resp ->
+                        if (!resp.isSuccessful) null
+                        else resp.body?.string()?.takeIf { it.isNotBlank() }?.let { body ->
+                            val json = org.json.JSONObject(body)
+                            json.optJSONArray("tracks") ?: json.optJSONArray("data") ?: org.json.JSONArray()
                         }
                     }
-                    val durationMs = item.optLong("duration", 0L)
-                    val effectiveDuration = if (durationMs > 10_000L) durationMs else durationMs * 1000L
-                    val candidateStream = DirectStream(
-                        uri = "$mirror/track/$trackId",
-                        mimeType = androidx.media3.common.MimeTypes.AUDIO_FLAC,
-                        codecs = "flac",
-                        contentLength = null,
-                        label = "Monochrome FLAC (Free)",
-                        source = AudioSourceType.MONOCHROME,
-                        matchedTitle = title,
-                        matchedArtist = artists.firstOrNull(),
-                        matchedAlbum = item.optString("albumTitle").ifBlank { null },
-                        matchedDurationMs = effectiveDuration,
-                        sampleRate = 44100,
-                        bitDepth = 16
-                    )
-                    val match = TitleMatch.evaluate(
-                        wantedTitle = request.title,
-                        wantedArtists = request.artists,
-                        wantedAlbum = request.album,
-                        wantedDurationMs = request.durationMs,
-                        stream = candidateStream
-                    )
-                    if (match.accepted && match.score > bestScore) {
-                        bestScore = match.score
-                        bestStream = candidateStream
-                    }
+                } catch (e: Exception) {
+                    Timber.tag(TAG).d("Monochrome mirror %s failed for %s: %s", mirror, request.title, e.message)
+                    null
                 }
-                if (bestStream != null) {
-                    return bestStream
+                if (tracks == null) {
+                    mirrorDownUntil[mirror] = System.currentTimeMillis() + MIRROR_BACKOFF_MS
+                    if (lastGoodMirror == mirror) lastGoodMirror = null
+                    continue
                 }
-            } catch (e: Exception) {
-                Timber.tag(TAG).d("Monochrome mirror %s attempt failed for %s: %s", mirror, request.title, e.message)
+                anyMirrorAnswered = true
+                lastGoodMirror = mirror
+                mirrorDownUntil.remove(mirror)
+                markMonochromeUp()
+                bestMonochromeMatch(mirror, tracks, request)?.let { found ->
+                    // The search names the track; its audio is behind the track's manifest.
+                    playableMonochromeStream(mirror, found)?.let { return it }
+                    Timber.tag(TAG).d("Monochrome matched %s but its manifest had no stream", request.title)
+                }
+                // The mirrors share one catalogue: one that answered without a match speaks for all.
+                break
+            }
+            if (!anyMirrorAnswered) break
+        }
+        // Not finding a song is not the service being down. Marking it down for that took Monochrome
+        // away from the next few songs too, and they played lossy.
+        if (!anyMirrorAnswered) markMonochromeDown(60 * 1000L)
+        return null
+    }
+
+    /**
+     * The FLAC behind a Monochrome search hit. `/track/<id>` answers with JSON, not audio: handed to
+     * the player as it was, it failed to decode and the song fell back to YouTube's lossy stream.
+     * `/track/?id=&quality=LOSSLESS` carries a base64 manifest whose `urls` are the file itself.
+     */
+    private fun playableMonochromeStream(mirror: String, found: DirectStream): DirectStream? {
+        val trackId = found.uri.substringAfterLast("/track/").takeIf { it.isNotBlank() } ?: return null
+        val req = okhttp3.Request.Builder()
+            .url("$mirror/track/?id=${java.net.URLEncoder.encode(trackId, "UTF-8")}&quality=LOSSLESS")
+            .header("Accept", "application/json")
+            .header("User-Agent", BROWSER_UA)
+            .build()
+        val json = runCatching {
+            searchClient.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) null
+                else resp.body?.string()?.takeIf { it.isNotBlank() }?.let { org.json.JSONObject(it) }
+            }
+        }.getOrNull() ?: return null
+        val manifest = monochromeManifest(json) ?: return null
+        return found.copy(
+            uri = manifest.url,
+            sampleRate = manifest.sampleRate ?: found.sampleRate,
+            bitDepth = manifest.bitDepth ?: found.bitDepth,
+        )
+    }
+
+    internal data class MonochromeManifest(val url: String, val sampleRate: Int?, val bitDepth: Int?)
+
+    /** Reads the direct file URL (and its format, where given) out of a `/track/` answer. */
+    internal fun monochromeManifest(json: org.json.JSONObject): MonochromeManifest? {
+        val data = json.optJSONObject("data") ?: json
+        fun org.json.JSONObject.positiveInt(key: String) = optInt(key).takeIf { it > 0 }
+        val sampleRate = data.positiveInt("sampleRate")
+        val bitDepth = data.positiveInt("bitDepth")
+        data.optString("manifest").takeIf { it.isNotBlank() }?.let { encoded ->
+            val text = runCatching {
+                String(java.util.Base64.getDecoder().decode(encoded.trim()), Charsets.UTF_8).trim()
+            }.getOrNull()
+            if (text != null && text.startsWith("{")) {
+                val root = runCatching { org.json.JSONObject(text) }.getOrNull()
+                val urls = root?.optJSONArray("urls")
+                val direct = urls?.let { list -> (0 until list.length()).map { list.optString(it) }.firstOrNull { it.startsWith("http") } }
+                if (root != null && direct != null) {
+                    return MonochromeManifest(direct, root.positiveInt("sampleRate") ?: sampleRate, root.positiveInt("bitDepth") ?: bitDepth)
+                }
             }
         }
-        markMonochromeDown(2 * 60 * 1000L)
-        return null
+        val direct = data.optString("url").takeIf { it.startsWith("http") }
+            ?: data.optJSONArray("urls")?.optString(0)?.takeIf { it.startsWith("http") }
+            ?: return null
+        return MonochromeManifest(direct, sampleRate, bitDepth)
+    }
+
+    private fun bestMonochromeMatch(mirror: String, tracks: org.json.JSONArray, request: Request): DirectStream? {
+        var bestStream: DirectStream? = null
+        var bestScore = 0.0
+        for (i in 0 until tracks.length()) {
+            val item = tracks.optJSONObject(i) ?: continue
+            if (!item.optBoolean("playable", true)) continue
+            val trackId = item.optString("id").ifBlank { item.optString("trackId") }
+            if (trackId.isBlank()) continue
+            val artistNames = item.optJSONArray("artistNames")
+            val artist = if (artistNames != null && artistNames.length() > 0) {
+                (0 until artistNames.length()).joinToString(", ") { artistNames.optString(it) }
+            } else {
+                item.optString("artist").ifBlank { null }
+            }
+            val durationMs = item.optLong("duration", 0L)
+            val candidate = DirectStream(
+                uri = "$mirror/track/$trackId",
+                mimeType = androidx.media3.common.MimeTypes.AUDIO_FLAC,
+                codecs = "flac",
+                contentLength = null,
+                label = "Monochrome FLAC (Free)",
+                source = AudioSourceType.MONOCHROME,
+                matchedTitle = item.optString("title"),
+                matchedArtist = artist,
+                matchedAlbum = item.optString("albumTitle").ifBlank { item.optString("album").ifBlank { null } },
+                matchedDurationMs = if (durationMs > 10_000L) durationMs else durationMs * 1000L,
+                sampleRate = 44100,
+                bitDepth = 16,
+            )
+            val match = TitleMatch.evaluate(
+                wantedTitle = request.title,
+                wantedArtists = request.artists,
+                wantedAlbum = request.album,
+                wantedDurationMs = request.durationMs,
+                stream = candidate,
+            )
+            if (match.accepted && match.score > bestScore) {
+                bestScore = match.score
+                bestStream = candidate
+            }
+        }
+        return bestStream
     }
 
     private fun sourceCacheKey(

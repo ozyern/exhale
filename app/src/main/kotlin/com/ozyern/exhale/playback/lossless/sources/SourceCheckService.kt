@@ -348,33 +348,16 @@ object SourceCheckService {
     }
 
     private fun checkMonochrome(): SourceCheckResult {
-        return try {
-            val req = okhttp3.Request.Builder()
-                .url("https://tracks.monochrome.st/search/tracks?q=test&limit=1")
-                .header(
-                    "User-Agent",
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
-                )
-                .build()
-            val resp = LosslessStreamResolver.httpClient.newCall(req).execute()
-            if (resp.isSuccessful) {
-                LosslessStreamResolver.markMonochromeUp()
-                SourceCheckResult(
-                    status = SourceCheckStatus.READY,
-                    summary = "Monochrome FLAC endpoint answered (HTTP ${resp.code}). Free Lossless FLAC streaming active.",
-                )
-            } else {
-                if (resp.code in 500..599) LosslessStreamResolver.markMonochromeDown()
-                SourceCheckResult(
-                    status = SourceCheckStatus.DEGRADED,
-                    summary = "Monochrome returned HTTP ${resp.code}.",
-                )
-            }
-        } catch (e: Exception) {
-            LosslessStreamResolver.markMonochromeDown()
+        val probe = LosslessStreamResolver.probeMonochromeMirrors()
+        return if (probe.mirror != null) {
+            SourceCheckResult(
+                status = SourceCheckStatus.READY,
+                summary = "Monochrome FLAC answered from ${probe.mirror.removePrefix("https://")}. Free lossless FLAC streaming active.",
+            )
+        } else {
             SourceCheckResult(
                 status = SourceCheckStatus.UNREACHABLE,
-                summary = "Failed to connect to Monochrome: ${e.message}",
+                summary = "No Monochrome mirror answered (${probe.failure ?: "no response"}).",
             )
         }
     }

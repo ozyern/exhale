@@ -410,6 +410,8 @@ dependencies {
 
     implementation(libs.timber)
     testImplementation(libs.junit)
+    // The real org.json: android.jar only has stubs, which throw in JVM unit tests.
+    testImplementation(libs.json)
     implementation("com.github.therealbush:translator:1.1.1")
     implementation("androidx.lifecycle:lifecycle-process:${libs.versions.lifecycle.get()}")
     implementation("androidx.compose.material3.adaptive:adaptive:1.3.0")

@@ -5637,7 +5637,7 @@ class MusicService :
         // Upgraded lossless / JioSaavn stream failed. Clean up and fall back cleanly to YouTube.
         if (currentMediaId != null && streamSource[currentMediaId].let { it != null && it != YOUTUBE_SOURCE }) {
             Timber.tag("MusicService").w("%s failed from upgraded stream (code=%d); falling back to YouTube", currentMediaId, error.errorCode)
-            flacCopies.remove(currentMediaId)
+            if (currentMediaId in flacCopies || isFlacStream(currentMediaId)) rejectFlac(currentMediaId)
             streamSource[currentMediaId] = YOUTUBE_SOURCE
             val currentIndex = player.currentMediaItemIndex
             val currentItem = runCatching { player.getMediaItemAt(currentIndex) }.getOrNull()
@@ -5853,7 +5853,7 @@ class MusicService :
             delay(UPGRADE_STALL_MS)
             if (player.currentMediaItem?.mediaId != mediaId || player.playbackState != Player.STATE_BUFFERING) return@launch
             Timber.tag("MusicService").w("%s stalled on its upgraded stream; moving to YouTube", mediaId)
-            flacCopies.remove(mediaId)
+            if (mediaId in flacCopies) rejectFlac(mediaId)
             streamSource[mediaId] = YOUTUBE_SOURCE
             val currentIndex = player.currentMediaItemIndex
             val currentItem = runCatching { player.getMediaItemAt(currentIndex) }.getOrNull()
@@ -5876,6 +5876,82 @@ class MusicService :
     /** Started once per song; the answer waits for the song and for its replays. */
     private val flacLookups = ConcurrentHashMap<String, kotlinx.coroutines.Deferred<String?>>()
 
+    /**
+     * The title, artists and length of [mediaId], wherever they are to be had. The first song played
+     * from a search is the case this exists for: the player opens its stream before the main thread
+     * hears of the new item, so the queue's details are not captured yet, the song is not in the
+     * database yet, and the player itself only answers on the main thread. Without this, that song —
+     * the one tapped — never got a lossless search at all and always played lossy.
+     */
+    private fun songDetailsFor(mediaId: String): com.ozyern.exhale.models.MediaMetadata? {
+        queueMetadata[mediaId]?.let { return it }
+        fun fromPlayer(): com.ozyern.exhale.models.MediaMetadata? =
+            (0 until player.mediaItemCount).asSequence()
+                .map { player.getMediaItemAt(it) }
+                .firstOrNull { it.mediaId == mediaId }?.metadata
+        val onMain = android.os.Looper.myLooper() == android.os.Looper.getMainLooper()
+        val song = runCatching {
+            if (onMain) fromPlayer()
+            // The timeout outside the switch: a busy main thread must not hold the stream up.
+            else runBlocking { withTimeoutOrNull(SONG_DETAILS_WAIT_MS) { withContext(Dispatchers.Main) { fromPlayer() } } }
+        }.getOrNull()
+            ?: runCatching {
+                runBlocking(Dispatchers.IO) { database.song(mediaId).first()?.toMediaMetadata() }
+            }.getOrNull()
+            ?: return null
+        queueMetadata.putIfAbsent(mediaId, song)
+        return song
+    }
+
+    /** A lossless copy one of the searches in [flacLookup] found, and where it came from. */
+    private class FlacHit(
+        val url: String,
+        val origin: String,
+        val sampleRate: Int? = null,
+        val bitDepth: Int? = null,
+        val bitrate: Int? = null,
+    )
+
+    /** The first of [searches] to find a copy, by arrival; null once all have come back empty. */
+    private suspend fun firstFound(searches: List<kotlinx.coroutines.Deferred<FlacHit?>>): FlacHit? {
+        val pending = searches.toMutableList()
+        while (pending.isNotEmpty()) {
+            val (done, hit) = kotlinx.coroutines.selects.select<Pair<kotlinx.coroutines.Deferred<FlacHit?>, FlacHit?>> {
+                pending.forEach { search -> search.onAwait { search to it } }
+            }
+            if (hit != null) return hit
+            pending.remove(done)
+        }
+        return null
+    }
+
+    /**
+     * Songs whose FLAC copy would not play or stopped arriving, and when. For a while they play from
+     * YouTube without the copy being offered again: offered at once, a broken copy failed, fell back,
+     * was picked again on the restart, and failed again.
+     */
+    private val rejectedFlac = ConcurrentHashMap<String, Long>()
+
+    /** When each song's last FLAC search came back empty. */
+    private val flacMissAt = ConcurrentHashMap<String, Long>()
+
+    private fun isFlacRejected(mediaId: String): Boolean {
+        val at = rejectedFlac[mediaId] ?: return false
+        if (System.currentTimeMillis() - at < FLAC_REJECT_MS) return true
+        rejectedFlac.remove(mediaId, at)
+        return false
+    }
+
+    /** The FLAC copy of [mediaId] failed: forget it, so the next try is a fresh search. */
+    private fun rejectFlac(mediaId: String) {
+        rejectedFlac[mediaId] = System.currentTimeMillis()
+        flacCopies.remove(mediaId)
+        flacLookups.remove(mediaId)
+        flacOrigins.remove(mediaId)
+        flacFormatsWritten.remove(mediaId)
+        com.ozyern.exhale.playback.lossless.sources.LosslessStreamResolver.clearResolved(mediaId)
+    }
+
     /** Songs whose [streamSource] entry is a FLAC copy rather than JioSaavn's file. */
     private val flacCopies = ConcurrentHashMap.newKeySet<String>()
 
@@ -5896,7 +5972,7 @@ class MusicService :
 
     private fun isFlacStream(mediaId: String): Boolean {
         if (mediaId in flacCopies) return true
-        if (flacOrigins.containsKey(mediaId)) return true
+        // A copy found is not a copy playing: flacOrigins is filled by the search, so it is not asked.
         if (flacFormatsWritten.contains(mediaId)) return true
         val src = streamSource[mediaId] ?: return false
         if (src == YOUTUBE_SOURCE) return mediaId in losslessFromYouTube
@@ -5927,20 +6003,26 @@ class MusicService :
         scope.launch(Dispatchers.Main) {
             if (player.currentMediaItem?.mediaId != mediaId) return@launch
             if (mediaId in flacCopies) return@launch
+            if (isFlacRejected(mediaId)) return@launch
+            // Only a song already playing lossy is swapped. With no source chosen yet the resolver is
+            // still deciding and takes this copy itself; swapping as well restarted the song.
+            if (streamSource[mediaId] == null) return@launch
             if (player.playbackState == Player.STATE_ENDED || player.playbackState == Player.STATE_IDLE) return@launch
 
             val duration = player.duration
             val currentPos = player.currentPosition
             if (duration > 0L && currentPos > duration - 10_000L) {
-                // Outro of track; cache flacUrl for replay without reloading now
-                flacCopies += mediaId
-                streamSource[mediaId] = flacUrl
+                // The last seconds: not worth a reload. The copy is kept by the lookup and the next
+                // play starts on it. Nothing is marked here: the lossy stream still has chunks to
+                // fetch, and marking the song as FLAC sent those chunk requests to the FLAC file at
+                // the lossy file's byte offsets, which broke the decoder.
                 return@launch
             }
 
             val wasPlaying = player.playWhenReady
             flacCopies += mediaId
             streamSource[mediaId] = flacUrl
+            rememberFlacFormat(mediaId)
             Timber.tag("MusicService").i("Seamlessly upgrading %s to FLAC (%s) at %d ms", mediaId, flacOrigins[mediaId], currentPos)
 
             val currentIndex = player.currentMediaItemIndex
@@ -5969,72 +6051,76 @@ class MusicService :
         if (!preferLocalLossless || audioQuality == com.ozyern.exhale.constants.AudioQuality.LOW) return null
         if (com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaId)) return null
         if (com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId)) return null
+        if (isFlacRejected(mediaId)) return null
+        // A search that found nothing is believed for a while, not for the session: a bad moment on
+        // the network used to leave the song lossy until the app was restarted.
+        flacMissAt[mediaId]?.let { at ->
+            if (System.currentTimeMillis() - at > FLAC_MISS_RETRY_MS) {
+                flacMissAt.remove(mediaId, at)
+                flacLookups.remove(mediaId)
+            }
+        }
         flacLookups[mediaId]?.let { return it }
         if (flacLookups.size > 400) flacLookups.clear()
+        // The song's details before the search is started and kept, not inside it: a search started
+        // without them answered null and was kept, so that song was never searched again.
+        val song = songDetailsFor(mediaId) ?: return null
         return flacLookups.getOrPut(mediaId) {
             ioScope.async {
-                val song = queueMetadata[mediaId]
-                    ?: (0 until player.mediaItemCount).asSequence()
-                        .mapNotNull { runCatching { player.getMediaItemAt(it) }.getOrNull() }
-                        .firstOrNull { it.mediaId == mediaId }?.metadata
-                    ?: runCatching { player.currentMediaItem?.takeIf { it.mediaId == mediaId }?.metadata }.getOrNull()
-                    ?: runCatching { player.findNextMediaItemById(mediaId)?.metadata }.getOrNull()
-                    ?: runCatching { database.song(mediaId).first()?.toMediaMetadata() }.getOrNull()
-                    ?: return@async null
-                queueMetadata.putIfAbsent(mediaId, song)
-
                 val (title, artist) = com.ozyern.exhale.lyrics.SongQuery.songAndArtist(song.title, song.artists.map { it.name })
                 val artists = buildList {
                     if (artist.isNotBlank()) add(artist)
                     song.artists.forEach { if (it.name.isNotBlank() && !contains(it.name)) add(it.name) }
                 }
-                val flacUrl = withTimeoutOrNull(FLAC_LOOKUP_TIMEOUT_MS) {
-                    kotlinx.coroutines.coroutineScope {
-                        // The listener's own servers, lossless streaming sources, and the public catalogues, asked at once.
-                        val own = async {
-                            runCatching { com.ozyern.exhale.playback.lossless.ServerLibrary.find(song) }.getOrNull()
-                                ?.also {
-                                    flacOrigins[mediaId] = "${it.serverName} (your server) · ${it.format.uppercase()}"
-                                    rememberFlacFormat(mediaId)
-                                }
-                                ?.url
-                        }
-                        val cloudLossless = async {
-                            runCatching {
-                                val req = com.ozyern.exhale.playback.lossless.sources.LosslessStreamResolver.Request(
-                                    mediaId = mediaId,
-                                    title = title,
-                                    artists = artists,
-                                    album = song.album?.title,
-                                    durationMs = song.duration * 1000L
-                                )
-                                com.ozyern.exhale.playback.lossless.sources.LosslessStreamResolver.resolve(
-                                    this@MusicService,
-                                    req
-                                )
-                            }.getOrNull()?.also { res ->
-                                flacOrigins[mediaId] = res.label
-                                rememberFlacFormat(mediaId, res.sampleRate, res.bitDepth, res.bitrate)
-                            }?.uri
-                        }
-                        val open = async {
-                            runCatching { com.ozyern.exhale.openflac.OpenFlac.findCopy(title, artist, song.duration, song.album?.title) }.getOrNull()
-                                ?.url
-                                ?.also {
-                                    flacOrigins.putIfAbsent(mediaId, "${catalogueName(it)} · FLAC")
-                                    rememberFlacFormat(mediaId)
-                                }
-                                ?.let(com.ozyern.exhale.openflac.OpenFlac::fastUrl)
-                        }
-                        own.await()?.also { cloudLossless.cancel(); open.cancel() }
-                            ?: cloudLossless.await()?.also { open.cancel() }
-                            ?: open.await()
+                // The listener's own servers, the lossless streaming sources and the public catalogues,
+                // asked at once; the first to find the song wins. They run outside this coroutine on
+                // purpose: their HTTP calls block and cannot be cancelled, and the old structured
+                // version kept the timeout below waiting on the slowest of them — the wait for the
+                // first lossless byte was the slowest source's, not the fastest's.
+                val own = ioScope.async {
+                    runCatching { com.ozyern.exhale.playback.lossless.ServerLibrary.find(song) }.getOrNull()
+                        ?.let { FlacHit(it.url, "${it.serverName} (your server) · ${it.format.uppercase()}") }
+                }
+                val cloudLossless = ioScope.async {
+                    runCatching {
+                        com.ozyern.exhale.playback.lossless.sources.LosslessStreamResolver.resolve(
+                            this@MusicService,
+                            com.ozyern.exhale.playback.lossless.sources.LosslessStreamResolver.Request(
+                                mediaId = mediaId,
+                                title = title,
+                                artists = artists,
+                                album = song.album?.title,
+                                durationMs = song.duration.takeIf { it > 0 }?.let { it * 1000L },
+                            ),
+                        )
+                    }.getOrNull()?.let { res ->
+                        FlacHit(res.uri, res.label, res.sampleRate, res.bitDepth, res.bitrate)
                     }
                 }
-                if (!flacUrl.isNullOrBlank()) {
-                    triggerSeamlessLosslessUpgrade(mediaId, flacUrl)
+                val open = ioScope.async {
+                    runCatching { com.ozyern.exhale.openflac.OpenFlac.findCopy(title, artist, song.duration, song.album?.title) }.getOrNull()
+                        ?.url
+                        ?.let { FlacHit(com.ozyern.exhale.openflac.OpenFlac.fastUrl(it), "${catalogueName(it)} · FLAC") }
                 }
-                flacUrl
+                val searches = listOf(own, cloudLossless, open)
+                val hit = try {
+                    withTimeoutOrNull(FLAC_LOOKUP_TIMEOUT_MS) { firstFound(searches) }
+                } finally {
+                    searches.forEach { it.cancel() }
+                }
+                if (hit == null || hit.url.isBlank()) {
+                    flacMissAt[mediaId] = System.currentTimeMillis()
+                    return@async null
+                }
+                // Only the copy that will play describes the song: its origin and its format.
+                flacOrigins[mediaId] = hit.origin
+                flacFormatSpecs[mediaId] = Triple(
+                    hit.sampleRate ?: 44100,
+                    hit.bitDepth ?: 16,
+                    hit.bitrate?.takeIf { it > 0 } ?: ((hit.sampleRate ?: 44100) * (hit.bitDepth ?: 16) * 2),
+                )
+                triggerSeamlessLosslessUpgrade(mediaId, hit.url)
+                hit.url
             }
         }
     }
@@ -6396,6 +6482,43 @@ class MusicService :
                 }
             }
 
+            // When a FLAC copy is already playing or selected for this song, route to it.
+            if (mediaId in flacCopies) {
+                streamSource[mediaId]?.takeIf { it != YOUTUBE_SOURCE }?.let { url ->
+                    return@Factory dataSpec.buildUpon().setUri(url.toUri()).setKey(upgradeKey(mediaId)).build()
+                }
+            }
+
+            // FLAC first: when lossless streaming / local lossless is enabled, give lossless sources
+            // (personal server, Tidal, Qobuz, Deezer, Apple Music, Monochrome FLAC, OpenFlac) priority
+            // over YouTube Music or JioSaavn. The song waits for the search rather than starting lossy
+            // and changing over a few seconds in.
+            //
+            // Only where a stream starts: from its first byte, or with no source chosen yet. A later
+            // chunk of a song already playing from YouTube or JioSaavn must keep coming from there —
+            // it used to wait here again on every chunk, and when the search landed mid-song the chunk
+            // was answered with the FLAC file at the lossy file's byte offset, which broke the decoder
+            // and left the song on YouTube for good. That song moves to FLAC through
+            // triggerSeamlessLosslessUpgrade instead.
+            val startsStream = dataSpec.position == 0L || streamSource[mediaId] == null
+            if (startsStream && preferLocalLossless && audioQuality != com.ozyern.exhale.constants.AudioQuality.LOW) {
+                val flacCopy = flacLookup(mediaId)?.let { search ->
+                    runBlocking(Dispatchers.IO) { withTimeoutOrNull(FLAC_LOOKUP_GRACE_MS) { search.await() } }
+                }
+                if (flacCopy != null) {
+                    flacCopies += mediaId
+                    streamSource[mediaId] = flacCopy
+                    rememberFlacFormat(mediaId)
+                    Timber.tag("MusicService").i("%s playing a FLAC copy: %s", mediaId, flacOrigins[mediaId])
+                    return@Factory dataSpec.buildUpon().setUri(flacCopy.toUri()).setKey(upgradeKey(mediaId)).build()
+                }
+            }
+
+            // When a JioSaavn stream is already playing or selected for this song, route to it.
+            streamSource[mediaId]?.takeIf { it != YOUTUBE_SOURCE }?.let { url ->
+                return@Factory dataSpec.buildUpon().setUri(url.toUri()).setKey(upgradeKey(mediaId)).build()
+            }
+
             val requiredCachedLength =
                 if (dataSpec.length >= 0) {
                     dataSpec.length
@@ -6418,34 +6541,6 @@ class MusicService :
                         (nonNullContentLength - dataSpec.position).takeIf { it > 0L }
                     }
                 }
-
-            // When a FLAC copy is already playing or selected for this song, route to it.
-            if (mediaId in flacCopies) {
-                streamSource[mediaId]?.takeIf { it != YOUTUBE_SOURCE }?.let { url ->
-                    return@Factory dataSpec.buildUpon().setUri(url.toUri()).setKey(upgradeKey(mediaId)).build()
-                }
-            }
-
-            // FLAC first: when lossless streaming / local lossless is enabled, give lossless sources
-            // (personal server, Tidal, Qobuz, Deezer, Apple Music, Monochrome FLAC, OpenFlac) priority
-            // over YouTube Music or JioSaavn.
-            if (preferLocalLossless && audioQuality != com.ozyern.exhale.constants.AudioQuality.LOW) {
-                val flacCopy = flacLookup(mediaId)?.let { search ->
-                    runBlocking(Dispatchers.IO) { withTimeoutOrNull(FLAC_LOOKUP_GRACE_MS) { search.await() } }
-                }
-                if (flacCopy != null) {
-                    flacCopies += mediaId
-                    streamSource[mediaId] = flacCopy
-                    rememberFlacFormat(mediaId)
-                    Timber.tag("MusicService").i("%s playing a FLAC copy: %s", mediaId, flacOrigins[mediaId])
-                    return@Factory dataSpec.buildUpon().setUri(flacCopy.toUri()).setKey(upgradeKey(mediaId)).build()
-                }
-            }
-
-            // When a JioSaavn stream is already playing or selected for this song, route to it.
-            streamSource[mediaId]?.takeIf { it != YOUTUBE_SOURCE }?.let { url ->
-                return@Factory dataSpec.buildUpon().setUri(url.toUri()).setKey(upgradeKey(mediaId)).build()
-            }
 
             if (requiredCachedLength != null) {
                 val isFullyCached =
@@ -6753,12 +6848,7 @@ class MusicService :
         if (com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaId)) return null
         if (com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId)) return null
         saavnLookups[mediaId]?.let { return it }
-        val song = queueMetadata[mediaId]
-            ?: runCatching { player.currentMediaItem?.takeIf { it.mediaId == mediaId }?.metadata }.getOrNull()
-            ?: runCatching { player.findNextMediaItemById(mediaId)?.metadata }.getOrNull()
-            ?: runCatching { runBlocking(Dispatchers.IO) { database.song(mediaId).first()?.toMediaMetadata() } }.getOrNull()
-            ?: return null
-        queueMetadata.putIfAbsent(mediaId, song)
+        val song = songDetailsFor(mediaId) ?: return null
         return saavnLookups.getOrPut(mediaId) {
             ioScope.async { withTimeoutOrNull(SAAVN_LOOKUP_TIMEOUT_MS) { JioSaavn.streamFor(song) } }
         }
@@ -7763,17 +7853,31 @@ class MusicService :
         private const val SAAVN_GRACE_MS = 350L
         /** The same, when a prefetched YouTube URL is already in hand. */
         private const val SAAVN_HEAD_START_GRACE_MS = 600L
-        /** How long JioSaavn's answer waits to hear whether YouTube has FLAC of this song. */
-        private const val YOUTUBE_FLAC_GRACE_MS = 1_500L
         /**
-         * The same, once YouTube has served this account FLAC at all: its lossless clients are the
-         * slow ones, and 1.5 s handed most of those songs to JioSaavn's lossy copy. Ends the moment
-         * YouTube answers, FLAC or not, so it is only ever as long as YouTube takes.
+         * How long JioSaavn's answer waits to hear whether YouTube has FLAC of this song. YouTube's
+         * lossless clients are the slow ones: at 1.5 s most songs YouTube has in FLAC — nearly all of
+         * Short n' Sweet — went to JioSaavn's 320 kbps AAC instead, while the Windows app, which waits
+         * for YouTube, played them lossless. Ends the moment YouTube answers, FLAC or not, so it is
+         * only ever as long as YouTube takes; past it the song is not held up any longer.
          */
-        private const val YOUTUBE_FLAC_KNOWN_GRACE_MS = 4_500L
-        /** How long a song waits at the start for a FLAC copy, and how long the search itself may run. */
-        private const val FLAC_LOOKUP_GRACE_MS = 6_000L
-        private const val FLAC_LOOKUP_TIMEOUT_MS = 12_000L
+        private const val YOUTUBE_FLAC_GRACE_MS = 8_000L
+        /** The same, once YouTube has served this account FLAC at all. */
+        private const val YOUTUBE_FLAC_KNOWN_GRACE_MS = 8_000L
+        /**
+         * How long a song waits at the start for a FLAC copy, and how long the search itself may run.
+         * The wait is the search's whole run: at 6 s against a 12 s search, a song whose copy took 7 s
+         * started on YouTube's lossy stream and changed to FLAC a few seconds in. The searches answer
+         * in a second or two now, and an empty answer ends the wait at once, so the full length is
+         * only ever spent when every source is unreachable.
+         */
+        private const val FLAC_LOOKUP_GRACE_MS = 10_000L
+        private const val FLAC_LOOKUP_TIMEOUT_MS = 10_000L
+        /** How long a FLAC copy that failed to play is left alone before the song is searched again. */
+        private const val FLAC_REJECT_MS = 10 * 60 * 1000L
+        /** How long "no FLAC of this song anywhere" is believed before the song is searched again. */
+        private const val FLAC_MISS_RETRY_MS = 3 * 60 * 1000L
+        /** How long the stream's thread waits for the main thread to read a song's details. */
+        private const val SONG_DETAILS_WAIT_MS = 1_000L
         /** A FLAC copy or JioSaavn file that stops arriving for this long gives way to YouTube's stream. */
         private const val UPGRADE_STALL_MS = 12_000L
         private const val MAX_NETWORK_RETRIES = 3

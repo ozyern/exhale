@@ -719,7 +719,12 @@ object LosslessLibrary {
                         sourceName = source.name,
                     )
                     if (TrackMatch.matches(song, candidate)) {
-                        results += candidate
+                        // `/track/<id>` answers with JSON, not audio; the file is behind the track's
+                        // manifest. Handed over as it was, the copy failed to play.
+                        resolveTidalTrackStream(mirror, id, candidate, source.name)?.let {
+                            results += it
+                            return results
+                        }
                     }
                 }
                 if (results.isNotEmpty()) return results
