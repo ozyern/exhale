@@ -215,8 +215,8 @@ fun LosslessSourcesSettingsScreen(
                 icon = {
                     val status = poolCheck?.status
                     when (status) {
-                        SourceCheckStatus.OK -> Icon(Icons.Outlined.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
-                        SourceCheckStatus.DEGRADED, SourceCheckStatus.FAILED -> Icon(Icons.Outlined.Error, null, tint = MaterialTheme.colorScheme.error)
+                        SourceCheckStatus.READY -> Icon(Icons.Outlined.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
+                        SourceCheckStatus.DEGRADED, SourceCheckStatus.UNREACHABLE -> Icon(Icons.Outlined.Error, null, tint = MaterialTheme.colorScheme.error)
                         else -> Icon(painterResource(R.drawable.bolt), null)
                     }
                 },
@@ -244,7 +244,7 @@ fun LosslessSourcesSettingsScreen(
                 icon = {
                     if (AudioSourceType.MONOCHROME.name in busy) {
                         CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                    } else if (check?.status == SourceCheckStatus.OK) {
+                    } else if (check?.status == SourceCheckStatus.READY) {
                         Icon(Icons.Outlined.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
                     } else {
                         Icon(painterResource(R.drawable.bolt), null)
@@ -318,7 +318,7 @@ fun LosslessSourcesSettingsScreen(
                 icon = {
                     if (AudioSourceType.TIDAL.name in busy) {
                         CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                    } else if (check?.status == SourceCheckStatus.OK) {
+                    } else if (check?.status == SourceCheckStatus.READY) {
                         Icon(Icons.Outlined.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
                     } else {
                         Icon(painterResource(R.drawable.bolt), null)
@@ -391,7 +391,7 @@ fun LosslessSourcesSettingsScreen(
                 icon = {
                     if (AudioSourceType.QOBUZ.name in busy) {
                         CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                    } else if (check?.status == SourceCheckStatus.OK) {
+                    } else if (check?.status == SourceCheckStatus.READY) {
                         Icon(Icons.Outlined.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
                     } else {
                         Icon(painterResource(R.drawable.bolt), null)
@@ -465,7 +465,7 @@ fun LosslessSourcesSettingsScreen(
                 icon = {
                     if (AudioSourceType.DEEZER.name in busy) {
                         CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                    } else if (check?.status == SourceCheckStatus.OK) {
+                    } else if (check?.status == SourceCheckStatus.READY) {
                         Icon(Icons.Outlined.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
                     } else {
                         Icon(painterResource(R.drawable.bolt), null)
@@ -539,7 +539,7 @@ fun LosslessSourcesSettingsScreen(
                 icon = {
                     if (AudioSourceType.APPLE.name in busy) {
                         CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                    } else if (check?.status == SourceCheckStatus.OK) {
+                    } else if (check?.status == SourceCheckStatus.READY) {
                         Icon(Icons.Outlined.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
                     } else {
                         Icon(painterResource(R.drawable.bolt), null)
@@ -920,12 +920,6 @@ fun LosslessSourcesSettingsScreen(
                     Text("Status: ${result.status.name}", fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(4.dp))
                     Text(result.summary)
-                    if (result.details.isNotEmpty()) {
-                        Spacer(Modifier.height(8.dp))
-                        result.details.forEach { (k, v) ->
-                            Text("$k: $v", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
                 }
             },
             confirmButton = {

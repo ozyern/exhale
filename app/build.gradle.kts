@@ -328,6 +328,7 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.util)
+    implementation(libs.compose.material.icons.extended)
     implementation(libs.media)
     implementation(libs.ui.graphics)
     implementation(libs.ui.tooling.preview)

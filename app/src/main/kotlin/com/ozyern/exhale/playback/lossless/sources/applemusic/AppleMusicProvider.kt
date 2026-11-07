@@ -39,7 +39,7 @@ object AppleMusicProvider {
             ".hBgj61sZf-y7bmuvT-joXAUAcf7TVJ51732xnH5vFkLHOmsQHxVqGMYUuI4h8c0-RX3fRY3moylhLW8fewFJyw"
 
     @Volatile
-    private var appleMusicToken: String = fallbackAppleMusicToken
+    var appleMusicToken: String = fallbackAppleMusicToken
 
     @Volatile
     private var appleMusicTokenExpAtSec: Long = decodeJwtExpSec(fallbackAppleMusicToken)

@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ozyern.exhale.utils.dataStore
 import com.ozyern.exhale.playback.lossless.sources.LosslessStreamResolver
 import com.ozyern.exhale.playback.lossless.sources.SourceCheckResult
 import com.ozyern.exhale.playback.lossless.sources.SourceCheckService
