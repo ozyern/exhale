@@ -486,6 +486,11 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
             unshuffled = null
             _state.update { it.copy(queue = queue, index = index) }
         }
+        if (AppSettings.current.preferLossless) {
+            scope.launch {
+                queue.drop(index).take(8).forEach { LosslessLibrary.lookup(it) }
+            }
+        }
         load(_state.value.index)
     }
 
@@ -606,7 +611,7 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
                             isHiRes = isHiRes,
                             bitDepth = stream.bitDepth,
                             sampleRate = stream.sampleRate,
-                            sourceLabel = stream.sourceLabel,
+                            sourceLabel = if (stream.lossless) "Sabrina's Basement" else stream.sourceLabel,
                         )
                     }
                     DesktopPrefs.recordPlayed(song)
@@ -636,7 +641,7 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
                                         isHiRes = flacHiRes,
                                         bitDepth = flac.bitDepth,
                                         sampleRate = flac.sampleRate,
-                                        sourceLabel = flac.sourceLabel,
+                                        sourceLabel = "Sabrina's Basement",
                                     )
                                 }
                                 playingFromLibrary = flac.sourceLabel != null
@@ -972,7 +977,12 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
             else -> {
                 // The song playing: hold its place and start whatever fell into it.
                 _state.update { it.copy(queue = queue, index = index.coerceAtMost(queue.size - 1)) }
-                load(_state.value.index)
+                if (AppSettings.current.preferLossless) {
+            scope.launch {
+                queue.drop(index).take(8).forEach { LosslessLibrary.lookup(it) }
+            }
+        }
+        load(_state.value.index)
             }
         }
         persistQueue()
@@ -1127,7 +1137,7 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
 
     private companion object {
         /** How long a song waits for a lossless copy to be found before starting on YouTube's stream. */
-        const val LosslessLookupMs = 3_500L
+        const val LosslessLookupMs = 6_000L
         const val StallMs = 20_000L
         const val LosslessStallMs = 25_000L
         const val MaxRebuffers = 3

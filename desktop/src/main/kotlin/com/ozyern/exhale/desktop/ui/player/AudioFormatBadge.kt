@@ -102,19 +102,23 @@ fun LosslessWaveformIcon(
     androidx.compose.foundation.Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
-        val midY = h * 0.52f
-        val amp = h * 0.32f
+        val sx = w / 24f
+        val sy = h / 24f
         val path = androidx.compose.ui.graphics.Path().apply {
-            moveTo(w * 0.08f, midY)
-            cubicTo(w * 0.18f, midY - amp, w * 0.28f, midY - amp, w * 0.38f, midY)
-            cubicTo(w * 0.48f, midY + amp, w * 0.58f, midY + amp, w * 0.68f, midY)
-            cubicTo(w * 0.78f, midY - amp, w * 0.88f, midY - amp, w * 0.95f, midY + amp * 0.3f)
+            moveTo(2.5f * sx, 13.5f * sy)
+            cubicTo(2.8f * sx, 8.2f * sy, 4.4f * sx, 5.0f * sy, 6.6f * sx, 5.0f * sy)
+            cubicTo(8.8f * sx, 5.0f * sy, 9.4f * sx, 12.0f * sy, 11.2f * sx, 19.0f * sy)
+            cubicTo(12.0f * sx, 19.0f * sy, 12.2f * sx, 11.2f * sy, 12.8f * sx, 5.0f * sy)
+            cubicTo(14.6f * sx, 5.0f * sy, 15.2f * sx, 12.0f * sy, 17.0f * sx, 19.0f * sy)
+            cubicTo(17.8f * sx, 19.0f * sy, 18.0f * sx, 11.2f * sy, 18.6f * sx, 5.0f * sy)
+            cubicTo(20.4f * sx, 5.0f * sy, 21.2f * sx, 12.0f * sy, 22.4f * sx, 19.0f * sy)
+            cubicTo(22.8f * sx, 19.0f * sy, 23.2f * sx, 16.5f * sy, 23.2f * sx, 13.5f * sy)
         }
         drawPath(
             path = path,
             color = tint,
             style = androidx.compose.ui.graphics.drawscope.Stroke(
-                width = 1.8.dp.toPx(),
+                width = 1.9.dp.toPx(),
                 cap = androidx.compose.ui.graphics.StrokeCap.Round,
                 join = androidx.compose.ui.graphics.StrokeJoin.Round,
             ),

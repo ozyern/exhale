@@ -8,6 +8,7 @@ package com.ozyern.exhale.desktop.ui.pages
 
 import com.ozyern.exhale.desktop.ui.pressScale
 import com.ozyern.exhale.desktop.ui.player.LosslessWaveformIcon
+import com.ozyern.exhale.desktop.player.LosslessLibrary
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -394,6 +395,11 @@ private fun CollectionPage(
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index to listState.layoutInfo.totalItemsCount }
             .collect { (last, total) -> if (last != null && total > 0 && last >= total - 6) onNearEnd() }
     }
+    LaunchedEffect(songs) {
+        if (songs.isNotEmpty()) {
+            LosslessLibrary.warmAlbum(header.title, header.artists.firstOrNull()?.name, songs)
+        }
+    }
 
     ArtworkWash(header.artwork) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -680,7 +686,7 @@ private fun CollectionInfo(
             )
             LosslessWaveformIcon(
                 tint = Color.White.copy(alpha = 0.65f),
-                modifier = Modifier.size(14.dp),
+                modifier = Modifier.size(width = 16.dp, height = 12.dp),
             )
             Spacer(Modifier.width(4.dp))
             Text(

@@ -66,7 +66,9 @@ object LrcRedLyricsProvider : LyricsProvider {
         if (known != null) document(known)?.let { return Result.success(it) }
         // A recording lrc.red doesn't file under that code is often there under a sibling
         // release's, so a known ISRC that misses still gets a search.
-        val hit = search(title, artist, duration) ?: return notFound(name)
+        val hit = search(title, artist, duration)
+            ?: (if (duration > 0) search(title, artist, 0) else null)
+            ?: return notFound(name)
         val found = hit.isrc?.let(::documentUrl)?.takeIf { it != known } ?: return notFound(name)
         return document(found)?.let { Result.success(it) } ?: notFound(name)
     }

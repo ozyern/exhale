@@ -241,7 +241,7 @@ fun CollectionPaneHero(
                                 painter = painterResource(com.ozyern.exhale.R.drawable.ic_apple_lossless),
                                 contentDescription = null,
                                 tint = quiet,
-                                modifier = Modifier.size(15.dp),
+                                modifier = Modifier.size(width = 17.dp, height = 12.dp),
                             )
                             Spacer(Modifier.width(4.dp))
                             Text(

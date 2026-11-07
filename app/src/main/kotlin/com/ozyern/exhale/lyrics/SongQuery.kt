@@ -73,9 +73,9 @@ internal object SongQuery {
         val own = squeezed(channel)
         val isChannel = named.isNotEmpty() && own.isNotEmpty() && (named == own || named.startsWith(own) || own.startsWith(named))
         if (isChannel && after.isNotEmpty()) return after to before
-        if (before.isNotEmpty() && after.isNotEmpty()) {
-            return after to before
-        }
+        val afterNamed = squeezed(after)
+        val isAfterChannel = afterNamed.isNotEmpty() && own.isNotEmpty() && (afterNamed == own || afterNamed.startsWith(own) || own.startsWith(afterNamed))
+        if (isAfterChannel && before.isNotEmpty()) return before to after
         return cleaned to channel
     }
 

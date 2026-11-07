@@ -5643,7 +5643,9 @@ class MusicService :
             val currentItem = runCatching { player.getMediaItemAt(currentIndex) }.getOrNull()
             if (currentItem != null && currentItem.mediaId == currentMediaId) {
                 val fallbackItem = currentItem.buildUpon()
-                    .setUri(currentMediaId)
+                    .setMediaId(currentMediaId)
+                    .setCustomCacheKey(currentMediaId)
+                    .setUri(currentMediaId.toUri())
                     .build()
                 player.replaceMediaItem(currentIndex, fallbackItem)
             }
@@ -5857,7 +5859,9 @@ class MusicService :
             val currentItem = runCatching { player.getMediaItemAt(currentIndex) }.getOrNull()
             if (currentItem != null && currentItem.mediaId == mediaId) {
                 val fallbackItem = currentItem.buildUpon()
-                    .setUri(mediaId)
+                    .setMediaId(mediaId)
+                    .setCustomCacheKey(mediaId)
+                    .setUri(mediaId.toUri())
                     .build()
                 player.replaceMediaItem(currentIndex, fallbackItem)
             }
@@ -5890,6 +5894,15 @@ class MusicService :
         else -> "Free catalogue"
     }
 
+    private fun isFlacStream(mediaId: String): Boolean {
+        if (mediaId in flacCopies) return true
+        if (flacOrigins.containsKey(mediaId)) return true
+        val src = streamSource[mediaId] ?: return false
+        if (src == YOUTUBE_SOURCE) return mediaId in losslessFromYouTube
+        return src.contains(".flac", ignoreCase = true) || src.contains("flac", ignoreCase = true) ||
+            src.contains("wolf.qqdl.site") || src.contains("api.zarz.moe") || src.contains("archive.org")
+    }
+
     /**
      * Where [mediaId] is actually playing from, in words: the phone, a server of the listener's, a free
      * catalogue, JioSaavn, or YouTube Music and whether YouTube's copy is lossless. Shown in the song's
@@ -5897,11 +5910,11 @@ class MusicService :
      */
     fun playbackSourceLabel(mediaId: String): String = when {
         com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaId) -> "This phone"
-        com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId) -> "Free FLAC catalogue"
+        com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId) -> "Sabrina's Basement · FLAC"
         com.ozyern.exhale.export.SavedFiles.uriFor(this, mediaId) != null -> "Saved on this phone"
-        mediaId in flacCopies -> flacOrigins[mediaId] ?: "Lossless copy · FLAC"
+        isFlacStream(mediaId) -> "Sabrina's Basement · FLAC"
         streamSource[mediaId]?.let { it != YOUTUBE_SOURCE } == true -> "JioSaavn · 320 kbps AAC"
-        mediaId in losslessFromYouTube -> "YouTube Music · lossless"
+        mediaId in losslessFromYouTube -> "Sabrina's Basement · FLAC"
         else -> "YouTube Music"
     }
 
@@ -5934,6 +5947,8 @@ class MusicService :
             if (currentItem != null && currentItem.mediaId == mediaId) {
                 val targetPos = if (currentPos < 3_000L) 0L else currentPos
                 val newItem = currentItem.buildUpon()
+                    .setMediaId(mediaId)
+                    .setCustomCacheKey(mediaId)
                     .setUri(flacUrl.toUri())
                     .build()
                 player.replaceMediaItem(currentIndex, newItem)
@@ -5958,6 +5973,9 @@ class MusicService :
         return flacLookups.getOrPut(mediaId) {
             ioScope.async {
                 val song = queueMetadata[mediaId]
+                    ?: (0 until player.mediaItemCount).asSequence()
+                        .mapNotNull { runCatching { player.getMediaItemAt(it) }.getOrNull() }
+                        .firstOrNull { it.mediaId == mediaId }?.metadata
                     ?: runCatching { player.currentMediaItem?.takeIf { it.mediaId == mediaId }?.metadata }.getOrNull()
                     ?: runCatching { player.findNextMediaItemById(mediaId)?.metadata }.getOrNull()
                     ?: runCatching { database.song(mediaId).first()?.toMediaMetadata() }.getOrNull()
@@ -6318,11 +6336,24 @@ class MusicService :
 
     private fun createDataSourceFactory(): DataSource.Factory {
         return ResolvingDataSource.Factory(createCacheDataSource()) { requestSpec ->
-            val requestedId = requestSpec.key ?: error("No media id")
+            val rawKey = requestSpec.key ?: player.currentMediaItem?.mediaId ?: ""
+            val requestedId = when {
+                rawKey.startsWith("flac-copy:") -> rawKey.removePrefix("flac-copy:")
+                rawKey.startsWith("saavn:") -> rawKey.removePrefix("saavn:")
+                rawKey.startsWith("lossless:") -> rawKey.removePrefix("lossless:")
+                rawKey.startsWith("saved:") -> rawKey.removePrefix("saved:")
+                rawKey.isNotBlank() -> rawKey
+                else -> player.currentMediaItem?.mediaId ?: error("No media id")
+            }
             // A music video already matched to its catalogue song plays that song's audio, under
             // the song's own id so its bytes are never cached as the video's.
             val mediaId = if (preferMusicOnly) musicOnlyIds[requestedId] ?: requestedId else requestedId
-            val dataSpec = if (mediaId != requestedId) requestSpec.buildUpon().setKey(mediaId).build() else requestSpec
+            val dataSpec = if (mediaId != rawKey) requestSpec.buildUpon().setKey(mediaId).build() else requestSpec
+
+            val currentFlacUrl = streamSource[mediaId]?.takeIf { it != YOUTUBE_SOURCE }
+            if (currentFlacUrl != null && (requestSpec.uri.toString() == currentFlacUrl || (requestSpec.uri.scheme in listOf("http", "https") && mediaId in flacCopies))) {
+                return@Factory dataSpec.buildUpon().setUri(currentFlacUrl.toUri()).setKey(upgradeKey(mediaId)).build()
+            }
 
             // Music from this phone is the file itself: nothing to look up, cache or fetch.
             com.ozyern.exhale.utils.LocalMediaScanner.uriFor(mediaId)?.let { return@Factory dataSpec.withUri(it) }
@@ -6395,7 +6426,7 @@ class MusicService :
             // FLAC first: when lossless streaming / local lossless is enabled, give lossless sources
             // (personal server, Tidal, Qobuz, Deezer, Apple Music, Monochrome FLAC, OpenFlac) priority
             // over YouTube Music or JioSaavn.
-            if (streamSource[mediaId] == null && preferLocalLossless && audioQuality != com.ozyern.exhale.constants.AudioQuality.LOW) {
+            if ((streamSource[mediaId] == null || streamSource[mediaId] == YOUTUBE_SOURCE) && preferLocalLossless && audioQuality != com.ozyern.exhale.constants.AudioQuality.LOW) {
                 val flacCopy = flacLookup(mediaId)?.let { search ->
                     runBlocking(Dispatchers.IO) { withTimeoutOrNull(FLAC_LOOKUP_GRACE_MS) { search.await() } }
                 }
@@ -6683,7 +6714,8 @@ class MusicService :
     /** Where [mediaId] is playing from this session, for the menu: "JioSaavn · 320 kbps", "YouTube". */
     fun streamSourceLabel(mediaId: String): String? {
         if (com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaId)) return "This phone"
-        if (com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId)) return "FLAC"
+        if (com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId)) return "Sabrina's Basement · FLAC"
+        if (isFlacStream(mediaId)) return "Sabrina's Basement · FLAC"
         val source = streamSource[mediaId] ?: return null
         if (source == YOUTUBE_SOURCE) {
             return "YouTube"
@@ -7732,7 +7764,7 @@ class MusicService :
          */
         private const val YOUTUBE_FLAC_KNOWN_GRACE_MS = 4_500L
         /** How long a song waits at the start for a FLAC copy, and how long the search itself may run. */
-        private const val FLAC_LOOKUP_GRACE_MS = 4_500L
+        private const val FLAC_LOOKUP_GRACE_MS = 6_000L
         private const val FLAC_LOOKUP_TIMEOUT_MS = 12_000L
         /** A FLAC copy or JioSaavn file that stops arriving for this long gives way to YouTube's stream. */
         private const val UPGRADE_STALL_MS = 12_000L

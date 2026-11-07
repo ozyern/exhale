@@ -459,12 +459,45 @@ object LosslessLibrary {
         return result
     }
 
+    private val memoryTrackRegistry = ConcurrentHashMap<String, LosslessTrack>()
+
+    private fun trackKey(artist: String?, title: String): String {
+        val a = cleanArtist(artist.orEmpty()).let { TrackMatch.normalize(it) }
+        val t = cleanTitle(title).let { TrackMatch.normalize(it) }
+        return "$a::$t"
+    }
+
+    fun warmAlbum(albumTitle: String?, artist: String?, tracks: List<SongItem>) {
+        if (tracks.isEmpty()) return
+        lookupScope.launch {
+            tracks.take(8).forEach { lookup(it) }
+        }
+    }
+
     /**
      * The best copy of [song] any source holds, or null to let YouTube play it. Sources are asked at
      * once, not in turn: a folder answers in milliseconds where a server takes a second, and a slow
      * source shouldn't hold up a song that's already started.
      */
     private suspend fun resolve(song: SongItem): LosslessAnswer? {
+        val rawArtist = song.artists.firstOrNull()?.name.orEmpty()
+        val directMemMatch = memoryTrackRegistry[trackKey(rawArtist, song.title)]
+            ?: song.artists.mapNotNull { memoryTrackRegistry[trackKey(it.name, song.title)] }.firstOrNull()
+        if (directMemMatch != null) {
+            return LosslessAnswer("${directMemMatch.title} — ${directMemMatch.sourceName}", ResolvedStream(
+                url = directMemMatch.url,
+                headers = StreamHeaders(userAgent = "Exhale", origin = null, referer = null),
+                mimeType = "audio/${directMemMatch.format.lowercase(Locale.US)}",
+                bitrate = directMemMatch.bitrate ?: 0,
+                clientName = directMemMatch.sourceName,
+                loudnessDb = null,
+                sampleRate = directMemMatch.sampleRate,
+                bitDepth = directMemMatch.bitDepth,
+                lossless = true,
+                sourceLabel = "Sabrina's Basement",
+            ))
+        }
+
         val enabled = _sources.value.filter { it.enabled }
         if (enabled.isEmpty()) return null
         val best = withContext(Dispatchers.IO) {
@@ -496,17 +529,17 @@ object LosslessLibrary {
                 candidates.maxByOrNull { it.rank }
             }
         } ?: return null
-        return LosslessAnswer("${best.title} — ${best.sourceName}", ResolvedStream(
+        return LosslessAnswer("${best.title} — Sabrina's Basement", ResolvedStream(
             url = best.url,
             headers = StreamHeaders(userAgent = "Exhale", origin = null, referer = null),
             mimeType = "audio/${best.format.lowercase(Locale.US)}",
             bitrate = best.bitrate ?: 0,
-            clientName = best.sourceName,
+            clientName = "Sabrina's Basement",
             loudnessDb = null,
             sampleRate = best.sampleRate,
             bitDepth = best.bitDepth,
             lossless = true,
-            sourceLabel = best.sourceName,
+            sourceLabel = "Sabrina's Basement",
         ))
     }
 
@@ -1303,27 +1336,32 @@ object LosslessLibrary {
         val cArtist = cleanArtist(rawArtist)
         val cTitle = cleanTitle(song.title)
 
+        val direct = memoryTrackRegistry[trackKey(rawArtist, song.title)]
+        if (direct != null) return listOf(direct)
+
         val queries = mutableListOf<String>()
         val cAlbum = song.album?.name?.let { cleanTitle(it) }?.takeIf { it.isNotBlank() }
-        if (cArtist.isNotBlank() && cAlbum != null) {
-            queries += "mediatype:(audio) AND format:(Flac) AND creator:(${quoted(cArtist)}) AND title:(${quoted(cAlbum)})"
+        if (cArtist.isNotBlank()) {
+            val titlePart = listOfNotNull(
+                cTitle.takeIf { it.isNotBlank() }?.let { quoted(it) },
+                cAlbum?.let { quoted(it) },
+            ).joinToString(" OR ")
+            if (titlePart.isNotBlank()) {
+                queries += "mediatype:(audio) AND format:(Flac) AND creator:(${quoted(cArtist)}) AND title:($titlePart)"
+            }
         }
         if (cArtist.isNotBlank() && cTitle.isNotBlank()) {
             queries += "mediatype:(audio) AND format:(Flac) AND creator:(${quoted(cArtist)}) AND title:(${quoted(cTitle)})"
-            queries += "mediatype:(audio) AND format:(Flac) AND creator:(${quoted(cArtist)})"
         }
         if (cTitle.isNotBlank()) {
             queries += "mediatype:(audio) AND format:(Flac) AND title:(${quoted(cTitle)})"
         }
-        if (rawArtist.isNotBlank() && rawArtist != cArtist && cTitle.isNotBlank()) {
-            queries += "mediatype:(audio) AND format:(Flac) AND creator:(${quoted(rawArtist)}) AND title:(${quoted(cTitle)})"
-        }
         val identifiers = supervisorScope {
-            queries.distinct().map { query -> async { runCatching { archiveIdentifiers(query) }.getOrDefault(emptyList()) } }.awaitAll()
-        }.flatten().distinct().take(4)
+            queries.distinct().take(2).map { query -> async { runCatching { archiveIdentifiers(query) }.getOrDefault(emptyList()) } }.awaitAll()
+        }.flatten().distinct().take(3)
         val tracks = supervisorScope {
             identifiers.map { id -> async { runCatching { archiveTracks(id, source.name) }.getOrDefault(emptyList()) } }.awaitAll()
-        }.flatten().filter { TrackMatch.matches(song, it, strict = true) }
+        }.flatten().filter { TrackMatch.matches(song, it, strict = false) }
         if (archiveCache.size > 300) archiveCache.clear()
         archiveCache[song.id] = tracks
         return tracks
@@ -1370,7 +1408,10 @@ object LosslessLibrary {
                 format = format,
                 sampleRate = file.optInt("sample_rate").takeIf { it > 0 },
                 sourceName = sourceName,
-            )
+            ).also { track ->
+                val k = trackKey(track.artist, track.title)
+                memoryTrackRegistry.putIfAbsent(k, track)
+            }
         }
     }
 
@@ -1687,13 +1728,13 @@ internal object TrackMatch {
 
         val wantedDuration = song.duration?.toDouble()
         val foundDuration = candidate.durationSeconds
-        // Both runtimes known and more than five seconds apart: a different recording, live or extended.
-        if (wantedDuration != null && foundDuration != null && abs(wantedDuration - foundDuration) > 5.5) return false
+        // Both runtimes known and more than 4.5 seconds apart: a different recording, live or extended.
+        if (wantedDuration != null && foundDuration != null && abs(wantedDuration - foundDuration) > 4.5) return false
         // Strict (a public catalogue full of live takes of the same song): the runtime has to be there,
-        // and it has to agree within reasonable tolerance (4.5s) to account for master silence differences.
+        // and it has to agree closely (within 3s), or this is another performance rather than another copy.
         if (strict) {
             if (wantedDuration == null || foundDuration == null) return false
-            if (abs(wantedDuration - foundDuration) > 4.5) return false
+            if (abs(wantedDuration - foundDuration) > 3.0) return false
         }
 
         val artists = song.artists.map { normalize(it.name) }.filter { it.isNotEmpty() }

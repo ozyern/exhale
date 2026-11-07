@@ -346,21 +346,24 @@ object QobuzAudioProvider {
                     .getOrNull() ?: continue
             }
             val trackId = match.id
-            val download =
-                runCatching { backend.download(trackId, formatId) }
+            val candidateFormats = when (formatId) {
+                27 -> listOf(27, 7, 6)
+                7 -> listOf(7, 6)
+                else -> listOf(formatId)
+            }
+            var download: DownloadResult? = null
+            var actualFormatId = formatId
+            for (fmt in candidateFormats) {
+                val res = runCatching { backend.download(trackId, fmt) }
                     .onFailure { markInstanceFailed(backend.id, hardFailure = it is java.io.IOException) }
                     .getOrNull()
-            if (download == null) {
-                markInstanceFailed(backend.id, hardFailure = false)
-                continue
-            }
-            if (download.isPreview) {
-
-                Timber.tag("Qobuz").w("%s returned preview-only; skipping", backend.label)
-
-                if (backend.isToken && backend.isPoolPremium && backend.poolId != null) {
-                    com.ozyern.exhale.playback.lossless.sources.pool.PoolAccountManager.report("qobuz", "account", backend.poolId, "not_premium")
+                if (res != null && !res.isPreview) {
+                    download = res
+                    actualFormatId = fmt
+                    break
                 }
+            }
+            if (download == null) {
                 markInstanceFailed(backend.id, hardFailure = false)
                 continue
             }
@@ -372,7 +375,7 @@ object QobuzAudioProvider {
                     mimeType = download.mimeType,
                     codecs = download.codecs,
                     contentLength = null,
-                    label = "Qobuz ${qualityLabel(formatId)}",
+                    label = "Qobuz ${qualityLabel(actualFormatId)}",
                     source = AudioSourceType.QOBUZ,
                     matchedTitle = match.title,
                     matchedArtist = match.artist,

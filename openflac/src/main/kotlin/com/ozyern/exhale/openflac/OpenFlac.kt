@@ -151,6 +151,8 @@ object OpenFlac {
      * are full of concert tapes of the same title, so the runtime has to be stated and agree closely,
      * and the artist has to be named.
      */
+    private val albumTrackRegistry = ConcurrentHashMap<String, Track>()
+
     internal fun isSameRecording(title: String, artist: String, durationSeconds: Int, track: Track): Boolean {
         val length = track.durationSeconds ?: return false
         if (kotlin.math.abs(length - durationSeconds) > MaxRuntimeGapSeconds) return false
@@ -167,6 +169,10 @@ object OpenFlac {
      */
     suspend fun findCopy(title: String, artist: String, durationSeconds: Int, album: String? = null): Track? {
         if (title.isBlank() || artist.isBlank() || durationSeconds <= 0) return null
+        val cacheKey = "${plain(artist)}::${plain(title)}"
+        albumTrackRegistry[cacheKey]?.let { cached ->
+            if (isSameRecording(title, artist, durationSeconds, cached)) return cached
+        }
         val cleanTitle = title
             .replace(Regex("""\s*[\(\[\{].*?[\)\]\}]"""), "")
             .replace(Regex("""(?i)\b(feat\.?|ft\.?)\b.*"""), "")
@@ -306,7 +312,10 @@ object OpenFlac {
                     bitDepth = if (file.text("format")?.startsWith("24bit") == true) 24 else 16,
                     sampleRate = file.text("sample_rate")?.toIntOrNull(),
                     credit = credit,
-                )
+                ).also { parsed ->
+                    val k = "${plain(parsed.artist)}::${plain(parsed.title)}"
+                    albumTrackRegistry.putIfAbsent(k, parsed)
+                }
             }
     }
 

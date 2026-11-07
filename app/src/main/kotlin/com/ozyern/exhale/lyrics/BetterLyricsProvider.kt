@@ -37,10 +37,12 @@ object BetterLyricsProvider : LyricsProvider {
     ): Result<String> {
         val exact = BetterLyrics.getLyrics(title = title, artist = artist, album = album, durationSeconds = duration)
         if (exact.isSuccess) return exact
-        if (duration > 0) {
-            val relaxed = BetterLyrics.getLyrics(title = title, artist = artist, album = null, durationSeconds = 0)
-            if (relaxed.isSuccess) return relaxed
+        if (album != null) {
+            val withoutAlbum = BetterLyrics.getLyrics(title = title, artist = artist, album = null, durationSeconds = duration)
+            if (withoutAlbum.isSuccess) return withoutAlbum
         }
+        val relaxed = BetterLyrics.getLyrics(title = title, artist = artist, album = null, durationSeconds = 0)
+        if (relaxed.isSuccess) return relaxed
         return exact
     }
 

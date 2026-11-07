@@ -26,7 +26,12 @@ object SimpMusicLyricsProvider : LyricsProvider {
         artist: String,
         album: String?,
         duration: Int,
-    ): Result<String> = SimpMusicLyrics.getLyrics(videoId = id, duration = duration)
+    ): Result<String> {
+        val exact = SimpMusicLyrics.getLyrics(videoId = id, duration = duration)
+        if (exact.isSuccess) return exact
+        // Fallback for music videos / live cuts: take video-matched lyrics regardless of duration drift
+        return SimpMusicLyrics.getLyrics(videoId = id, duration = 0)
+    }
 
     override suspend fun getAllLyrics(
         id: String,
