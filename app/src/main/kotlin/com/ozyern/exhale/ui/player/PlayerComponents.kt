@@ -18,13 +18,9 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -2594,21 +2590,10 @@ fun PlayerBackground(
                 ) { colors ->
                     if (colors.isNotEmpty()) {
                         // Still while the player is only pre-built behind the dock.
-                        val progress = if (com.ozyern.exhale.ui.component.LocalPlayerShown.current) {
-                            val infiniteTransition = rememberInfiniteTransition(label = "GlowAnimation")
-                            val running by infiniteTransition.animateFloat(
-                                initialValue = 0f,
-                                targetValue = 1f,
-                                animationSpec = infiniteRepeatable(
-                                    animation = tween(20000, easing = LinearEasing),
-                                    repeatMode = RepeatMode.Restart
-                                ),
-                                label = "glowProgress"
-                            )
-                            running
-                        } else {
-                            0f
-                        }
+                        val progress by com.ozyern.exhale.ui.component.rememberAmbientPhase(
+                            cycleMs = 20_000,
+                            running = com.ozyern.exhale.ui.component.LocalPlayerShown.current,
+                        )
 
                         fun rotatedColorAt(index: Int): Color {
                             val size = colors.size

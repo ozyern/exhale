@@ -10,3 +10,11 @@ HSPLcom/kyant/**->**(**)**
 Lcom/kyant/**;
 HSPLdev/chrisbanes/haze/**->**(**)**
 Ldev/chrisbanes/haze/**;
+# The player engine and the image loader: the first things touched when a song starts or a page of
+# covers scrolls in. Neither ships a profile wide enough to cover the paths Exhale drives.
+HSPLandroidx/media3/**->**(**)**
+Landroidx/media3/**;
+HSPLcoil3/**->**(**)**
+Lcoil3/**;
+HSPLokhttp3/**->**(**)**
+Lokhttp3/**;

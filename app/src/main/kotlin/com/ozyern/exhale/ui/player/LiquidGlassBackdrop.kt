@@ -7,9 +7,6 @@
 package com.ozyern.exhale.ui.player
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -22,7 +19,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
@@ -184,30 +180,19 @@ private fun LiquidMeshGradient(
         safe.map { it.copy(alpha = blobAlpha) }
     }
 
-    // Only running while the player is on screen: pre-built behind the dock, an infinite
-    // transition would ask for a frame every vsync for a backdrop no one can see.
-    val (p1, p2, p3) = if (com.ozyern.exhale.ui.component.LocalPlayerShown.current) {
-        val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "liquidMesh")
-        val twoPi = (2.0 * PI).toFloat()
-        val a by transition.animateFloat(
-            0f, twoPi, infiniteRepeatable(tween(23_000, easing = LinearEasing)), label = "mesh1",
-        )
-        val b by transition.animateFloat(
-            0f, twoPi, infiniteRepeatable(tween(31_000, easing = LinearEasing)), label = "mesh2",
-        )
-        val c by transition.animateFloat(
-            0f, twoPi, infiniteRepeatable(tween(37_000, easing = LinearEasing)), label = "mesh3",
-        )
-        Triple(a, b, c)
-    } else {
-        Triple(0f, 0f, 0f)
-    }
-
-    val phases = rememberUpdatedState(Triple(p1, p2, p3))
+    // Only running while the player is on screen: pre-built behind the dock, nobody sees it move.
+    // On the ambient clock, read only in the draw phase: a drift step redraws, and nothing else.
+    val seconds = com.ozyern.exhale.ui.component.rememberAmbientSeconds(
+        running = com.ozyern.exhale.ui.component.LocalPlayerShown.current,
+    )
 
     Box(
         modifier = modifier.drawBehind {
-            val (a, b, c) = phases.value
+            val twoPi = (2.0 * PI).toFloat()
+            val t = seconds.value
+            val a = (t / 23f % 1f) * twoPi
+            val b = (t / 31f % 1f) * twoPi
+            val c = (t / 37f % 1f) * twoPi
             val w = size.width
             val h = size.height
             val r = maxOf(w, h) * 0.92f

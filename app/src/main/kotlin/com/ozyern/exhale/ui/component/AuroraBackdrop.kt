@@ -6,12 +6,6 @@
 
 package com.ozyern.exhale.ui.component
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -21,8 +15,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -60,20 +52,7 @@ fun AuroraBackdrop(
 
     // One phase drives all three blobs; each reads it at its own offset and its own rate, which is
     // what stops the drift from looking like a single rigid object sliding around.
-    val phase: State<Float> = if (animated) {
-        val transition = rememberInfiniteTransition(label = "aurora")
-        transition.animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 26_000, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart,
-            ),
-            label = "auroraPhase",
-        )
-    } else {
-        remember { mutableFloatStateOf(0f) }
-    }
+    val phase: State<Float> = rememberAmbientPhase(cycleMs = 26_000, running = animated)
 
     BoxWithConstraints(
         modifier = modifier

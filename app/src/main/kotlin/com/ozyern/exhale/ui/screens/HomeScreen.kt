@@ -710,15 +710,8 @@ private const val SignInWashCycleMs = 30_000
 @Composable
 private fun HomeSignInCard(onSignIn: () -> Unit) {
     val shape = RoundedCornerShape(24.dp)
-    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "signInWash")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = SignInWashes.size.toFloat(),
-        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-            androidx.compose.animation.core.tween(SignInWashCycleMs, easing = androidx.compose.animation.core.LinearEasing),
-        ),
-        label = "signInWashPhase",
-    )
+    // Read in the draw phase below, so a step of the wash redraws the card and recomposes nothing.
+    val cycle = com.ozyern.exhale.ui.component.rememberAmbientPhase(SignInWashCycleMs)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -726,6 +719,7 @@ private fun HomeSignInCard(onSignIn: () -> Unit) {
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .clip(shape)
             .drawBehind {
+                val phase = cycle.value * SignInWashes.size
                 // Eased between neighbouring washes, so each colour holds a moment before moving on.
                 val i = phase.toInt() % SignInWashes.size
                 val f = phase - phase.toInt()
