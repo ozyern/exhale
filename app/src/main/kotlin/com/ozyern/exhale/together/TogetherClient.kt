@@ -91,12 +91,18 @@ class TogetherClient(
      * connection to 192.168.x.1 out over the carrier, where it can only time out.
      */
     private val socketFactory: javax.net.SocketFactory? = null,
+    /**
+     * A phone on the same Wi-Fi or hotspot. It answers in milliseconds or not at all, so a dead
+     * address is given up after a few seconds instead of fifteen, and only plain ws:// is tried —
+     * the host serves no TLS, and each wss:// attempt was another full timeout per address.
+     */
+    private val lan: Boolean = false,
 ) {
     private val client =
         HttpClient(OkHttp) {
             engine {
                 config {
-                    connectTimeout(15, TimeUnit.SECONDS)
+                    connectTimeout(if (lan) 6L else 15L, TimeUnit.SECONDS)
                     this@TogetherClient.socketFactory?.let { socketFactory(it) }
                     readTimeout(30, TimeUnit.SECONDS)
                     writeTimeout(15, TimeUnit.SECONDS)
@@ -130,7 +136,7 @@ class TogetherClient(
 
             // Every address the host listed, in its order: the hotspot's own first.
             val urls = joinInfo.candidateUrls()
-                .flatMap { listOfNotNull(it, alternateWebSocketSchemeOrNull(it)) }
+                .flatMap { if (lan) listOf(it) else listOfNotNull(it, alternateWebSocketSchemeOrNull(it)) }
                 .distinct()
 
             val token = normalizedBearerToken
@@ -238,6 +244,14 @@ class TogetherClient(
                 else -> null
             }
 
+        // On a LAN join every one of these means the same thing to the person holding the phone:
+        // this phone cannot see the host's. Say what to check rather than a socket error.
+        if (lan && (root is java.net.ConnectException || root is java.net.SocketTimeoutException ||
+                root is java.net.NoRouteToHostException || root is java.io.IOException)
+        ) {
+            return "Couldn't reach the host's phone. Check both are on the same Wi-Fi or hotspot, " +
+                "and that the Wi-Fi doesn't keep devices apart (guest or public networks often do)."
+        }
         val detail = reason ?: raw.takeIf { it.isNotBlank() }
         return if (detail == null) "Connection failed" else "Connection failed: $detail"
     }

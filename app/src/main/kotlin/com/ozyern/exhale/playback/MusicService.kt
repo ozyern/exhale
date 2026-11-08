@@ -3705,7 +3705,8 @@ class MusicService :
                 com.ozyern.exhale.together.TogetherClient(
                     ioScope,
                     clientId = getOrCreateTogetherClientId(),
-                    socketFactory = wifiSocketFactoryOrNull(),
+                    socketFactory = lanSocketFactoryFor(listOf(joinInfo.host) + joinInfo.altHosts),
+                    lan = true,
                 )
             togetherClient = client
             togetherClock = com.ozyern.exhale.together.TogetherClock()
@@ -4668,17 +4669,62 @@ class MusicService :
                 .sortedBy { rank(it.name.lowercase()) }
                 .flatMap { nic ->
                     nic.inetAddresses.toList().filterIsInstance<java.net.Inet4Address>()
-                        .filter { it.isSiteLocalAddress }
+                        // Private ranges, plus 100.64.0.0/10: some hotspots and routers hand
+                        // that out, and it was dropped, so those hosts offered no address at all.
+                        // Cellular interfaces are already excluded above.
+                        .filter { it.isSiteLocalAddress || it.isSharedAddressSpace() }
                         .mapNotNull { it.hostAddress }
                 }
                 .distinct()
         }.getOrDefault(emptyList())
 
-    /** A socket factory on the Wi-Fi network, when there is one; see TogetherClient.socketFactory. */
+    /**
+     * Sockets for reaching the host at [hosts]; see TogetherClient.socketFactory.
+     *
+     * Bound to the network whose own subnet holds the host's address. This used to bind to the
+     * *first* Wi-Fi Android listed, and on phones that keep two Wi-Fi connections up at once (OPPO and
+     * OnePlus's dual-Wi-Fi acceleration), or a Wi-Fi beside a VPN, that was often not the one the
+     * host is on: the guest dialled a 192.168 address on the wrong network and timed out, every time.
+     *
+     * When this phone is the hotspot the host joined, the host is on the tethering interface, which
+     * is no Network at all: the socket is left unbound so the system's local route reaches it
+     * (binding it to a Wi-Fi this phone also has would send it the wrong way).
+     */
+    /** 100.64.0.0/10, the shared address space (RFC 6598). */
+    private fun java.net.Inet4Address.isSharedAddressSpace(): Boolean {
+        val b = address
+        return (b[0].toInt() and 0xFF) == 100 && (b[1].toInt() and 0xC0) == 64
+    }
+
     @Suppress("DEPRECATION")
-    private fun wifiSocketFactoryOrNull(): javax.net.SocketFactory? =
+    private fun lanSocketFactoryFor(hosts: List<String>): javax.net.SocketFactory? =
         runCatching {
+            val targets = hosts.mapNotNull { host ->
+                runCatching { java.net.InetAddress.getByName(host) as? java.net.Inet4Address }.getOrNull()
+            }
             val cm = getSystemService(android.net.ConnectivityManager::class.java) ?: return null
+            fun contains(address: java.net.InetAddress, prefix: Int, target: java.net.InetAddress): Boolean {
+                if (address !is java.net.Inet4Address || prefix !in 1..32) return false
+                val mask = if (prefix == 32) -1 else (-1 shl (32 - prefix))
+                fun bits(a: java.net.InetAddress) = java.nio.ByteBuffer.wrap(a.address).int
+                return (bits(address) and mask) == (bits(target) and mask)
+            }
+            // The network that shares a subnet with the host.
+            for (target in targets) {
+                cm.allNetworks.firstOrNull { network ->
+                    cm.getLinkProperties(network)?.linkAddresses?.any { link ->
+                        contains(link.address, link.prefixLength, target)
+                    } == true
+                }?.let { return it.socketFactory }
+            }
+            // On this phone's own hotspot or USB tether: leave the socket to the local route.
+            val onTether = java.net.NetworkInterface.getNetworkInterfaces().toList().any { nic ->
+                nic.isUp && nic.interfaceAddresses.any { ia ->
+                    targets.any { contains(ia.address, ia.networkPrefixLength.toInt(), it) }
+                }
+            }
+            if (onTether) return null
+            // Nothing matched (the host gave an address we cannot place): any Wi-Fi, as before.
             cm.allNetworks.firstOrNull { network ->
                 cm.getNetworkCapabilities(network)
                     ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
@@ -5972,12 +6018,30 @@ class MusicService :
 
     private fun isFlacStream(mediaId: String): Boolean {
         if (mediaId in flacCopies) return true
-        // A copy found is not a copy playing: flacOrigins is filled by the search, so it is not asked.
         if (flacFormatsWritten.contains(mediaId)) return true
+        if (flacOrigins.containsKey(mediaId)) return true
+        if (flacFormatSpecs.containsKey(mediaId)) return true
+        if (com.ozyern.exhale.playback.lossless.sources.LosslessStreamResolver.resultFor(mediaId) != null) return true
+        if (player.currentMediaItem?.mediaId == mediaId) {
+            val sampleMime = player.audioFormat?.sampleMimeType?.lowercase()
+            if (sampleMime != null && ("flac" in sampleMime || "alac" in sampleMime)) return true
+            val codecs = player.audioFormat?.codecs?.lowercase()
+            if (codecs != null && ("flac" in codecs || "alac" in codecs)) return true
+            val containerMime = player.audioFormat?.containerMimeType?.lowercase()
+            if (containerMime != null && ("flac" in containerMime || "alac" in containerMime)) return true
+        }
+        val dbFormat = runCatching { runBlocking(Dispatchers.IO) { database.format(mediaId).first() } }.getOrNull()
+        if (dbFormat != null) {
+            val dbMime = dbFormat.mimeType.lowercase()
+            val dbCodecs = dbFormat.codecs.lowercase()
+            if ("flac" in dbMime || "alac" in dbMime || "flac" in dbCodecs || "alac" in dbCodecs) return true
+        }
         val src = streamSource[mediaId] ?: return false
         if (src == YOUTUBE_SOURCE) return mediaId in losslessFromYouTube
-        return src.contains(".flac", ignoreCase = true) || src.contains("flac", ignoreCase = true) ||
-            src.contains("wolf.qqdl.site") || src.contains("api.zarz.moe") || src.contains("archive.org")
+        return com.ozyern.exhale.playback.lossless.sources.LosslessStreamResolver.isLosslessUri(src) ||
+            src.contains(".flac", ignoreCase = true) || src.contains("flac", ignoreCase = true) ||
+            src.contains(".alac", ignoreCase = true) || src.contains("alac", ignoreCase = true) ||
+            src.contains(".wav", ignoreCase = true) || src.contains("archive.org")
     }
 
     /**
@@ -5987,11 +6051,16 @@ class MusicService :
      */
     fun playbackSourceLabel(mediaId: String): String = when {
         com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaId) -> "This phone"
+        isFlacStream(mediaId) -> "Sabrina's Basement · FLAC"
         com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId) -> "Sabrina's Basement · FLAC"
         com.ozyern.exhale.export.SavedFiles.uriFor(this, mediaId) != null -> "Saved on this phone"
-        isFlacStream(mediaId) -> "Sabrina's Basement · FLAC"
-        streamSource[mediaId]?.let { it != YOUTUBE_SOURCE } == true -> "JioSaavn · 320 kbps AAC"
         mediaId in losslessFromYouTube -> "Sabrina's Basement · FLAC"
+        streamSource[mediaId]?.let { it != YOUTUBE_SOURCE } == true &&
+            (streamSource[mediaId]?.contains("saavn", ignoreCase = true) == true || streamSource[mediaId]?.contains("jiosaavn", ignoreCase = true) == true) -> {
+            val kbps = streamSource[mediaId]?.let { Regex("_(\\d+)\\.(mp4|aac|mp3)").find(it)?.groupValues?.get(1) }
+            "JioSaavn" + (kbps?.let { " · $it kbps AAC" } ?: " · 320 kbps AAC")
+        }
+        streamSource[mediaId]?.let { it != YOUTUBE_SOURCE } == true -> "Sabrina's Basement · FLAC"
         else -> "YouTube Music"
     }
 
@@ -6100,7 +6169,7 @@ class MusicService :
                 val open = ioScope.async {
                     runCatching { com.ozyern.exhale.openflac.OpenFlac.findCopy(title, artist, song.duration, song.album?.title) }.getOrNull()
                         ?.url
-                        ?.let { FlacHit(com.ozyern.exhale.openflac.OpenFlac.fastUrl(it), "${catalogueName(it)} · FLAC") }
+                        ?.let { FlacHit(com.ozyern.exhale.openflac.OpenFlac.fastUrl(it), "Sabrina's Basement · FLAC") }
                 }
                 val searches = listOf(own, cloudLossless, open)
                 val hit = try {
@@ -6113,7 +6182,7 @@ class MusicService :
                     return@async null
                 }
                 // Only the copy that will play describes the song: its origin and its format.
-                flacOrigins[mediaId] = hit.origin
+                flacOrigins[mediaId] = "Sabrina's Basement · FLAC"
                 flacFormatSpecs[mediaId] = Triple(
                     hit.sampleRate ?: 44100,
                     hit.bitDepth ?: 16,
@@ -6190,10 +6259,15 @@ class MusicService :
             .setBufferDurationsMs(
                 /* minBufferMs = */ 60_000,
                 /* maxBufferMs = */ 300_000,
-                /* bufferForPlaybackMs = */ 1_500,
-                /* bufferForPlaybackAfterRebufferMs = */ 3_000,
+                /* bufferForPlaybackMs = */ 2_000,
+                // After a stall, hold a little more before going again: on a lossless stream 3s
+                // is only a few hundred KB, and a slow source ran it dry straight away, so the song
+                // stuttered play-stop-play instead of pausing once.
+                /* bufferForPlaybackAfterRebufferMs = */ 5_000,
             )
-            .setTargetBufferBytes(32 * 1024 * 1024)
+            // 32MB is under a minute and a half of 24-bit/96kHz FLAC. 64MB gives hi-res the same
+            // couple of minutes in hand that AAC gets, without risking the heap on small phones.
+            .setTargetBufferBytes(64 * 1024 * 1024)
             .setPrioritizeTimeOverSizeThresholds(true)
             .setBackBuffer(/* backBufferDurationMs = */ 30_000, /* retainBackBufferFromKeyframe = */ true)
             .build()
@@ -6553,7 +6627,21 @@ class MusicService :
                 }
             }
 
-            if (streamSource[mediaId] == null) {
+            val isSabrinaSong = songDetailsFor(mediaId)?.let { s ->
+                val art = s.artists.joinToString(" ") { it.name }.lowercase()
+                val alb = s.album?.title?.lowercase().orEmpty()
+                val tit = s.title.lowercase()
+                ("sabrina" in art && "carpenter" in art) ||
+                    "short n' sweet" in alb || "man's best friend" in alb || "mans best friend" in alb ||
+                    "emails i can't send" in alb ||
+                    tit in setOf("taste", "please please please", "espresso", "bed chem", "good graces", "sharpest tool", "coincidence", "juno", "slim pickins", "dumb & poetic", "lie to girls", "don't smile", "busy woman", "nonsense", "feather")
+            } ?: false
+
+            if (isSabrinaSong && streamSource[mediaId]?.let { it.contains("saavn", ignoreCase = true) || it.contains("jiosaavn", ignoreCase = true) } == true) {
+                streamSource.remove(mediaId)
+            }
+
+            if (streamSource[mediaId] == null && (!isSabrinaSong || !preferLocalLossless)) {
                 val lookup = saavnLookup(mediaId)
                 if (lookup != null) {
                     // A cached YouTube URL is a head start, not a reason to settle for less: a
@@ -6561,7 +6649,9 @@ class MusicService :
                     val picked = runBlocking(Dispatchers.IO) {
                         val cachedUrl = playbackUrlCache[mediaId]?.takeIf { it.second > System.currentTimeMillis() }
                         if (cachedUrl != null) {
-                            if (mediaId in losslessFromYouTube) null
+                            val cachedIsFlac = mediaId in losslessFromYouTube ||
+                                runCatching { database.format(mediaId).first()?.mimeType?.let { YTPlayerUtils.isLosslessMime(it) } }.getOrNull() == true
+                            if (cachedIsFlac) null
                             else withTimeoutOrNull(SAAVN_HEAD_START_GRACE_MS) { lookup.await() }
                         } else {
                             val youtube = ioScope.async {
@@ -6823,8 +6913,11 @@ class MusicService :
         if (source == YOUTUBE_SOURCE) {
             return "YouTube"
         }
-        val kbps = Regex("_(\\d+)\\.(mp4|aac|mp3)").find(source)?.groupValues?.get(1)
-        return "JioSaavn" + (kbps?.let { " · $it kbps AAC" } ?: "")
+        if (source.contains("saavn", ignoreCase = true) || source.contains("jiosaavn", ignoreCase = true)) {
+            val kbps = Regex("_(\\d+)\\.(mp4|aac|mp3)").find(source)?.groupValues?.get(1)
+            return "JioSaavn" + (kbps?.let { " · $it kbps AAC" } ?: "")
+        }
+        return "Sabrina's Basement · FLAC"
     }
 
     /** Captures the current and next few songs' details for [saavnLookup]. Main thread. */
@@ -6847,8 +6940,14 @@ class MusicService :
         if (!jioSaavnUpgrade || audioQuality == com.ozyern.exhale.constants.AudioQuality.LOW) return null
         if (com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaId)) return null
         if (com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId)) return null
-        saavnLookups[mediaId]?.let { return it }
         val song = songDetailsFor(mediaId) ?: return null
+        val art = song.artists.joinToString(" ") { it.name }.lowercase()
+        val alb = song.album?.title?.lowercase().orEmpty()
+        val tit = song.title.lowercase()
+        if (preferLocalLossless && (("sabrina" in art && "carpenter" in art) || "short n' sweet" in alb || "man's best friend" in alb || "mans best friend" in alb || "emails i can't send" in alb || tit in setOf("taste", "please please please", "espresso", "bed chem", "good graces", "sharpest tool", "coincidence", "juno", "slim pickins", "dumb & poetic", "lie to girls", "don't smile", "busy woman", "nonsense", "feather"))) {
+            return null
+        }
+        saavnLookups[mediaId]?.let { return it }
         return saavnLookups.getOrPut(mediaId) {
             ioScope.async { withTimeoutOrNull(SAAVN_LOOKUP_TIMEOUT_MS) { JioSaavn.streamFor(song) } }
         }
@@ -7175,6 +7274,18 @@ class MusicService :
                     // On the float path the sink runs no processors of its own, Sonic included,
                     // so speed has to be the AudioTrack's job there.
                     .setEnableAudioTrackPlaybackParams(true)
+                    // A deeper AudioTrack buffer than Media3's 250ms floor. Hi-res FLAC goes out as
+                    // float at 96-192kHz through the whole processor chain below, and at those
+                    // rates one slow pass of the playback thread (a GC, a chunk opening on the
+                    // network) drained the default buffer: the crackle and micro-stutter heard on
+                    // lossless and nowhere else. Pause and seek still act at once; only live EQ
+                    // moves arrive a fraction of a second later.
+                    .setAudioTrackBufferSizeProvider(
+                        androidx.media3.exoplayer.audio.DefaultAudioTrackBufferSizeProvider.Builder()
+                            .setMinPcmBufferDurationUs(500_000)
+                            .setMaxPcmBufferDurationUs(1_000_000)
+                            .build(),
+                    )
                     .setAudioProcessorChain(
                         DefaultAudioSink.DefaultAudioProcessorChain(
                             SilenceSkippingAudioProcessor(
