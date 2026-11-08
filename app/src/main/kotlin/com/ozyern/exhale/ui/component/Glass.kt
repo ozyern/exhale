@@ -111,7 +111,7 @@ fun rememberChromeGlassModifier(
     // the dark half of the ambient bevel dragged a grey smear round the bottom of the dock. What
     // reads as clean over this app's artwork is an even film with a bright rim the whole way
     // round. Do not re-derive that change from first principles — it was tried and reverted.
-    val tint = if (dark) Color.Black.copy(alpha = tintAlpha) else Color.White.copy(alpha = tintAlpha)
+    val tint = if (dark) ClearGlassFilmDark.copy(alpha = ClearGlassFilmDarkAlpha) else Color.White.copy(alpha = tintAlpha)
     val shadowColor = if (dark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.16f)
 
     return Modifier
@@ -153,7 +153,7 @@ fun Modifier.clearGlass(
     dark: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
     layerBlock: (GraphicsLayerScope.() -> Unit)? = null,
 ): Modifier {
-    val film = if (dark) ClearGlassFilmDark.copy(alpha = ClearGlassFilm) else Color(0xFFFAFAFA).copy(alpha = ClearGlassFilm)
+    val film = if (dark) ClearGlassFilmDark.copy(alpha = ClearGlassFilmDarkAlpha) else Color(0xFFFAFAFA).copy(alpha = ClearGlassFilm)
     return this
         .drawBackdrop(
             backdrop = backdrop,
@@ -173,13 +173,20 @@ fun Modifier.clearGlass(
 }
 
 /**
- * The film over every slab of glass, Convx 1.5's: a dark grey at half strength. The page shows
- * through, bent at the rim, and a white glyph always has something dark behind it.
+ * The film over every slab of glass. Light theme: near-white at half strength.
+ *
+ * Dark theme is Convx 1.5's adaptive glass grey ([ClearGlassFilmDark]) at a third
+ * ([ClearGlassFilmDarkAlpha]). Its default near-black at half strength read as a dark slab, not
+ * glass: over a dark page it was the page, and over art it was a shade. A mid grey lifts the dark
+ * and only softens the bright, so the pane reads as a lighter piece of glass on any page.
  */
 internal const val ClearGlassFilm = 0.5f
 
-/** That film's colour on a dark theme. */
-internal val ClearGlassFilmDark = Color(0xFF1A1A1A)
+/** The film's colour on a dark theme. */
+internal val ClearGlassFilmDark = Color(0xFF4A4A4E)
+
+/** And its strength there. */
+internal const val ClearGlassFilmDarkAlpha = 0.32f
 
 /**
  * The mini player's glass: the dock's own film, saturation and rim bend — so the pill and the dock
@@ -231,7 +238,7 @@ fun Modifier.dockGlass(
     dark: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
 ): Modifier {
     // The same glass as the floating dock (see [slabGlassEffects] and [ClearGlassFilm]).
-    val film = if (dark) ClearGlassFilmDark.copy(alpha = ClearGlassFilm) else Color(0xFFFAFAFA).copy(alpha = ClearGlassFilm)
+    val film = if (dark) ClearGlassFilmDark.copy(alpha = ClearGlassFilmDarkAlpha) else Color(0xFFFAFAFA).copy(alpha = ClearGlassFilm)
     return this.drawBackdrop(
         backdrop = backdrop,
         shape = { shape },

@@ -107,6 +107,8 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.colorControls
+import com.ozyern.exhale.ui.component.ClearGlassFilmDark
+import com.ozyern.exhale.ui.component.ClearGlassFilmDarkAlpha
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
@@ -169,7 +171,8 @@ fun Modifier.foldingDockGlass(
     // title readable over it: 2.0.4's 15% white lift left the mini player's text sitting on
     // whatever scrolled beneath, and frosting it hid the page the glass is there to show.
     val dark = isSystemInDarkTheme()
-    val film = if (dark) Color(0xFF1A1A1A).copy(alpha = 0.5f) else Color(0xFFF5F5F7).copy(alpha = 0.5f)
+    // Convx 1.5's adaptive glass grey, light enough to read as glass: see [ClearGlassFilm].
+    val film = if (dark) ClearGlassFilmDark.copy(alpha = ClearGlassFilmDarkAlpha) else Color(0xFFF5F5F7).copy(alpha = 0.5f)
     // The specular rim: white, 0.8dp, lit from 45 degrees; Convx dims it to 30% on the nav bar.
     val rim = Color.White.copy(alpha = if (dark) 0.30f else 0.40f)
     return drawBackdrop(
@@ -179,7 +182,8 @@ fun Modifier.foldingDockGlass(
         highlight = { Highlight(width = 0.8.dp, style = HighlightStyle.Default(color = rim, angle = 45f)) },
         shadow = { com.kyant.backdrop.shadow.Shadow.Default },
         onDrawSurface = { drawRect(film) },
-    ).outerDarkRim(shape)
+    // A faint dark edge, enough to hold the pane's shape over a bright page without shading it.
+    ).outerDarkRim(shape, alpha = 0.14f)
 }
 
 /**
