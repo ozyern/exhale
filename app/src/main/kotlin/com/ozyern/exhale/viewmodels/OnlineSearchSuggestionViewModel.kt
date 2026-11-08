@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import javax.inject.Inject
 
 /**
@@ -60,6 +61,16 @@ constructor(
     val query = MutableStateFlow("")
     private val _viewState = MutableStateFlow(SearchSuggestionViewState())
     val viewState = _viewState.asStateFlow()
+
+    // What the listener knows and who they play, read once: suggestions they will recognise first.
+    private val taste = viewModelScope.async(kotlinx.coroutines.Dispatchers.IO) {
+        runCatching {
+            SearchTaste(
+                knownSongs = database.knownSongIds().toHashSet(),
+                topArtists = database.topArtistNames(TOP_ARTISTS).mapTo(HashSet()) { it.lowercase() },
+            )
+        }.getOrDefault(SearchTaste())
+    }
 
     init {
         val historyFlow =
@@ -114,6 +125,7 @@ constructor(
                         // every recomposition — including every frame of a scroll.
                         ?.distinctBy { it.id }
                         ?.songsFirst()
+                        ?.let { taste.await().rank(it) }
                         .orEmpty(),
                 )
             }.collect { _viewState.value = it }
@@ -126,3 +138,31 @@ data class SearchSuggestionViewState(
     val suggestions: List<String> = emptyList(),
     val items: List<YTItem> = emptyList(),
 )
+
+private const val TOP_ARTISTS = 40
+
+/**
+ * The listener's taste, for ordering what a search suggests: among the songs, the ones they have
+ * played, liked or saved come first, then songs by artists they play most, then the rest in
+ * YouTube's own order. Albums, artists and videos keep their places after the songs.
+ */
+internal data class SearchTaste(
+    val knownSongs: Set<String> = emptySet(),
+    val topArtists: Set<String> = emptySet(),
+) {
+    fun rank(items: List<YTItem>): List<YTItem> {
+        if (knownSongs.isEmpty() && topArtists.isEmpty()) return items
+        val songs = items.filterIsInstance<com.ozyern.exhale.innertube.models.SongItem>()
+        if (songs.size < 2) return items
+        // sortedBy is stable: within each rank, YouTube's order stands.
+        val ranked = songs.sortedBy { song ->
+            when {
+                song.id in knownSongs -> 0
+                song.artists.any { it.name.lowercase() in topArtists } -> 1
+                else -> 2
+            }
+        }
+        val rest = items.filterNot { it is com.ozyern.exhale.innertube.models.SongItem }
+        return if (items.first() is com.ozyern.exhale.innertube.models.SongItem) ranked + rest else rest + ranked
+    }
+}

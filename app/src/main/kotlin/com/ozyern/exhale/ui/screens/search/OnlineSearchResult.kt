@@ -7,6 +7,17 @@
 
 package com.ozyern.exhale.ui.screens.search
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import kotlin.math.roundToInt
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.graphicsLayer
@@ -701,23 +712,97 @@ private fun SearchFilterPills(
     current: com.ozyern.exhale.innertube.YouTube.SearchFilter?,
     onSelect: (com.ozyern.exhale.innertube.YouTube.SearchFilter?) -> Unit,
 ) {
-    // The same chip as Home's mood row: Convx 2.0.4's, red when chosen.
-    Row(
-        modifier = Modifier
+    // Home's mood chips, with one difference: the red is a single capsule that slides from the
+    // chip that was chosen to the one that is, the way iOS moves a selected segment, rather than
+    // one chip fading out while another fades in. The chosen chip is scrolled to the middle, so a
+    // filter picked from a section's "See all" is never left off the edge of the row.
+    val scroll = androidx.compose.foundation.rememberScrollState()
+    val bounds = remember { androidx.compose.runtime.mutableStateMapOf<Int, Pair<Float, Float>>() }
+    var viewport by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    val selectedIndex = chips.indexOfFirst { it.first == current }.coerceAtLeast(0)
+    val target = bounds[selectedIndex]
+    val slide = spring<Float>(dampingRatio = 0.78f, stiffness = 420f)
+    val indicatorX by androidx.compose.animation.core.animateFloatAsState(target?.first ?: 0f, slide, label = "pillX")
+    val indicatorW by androidx.compose.animation.core.animateFloatAsState(target?.second ?: 0f, slide, label = "pillW")
+    LaunchedEffect(selectedIndex, target, viewport) {
+        val t = target ?: return@LaunchedEffect
+        if (viewport > 0) scroll.animateScrollTo((t.first + t.second / 2f - viewport / 2f).roundToInt().coerceAtLeast(0))
+    }
+    val dark = androidx.compose.foundation.isSystemInDarkTheme()
+    val restFill = if (dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.06f)
+    val hairline = if (dark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
+    val density = LocalDensity.current
+
+    Box(
+        Modifier
             .fillMaxWidth()
-            .horizontalScroll(androidx.compose.foundation.rememberScrollState())
+            .onSizeChanged { viewport = it.width }
+            .horizontalScroll(scroll)
             .padding(horizontal = 16.dp, vertical = 6.dp),
-        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        chips.forEach { (value, label) ->
-            com.ozyern.exhale.ui.component.GlassChip(
-                label = label,
-                selected = value == current,
-                iconRes = null,
-                onClick = { onSelect(value) },
+        if (target != null) {
+            Box(
+                Modifier
+                    .offset { IntOffset(indicatorX.roundToInt(), 0) }
+                    .size(width = with(density) { indicatorW.toDp() }, height = 36.dp)
+                    .background(SelectedChipRed, CircleShape),
             )
         }
+        Row(
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            chips.forEachIndexed { index, (value, label) ->
+                val selected = index == selectedIndex
+                val on by androidx.compose.animation.core.animateFloatAsState(
+                    if (selected) 1f else 0f, tween(200), label = "chipOn",
+                )
+                val interaction = remember { MutableInteractionSource() }
+                Box(
+                    modifier = Modifier
+                        .onGloballyPositioned { bounds[index] = it.positionInParent().x to it.size.width.toFloat() }
+                        .pressSinkChip(interaction)
+                        .height(36.dp)
+                        .clip(CircleShape)
+                        // The resting fill and hairline give way to the red sliding in under them.
+                        .background(restFill.copy(alpha = restFill.alpha * (1f - on)))
+                        .border(1.dp, hairline.copy(alpha = hairline.alpha * (1f - on)), CircleShape)
+                        .clickable(interactionSource = interaction, indication = null) { onSelect(value) }
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = label,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = androidx.compose.ui.graphics.lerp(
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
+                            Color.White,
+                            on,
+                        ),
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Apple Music's red, the filled chip's colour everywhere in the app. */
+private val SelectedChipRed = Color(0xFFFA2D48)
+
+/** A chip sinks a little under the finger and springs back. */
+@Composable
+private fun Modifier.pressSinkChip(interaction: MutableInteractionSource): Modifier {
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        if (pressed) 0.95f else 1f,
+        spring(dampingRatio = 0.6f, stiffness = 700f),
+        label = "chipPress",
+    )
+    return graphicsLayer {
+        scaleX = scale
+        scaleY = scale
     }
 }
 

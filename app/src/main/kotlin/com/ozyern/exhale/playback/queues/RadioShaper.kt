@@ -39,14 +39,21 @@ internal class RadioShaper<T>(
 
     /** The next page's songs, in the order to play them. */
     fun shape(items: List<T>): List<T> {
-        val pending = items.filterTo(ArrayList()) { ids.add(idOf(it)) && songs.add(songOf(it)) }
+        val fresh = items.filterTo(ArrayList()) { ids.add(idOf(it)) && songs.add(songOf(it)) }
+        // Out: what the listener skipped lately, or played through in the last few hours. Unless
+        // that leaves the page all but empty, when YouTube's own choice beats silence.
+        val wanted = fresh.filterTo(ArrayList()) { !ListeningSignals.avoid(idOf(it)) }
+        val pending = if (wanted.size >= fresh.size / 2) wanted else fresh
         val cap = maxOf(MIN_ARTIST_CAP, ceil((kept + pending.size) * MAX_ARTIST_SHARE).toInt())
         val shaped = ArrayList<T>(pending.size)
         while (pending.isNotEmpty()) {
             val allowed = pending.filter { (perArtist[artistOf(it)] ?: 0) < cap }
             if (allowed.isEmpty()) break
-            // The first the listener hasn't just heard; failing that, simply the first.
-            val next = allowed.firstOrNull { artistOf(it) !in recent } ?: allowed.first()
+            // The first by an artist the listener hasn't just heard and hasn't been skipping;
+            // failing that, one they haven't just heard; failing that, simply the first.
+            val next = allowed.firstOrNull { artistOf(it) !in recent && !ListeningSignals.demoted(artistOf(it)) }
+                ?: allowed.firstOrNull { artistOf(it) !in recent }
+                ?: allowed.first()
             pending.remove(next)
             shaped += next
             place(artistOf(next))

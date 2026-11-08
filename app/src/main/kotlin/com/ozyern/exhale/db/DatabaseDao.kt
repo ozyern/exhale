@@ -497,6 +497,23 @@ interface DatabaseDao {
     ): Flow<List<Song>>
 
     @Transaction
+    /** Songs the listener knows: played, liked or saved. For putting those first in search. */
+    @Query("SELECT id FROM song WHERE totalPlayTime > 0 OR liked = 1 OR inLibrary IS NOT NULL")
+    suspend fun knownSongIds(): List<String>
+
+    /** The names of the artists listened to longest, all time. */
+    @Query(
+        """
+        SELECT artist.name FROM artist
+        JOIN song_artist_map ON song_artist_map.artistId = artist.id
+        JOIN song ON song.id = song_artist_map.songId
+        GROUP BY artist.id
+        ORDER BY SUM(song.totalPlayTime) DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun topArtistNames(limit: Int): List<String>
+
     @SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
     @Query(
         """
