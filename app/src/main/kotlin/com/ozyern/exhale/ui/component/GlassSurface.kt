@@ -52,8 +52,10 @@ fun Modifier.liquidGlassSurface(
     val dark = isSystemInDarkTheme()
 
     val fill = Brush.verticalGradient(
+        // Dark: a body of its own under a faint white lift. 10%-to-4% white alone was clear glass,
+        // and a card's text sat on whatever artwork scrolled under it.
         colors = if (dark) {
-            listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.045f))
+            listOf(Color(0xFF242426).copy(alpha = 0.44f), Color(0xFF1C1C1E).copy(alpha = 0.52f))
         } else {
             listOf(Color.White.copy(alpha = 0.92f), Color.White.copy(alpha = 0.66f))
         },
@@ -89,7 +91,7 @@ fun Modifier.liquidGlassSurface(
                 shape = { shape },
                 effects = {
                     vibrancy()
-                    blur(5f.dp.toPx())
+                    blur(10f.dp.toPx())
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
                         lens(12f.dp.toPx(), 22f.dp.toPx(), true)
                     }

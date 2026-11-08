@@ -617,6 +617,29 @@ fun NewMiniPlayerContent(
             // no heart, no ring and no disc. Play is the loudest thing in the row by size alone;
             // forward is a step quieter and takes a little of the accent. The wide transport
             // already leads with its own controls.
+            // The song's waveform beside its title, as Convx's pill has it: where the song is, at
+            // a glance, and a tap to move through it.
+            if (!wideTransport && mediaMetadata != null) {
+                val latestPosition by rememberUpdatedState(position)
+                val latestDuration by rememberUpdatedState(duration)
+                val waveInk = if (convx) Color.White else MaterialTheme.colorScheme.onSurface
+                com.ozyern.exhale.ui.component.ScrollingWaveform(
+                    progress = {
+                        if (latestDuration > 0) latestPosition.toFloat() / latestDuration else 0f
+                    },
+                    onSeek = { fraction ->
+                        val total = playerConnection.player.duration
+                        if (total > 0) playerConnection.player.seekTo((fraction * total).toLong())
+                    },
+                    playedColor = waveInk.copy(alpha = 0.92f),
+                    trackColor = waveInk.copy(alpha = 0.3f),
+                    seed = mediaMetadata?.id.hashCode(),
+                    modifier = Modifier
+                        .padding(start = 6.dp, end = 4.dp)
+                        .size(width = 64.dp, height = 22.dp),
+                )
+            }
+
             if (!wideTransport) {
                 val ink = MaterialTheme.colorScheme.onSurface
                 // Convx: SF Symbols' play/pause.fill and forward.fill, white, at its control sizes.

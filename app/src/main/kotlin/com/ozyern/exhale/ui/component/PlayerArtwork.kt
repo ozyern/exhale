@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.media3.common.C
+import coil3.request.transformations
 import coil3.imageLoader
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
@@ -56,6 +57,7 @@ private fun pinnedArtworkRequest(context: android.content.Context, url: String):
         .placeholderMemoryCacheKey(url)
         .memoryCachePolicy(CachePolicy.ENABLED)
         .crossfade(false)
+        .transformations(TrimVideoBars)
         .build()
 
 /** The player's own cover request, shared by the player and the cover flight: one key, one bitmap. */
@@ -64,6 +66,7 @@ fun playerArtworkRequest(context: android.content.Context, thumbnailUrl: String)
         .data(thumbnailUrl.highRes())
         .size(1200, 1200)
         .placeholderMemoryCacheKey(thumbnailUrl)
+        .transformations(TrimVideoBars)
         .build()
 
 /**

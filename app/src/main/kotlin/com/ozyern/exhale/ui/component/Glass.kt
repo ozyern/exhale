@@ -7,6 +7,7 @@
 package com.ozyern.exhale.ui.component
 
 import com.ozyern.exhale.ui.component.foldingdock.foldingDockGlass
+import com.ozyern.exhale.ui.component.foldingdock.dockGlassEffects
 import android.os.Build
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
@@ -95,7 +96,7 @@ val supportsLiveBlur: Boolean
 fun rememberChromeGlassModifier(
     shape: Shape,
     dark: Boolean,
-    tintAlpha: Float = 0.32f,
+    tintAlpha: Float = ClearGlassFilm,
     blurRadius: Dp = 48.dp,
     @Suppress("UNUSED_PARAMETER") quality: Float = 0.5f,
     backdrop: Backdrop = LocalAppBackdrop.current,
@@ -137,8 +138,8 @@ fun rememberChromeGlassModifier(
  * Clear liquid glass, on Apple-matched defaults.
  *
  * Where [rememberChromeGlassModifier] frosts — a heavy blur and a milky film, so the pane reads as
- * a sheet of ice — this one barely blurs at all (8dp), saturates what is behind it by half again,
- * and bends it hard at the rim, under a 40% film of near-black (or near-white). The page stays
+ * a sheet of ice — this one barely blurs at all (2dp), saturates what is behind it a little,
+ * and bends it hard at the rim, under a 50% film of dark grey (or near-white). The page stays
  * legible *through* the control and the rim does the work of saying "glass". This is the material
  * the round chrome and the dock are made of.
  *
@@ -152,7 +153,7 @@ fun Modifier.clearGlass(
     dark: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
     layerBlock: (GraphicsLayerScope.() -> Unit)? = null,
 ): Modifier {
-    val film = if (dark) Color(0xFF121212).copy(alpha = ClearGlassFilm) else Color(0xFFFAFAFA).copy(alpha = ClearGlassFilm)
+    val film = if (dark) ClearGlassFilmDark.copy(alpha = ClearGlassFilm) else Color(0xFFFAFAFA).copy(alpha = ClearGlassFilm)
     return this
         .drawBackdrop(
             backdrop = backdrop,
@@ -171,7 +172,14 @@ fun Modifier.clearGlass(
         .border(0.5.dp, Color.White.copy(alpha = if (dark) 0.10f else 0.35f), shape)
 }
 
-private const val ClearGlassFilm = 0.32f
+/**
+ * The film over every slab of glass, Convx 1.5's: a dark grey at half strength. The page shows
+ * through, bent at the rim, and a white glyph always has something dark behind it.
+ */
+internal const val ClearGlassFilm = 0.5f
+
+/** That film's colour on a dark theme. */
+internal val ClearGlassFilmDark = Color(0xFF1A1A1A)
 
 /**
  * The mini player's glass: the dock's own film, saturation and rim bend — so the pill and the dock
@@ -206,23 +214,10 @@ fun Modifier.foldedGlass(
 }
 
 /**
- * the reference design's glass effects (their LiquidGlass.kt, from the reference's Apple-matched config): half again the
- * saturation, an 8dp blur, and a 24dp lens with depth and colour fringing at the rim.
+ * Every slab of glass bends and softens the page the way the dock does: one material, so a round
+ * button beside the dock is never a different density of glass from it.
  */
-internal fun com.kyant.backdrop.BackdropEffectScope.slabGlassEffects() {
-    // A touch past the reference design's 1.5: they render this at a third of the resolution, which pools the
-    // page's colour in the blur, and at full resolution the same number read greyer beside theirs.
-    colorControls(saturation = 1.7f)
-    blur(8f.dp.toPx())
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        lens(
-            refractionHeight = 24f.dp.toPx(),
-            refractionAmount = 24f.dp.toPx(),
-            depthEffect = true,
-            chromaticAberration = true,
-        )
-    }
-}
+internal fun com.kyant.backdrop.BackdropEffectScope.slabGlassEffects() = dockGlassEffects()
 
 /**
  * The dock's glass, in both of its states: almost no frost, so the page reads straight through,
@@ -235,13 +230,8 @@ fun Modifier.dockGlass(
     backdrop: Backdrop = LocalAppBackdrop.current,
     dark: Boolean = androidx.compose.foundation.isSystemInDarkTheme(),
 ): Modifier {
-    // the reference design's dock glass, number for number (their LiquidGlass.kt, from the reference's Apple-matched
-    // config): half again the saturation, an 8dp blur, a 24dp lens with depth and colour fringing
-    // at the rim, and a near-black film at 40%. Ours was a 2dp blur under a thin grey film — the
-    // page read straight through it, so it looked like a tint rather than a slab of glass.
-    // 32%, not the reference design's 40%: see the saturation note above — the same film over our full-
-    // resolution blur buried the colours their downscaled one lets through.
-    val film = if (dark) Color(0xFF121212).copy(alpha = 0.32f) else Color(0xFFFAFAFA).copy(alpha = 0.32f)
+    // The same glass as the floating dock (see [slabGlassEffects] and [ClearGlassFilm]).
+    val film = if (dark) ClearGlassFilmDark.copy(alpha = ClearGlassFilm) else Color(0xFFFAFAFA).copy(alpha = ClearGlassFilm)
     return this.drawBackdrop(
         backdrop = backdrop,
         shape = { shape },

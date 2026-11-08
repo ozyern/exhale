@@ -25,6 +25,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
@@ -73,6 +74,13 @@ object FoldingDockMotion {
 
     /** Whether the dock is folded with the song inline (state B), for where a closing cover lands. */
     var inline by androidx.compose.runtime.mutableStateOf(false)
+
+    /**
+     * How far the dock's row has dropped below the tab bar's height, for the player sheet's pill
+     * resting above it: the search row is shorter, and the pill has to come down with it or a
+     * hole opens between the two (Convx keeps them ~10dp apart on every page).
+     */
+    var rowDrop by mutableStateOf(0.dp)
 }
 
 /* ------------------------------------------------------------------ */

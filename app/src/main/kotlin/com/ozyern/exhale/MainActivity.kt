@@ -1243,6 +1243,13 @@ class MainActivity : ComponentActivity() {
                         label = "",
                     )
 
+                    // The search row is shorter than the tab bar: the pill rests that much lower over
+                    // it, so the gap between the two is the same on every page.
+                    val dockRowDrop by animateDpAsState(
+                        targetValue = com.ozyern.exhale.ui.component.foldingdock.FoldingDockMotion.rowDrop,
+                        animationSpec = spring(dampingRatio = 0.86f, stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow),
+                        label = "dockRowDrop",
+                    )
                     val playerBottomSheetState =
                         rememberBottomSheetState(
                             dismissedBound = 0.dp,
@@ -1251,7 +1258,8 @@ class MainActivity : ComponentActivity() {
                                         (if (shouldShowNavigationBar) floatingBarsBottomPadding else 0.dp) +
                                         getBottomNavPadding() +
                                         (if (useNewMiniPlayerDesign) MiniPlayerBottomSpacing else 0.dp) +
-                                        MiniPlayerHeight,
+                                        MiniPlayerHeight -
+                                        (if (shouldShowNavigationBar) dockRowDrop else 0.dp),
                             expandedBound = maxHeight,
                             // The player is the only sheet that morphs geometrically, and it is
                             // the outermost one — the queue and lyrics sheets nested inside it
@@ -1426,8 +1434,9 @@ class MainActivity : ComponentActivity() {
                     val searchBarScrollBehavior =
                         appBarScrollBehavior(
                             canScroll = {
-                                navBackStackEntry?.destination?.route?.startsWith("search/") == false &&
-                                        (playerBottomSheetState.isCollapsed || playerBottomSheetState.isDismissed)
+                                // Search results scroll it too: on those pages it drives only the
+                                // dock, which folds the field into a circle beside the song.
+                                playerBottomSheetState.isCollapsed || playerBottomSheetState.isDismissed
                             },
                             followContent = false,
                         )
@@ -2313,10 +2322,10 @@ class MainActivity : ComponentActivity() {
                                                 // when the page is scrolled, the way the reference design's does. Settings keeps
                                                 // it folded: its own search capsule sits at the foot of the page.
                                                 (dockOnPage && onSettingsRoute) ||
+                                                // Search folds too, as Convx's does: scrolled, its field
+                                                // becomes the circle beside the song. Typing never folds.
                                                 shouldShowNavigationBar &&
                                                         !isSettingsScreen &&
-                                                        !isSearchScreen &&
-                                                        !isSearchResultsRoute &&
                                                         !active &&
                                                         // Nothing playing folds too: to the two circles
                                                         // alone.

@@ -27,7 +27,9 @@ val FloatingToolbarBottomPadding = 12.dp
 val NavigationBarHeight = FloatingToolbarHeight
 val SlimNavBarHeight = SlimFloatingToolbarHeight
 val MiniPlayerHeight = 64.dp
-val MiniPlayerBottomSpacing = 0.dp // with the slot's 6dp inset, Convx's ~10dp between the mini player and the bar
+// Below zero on purpose: the pill sits inside a 64dp slot with 6dp of air round it, and Convx keeps
+// only ~10dp between the mini player and the bar under it (measured off its screenshots).
+val MiniPlayerBottomSpacing = (-3).dp
 
 /**
  * Geometry of the collapsed mini-player *pill*. These three values are the morph target for the

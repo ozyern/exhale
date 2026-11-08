@@ -144,6 +144,7 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -202,6 +203,7 @@ import coil3.compose.AsyncImagePainter
 import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
+import coil3.request.transformations
 import coil3.toBitmap
 import com.ozyern.exhale.LocalPlayerConnection
 import com.ozyern.exhale.R
@@ -326,7 +328,7 @@ private val BOTTOM_ACTION_SIZE = 44.dp
 private val PILL_SEGMENT_WIDTH = 64.dp
 private val PILL_SEGMENT_WIDTH_TRIPLE = 52.dp
 
-private fun pillWidth(segments: Int): Dp = PILL_SEGMENT_WIDTH * segments + 1.dp * (segments - 1)
+private fun pillWidth(segments: Int): Dp = PILL_SEGMENT_WIDTH * segments
 
 private val SfPro = FontFamily(Font(R.font.sfprodisplaybold, FontWeight.Bold))
 
@@ -2240,6 +2242,18 @@ private fun TransportGlyph(
             },
         contentAlignment = Alignment.Center,
     ) {
+        // iOS's press: a soft round light behind the glyph while it is held, gone on release.
+        val glow by animateFloatAsState(
+            targetValue = if (pressed) 1f else 0f,
+            animationSpec = tween(if (pressed) 90 else 260),
+            label = "npTransportGlow",
+        )
+        Box(
+            Modifier
+                .matchParentSize()
+                .graphicsLayer { this.alpha = glow }
+                .background(Color.White.copy(alpha = 0.14f), CircleShape),
+        )
         Crossfade(targetState = icon, animationSpec = tween(160), label = "npTransportIcon") { res ->
             Icon(
                 painter = painterResource(res),
@@ -2344,14 +2358,12 @@ private fun ActionRow(
                             width = PILL_SEGMENT_WIDTH_TRIPLE,
                             onClick = onToggleShuffle,
                         )
-                        PillDivider()
                         PillSegment(
                             icon = if (repeatMode == Player.REPEAT_MODE_ONE) R.drawable.repeat_one else R.drawable.repeat,
                             highlighted = repeatMode != Player.REPEAT_MODE_OFF,
                             width = PILL_SEGMENT_WIDTH_TRIPLE,
                             onClick = onCycleRepeat,
                         )
-                        PillDivider()
                         PillSegment(
                             icon = R.drawable.all_inclusive,
                             highlighted = infiniteQueue,
@@ -2373,7 +2385,6 @@ private fun ActionRow(
                             width = PILL_SEGMENT_WIDTH_TRIPLE,
                             onClick = onOutput,
                         )
-                        PillDivider()
                         PillSegment(
                             icon = R.drawable.eight_d,
                             iconSize = 23.dp,
@@ -2381,7 +2392,6 @@ private fun ActionRow(
                             width = PILL_SEGMENT_WIDTH_TRIPLE,
                             onClick = { onEightDChange(!eightD) },
                         )
-                        PillDivider()
                         PillSegment(
                             icon = R.drawable.person,
                             iconSize = 22.dp,
@@ -2415,15 +2425,31 @@ private fun Pill(content: @Composable RowScope.() -> Unit) {
     )
 }
 
+/**
+ * The press every player control shares: it sinks a little under the finger and springs back,
+ * the way iOS buttons answer a touch. Drawn as a layer scale, so it costs no relayout.
+ */
 @Composable
-private fun PillDivider() {
-    Box(
-        Modifier
-            .width(1.dp)
-            .fillMaxHeight()
-            .background(Color.White.copy(alpha = 0.20f)),
+private fun Modifier.pressSink(interaction: MutableInteractionSource, depth: Float = 0.88f): Modifier {
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) depth else 1f,
+        animationSpec = spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMedium),
+        label = "npPressSink",
     )
+    return graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+    }
 }
+
+/**
+ * iOS's "on" for a toggle: a solid white tile with the glyph cut out of it in dark, rather than a
+ * tinted glyph. It reads as on over any cover, which a coloured glyph on a coloured cover does not.
+ */
+private val ToggleOnFill = Color.White.copy(alpha = 0.92f)
+private val ToggleOnGlyph = Color.Black.copy(alpha = 0.82f)
+private val ToggleOffGlyph = Color.White.copy(alpha = 0.78f)
 
 @Composable
 private fun PillSegment(
@@ -2434,32 +2460,43 @@ private fun PillSegment(
     width: Dp = PILL_SEGMENT_WIDTH,
 ) {
     val haptic = LocalHapticFeedback.current
+    val interaction = remember { MutableInteractionSource() }
+    val on by animateFloatAsState(if (highlighted) 1f else 0f, tween(220), label = "npPillOn")
     Box(
         modifier = Modifier
             .width(width)
             .height(BOTTOM_ACTION_SIZE)
-            .background(if (highlighted) Color.White.copy(alpha = 0.14f) else Color.Transparent)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) {
+            .clickable(interactionSource = interaction, indication = null) {
                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
-            },
+            }
+            .pressSink(interaction),
         contentAlignment = Alignment.Center,
     ) {
-        val accent = LocalPlayerAccent.current
+        // The lozenge sits inside the capsule with a margin of glass round it, not edge to edge.
+        Box(
+            Modifier
+                .matchParentSize()
+                .padding(4.dp)
+                .graphicsLayer { alpha = on }
+                .background(ToggleOnFill, CircleShape),
+        )
         Crossfade(targetState = icon, animationSpec = tween(200), label = "npPillIcon") { res ->
             Icon(
                 painter = painterResource(res),
                 contentDescription = null,
-                tint = if (highlighted) accent else Color.White.copy(alpha = 0.75f),
+                tint = lerp(ToggleOffGlyph, ToggleOnGlyph, on),
                 modifier = Modifier.size(iconSize),
             )
         }
     }
 }
 
+/**
+ * Lyrics and queue: bare glyphs, as on iOS, until they are open; then a white rounded square with
+ * the glyph cut out of it. A glass disc round each one, always, made the row a set of buttons
+ * competing with the transport above it.
+ */
 @Composable
 private fun BottomGlyph(
     icon: Int,
@@ -2467,24 +2504,34 @@ private fun BottomGlyph(
     highlighted: Boolean = false,
 ) {
     val haptic = LocalHapticFeedback.current
+    val interaction = remember { MutableInteractionSource() }
+    val on by animateFloatAsState(if (highlighted) 1f else 0f, tween(220), label = "npGlyphOn")
     Box(
         modifier = Modifier
             .size(BOTTOM_ACTION_SIZE)
-            .playerGlass(CircleShape, lit = highlighted)
-            .clip(CircleShape)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) {
+            .clickable(interactionSource = interaction, indication = null) {
                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
-            },
+            }
+            .pressSink(interaction),
         contentAlignment = Alignment.Center,
     ) {
+        Box(
+            Modifier
+                .size(38.dp)
+                .graphicsLayer {
+                    alpha = on
+                    // Grows into place rather than appearing: the tile is the glyph lighting up.
+                    val grow = 0.8f + 0.2f * on
+                    scaleX = grow
+                    scaleY = grow
+                }
+                .background(ToggleOnFill, RoundedCornerShape(10.dp)),
+        )
         Icon(
             painter = painterResource(icon),
             contentDescription = null,
-            tint = Color.White.copy(alpha = if (highlighted) 1f else 0.75f),
+            tint = lerp(ToggleOffGlyph, ToggleOnGlyph, on),
             modifier = Modifier.size(24.dp),
         )
     }
@@ -2499,16 +2546,14 @@ internal fun CircleGlyph(
 ) {
     val accent = LocalPlayerAccent.current
     val tint by animateColorAsState(if (active) accent else Color.White, label = "npGlyphTint")
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
+            .pressSink(interaction)
             .size(34.dp)
             .playerGlass(CircleShape, lit = active)
             .clip(CircleShape)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-            ),
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Crossfade(targetState = icon, animationSpec = tween(180), label = "npCircleGlyph") { res ->
@@ -4016,6 +4061,7 @@ private fun BleedingArtwork(url: String, heroHeight: Dp) {
                 .data(url.highRes())
                 // Small on purpose: it is about to be blurred past any detail a large one has.
                 .size(384, 384)
+                .transformations(com.ozyern.exhale.ui.component.TrimVideoBars)
                 .allowHardware(false)
                 .build()
             runCatching { context.imageLoader.execute(request).image?.toBitmap()?.asImageBitmap() }.getOrNull()

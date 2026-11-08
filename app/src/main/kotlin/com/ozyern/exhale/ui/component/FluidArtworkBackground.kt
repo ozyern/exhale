@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.LocalContext
 import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
+import coil3.request.transformations
 import coil3.toBitmap
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.snapshotFlow
@@ -159,7 +160,8 @@ fun FluidArtworkBackground(
 
     LaunchedEffect(url) {
         if (url == null) return@LaunchedEffect
-        val request = ImageRequest.Builder(context).data(url).size(Side, Side).allowHardware(false).build()
+        val request = ImageRequest.Builder(context).data(url).size(Side, Side).allowHardware(false)
+            .transformations(TrimVideoBars).build()
         val bitmap = runCatching { withContext(Dispatchers.IO) { context.imageLoader.execute(request).image?.toBitmap() } }
             .getOrNull() ?: return@LaunchedEffect
         // Exactly Side × Side, in software memory: the shader indexes it in pixels.

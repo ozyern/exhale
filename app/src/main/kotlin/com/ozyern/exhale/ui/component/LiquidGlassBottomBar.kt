@@ -1295,6 +1295,31 @@ private fun MiniPlayerPill(
         // the glass. Folded into the row there is room for play alone, so forward opens out with
         // the artist line as the pill lifts and closes with it as the pill drops.
         val ink = clearGlassContentColor()
+
+        // The song's waveform, between the title and the controls, in the open pill only: folded,
+        // the ring round play/pause already says where the song is. Opens out with the artist line.
+        if (artistShown > 0.01f) {
+            ScrollingWaveform(
+                progress = { ringProgress },
+                onSeek = { fraction ->
+                    val duration = playerConnection.player.duration
+                    if (duration > 0) playerConnection.player.seekTo((fraction * duration).toLong())
+                },
+                playedColor = ink,
+                trackColor = ink.copy(alpha = 0.3f),
+                seed = remember(mediaMetadata?.id) { mediaMetadata?.id?.hashCode() ?: 0 },
+                modifier = Modifier
+                    .graphicsLayer { alpha = artistShown }
+                    .layout { measurable, constraints ->
+                        // Its width grows with it, so the title gives way rather than jumping.
+                        val full = 64.dp.roundToPx()
+                        val shown = (full * artistShown).roundToInt()
+                        val placeable = measurable.measure(Constraints.fixed(full, 22.dp.roundToPx()))
+                        layout(shown, placeable.height) { placeable.place(shown - full, 0) }
+                    },
+            )
+            Spacer(Modifier.width((6 * artistShown).dp))
+        }
         Box(contentAlignment = Alignment.Center) {
             // Folded into the row (state B), the song's progress is a ring of liquid metal round
             // play/pause, flowing while it plays; it fades as the pill lifts into the open one.

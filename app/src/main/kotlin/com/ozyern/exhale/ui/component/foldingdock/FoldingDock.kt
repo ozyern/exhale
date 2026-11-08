@@ -164,25 +164,21 @@ fun Modifier.foldingDockGlass(
     shape: Shape = DockShape,
     backdrop: Backdrop = LocalAppBackdrop.current,
 ): Modifier {
-    // Convx 2.0.4's liquidGlass at its nav defaults (GlassEffect.kt + GlassTintTokens): nearly
-    // clear. Dark, a 15% white lift and no tint; light, #F5F5F7 at 40% under a 5% grey. The colour
-    // and the bend come from the page beneath, not from a film laid over it.
+    // Convx 1.5's liquidGlass at its defaults (GlassEffect.kt, v1.5.2): clear glass under a dark
+    // film. The page stays visible through it, bent hard at the rim, and the film is what keeps a
+    // title readable over it: 2.0.4's 15% white lift left the mini player's text sitting on
+    // whatever scrolled beneath, and frosting it hid the page the glass is there to show.
     val dark = isSystemInDarkTheme()
-    val base = if (dark) Color.White.copy(alpha = 0.15f) else Color(0xFFF5F5F7).copy(alpha = 0.40f)
-    val tint = if (dark) Color.Transparent else Color(0xFF3C3C43).copy(alpha = 0.05f)
-    // The specular rim ("pluck"): white, 30% dark / 40% light, 0.8dp, lit from 45 degrees.
+    val film = if (dark) Color(0xFF1A1A1A).copy(alpha = 0.5f) else Color(0xFFF5F5F7).copy(alpha = 0.5f)
+    // The specular rim: white, 0.8dp, lit from 45 degrees; Convx dims it to 30% on the nav bar.
     val rim = Color.White.copy(alpha = if (dark) 0.30f else 0.40f)
     return drawBackdrop(
         backdrop = backdrop,
         shape = { shape },
         effects = { dockGlassEffects() },
         highlight = { Highlight(width = 0.8.dp, style = HighlightStyle.Default(color = rim, angle = 45f)) },
-        // The bar draws no outer shadow of its own (Convx passes outerShadow = false).
-        shadow = null,
-        onDrawSurface = {
-            drawRect(base)
-            if (tint.alpha > 0f) drawRect(tint)
-        },
+        shadow = { com.kyant.backdrop.shadow.Shadow.Default },
+        onDrawSurface = { drawRect(film) },
     ).outerDarkRim(shape)
 }
 
@@ -217,12 +213,12 @@ internal fun Modifier.outerDarkRim(shape: Shape, width: Dp = 1.6.dp, alpha: Floa
     }
 
 internal fun BackdropEffectScope.dockGlassEffects() {
-    // Convx 2.0.4's nav glass: vibrancy 2.0 (saturation x2), a 3dp blur, and a lens 0.60 x 48dp
-    // high bending 0.69 x 48dp at the rim.
-    colorControls(saturation = 2f)
-    blur(3f.dp.toPx())
+    // Convx 1.5's glass: vibrancy 1.2 (saturation x1.6), a 2dp blur, and a lens 0.4 x 48dp high
+    // bending 0.6 x 48dp at the rim; no depth, no colour fringing.
+    colorControls(saturation = 1.6f)
+    blur(2f.dp.toPx())
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        lens(refractionHeight = (0.60f * 48f).dp.toPx(), refractionAmount = (0.69f * 48f).dp.toPx())
+        lens(refractionHeight = (0.4f * 48f).dp.toPx(), refractionAmount = (0.6f * 48f).dp.toPx())
     }
 }
 
@@ -334,6 +330,13 @@ fun FoldingDock(
     val search = remember { Animatable(if (visual == DockVisual.Search || visual == DockVisual.Typing) 1f else 0f) }
     val handOver = remember { Animatable(if (visual == DockVisual.Typing) 0f else 1f) }
     val typingGlyph = remember { Animatable(if (visual == DockVisual.Typing) 1f else 0f) }
+    // On the search page, folded or not, as Convx 1.5 lays it out: no page circle. Open, the field
+    // runs the whole row with its back arrow inside it; folded, the player takes the circle's room
+    // and only search's circle stays. [search] alone can't say this: folding sets it back to 0.
+    val searchPage = remember { Animatable(if (inSearch) 1f else 0f) }
+    LaunchedEffect(inSearch) {
+        searchPage.animateTo(if (inSearch) 1f else 0f, spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow))
+    }
 
     val rectsAt: (Float, Float) -> DockRects = { p, sRaw ->
         with(density) {
@@ -360,8 +363,10 @@ fun FoldingDock(
             val searchWidth = mix(circle, (w - circle - spacing).coerceAtLeast(circle), s * (1f - p)).coerceAtLeast(circle)
             val detachedSearchX = mix(searchCenter - circle / 2f, w - circle, p)
             val searchX = mix(detachedSearchX, w - searchWidth, s)
-            // Typing, the field takes the whole row, over the page circle.
-            val t = typingGlyph.value
+            // Typing, or open on the search page, the field takes the whole row where the page
+            // circle would be.
+            val hp = searchPage.value.coerceIn(0f, 1f)
+            val t = maxOf(typingGlyph.value, s * (1f - p.coerceIn(0f, 1f)))
             val searchRect = when {
                 searchTab == null -> Rect(w, -rowH, w, 0f)
                 else -> Rect(mix(searchX, 0f, t), -rowH, searchX + searchWidth, 0f)
@@ -380,9 +385,10 @@ fun FoldingDock(
             val gap = (if (bandPx >= 0) (bandPx - OpenRowHeight.toPx()).coerceAtLeast(0f) else openPlayerGap.toPx()) + openPlayerLift.toPx()
             val openPlayerH = openPlayerHeight.toPx()
             val playerH = mix(openPlayerH, compact, p.coerceIn(0f, 1f))
-            val inlineWidth = if (searchTab != null) w - 2 * (compact + spacing) else w - compact - spacing
+            // On the search page there is no page circle for the folded player to leave room for.
+            val inlineWidth = if (searchTab != null) w - (2f - hp) * (compact + spacing) else w - compact - spacing
             val playerW = mix(w, inlineWidth.coerceAtLeast(0f), p).coerceIn(0f, w)
-            val playerX = mix(0f, circle + spacing, p)
+            val playerX = mix(0f, (circle + spacing) * (1f - hp), p)
             val playerTop = -rowH - mix(openPlayerH + gap, (playerH - rowH) / 2f, p)
             val player = Rect(playerX, playerTop, playerX + playerW, playerTop + playerH)
 
@@ -441,6 +447,7 @@ fun FoldingDock(
     SideEffect {
         FoldingDockMotion.fold = if (ownsPlayer) 1f else 0f
         FoldingDockMotion.inline = visual == DockVisual.Inline
+        FoldingDockMotion.rowDrop = if (visual == DockVisual.Search) OpenRowHeight - SearchRowHeight else 0.dp
     }
     DisposableEffect(Unit) { onDispose { FoldingDockMotion.fold = 0f } }
     val ownsPlayerState = rememberUpdatedState(ownsPlayer)
@@ -531,6 +538,8 @@ fun FoldingDock(
             // 0: the tab bar's glass, which is also the folded page circle.
             Box(
                 Modifier
+                    // Gone on the search page, where the field and the player have its room.
+                    .graphicsLayer { alpha = 1f - searchPage.value.coerceIn(0f, 1f) }
                     .graphicsLayer(elasticStretchLayerBlock(selectedGlow))
                     .layerBackdrop(surfaceBackdrop)
                     .clip(DockShape)
@@ -617,7 +626,9 @@ fun FoldingDock(
                 if (searchTab != null) {
                     // Convx: the detached glyph gives way to the field as the search row opens.
                     Box(Modifier.graphicsLayer { alpha = 1f - searchC() * (1f - foldC()) }) {
-                        icon(searchTab, selectedKey == searchTab.key)
+                        // Never lit on the search page itself, as Convx draws it: there the circle is
+                        // the way back to the field, not a tab saying where you are.
+                        icon(searchTab, selectedKey == searchTab.key && !inSearch)
                     }
                 }
             }
@@ -635,7 +646,9 @@ fun FoldingDock(
             Box(
                 // Typing, the field has grown over the circle and the glyph goes with it.
                 Modifier
-                    .graphicsLayer { alpha = circlesAlpha() * (1f - typingGlyph.value) }
+                    .graphicsLayer {
+                        alpha = circlesAlpha() * (1f - typingGlyph.value) * (1f - searchPage.value.coerceIn(0f, 1f))
+                    }
                     // Pressed, the circle swells and leans; its glyph is a separate node, so it is
                     // stretched by the circle's own measure and goes with it, as search's does.
                     .graphicsLayer(elasticStretchLayerBlock(selectedGlow, frame = { current().pill.size })),
@@ -699,7 +712,9 @@ fun FoldingDock(
             if (visual == DockVisual.Search || visual == DockVisual.Typing || fieldAlpha.value > 0f) field.place(at(search))
             glyphBox.place(at(glyph))
             if (hasPlayer) playerBox.place(at(player))
-            if (!expanded) pillTap.place(at(pill))
+            // Not on the search page: the circle it would answer for is gone, and it would sit over
+            // the field's back arrow.
+            if (!expanded && searchPage.value < 0.5f) pillTap.place(at(pill))
         }
     }
 }
