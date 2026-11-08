@@ -105,4 +105,34 @@ class LyricsJudgeTest {
         assertNull(LyricsWords.timingDriftMs(timed, "first line here\nsecond line here"))
         assertNull(LyricsWords.timingDriftMs(timed, "[00:10.00]something else\n[00:15.00]entirely different"))
     }
+
+    @Test
+    fun aPerformanceIsReadFromItsTitleTag() {
+        assertTrue(LyricsJudge.isOneOff("Espresso/Bed Chem (Live from the BRITs)"))
+        assertTrue(LyricsJudge.isOneOff("Espresso / Bed Chem"))
+        assertTrue(LyricsJudge.isOneOff("Please Please Please - Acoustic"))
+        assertTrue(LyricsJudge.isOneOff("Taste | Live at Wembley"))
+        // A word in the name, not a tag after it.
+        assertFalse(LyricsJudge.isOneOff("Live Forever"))
+        assertFalse(LyricsJudge.isOneOff("AC/DC"))
+        assertFalse(LyricsJudge.isOneOff("Espresso"))
+    }
+
+    @Test
+    fun studioTimingsMustCoverMostOfAPerformance() {
+        // Timed lines running to 2:30, against a 5:13 recording.
+        val studio = (0 until 30).joinToString("\n") { "[%02d:%02d.00]line number $it".format(it * 5 / 60, it * 5 % 60) }
+        assertTrue(LyricsFit.fits(studio, 313, "Espresso"))
+        assertFalse(LyricsFit.fits(studio, 313, "Espresso/Bed Chem (Live)"))
+    }
+
+    @Test
+    fun aHeadingNamingTheArtistIsNotSung() {
+        val lrc = "[00:00.50]Espresso+Bed Chem (2025 BRIT Awards Live) - Sabrina Carpenter\n[00:12.00]Now he's thinkin' 'bout me every night oh"
+        val tidy = LyricsJudge.withoutPaperwork(lrc, "Espresso/Bed Chem (Live)", "Sabrina Carpenter")
+        assertFalse("BRIT Awards" in tidy)
+        assertTrue("every night" in tidy)
+        // Without the artist, a heading that doesn't match the title stays: never a guess.
+        assertTrue("BRIT Awards" in LyricsJudge.withoutPaperwork(lrc, "Espresso/Bed Chem (Live)"))
+    }
 }

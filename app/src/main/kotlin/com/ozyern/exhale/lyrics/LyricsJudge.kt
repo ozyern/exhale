@@ -56,6 +56,22 @@ internal object LyricsJudge {
             (text.length < 48 && (text.endsWith('：') || text.endsWith(':')))
     }
 
+    /**
+     * A recording that isn't the studio single, as its title says: the tag after the name, like
+     * "(Live)", "- Acoustic" or "| Live at Wembley", or two songs run together with a slash, like
+     * "Espresso / Bed Chem". Read as a tag rather than a word anywhere, so "Live Forever" is an
+     * ordinary song. A performance stretches and rearranges the song, so studio timings laid over it
+     * drift apart within a verse. The same test the Windows app uses.
+     */
+    fun isOneOff(title: String): Boolean =
+        recordingTag.containsMatchIn(title) || medleyJoin.containsMatchIn(title)
+
+    private val recordingTag =
+        Regex("""(?i)[(\[|\-–—]\s*[^)\]|]*\b(live|medley|acoustic|unplugged|remix|mashup|session|tour|concert|sped\s*up|slowed)\b""")
+
+    /** A slash with a space beside it, so "AC/DC" and "w/" are left alone. */
+    private val medleyJoin = Regex("""\s/|/\s""")
+
     /** False when what came back is too short to be a song, or nothing but its credits. */
     fun isSong(lines: List<String>): Boolean = lines.count { it.isNotBlank() && !isPaperwork(it) } >= MINIMUM_LINES
 
@@ -71,17 +87,23 @@ internal object LyricsJudge {
      * Takes out what a line-timed file carries that nobody sings: credit lines, a singer's name as a
      * heading ("Rihanna："), and a first line naming the song ("Shakira - Waka Waka"). Windows has always
      * done this; here those lines were being scrolled past as lyrics.
+     *
+     * The heading is spotted by either half: the song's title, or its [artist]. A live take is often
+     * headed with its own name ("Espresso+Bed Chem (2025 BRIT Awards Live) - Sabrina Carpenter"),
+     * which matches no title, but nobody sings "- Sabrina Carpenter" either.
      */
-    fun withoutPaperwork(lrc: String, title: String): String {
+    fun withoutPaperwork(lrc: String, title: String, artist: String? = null): String {
         var headingChecked = false
-        val wanted = folded(title).replace(phraseNoise, "").replace(" ", "")
+        fun squashed(text: String) = folded(text).replace(phraseNoise, "").replace(" ", "")
+        val wanted = squashed(title)
+        val singer = artist?.let(::squashed)?.takeIf { it.isNotEmpty() }
         return lrc.lineSequence().filterNot { raw ->
             val sung = stamps.replace(raw, "").trim()
             if (sung.isEmpty()) return@filterNot false
             if (isPaperwork(sung)) return@filterNot true
             if (headingChecked) return@filterNot false
             headingChecked = true
-            sung.split(" - ").any { folded(it).replace(phraseNoise, "").replace(" ", "") == wanted } && " - " in sung
+            " - " in sung && sung.split(" - ").map(::squashed).any { it == wanted || it == singer }
         }.joinToString("\n")
     }
 

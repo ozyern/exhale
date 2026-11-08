@@ -128,14 +128,17 @@ private fun toFlowLines(lyrics: String): List<LyricLine> {
         // Unsynced: every line at 0, which the reference design shows as a plain, still page.
         else -> return lyrics.lines().filter { it.isNotBlank() }.map { LyricLine(0L, it.trim()) }
     }
-    return entries.filter { it.time >= 0 }.map { entry ->
+    val timed = entries.filter { it.time >= 0 }
+    return timed.mapIndexed { index, entry ->
+        val nextMs = timed.getOrNull(index + 1)?.time
         val all = entry.words.orEmpty()
         val lead = voice(all.filter { !it.isBackground })
         val backing = voice(all.filter { it.isBackground })
+        val text = lead?.first ?: entry.text.trim()
         LyricLine(
             timeMs = entry.time,
-            text = lead?.first ?: entry.text.trim(),
-            words = lead?.second.orEmpty(),
+            text = text,
+            words = lead?.second ?: estimatedWords(text, entry.time, nextMs),
             background = backing?.let { (text, words) ->
                 LyricLine(timeMs = words.firstOrNull()?.startMs ?: entry.time, text = text, words = words)
             },
@@ -143,6 +146,43 @@ private fun toFlowLines(lyrics: String): List<LyricLine> {
         )
     }
 }
+
+/**
+ * Word timings for a line that only has a start time, so it sweeps word by word like a word-timed
+ * one instead of lighting all at once. A sung word takes roughly as long as it has letters, so the
+ * line's time is shared out by length (plus a beat per word for the consonants at its edges), and
+ * the sweep ends a little before the next line, where singers breathe.
+ *
+ * An estimate: a held note finishes its sweep early. Lyrics with real word timing never come here.
+ */
+private fun estimatedWords(text: String, startMs: Long, nextMs: Long?): List<LyricWord> {
+    val tokens = text.split(' ').filter { it.isNotBlank() }
+    if (tokens.isEmpty()) return emptyList()
+    val letters = tokens.sumOf { it.length }
+    val gap = (nextMs ?: (startMs + LONE_LINE_MS)) - startMs
+    val span = minOf(gap * BREATH, letters * MS_PER_LETTER + tokens.size * MS_PER_WORD)
+        .coerceAtLeast(MIN_LINE_SWEEP_MS)
+        .coerceAtMost(gap.toDouble().coerceAtLeast(1.0))
+    val perUnit = span / (letters + tokens.size)
+    var at = startMs.toDouble()
+    return tokens.map { token ->
+        val length = (token.length + 1) * perUnit
+        LyricWord(startMs = at.toLong(), endMs = (at + length).toLong(), text = token).also { at += length }
+    }
+}
+
+/** How much of the gap to the next line a sweep may take: the rest is the breath before it. */
+private const val BREATH = 0.9
+
+/** About how long a letter takes to sing, and the extra beat each word adds. */
+private const val MS_PER_LETTER = 75.0
+private const val MS_PER_WORD = 60.0
+
+/** No sweep faster than this, however short the line. */
+private const val MIN_LINE_SWEEP_MS = 450.0
+
+/** The last line has no next one to end at: given this long. */
+private const val LONE_LINE_MS = 4_000L
 
 /**
  * One voice's words, as its line of text and its timed words. Exhale keeps the spaces between

@@ -19,7 +19,11 @@ object LyricsFit {
     /** Below this a length is a preview or unknown, and says nothing. */
     private const val MIN_DURATION_S = 30
 
-    fun fits(lyrics: String, durationSeconds: Int): Boolean {
+    /**
+     * @param title the recording's title as uploaded. A performance ([LyricsJudge.isOneOff]) has to
+     *   be accounted for by most of the timings, not just under half, before they are trusted.
+     */
+    fun fits(lyrics: String, durationSeconds: Int, title: String? = null): Boolean {
         if (durationSeconds < MIN_DURATION_S) return true
         val trimmed = lyrics.trim()
         val times = when {
@@ -34,8 +38,10 @@ object LyricsFit {
         if (last > durationSeconds + 10) return false
         // Starting most of the way through: timed for something else entirely.
         if (first > durationSeconds * 0.6) return false
-        // Finished well before half-way through a full-length song: a shorter edit's timing.
-        if (durationSeconds > 90 && last < durationSeconds * 0.4) return false
+        // Finished well before the end: a shorter edit's timing. A live take or a medley runs its
+        // songs longer and in another order, so one song's studio timings must cover most of it.
+        val floor = if (title != null && LyricsJudge.isOneOff(title)) 0.75 else 0.4
+        if (durationSeconds > 90 && last < durationSeconds * floor) return false
         return true
     }
 }

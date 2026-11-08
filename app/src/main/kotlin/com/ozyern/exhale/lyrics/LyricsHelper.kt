@@ -156,7 +156,11 @@ constructor(
         // is timed for the record, not the video's intro. So the lyrics come from the song the
         // video is of, moved later by however long the video plays before the song does.
         var result = lyrics
-        if (!forVideo && !preferredProviderOnly && (result == LYRICS_NOT_FOUND || looksLikeVideo(mediaMetadata))) {
+        // Not for a performance: a live take or a medley is not the studio song it is of, and that
+        // song's timings, however well moved, drift off it within a verse.
+        if (!forVideo && !preferredProviderOnly && !LyricsJudge.isOneOff(mediaMetadata.title) &&
+            (result == LYRICS_NOT_FOUND || looksLikeVideo(mediaMetadata))
+        ) {
             runCatching { videoLyrics(mediaMetadata) }.getOrNull()?.let { result = it }
         }
         if (result != LYRICS_NOT_FOUND) {
@@ -431,7 +435,7 @@ constructor(
                 // LRC, it won the race as word-timed and then showed whole lines, with the
                 // stamps printed in the text.
                 val lyrics = result.getOrNull()?.let { text ->
-                    val tidy = if (text.trimStart().startsWith("[")) LyricsJudge.withoutPaperwork(text, phrasings.first().first) else text
+                    val tidy = if (text.trimStart().startsWith("[")) LyricsJudge.withoutPaperwork(text, phrasings.first().first, phrasings.first().second) else text
                     if (tidy.trimStart().startsWith("[") && ENHANCED_LRC_REGEX.containsMatchIn(tidy)) {
                         enhancedLrcToTtml(tidy) ?: tidy
                     } else {
@@ -444,9 +448,12 @@ constructor(
                         continue
                     }
                     // Timed for another cut of the song: not shown, so a source that has this one wins.
-                    if (!LyricsFit.fits(lyrics, mediaMetadata.duration)) {
-                        GlobalLog.append(Log.DEBUG, "LyricsHelper", "${provider.name}: timing does not fit ${mediaMetadata.title} (${mediaMetadata.duration}s); saving as video fallback")
-                        if (fallbackLyrics == null) fallbackLyrics = lyrics
+                    if (!LyricsFit.fits(lyrics, mediaMetadata.duration, mediaMetadata.title)) {
+                        GlobalLog.append(Log.DEBUG, "LyricsHelper", "${provider.name}: timing does not fit ${mediaMetadata.title} (${mediaMetadata.duration}s); kept as plain words")
+                        // Right words, wrong timing: kept as plain text, as the Windows app keeps
+                        // them. Handed on still timed, they raced as synced lyrics and won, then
+                        // scrolled out of step with the recording from the first verse.
+                        if (fallbackLyrics == null) fallbackLyrics = LyricsWords.linesOf(lyrics).joinToString("\n")
                         continue
                     }
                     return lyrics

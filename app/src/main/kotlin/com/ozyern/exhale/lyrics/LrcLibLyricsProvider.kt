@@ -40,6 +40,11 @@ object LrcLibLyricsProvider : LyricsProvider {
                 if (relaxedNoAlbum.isSuccess) return relaxedNoAlbum
             }
         }
+        // Last: the title alone, for uploads that don't carry the real artist's name.
+        if (duration > 0) {
+            val byTitle = LrcLib.getLyricsByTitle(title, duration)
+            if (byTitle.isSuccess) return byTitle
+        }
         return exact
     }
 

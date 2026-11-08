@@ -85,6 +85,33 @@ object LrcLib {
         }
     }
 
+    /**
+     * For uploads whose channel isn't the artist (a re-upload, a fan channel, a "sped up" page):
+     * searching by title and that channel finds nothing, while the song sits on LRCLIB under its
+     * real artist. Without an artist to check, the bar is the title matching exactly and the
+     * length within 2s, and the copy most entries agree on wins.
+     */
+    suspend fun getLyricsByTitle(
+        title: String,
+        duration: Int,
+    ) = runCatching {
+        require(duration > 0) { "Needs the song's length" }
+        val wanted = normalizeForMatch(title)
+        val candidates = client
+            .get("/api/search") { parameter("track_name", title) }
+            .body<List<Track>>()
+            .filter {
+                it.syncedLyrics != null &&
+                    normalizeForMatch(it.trackName) == wanted &&
+                    abs(it.duration.toInt() - duration) <= 2
+            }
+        val byArtist = candidates.groupBy { normalizeForMatch(it.artistName) }
+        val track = byArtist.maxByOrNull { it.value.size }?.value
+            ?.minByOrNull { abs(it.duration.toInt() - duration) }
+            ?: throw IllegalStateException("Lyrics unavailable")
+        track.syncedLyrics!!
+    }
+
     suspend fun getAllLyrics(
         title: String,
         artist: String,
