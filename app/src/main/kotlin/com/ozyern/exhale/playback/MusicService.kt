@@ -825,6 +825,7 @@ class MusicService :
     override fun onCreate() {
         super.onCreate()
         ensureScopesActive()
+        com.ozyern.exhale.playback.queues.ListeningSignals.init(this)
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -1051,7 +1052,7 @@ class MusicService :
                             // Saved timing that cannot belong to this recording — another cut's, or
                             // a preload that asked a single source — is looked up again.
                             it.lyrics != com.ozyern.exhale.db.entities.LyricsEntity.LYRICS_NOT_FOUND &&
-                                !com.ozyern.exhale.lyrics.LyricsFit.fits(it.lyrics, mediaMetadata.duration)
+                                !com.ozyern.exhale.lyrics.LyricsFit.fits(it.lyrics, mediaMetadata.duration, mediaMetadata.title)
                         }
                         val lyrics = if (cached == null) {
                             lyricsHelper.getLyrics(mediaMetadata).also { fetched ->
@@ -1095,6 +1096,8 @@ class MusicService :
                             if (better != com.ozyern.exhale.db.entities.LyricsEntity.LYRICS_NOT_FOUND && (
                                     !com.ozyern.exhale.lyrics.LyricsWords.sameWords(cached.lyrics, better) ||
                                         (preferWord && !lyricsHelper.isWordSynced(cached.lyrics) && lyricsHelper.isWordSynced(better)) ||
+                                        // Plain text saved once, before any source had it timed.
+                                        (!isTimedLyrics(cached.lyrics) && isTimedLyrics(better)) ||
                                         // The right words on the wrong clock: saved once, it stayed off for good.
                                         (com.ozyern.exhale.lyrics.LyricsWords.timingDriftMs(cached.lyrics, better)
                                             ?.let { kotlin.math.abs(it) >= SAVED_LYRICS_DRIFT_MS } == true)
@@ -5238,6 +5241,15 @@ class MusicService :
         updatePlayerWidgets()
 }
 
+    override fun onPositionDiscontinuity(
+        oldPosition: Player.PositionInfo,
+        newPosition: Player.PositionInfo,
+        @Player.DiscontinuityReason reason: Int,
+    ) {
+        // Buffering after a seek is the seek landing somewhere not yet fetched, not a slow source.
+        if (reason == Player.DISCONTINUITY_REASON_SEEK) lastSeekAt = android.os.SystemClock.elapsedRealtime()
+    }
+
     override fun onPlaybackStateChanged(@Player.State playbackState: Int) {
     super.onPlaybackStateChanged(playbackState)
         updatePlayerWidgets()
@@ -5895,29 +5907,55 @@ class MusicService :
         if (playbackState != Player.STATE_BUFFERING || !player.playWhenReady) return
         val mediaId = player.currentMediaItem?.mediaId ?: return
         if (streamSource[mediaId].let { it == null || it == YOUTUBE_SOURCE }) return
+
+        // A source that can't keep up rarely stops outright: it plays a few seconds, runs dry,
+        // plays again. Each stall was short of the long wait below, so the song stuttered to the
+        // end. A second stall mid-song is the source telling us it is too slow.
+        val sinceSeek = android.os.SystemClock.elapsedRealtime() - lastSeekAt
+        if (player.currentPosition > MID_SONG_MS && sinceSeek > MID_SONG_MS) {
+            if (stutteringSong != mediaId) {
+                stutteringSong = mediaId
+                stallsThisSong = 0
+            }
+            stallsThisSong++
+            if (stallsThisSong >= STALLS_BEFORE_FALLBACK) {
+                fallBackToYouTube(mediaId, "stuttered $stallsThisSong times")
+                return
+            }
+        }
+
         upgradeStallJob = scope.launch {
             delay(UPGRADE_STALL_MS)
             if (player.currentMediaItem?.mediaId != mediaId || player.playbackState != Player.STATE_BUFFERING) return@launch
-            Timber.tag("MusicService").w("%s stalled on its upgraded stream; moving to YouTube", mediaId)
-            if (mediaId in flacCopies) rejectFlac(mediaId)
-            streamSource[mediaId] = YOUTUBE_SOURCE
-            val currentIndex = player.currentMediaItemIndex
-            val currentItem = runCatching { player.getMediaItemAt(currentIndex) }.getOrNull()
-            if (currentItem != null && currentItem.mediaId == mediaId) {
-                val fallbackItem = currentItem.buildUpon()
-                    .setMediaId(mediaId)
-                    .setCustomCacheKey(mediaId)
-                    .setUri(mediaId.toUri())
-                    .build()
-                player.replaceMediaItem(currentIndex, fallbackItem)
-            }
-            player.stop()
-            player.prepare()
-            player.playWhenReady = true
+            fallBackToYouTube(mediaId, "stalled")
         }
     }
 
+    /** Moves [mediaId] off its upgraded stream and onto YouTube's, at the same place. */
+    private fun fallBackToYouTube(mediaId: String, why: String) {
+        Timber.tag("MusicService").w("%s %s on its upgraded stream; moving to YouTube", mediaId, why)
+        if (mediaId in flacCopies) rejectFlac(mediaId)
+        streamSource[mediaId] = YOUTUBE_SOURCE
+        stutteringSong = null
+        val currentIndex = player.currentMediaItemIndex
+        val currentItem = runCatching { player.getMediaItemAt(currentIndex) }.getOrNull()
+        if (currentItem != null && currentItem.mediaId == mediaId) {
+            val fallbackItem = currentItem.buildUpon()
+                .setMediaId(mediaId)
+                .setCustomCacheKey(mediaId)
+                .setUri(mediaId.toUri())
+                .build()
+            player.replaceMediaItem(currentIndex, fallbackItem)
+        }
+        player.stop()
+        player.prepare()
+        player.playWhenReady = true
+    }
+
     private var upgradeStallJob: kotlinx.coroutines.Job? = null
+    private var stutteringSong: String? = null
+    private var stallsThisSong = 0
+    private var lastSeekAt = 0L
 
     /** Started once per song; the answer waits for the song and for its replays. */
     private val flacLookups = ConcurrentHashMap<String, kotlinx.coroutines.Deferred<String?>>()
@@ -6004,6 +6042,12 @@ class MusicService :
     /** YouTube's own answer for these songs is FLAC, which JioSaavn's AAC is no upgrade on. */
     private val losslessFromYouTube = ConcurrentHashMap.newKeySet<String>()
 
+    /** Line- or word-timed lyrics (LRC or TTML), as opposed to plain text. */
+    private fun isTimedLyrics(lyrics: String): Boolean {
+        val start = lyrics.trimStart()
+        return start.startsWith("[") || com.ozyern.exhale.lyrics.LyricsUtils.isTtml(start)
+    }
+
     private fun upgradeKey(mediaId: String) = (if (mediaId in flacCopies) "flac-copy:" else "saavn:") + mediaId
 
     /** Where each FLAC copy found came from, for the song's details. */
@@ -6080,7 +6124,9 @@ class MusicService :
 
             val duration = player.duration
             val currentPos = player.currentPosition
-            if (duration > 0L && currentPos > duration - 10_000L) {
+            // Past the first moments a swap is a stall in the middle of the song, for audio few
+            // can tell apart; the copy is kept and the next play starts on it instead.
+            if (currentPos > LATE_UPGRADE_MS || (duration > 0L && currentPos > duration - 10_000L)) {
                 // The last seconds: not worth a reload. The copy is kept by the lookup and the next
                 // play starts on it. Nothing is marked here: the lossy stream still has chunks to
                 // fetch, and marking the song as FLAC sent those chunk requests to the FLAC file at
@@ -6622,7 +6668,8 @@ class MusicService :
                         playerCache.isCached(mediaId, dataSpec.position, requiredCachedLength)
                 if (isFullyCached) {
                     streamSource.putIfAbsent(mediaId, YOUTUBE_SOURCE)
-                    scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
+                    // Once per song, not on every range: a cached song re-enters here per range.
+                    if (dataSpec.position == 0L) scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
                     return@Factory dataSpec
                 }
             }
@@ -6699,7 +6746,8 @@ class MusicService :
             }
 
             playbackUrlCache[mediaId]?.takeIf { it.second > System.currentTimeMillis() }?.let {
-                scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
+                // Once per song, not on every range: each 10MB of a FLAC stream re-enters here.
+                if (dataSpec.position == 0L) scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
                 val chunk = if (dataSpec.position > 0L) LATER_CHUNK_LENGTH else CHUNK_LENGTH
                 val length = if (dataSpec.length >= 0) minOf(dataSpec.length, chunk) else chunk
                 return@Factory dataSpec.withUri(it.first.toUri()).subrange(dataSpec.uriPositionOffset, length)
@@ -7355,6 +7403,15 @@ class MusicService :
     ) {
         val mediaItem = eventTime.timeline.getWindow(eventTime.windowIndex, Timeline.Window()).mediaItem
 
+        // Every play, however short: a skip is exactly the play the history below never sees.
+        val metadata = mediaItem.metadata
+        com.ozyern.exhale.playback.queues.ListeningSignals.onPlayEnded(
+            mediaId = mediaItem.mediaId,
+            artist = metadata?.artists?.firstOrNull()?.name,
+            playedMs = playbackStats.totalPlayTimeMs,
+            durationMs = (metadata?.duration ?: -1).let { if (it > 0) it * 1000L else -1L },
+        )
+
         if (playbackStats.totalPlayTimeMs >= (
                 dataStore[HistoryDuration]?.times(1000f)
                     ?: 30000f
@@ -7989,8 +8046,20 @@ class MusicService :
         private const val FLAC_MISS_RETRY_MS = 3 * 60 * 1000L
         /** How long the stream's thread waits for the main thread to read a song's details. */
         private const val SONG_DETAILS_WAIT_MS = 1_000L
-        /** A FLAC copy or JioSaavn file that stops arriving for this long gives way to YouTube's stream. */
-        private const val UPGRADE_STALL_MS = 12_000L
+        /**
+         * A FLAC copy or JioSaavn file that stops arriving for this long gives way to YouTube's
+         * stream. It was 12s: twelve seconds of silence is longer than anyone waits before skipping.
+         */
+        private const val UPGRADE_STALL_MS = 6_000L
+
+        /** Stalls on an upgraded stream past [MID_SONG_MS] before it gives way to YouTube's. */
+        private const val STALLS_BEFORE_FALLBACK = 2
+
+        /** Before this a stall is the stream starting, or a seek landing, not the source falling behind. */
+        private const val MID_SONG_MS = 5_000L
+
+        /** Past this, swapping a playing song to its FLAC copy costs a stall the copy isn't worth. */
+        private const val LATE_UPGRADE_MS = 20_000L
         private const val MAX_NETWORK_RETRIES = 3
         private const val NETWORK_RETRY_STEP_MS = 1_000L
         private const val CONNECTIVITY_CHECKS = 3
@@ -8058,10 +8127,13 @@ class MusicService :
      * early in the song. 512KB is about thirty seconds of a 128kbps stream, so the first boundary
      * landed exactly where the audio ran out; 1.5MB moved it to roughly a minute and a half, which
      * is still inside the song at higher bitrates, which is why some tracks went on stalling. At
-     * 4MB the first boundary is past the end of most songs entirely.
+     * 4MB the first boundary is past the end of most AAC songs - but YouTube's FLAC runs near
+     * 1000kbps, so 4MB was only half a minute of it and a lossless song crossed six or seven
+     * boundaries, each a fresh handshake: the lossless-only buffering. 10MB is the most googlevideo
+     * serves in one range at full speed, and covers about 80s of FLAC or a whole AAC song.
      */
-        const val CHUNK_LENGTH = 4 * 1024 * 1024L
-        const val LATER_CHUNK_LENGTH = 4 * 1024 * 1024L
+        const val CHUNK_LENGTH = 10 * 1024 * 1024L
+        const val LATER_CHUNK_LENGTH = 10 * 1024 * 1024L
         const val PERSISTENT_QUEUE_FILE = "persistent_queue.data"
 
         /**

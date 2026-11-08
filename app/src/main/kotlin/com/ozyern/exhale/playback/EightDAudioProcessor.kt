@@ -106,6 +106,19 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         /** Their level: about -18 dB, heard as space rather than as an echo. */
         private const val ROOM_LEVEL = 0.12f
 
+        /** The second, farther pair of reflections: later and fainter, about -23 dB. */
+        private const val ROOM_LEFT_LATE_MS = 23.7f
+        private const val ROOM_RIGHT_LATE_MS = 29.3f
+        private const val ROOM_LATE_LEVEL = 0.07f
+
+        /** Reflections lose their top end to the walls and the air: rolled off from here. */
+        private const val ROOM_DAMP_HZ = 5_000f
+
+        /** The presence lift, fully in front: about +1.5 dB above [REAR_CUTOFF_HZ]. */
+        private const val FRONT_PRESENCE = 0.18f
+
+        private const val QUARTER_PI = (PI / 4.0).toFloat()
+
         private const val TWO_PI = 2.0 * PI
 
         /** Where the orbit is, shared so a new sink (a new song, a seek) picks up where it was. */
@@ -131,6 +144,10 @@ class EightDAudioProcessor : BaseAudioProcessor() {
     private var roomWrite = 0
     private var roomTapL = 1
     private var roomTapR = 1
+    private var roomTapL2 = 1
+    private var roomTapR2 = 1
+    private var roomDamp = 0f
+    private var roomDampAlpha = 0f
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         isFloat = when (inputAudioFormat.encoding) {
@@ -162,7 +179,11 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         farShade = 0f
         roomTapL = (sampleRate * ROOM_LEFT_MS / 1000f).roundToInt().coerceAtLeast(1)
         roomTapR = (sampleRate * ROOM_RIGHT_MS / 1000f).roundToInt().coerceAtLeast(1)
-        room = FloatArray(maxOf(roomTapL, roomTapR) + 1)
+        roomTapL2 = (sampleRate * ROOM_LEFT_LATE_MS / 1000f).roundToInt().coerceAtLeast(1)
+        roomTapR2 = (sampleRate * ROOM_RIGHT_LATE_MS / 1000f).roundToInt().coerceAtLeast(1)
+        room = FloatArray(maxOf(roomTapL, roomTapR, roomTapL2, roomTapR2) + 1)
+        roomDampAlpha = 1f - exp(-twoPi * ROOM_DAMP_HZ / sampleRate)
+        roomDamp = 0f
         roomWrite = 0
         return inputAudioFormat
     }
@@ -186,6 +207,13 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         val phaseStep = TWO_PI * rotationHz.coerceIn(MIN_ROTATION_HZ, MAX_ROTATION_HZ) / sampleRate
         val rampStep = 1f / (sampleRate * RAMP_MS / 1000f).coerceAtLeast(1f)
         var orbit = phase
+        // The orbit as a unit phasor, turned by a fixed rotation each frame: the same sine and
+        // cosine as calling sin() and cos() per sample, for four multiplies. At 192 kHz the trig
+        // alone was most of this processor's cost.
+        var orbitSin = sin(orbit).toFloat()
+        var orbitCos = cos(orbit).toFloat()
+        val stepSin = sin(phaseStep).toFloat()
+        val stepCos = cos(phaseStep).toFloat()
 
         repeat(frames) {
             applied = when {
@@ -219,8 +247,9 @@ class EightDAudioProcessor : BaseAudioProcessor() {
             ringR[write] = side
 
             // Round the head: sine is left/right, cosine is front/back.
-            val pan = (sin(orbit) * applied).toFloat().coerceIn(-1f, 1f)
-            val behind = (-cos(orbit)).toFloat().coerceAtLeast(0f) * applied
+            val pan = (orbitSin * applied).coerceIn(-1f, 1f)
+            val behind = (-orbitCos).coerceAtLeast(0f) * applied
+            val ahead = orbitCos.coerceAtLeast(0f) * applied
 
             // The far ear hears it later, by a *fractional* delay: whole-sample steps clicked as
             // the delay grew and shrank through the orbit.
@@ -238,26 +267,38 @@ class EightDAudioProcessor : BaseAudioProcessor() {
             // The rear shadow: a gentle low-pass, blended in as the image goes behind.
             shadowL += shadowAlpha * (l - shadowL)
             shadowR += shadowAlpha * (r - shadowR)
-            val shade = behind * REAR_SHADOW
+            // In front, the outer ear does the opposite and lifts the presence band a little. With
+            // only the rear cue, the front half of the orbit sounded like the sides; with both, the
+            // ear can tell the sound passing in front from the sound passing behind.
+            val shade = behind * REAR_SHADOW - ahead * FRONT_PRESENCE
             l += (shadowL - l) * shade
             r += (shadowR - r) * shade
             val level = 1f - behind * REAR_DIP
 
-            // Equal power, centred at unity (the √2), on the middle only; the sides keep most of
-            // their width, a little narrowed so the moving image stands out from the room.
-            val angle = (pan + 1f) * (PI / 4.0)
+            // Equal power, centred at unity, on the middle only; the sides keep most of their
+            // width, a little narrowed so the moving image stands out from the room.
+            // √2·cos(π/4 + x) = cos x − sin x and √2·sin(π/4 + x) = cos x + sin x, with x = pan·π/4.
+            // |x| ≤ π/4, where these short series are within 0.003 dB of the real functions.
+            val x = pan * QUARTER_PI
+            val x2 = x * x
+            val sinX = x * (1f - x2 / 6f * (1f - x2 / 20f))
+            val cosX = 1f - x2 / 2f * (1f - x2 / 12f)
             val keepSide = 1f - 0.35f * applied
-            l = l * cos(angle).toFloat() * 1.4142135f * level + side * keepSide
-            r = r * sin(angle).toFloat() * 1.4142135f * level - side * keepSide
+            l = l * (cosX - sinX) * level + side * keepSide
+            r = r * (cosX + sinX) * level - side * keepSide
 
-            // Two early reflections, one each side at a different distance, from a room around you.
-            // They are what puts the sound outside the head: dry, the orbit circled between the
-            // ears. Fed from the moving part only, faint, and faded with the effect.
-            room[roomWrite] = moving
+            // Early reflections from a room around you, two each side at different distances, so
+            // the ears never hear the same echo. They are what puts the sound outside the head:
+            // dry, the orbit circled between the ears. Fed from the moving part only, dulled the
+            // way air and walls dull a reflection, faint, and faded with the effect.
+            roomDamp += roomDampAlpha * (moving - roomDamp)
+            room[roomWrite] = roomDamp
             val echo = ROOM_LEVEL * applied
-            l += echo * room[(roomWrite - roomTapL + room.size) % room.size]
-            r += echo * room[(roomWrite - roomTapR + room.size) % room.size]
-            roomWrite = (roomWrite + 1) % room.size
+            val late = ROOM_LATE_LEVEL * applied
+            val n = room.size
+            l += echo * room[(roomWrite - roomTapL + n) % n] + late * room[(roomWrite - roomTapL2 + n) % n]
+            r += echo * room[(roomWrite - roomTapR + n) % n] + late * room[(roomWrite - roomTapR2 + n) % n]
+            roomWrite = (roomWrite + 1) % n
 
             // And the bass, the same in both ears.
             l += bass
@@ -283,6 +324,9 @@ class EightDAudioProcessor : BaseAudioProcessor() {
             write = (write + 1) % capacity
             orbit += phaseStep
             if (orbit >= TWO_PI) orbit -= TWO_PI
+            val turnedSin = orbitSin * stepCos + orbitCos * stepSin
+            orbitCos = orbitCos * stepCos - orbitSin * stepSin
+            orbitSin = turnedSin
         }
         phase = orbit
         // Consumed: the reads above are absolute, and the pipeline judges acceptance by what is left.
@@ -311,6 +355,7 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         bass = 0f
         farShade = 0f
         room.fill(0f)
+        roomDamp = 0f
         roomWrite = 0
         limiterGain = 1f
         // The ramp restarts from the middle so a seek never jumps the image; the orbit itself
