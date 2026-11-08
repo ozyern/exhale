@@ -281,6 +281,17 @@ fun ArtistScreen(
     }
     val heroImage = appleArt?.heroUrl ?: thumbnail?.resize(1200, 1200)
 
+    // The About page is the iOS music app's, written by Apple: biography, origin, birth and genres.
+    // YouTube's channel description stands in for the biography until — and unless — it arrives.
+    var appleAbout by remember(artistName) {
+        mutableStateOf(artistName?.let { com.ozyern.exhale.utils.AppleArtistAboutRepository.cached(it) })
+    }
+    LaunchedEffect(artistName) {
+        val name = artistName?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        appleAbout = com.ozyern.exhale.utils.AppleArtistAboutRepository.aboutFor(name) ?: appleAbout
+    }
+    var showAbout by rememberSaveable(artistName) { mutableStateOf(false) }
+
     val palette = com.ozyern.exhale.ui.component.rememberReleasePalette(heroImage)
     val artistBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
     val artistConfiguration = LocalConfiguration.current
@@ -948,15 +959,14 @@ fun ArtistScreen(
                 // The artist's story closes the page, after the music, rather than sitting
                 // between the Play button and the songs. Left-aligned and cut by line count.
                 val description = artistPage?.description
-                if (!showLocal && !description.isNullOrBlank()) {
+                if (!showLocal && (!description.isNullOrBlank() || appleAbout != null)) {
                     item(key = "about") {
-                        Column(Modifier.padding(top = 28.dp)) {
-                            com.ozyern.exhale.ui.component.ReleaseAbout(
-                                title = "About ${artistName.orEmpty()}".trim(),
-                                text = description,
-                                palette = palette,
-                            )
-                        }
+                        ArtistAboutCard(
+                            about = appleAbout,
+                            fallbackBio = description,
+                            palette = palette,
+                            onOpen = { showAbout = true },
+                        )
                     }
                 }
 
@@ -1003,6 +1013,23 @@ fun ArtistScreen(
                 icon = R.drawable.chevron_back,
             )
         }
+    }
+
+    androidx.compose.animation.AnimatedVisibility(
+        visible = showAbout,
+        enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220)) +
+            androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(320)) { it / 4 },
+        exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(180)) +
+            androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(240)) { it / 4 },
+    ) {
+        ArtistAboutPage(
+            name = artistName.orEmpty(),
+            heroImage = heroImage,
+            about = appleAbout,
+            fallbackBio = artistPage?.description,
+            palette = palette,
+            onBack = { showAbout = false },
+        )
     }
 }
 
