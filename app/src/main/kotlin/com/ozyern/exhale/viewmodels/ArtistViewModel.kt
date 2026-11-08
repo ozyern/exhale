@@ -8,6 +8,10 @@
 
 package com.ozyern.exhale.viewmodels
 
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.async
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -101,8 +105,61 @@ class ArtistViewModel @Inject constructor(
             .maxWithOrNull(compareBy<IndexedValue<AlbumItem>> { it.value.year ?: 0 }.thenByDescending { it.index })
             ?.value
 
+    /**
+     * Puts each album's other editions beside it: "Short n' Sweet (Deluxe)" after "Short n' Sweet".
+     * YouTube's artist page lists one edition of an album and keeps the rest on the album's own
+     * page, so a deluxe or bonus-track release was only reachable from inside the standard one.
+     *
+     * Only editions under a title of their own are added; the clean copy of the same album, which
+     * the same shelf also lists, would just be the album twice. Fetched after the page has shown,
+     * a few albums at a time, and an album whose page fails simply gets nothing added.
+     */
+    private suspend fun addOtherEditions(hideExplicit: Boolean) {
+        val page = artistPage ?: return
+        val albums = page.sections.flatMap { it.items }.filterIsInstance<AlbumItem>()
+            .distinctBy { it.id }
+            .take(MAX_ALBUMS_TO_EXPAND)
+        if (albums.isEmpty()) return
+        val gate = kotlinx.coroutines.sync.Semaphore(EDITION_FETCHES_AT_ONCE)
+        val editions: Map<String, List<AlbumItem>> = kotlinx.coroutines.coroutineScope {
+            albums.map { album ->
+                async(Dispatchers.IO) {
+                    album.id to gate.withPermit {
+                        YouTube.album(album.browseId, withSongs = false).getOrNull()?.otherVersions.orEmpty()
+                    }
+                }
+            }.awaitAll().toMap()
+        }
+        // Read again: the page may have been refreshed while the editions were fetched.
+        val current = artistPage ?: return
+        val seenTitles = current.sections.flatMap { it.items }.filterIsInstance<AlbumItem>()
+            .mapTo(HashSet()) { titleKey(it.title) }
+        val seenIds = current.sections.flatMap { it.items }.mapTo(HashSet()) { it.id }
+        val sections = current.sections.map { section ->
+            if (section.items.none { it is AlbumItem }) return@map section
+            val items = section.items.flatMap { item ->
+                val base = titleKey(item.title)
+                val extra = (editions[item.id].orEmpty())
+                    // The album page's shelves carry other artists' records as well as its own
+                    // editions; an edition is named after the album ("… (Deluxe)").
+                    .filter { base.isNotEmpty() && titleKey(it.title).startsWith(base) }
+                    .filter { !hideExplicit || !it.explicit }
+                    .filter { seenIds.add(it.id) && seenTitles.add(titleKey(it.title)) }
+                listOf(item) + extra
+            }
+            section.copy(items = items)
+        }
+        artistPage = current.copy(sections = sections)
+    }
+
+    private fun titleKey(title: String): String = com.ozyern.exhale.lyrics.SongQuery.normalized(title)
+
     private companion object {
         const val MAX_TOP_SONGS = 20
+
+        /** How many of the artist's albums are looked into for other editions. */
+        const val MAX_ALBUMS_TO_EXPAND = 16
+        const val EDITION_FETCHES_AT_ONCE = 4
     }
 
     fun fetchArtistsFromYTM() {
@@ -117,6 +174,7 @@ class ArtistViewModel @Inject constructor(
 
                     artistPage = page.copy(sections = filteredSections)
                     latestRelease = newestRelease(filteredSections)
+                    launch { addOtherEditions(hideExplicit) }
 
                     val songsShelf = filteredSections.firstOrNull { (it.items.firstOrNull() as? SongItem)?.album != null }
                     topSongs = songsShelf?.items?.filterIsInstance<SongItem>()?.distinctBy { it.id }.orEmpty()
