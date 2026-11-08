@@ -255,6 +255,7 @@ object AudioSourceConfig {
      */
     val DEFAULT_ORDER: List<AudioSourceType> =
         listOf(
+            AudioSourceType.RADIOPARADISE,
             AudioSourceType.MONOCHROME,
             AudioSourceType.TIDAL,
             AudioSourceType.QOBUZ,

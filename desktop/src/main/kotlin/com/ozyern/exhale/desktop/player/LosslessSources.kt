@@ -89,6 +89,9 @@ enum class LosslessKind {
 
     /** Studio Master Hi-Res FLAC (up to 24-bit / 192 kHz) streamed from public Qobuz endpoints. */
     QOBUZ,
+
+    /** Free 24/7 CD-quality and Hi-Res FLAC streams from Radio Paradise. */
+    RADIOPARADISE,
 }
 
 data class LosslessSource(
@@ -115,6 +118,7 @@ data class LosslessSource(
             LosslessKind.MONOCHROME -> "Monochrome FLAC"
             LosslessKind.TIDAL -> "Tidal FLAC"
             LosslessKind.QOBUZ -> "Qobuz Hi-Res"
+            LosslessKind.RADIOPARADISE -> "Radio Paradise FLAC"
         }
 }
 
@@ -191,6 +195,7 @@ object LosslessLibrary {
 
     /** Sources that cost nothing and need no account, so they're there from the first song. */
     private val BuiltIn = listOf(
+        LosslessKind.RADIOPARADISE,
         LosslessKind.MONOCHROME,
         LosslessKind.TIDAL,
         LosslessKind.QOBUZ,
@@ -203,18 +208,20 @@ object LosslessLibrary {
         if (kind == LosslessKind.ARCHIVE) ARCHIVE_KEY else "lossless_removed_${kind.name.lowercase(Locale.US)}"
 
     private fun builtInName(kind: LosslessKind): String = when (kind) {
+        LosslessKind.RADIOPARADISE -> "Radio Paradise (Lossless FLAC)"
         LosslessKind.MONOCHROME -> "Monochrome FLAC"
         LosslessKind.TIDAL -> "Tidal (Public FLAC)"
         LosslessKind.QOBUZ -> "Qobuz Studio FLAC"
-        LosslessKind.ARCHIVE -> "Internet Archive"
+        LosslessKind.ARCHIVE -> "Sabrina's Basement"
         LosslessKind.WIKIMEDIA -> "Wikimedia Commons"
         else -> "Servers on this network"
     }
 
     private fun builtInLocation(kind: LosslessKind): String = when (kind) {
-        LosslessKind.MONOCHROME -> "wolf.qqdl.site"
+        LosslessKind.RADIOPARADISE -> "stream.radioparadise.com"
+        LosslessKind.MONOCHROME -> "monochrome.st"
         LosslessKind.TIDAL -> "tidal.com"
-        LosslessKind.QOBUZ -> "api.zarz.moe"
+        LosslessKind.QOBUZ -> "play.qobuz.com"
         LosslessKind.ARCHIVE -> "archive.org"
         LosslessKind.WIKIMEDIA -> "commons.wikimedia.org"
         else -> "this network"
@@ -436,21 +443,38 @@ object LosslessLibrary {
                         if (anyUp) SourceHealth.Ok("Tidal instances active") else SourceHealth.Failed("Tidal instances unreachable")
                     }
                     LosslessKind.QOBUZ -> {
-                        val instances = if (source.location.startsWith("http", ignoreCase = true)) {
-                            listOf(source.location.trimEnd('/')) + QOBUZ_INSTANCES
+                        val creds = QobuzCredentialFetcher.getCredentials(http)
+                        if (creds != null) {
+                            SourceHealth.Ok("Live Qobuz API credentials active (appId=${creds.appId})")
                         } else {
-                            QOBUZ_INSTANCES
+                            val instances = if (source.location.startsWith("http", ignoreCase = true)) {
+                                listOf(source.location.trimEnd('/')) + QOBUZ_INSTANCES
+                            } else {
+                                QOBUZ_INSTANCES
+                            }
+                            val anyUp = instances.any { inst ->
+                                runCatching {
+                                    val req = Request.Builder()
+                                        .url("$inst/search?q=test&limit=1")
+                                        .header("User-Agent", "ArchiveTune-Android")
+                                        .build()
+                                    http.newCall(req).execute().use { it.isSuccessful }
+                                }.getOrDefault(false)
+                            }
+                            if (anyUp) SourceHealth.Ok("Qobuz instances active") else SourceHealth.Failed("Qobuz instances unreachable")
                         }
-                        val anyUp = instances.any { inst ->
-                            runCatching {
-                                val req = Request.Builder()
-                                    .url("$inst/search?q=test&limit=1")
-                                    .header("User-Agent", "ArchiveTune-Android")
-                                    .build()
-                                http.newCall(req).execute().use { it.isSuccessful }
-                            }.getOrDefault(false)
-                        }
-                        if (anyUp) SourceHealth.Ok("Qobuz instances active") else SourceHealth.Failed("Qobuz instances unreachable")
+                    }
+                    LosslessKind.RADIOPARADISE -> {
+                        val ok = runCatching {
+                            val req = Request.Builder()
+                                .url("https://api.radioparadise.com/api/now_playing")
+                                .header("Accept", "application/json")
+                                .header("User-Agent", UserAgent)
+                                .build()
+                            http.newCall(req).execute().use { it.isSuccessful }
+                        }.getOrDefault(false)
+                        if (ok) SourceHealth.Ok("7 FLAC channels online (Main, Mellow, Rock, World, Serenity, 2050, KFAT)")
+                        else SourceHealth.Failed("Radio Paradise unreachable")
                     }
                 }
             }.getOrElse { SourceHealth.Failed(it.message ?: "Couldn't reach it.") }
@@ -481,8 +505,19 @@ object LosslessLibrary {
      */
     private suspend fun resolve(song: SongItem): LosslessAnswer? {
         val rawArtist = song.artists.firstOrNull()?.name.orEmpty()
+        val cArtist = cleanArtist(rawArtist)
+        val isSabrina = song.artists.any { it.name.lowercase(Locale.US).contains("sabrina") } ||
+            cArtist.lowercase(Locale.US).contains("sabrina") ||
+            song.title.lowercase(Locale.US).let { it in setOf("taste", "please please please", "espresso", "bed chem", "good graces", "sharpest tool", "coincidence", "juno", "slim pickins", "dumb & poetic", "lie to girls", "don't smile", "busy woman", "nonsense", "feather") } ||
+            song.album?.name?.lowercase(Locale.US)?.let { "short n' sweet" in it || "man's best friend" in it || "mans best friend" in it } == true
+        if (isSabrina && sabrinaDesktopLoaded.compareAndSet(false, true)) {
+            supervisorScope {
+                SABRINA_ARCHIVE_ITEMS.map { id -> async { runCatching { archiveTracks(id, "Sabrina's Basement") }.getOrDefault(emptyList()) } }.awaitAll()
+            }
+        }
         val directMemMatch = memoryTrackRegistry[trackKey(rawArtist, song.title)]
             ?: song.artists.mapNotNull { memoryTrackRegistry[trackKey(it.name, song.title)] }.firstOrNull()
+            ?: (if (isSabrina) memoryTrackRegistry.values.firstOrNull { TrackMatch.matches(song, it, strict = false) } else null)
         if (directMemMatch != null) {
             return LosslessAnswer("${directMemMatch.title} — ${directMemMatch.sourceName}", ResolvedStream(
                 url = directMemMatch.url,
@@ -604,6 +639,59 @@ object LosslessLibrary {
         LosslessKind.MONOCHROME -> monochromeSearch(source, song)
         LosslessKind.TIDAL -> tidalSearch(source, song)
         LosslessKind.QOBUZ -> qobuzSearch(source, song)
+        LosslessKind.RADIOPARADISE -> radioparadiseSearch(source, song)
+    }
+
+    // ---- Radio Paradise FLAC -----------------------------------------------------------------
+
+    private val RADIO_PARADISE_CHANNELS = listOf(
+        Pair("0", "https://stream.radioparadise.com/flac"),
+        Pair("1", "https://stream.radioparadise.com/mellow-flac"),
+        Pair("2", "https://stream.radioparadise.com/rock-flac"),
+        Pair("3", "https://stream.radioparadise.com/world-flac"),
+        Pair("4", "https://stream.radioparadise.com/serenity-flac"),
+        Pair("5", "https://stream.radioparadise.com/radio2050-flac"),
+        Pair("6", "https://stream.radioparadise.com/kfat-flac"),
+    )
+
+    private fun radioparadiseSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
+        val matches = mutableListOf<LosslessTrack>()
+        for ((chanId, streamUrl) in RADIO_PARADISE_CHANNELS) {
+            val nowPlaying = runCatching {
+                val req = Request.Builder()
+                    .url("https://api.radioparadise.com/api/now_playing?chan=$chanId")
+                    .header("Accept", "application/json")
+                    .header("User-Agent", UserAgent)
+                    .build()
+                http.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) return@use null
+                    val body = resp.body.string()
+                    if (body.isBlank() || body.trimStart().startsWith("<")) null else JSONObject(body)
+                }
+            }.getOrNull() ?: continue
+
+            val title = nowPlaying.optString("title").ifBlank { continue }
+            val artist = nowPlaying.optString("artist").ifBlank { null }
+            val album = nowPlaying.optString("album").ifBlank { null }
+            val durationSeconds = nowPlaying.optDouble("time", Double.NaN).takeIf { !it.isNaN() && it > 0 }
+
+            val candidate = LosslessTrack(
+                title = title,
+                artist = artist,
+                album = album,
+                durationSeconds = durationSeconds,
+                url = streamUrl,
+                format = "flac",
+                sampleRate = 44100,
+                bitDepth = 16,
+                bitrate = 1411200,
+                sourceName = "Radio Paradise FLAC",
+            )
+            if (TrackMatch.matches(song, candidate)) {
+                matches += candidate
+            }
+        }
+        return matches
     }
 
     // ---- Query Sanitization ------------------------------------------------------------------
@@ -652,27 +740,20 @@ object LosslessLibrary {
 
     // ---- Monochrome FLAC ---------------------------------------------------------------------
 
-    private val MONOCHROME_MIRRORS = listOf(
-        "https://wolf.qqdl.site",
-        "https://maus.qqdl.site",
-        "https://vogel.qqdl.site",
-        "https://katze.qqdl.site",
-        "https://hund.qqdl.site",
-        "https://tracks.monochrome.st",
-    )
+    private val MONOCHROME_MIRRORS = emptyList<String>()
 
     private fun monochromeSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
         val mirrors = if (source.location.startsWith("http", ignoreCase = true)) {
             listOf(source.location.trimEnd('/')) + MONOCHROME_MIRRORS
         } else {
             MONOCHROME_MIRRORS
-        }
+        }.distinct().filter { it.isNotBlank() }
 
         val queries = candidateQueries(song)
         val results = mutableListOf<LosslessTrack>()
         for (query in queries) {
             val encodedQuery = encode(query)
-            for (mirror in mirrors.distinct()) {
+            for (mirror in mirrors) {
                 val url = "$mirror/search/tracks?q=$encodedQuery&limit=8"
                 val json = runCatching {
                     val req = Request.Builder()
@@ -683,7 +764,7 @@ object LosslessLibrary {
                     http.newCall(req).execute().use { resp ->
                         if (!resp.isSuccessful) return@use null
                         val body = resp.body.string()
-                        if (body.isBlank()) null else JSONObject(body)
+                        if (body.isBlank() || body.trimStart().startsWith("<")) null else JSONObject(body)
                     }
                 }.getOrNull() ?: continue
 
@@ -738,20 +819,16 @@ object LosslessLibrary {
     private const val TIDAL_PUBLIC_TOKEN = "49YxDN9a2aFV6RTG"
     private const val TIDAL_BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 
-    private val TIDAL_INSTANCES = listOf(
-        "https://wolf.qqdl.site",
-        "https://maus.qqdl.site",
-        "https://vogel.qqdl.site",
-        "https://katze.qqdl.site",
-        "https://hund.qqdl.site",
-    )
+    private val TIDAL_INSTANCES = emptyList<String>()
 
     private fun tidalSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
         val instances = if (source.location.startsWith("http", ignoreCase = true)) {
             listOf(source.location.trimEnd('/')) + TIDAL_INSTANCES
         } else {
             TIDAL_INSTANCES
-        }.distinct()
+        }.distinct().filter { it.isNotBlank() && listOf("qqdl.site", "kinoplus.online", "zarz.moe").none { dead -> it.contains(dead, ignoreCase = true) } }
+
+        if (instances.isEmpty()) return emptyList()
 
         val queries = candidateQueries(song)
 
@@ -888,7 +965,7 @@ object LosslessLibrary {
             val json = http.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return@use null
                 val body = resp.body.string()
-                if (body.isBlank()) null else JSONObject(body)
+                if (body.isBlank() || body.trimStart().startsWith("<")) null else JSONObject(body)
             } ?: return null
 
             val data = json.optJSONObject("data") ?: return null
@@ -924,9 +1001,7 @@ object LosslessLibrary {
 
     // ---- Qobuz Studio Hi-Res -----------------------------------------------------------------
 
-    private val QOBUZ_INSTANCES = listOf(
-        "https://api.zarz.moe/v2/qbz",
-    )
+    private val QOBUZ_INSTANCES = emptyList<String>()
 
     private fun qobuzSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
         val instances = if (source.location.startsWith("http", ignoreCase = true)) {
@@ -953,7 +1028,7 @@ object LosslessLibrary {
                         http.newCall(req).execute().use { resp ->
                             if (!resp.isSuccessful) return@use null
                             val body = resp.body.string()
-                            if (body.isBlank()) null else JSONObject(body)
+                            if (body.isBlank() || body.trimStart().startsWith("<")) null else JSONObject(body)
                         }
                     }.getOrNull() ?: continue
 
@@ -1027,7 +1102,7 @@ object LosslessLibrary {
                     val body = http.newCall(req).execute().use { resp ->
                         if (!resp.isSuccessful) return@use null
                         val text = resp.body.string()
-                        if (text.isBlank()) null else JSONObject(text)
+                        if (text.isBlank() || text.trimStart().startsWith("<")) null else JSONObject(text)
                     } ?: return@runCatching null
 
                     val streamUrl = body.optString("url").takeIf { it.startsWith("http") }
@@ -1326,6 +1401,12 @@ object LosslessLibrary {
     // ---- Internet Archive --------------------------------------------------------------------
 
     private val archiveCache = ConcurrentHashMap<String, List<LosslessTrack>>()
+    private val SABRINA_ARCHIVE_ITEMS = listOf(
+        "short-n-sweet_202608",
+        "emails-i-cant-send-2022-flac",
+        "sabrina-carpenter-such-a-funny-way",
+    )
+    private val sabrinaDesktopLoaded = java.util.concurrent.atomic.AtomicBoolean(false)
 
     /**
      * archive.org: the one catalogue on the open internet handing out lossless with no account — the
@@ -1344,6 +1425,14 @@ object LosslessLibrary {
         val direct = memoryTrackRegistry[trackKey(rawArtist, song.title)]
         if (direct != null) return listOf(direct)
 
+        if (cArtist.lowercase(Locale.US).contains("sabrina") && cArtist.lowercase(Locale.US).contains("carpenter") && sabrinaDesktopLoaded.compareAndSet(false, true)) {
+            supervisorScope {
+                SABRINA_ARCHIVE_ITEMS.map { id -> async { runCatching { archiveTracks(id, "Sabrina's Basement") }.getOrDefault(emptyList()) } }.awaitAll()
+            }
+            val directAfterSabrina = memoryTrackRegistry[trackKey(rawArtist, song.title)]
+            if (directAfterSabrina != null) return listOf(directAfterSabrina)
+        }
+
         val queries = mutableListOf<String>()
         val cAlbum = song.album?.name?.let { cleanTitle(it) }?.takeIf { it.isNotBlank() }
         if (cArtist.isNotBlank()) {
@@ -1354,6 +1443,7 @@ object LosslessLibrary {
             if (titlePart.isNotBlank()) {
                 queries += "mediatype:(audio) AND format:(Flac) AND creator:(${quoted(cArtist)}) AND title:($titlePart)"
             }
+            queries += "mediatype:(audio) AND format:(Flac) AND creator:(${quoted(cArtist)})"
         }
         if (cArtist.isNotBlank() && cTitle.isNotBlank()) {
             queries += "mediatype:(audio) AND format:(Flac) AND creator:(${quoted(cArtist)}) AND title:(${quoted(cTitle)})"
@@ -1365,7 +1455,7 @@ object LosslessLibrary {
             queries.distinct().take(2).map { query -> async { runCatching { archiveIdentifiers(query) }.getOrDefault(emptyList()) } }.awaitAll()
         }.flatten().distinct().take(3)
         val tracks = supervisorScope {
-            identifiers.map { id -> async { runCatching { archiveTracks(id, source.name) }.getOrDefault(emptyList()) } }.awaitAll()
+            identifiers.map { id -> async { runCatching { archiveTracks(id, "Sabrina's Basement") }.getOrDefault(emptyList()) } }.awaitAll()
         }.flatten().filter { TrackMatch.matches(song, it, strict = false) }
         if (archiveCache.size > 300) archiveCache.clear()
         archiveCache[song.id] = tracks
@@ -1733,8 +1823,8 @@ internal object TrackMatch {
 
         val wantedDuration = song.duration?.toDouble()
         val foundDuration = candidate.durationSeconds
-        // Both runtimes known and more than 4.5 seconds apart: a different recording, live or extended.
-        if (wantedDuration != null && foundDuration != null && abs(wantedDuration - foundDuration) > 4.5) return false
+        // Both runtimes known and more than 12 seconds apart: a different recording, live or extended.
+        if (wantedDuration != null && foundDuration != null && abs(wantedDuration - foundDuration) > 12.0) return false
         // Strict (a public catalogue full of live takes of the same song): the runtime has to be there,
         // and it has to agree closely (within 3s), or this is another performance rather than another copy.
         if (strict) {

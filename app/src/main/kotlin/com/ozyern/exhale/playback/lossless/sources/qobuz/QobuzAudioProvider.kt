@@ -44,10 +44,7 @@ object QobuzAudioProvider {
         val baseUrl: String,
     )
 
-    val defaultInstanceUrls: List<String> =
-        listOf(
-            "https://api.zarz.moe/v2/qbz",
-        )
+    val defaultInstanceUrls: List<String> = emptyList()
 
     @Volatile
     private var instances: List<Instance> = emptyList()
@@ -685,19 +682,29 @@ object QobuzAudioProvider {
         }
     }
 
+    private fun effectiveToken(token: QobuzToken): QobuzToken {
+        if (token.appId.isNotBlank() && token.appSecret.isNotBlank()) return token
+        val creds = QobuzCredentialFetcher.getCredentials(client)
+        return token.copy(
+            appId = token.appId.ifBlank { creds?.appId.orEmpty() },
+            appSecret = token.appSecret.ifBlank { creds?.appSecret.orEmpty() },
+        )
+    }
+
     private fun searchItemsDirect(
         token: QobuzToken,
         searchQuery: String,
     ): JSONArray? {
+        val tok = effectiveToken(token)
         val url =
             "$QOBUZ_API_BASE/track/search"
                 .toHttpUrl()
                 .newBuilder()
                 .addQueryParameter("query", searchQuery)
                 .addQueryParameter("limit", SEARCH_LIMIT.toString())
-                .addQueryParameter("app_id", token.appId)
+                .addQueryParameter("app_id", tok.appId)
                 .build()
-        client.newCall(directRequest(url.toString(), token)).execute().use { response ->
+        client.newCall(directRequest(url.toString(), tok)).execute().use { response ->
             if (response.code == 401 || response.code == 403) {
                 token.poolId?.let { com.ozyern.exhale.playback.lossless.sources.pool.PoolAccountManager.report("qobuz", "account", it, "dead") }
             }
@@ -714,7 +721,8 @@ object QobuzAudioProvider {
         trackId: String,
         formatId: Int,
     ): DownloadResult? {
-        client.newCall(directDownloadRequest(token, trackId, formatId)).execute().use { response ->
+        val tok = effectiveToken(token)
+        client.newCall(directDownloadRequest(tok, trackId, formatId)).execute().use { response ->
             if (response.code == 401 || response.code == 403) {
                 token.poolId?.let { com.ozyern.exhale.playback.lossless.sources.pool.PoolAccountManager.report("qobuz", "account", it, "dead") }
             }
@@ -730,8 +738,9 @@ object QobuzAudioProvider {
         trackId: String,
         formatId: Int,
     ): Request {
+        val tok = effectiveToken(token)
         val ts = System.currentTimeMillis() / 1000L
-        val sig = md5("trackgetFileUrlformat_id${formatId}intentstreamtrack_id$trackId$ts${token.appSecret}")
+        val sig = md5("trackgetFileUrlformat_id${formatId}intentstreamtrack_id$trackId$ts${tok.appSecret}")
         val url =
             "$QOBUZ_API_BASE/track/getFileUrl"
                 .toHttpUrl()
@@ -741,9 +750,9 @@ object QobuzAudioProvider {
                 .addQueryParameter("track_id", trackId)
                 .addQueryParameter("format_id", formatId.toString())
                 .addQueryParameter("intent", "stream")
-                .addQueryParameter("app_id", token.appId)
+                .addQueryParameter("app_id", tok.appId)
                 .build()
-        return directRequest(url.toString(), token)
+        return directRequest(url.toString(), tok)
     }
 
     private fun parseDirectDownload(body: String): DownloadResult? {
@@ -810,14 +819,15 @@ object QobuzAudioProvider {
     )
 
     private fun fetchTokenAccountHealth(token: QobuzToken): TokenAccountHealth? {
+        val tok = effectiveToken(token)
         val url =
             "$QOBUZ_API_BASE/user/get"
                 .toHttpUrl()
                 .newBuilder()
-                .addQueryParameter("app_id", token.appId)
-                .addQueryParameter("user_auth_token", token.token)
+                .addQueryParameter("app_id", tok.appId)
+                .addQueryParameter("user_auth_token", tok.token)
                 .build()
-        client.newCall(directRequest(url.toString(), token)).execute().use { response ->
+        client.newCall(directRequest(url.toString(), tok)).execute().use { response ->
             if (!response.isSuccessful) return null
             val body = response.body?.string().orEmpty()
             if (body.isBlank()) return null

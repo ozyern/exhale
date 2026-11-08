@@ -97,13 +97,7 @@ object TidalAudioProvider {
     private val DASH_SEGMENT_URL_REGEX = Regex("<SegmentURL\\b[^>]*media=\"([^\"]+)\"", RegexOption.IGNORE_CASE)
     private val XML_UNESCAPED_AMPERSAND_REGEX = Regex("""&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)""")
 
-    private val DEFAULT_DOWNLOAD_API_ENDPOINTS = listOf(
-        TidalDownloadEndpoint("Monochrome QQDL (Wolf)", "https://wolf.qqdl.site"),
-        TidalDownloadEndpoint("Monochrome QQDL (Maus)", "https://maus.qqdl.site"),
-        TidalDownloadEndpoint("Monochrome QQDL (Vogel)", "https://vogel.qqdl.site"),
-        TidalDownloadEndpoint("Monochrome QQDL (Katze)", "https://katze.qqdl.site"),
-        TidalDownloadEndpoint("Monochrome QQDL (Hund)", "https://hund.qqdl.site"),
-    )
+    private val DEFAULT_DOWNLOAD_API_ENDPOINTS: List<TidalDownloadEndpoint> = emptyList()
 
     // Exhale: evaluated on each call so a pool URL entered at runtime is honoured.
     private val INSTANCE_DISCOVERY_SOURCES: List<String>

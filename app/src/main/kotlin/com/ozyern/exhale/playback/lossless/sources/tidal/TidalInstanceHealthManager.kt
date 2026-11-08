@@ -67,6 +67,9 @@ object TidalInstanceHealthManager {
                         Timber.tag("TidalHealth").d("Discovery returned %d instance(s)", discovered.size)
                         candidates += discovered
                     }
+                    candidates.removeAll { url ->
+                        listOf("qqdl.site", "kinoplus.online", "zarz.moe").any { url.contains(it, ignoreCase = true) }
+                    }
 
                     if (candidates.isEmpty()) {
                         Timber.tag("TidalHealth").d("No TIDAL instances configured or discovered; skipping health scan")

@@ -265,12 +265,13 @@ object LosslessStreamResolver {
 
         val hasBuildKey = com.ozyern.exhale.BuildConfig.SOURCE_PROVIDER_KEY.isNotBlank()
         val hasPoolKey = !p[PoolApiKeyKey].isNullOrBlank() || PoolAccountManager.hasReadKey || PoolAccountManager.hasAccounts()
-        val hasTidal = !p[TidalAccessTokenKey].isNullOrBlank() || (p[TidalEnabledKey] ?: true)
+        val hasTidal = !p[TidalAccessTokenKey].isNullOrBlank() || ((p[TidalEnabledKey] ?: true) && TidalAudioProvider.activeInstanceUrls.isNotEmpty())
         val hasDeezer = !p[DeezerArlKey].isNullOrBlank() || (p[DeezerEnabledKey] ?: true && DeezerAudioProvider.hasAccounts())
         val hasApple = !p[AppleMusicMediaUserTokenKey].isNullOrBlank() || (p[AppleMusicSourceEnabledKey] ?: true && AppleMusicAudioProvider.isAvailable())
         val hasQobuz = (p[QobuzEnabledKey] ?: true)
+        val hasRadioParadise = true
 
-        return hasMonochrome || hasBuildKey || hasPoolKey || hasTidal || hasDeezer || hasApple || hasQobuz
+        return hasRadioParadise || hasMonochrome || hasBuildKey || hasPoolKey || hasTidal || hasDeezer || hasApple || hasQobuz
     }
 
     suspend fun hasAnyActiveLosslessSource(context: Context): Boolean =
@@ -291,6 +292,7 @@ object LosslessStreamResolver {
             uri.startsWith("monochrome://") ||
             uri.contains("monochrome.st/track/") ||
             uri.contains("monochrome.tf/track/") ||
+            uri.contains("radioparadise.com") ||
             uri.contains("qobuz") ||
             (uri.contains("/track/") && (uri.contains("qqdl.site") || uri.contains("kinoplus") || uri.contains("zarz.moe"))) ||
             resolvedByMediaId.values.any { it.uri == uri }
@@ -362,11 +364,13 @@ object LosslessStreamResolver {
     private fun parseDeezerAudioQuality(stored: String?): DeezerAudioQuality =
         runCatching { DeezerAudioQuality.valueOf(stored ?: DeezerAudioQuality.FLAC.name) }.getOrDefault(DeezerAudioQuality.FLAC)
 
+    private val DEPRECATED_HOSTS = listOf("qqdl.site", "kinoplus.online", "zarz.moe")
+
     private fun parseMultiline(raw: String?): List<String> =
         raw.orEmpty()
             .split('\n')
             .map { it.trim() }
-            .filter { it.isNotEmpty() }
+            .filter { it.isNotEmpty() && DEPRECATED_HOSTS.none { dead -> it.contains(dead, ignoreCase = true) } }
 
     private class SourceSettings(
         val monochromeEnabled: Boolean,
@@ -415,6 +419,7 @@ object LosslessStreamResolver {
     private fun resolutionChain(s: SourceSettings): List<AudioSourceType> {
         val enabledDefaults =
             mapOf(
+                AudioSourceType.RADIOPARADISE to true,
                 AudioSourceType.MONOCHROME to s.monochromeEnabled,
                 AudioSourceType.TIDAL to s.tidalEnabled,
                 AudioSourceType.QOBUZ to s.qobuzEnabled,
@@ -434,6 +439,7 @@ object LosslessStreamResolver {
     private fun isSourceEnabled(source: AudioSourceType, s: SourceSettings): Boolean =
         when (source) {
             AudioSourceType.YOUTUBE -> true
+            AudioSourceType.RADIOPARADISE -> true
             AudioSourceType.MONOCHROME -> s.monochromeEnabled
             AudioSourceType.TIDAL -> s.tidalEnabled
             AudioSourceType.QOBUZ -> s.qobuzEnabled
@@ -730,6 +736,7 @@ object LosslessStreamResolver {
                         settings,
                         trusted = overrideIsSourceOverride && override == AudioSourceType.APPLE,
                     )
+                AudioSourceType.RADIOPARADISE -> resolveRadioParadiseStream(request)
                 AudioSourceType.AMAZON,
                 AudioSourceType.QOBUZ_BACKUP,
                 AudioSourceType.JIOSAAVN,
@@ -1280,14 +1287,7 @@ object LosslessStreamResolver {
         return bitsPerSecond.takeIf { it in 1L..50_000_000L }?.toInt()
     }
 
-    private val MONOCHROME_MIRRORS = listOf(
-        "https://wolf.qqdl.site",
-        "https://maus.qqdl.site",
-        "https://vogel.qqdl.site",
-        "https://katze.qqdl.site",
-        "https://hund.qqdl.site",
-        "https://tracks.monochrome.st",
-    )
+    private val MONOCHROME_MIRRORS = emptyList<String>()
 
     /** The mirror that answered last, asked first next time. */
     @Volatile
@@ -1366,7 +1366,7 @@ object LosslessStreamResolver {
                         .build()
                     searchClient.newCall(req).execute().use { resp ->
                         if (!resp.isSuccessful) null
-                        else resp.body?.string()?.takeIf { it.isNotBlank() }?.let { body ->
+                        else resp.body?.string()?.takeIf { it.isNotBlank() && !it.trimStart().startsWith("<") }?.let { body ->
                             val json = org.json.JSONObject(body)
                             json.optJSONArray("tracks") ?: json.optJSONArray("data") ?: org.json.JSONArray()
                         }
@@ -1415,7 +1415,7 @@ object LosslessStreamResolver {
         val json = runCatching {
             searchClient.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) null
-                else resp.body?.string()?.takeIf { it.isNotBlank() }?.let { org.json.JSONObject(it) }
+                else resp.body?.string()?.takeIf { it.isNotBlank() && !it.trimStart().startsWith("<") }?.let { org.json.JSONObject(it) }
             }
         }.getOrNull() ?: return null
         val manifest = monochromeManifest(json) ?: return null
@@ -1495,6 +1495,11 @@ object LosslessStreamResolver {
             }
         }
         return bestStream
+    }
+
+    private fun resolveRadioParadiseStream(request: Request): DirectStream? {
+        val artist = request.artists.firstOrNull().orEmpty()
+        return com.ozyern.exhale.playback.lossless.sources.radioparadise.RadioParadiseProvider.resolve(request.title, artist)
     }
 
     private fun sourceCacheKey(

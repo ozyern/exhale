@@ -152,15 +152,33 @@ object OpenFlac {
      * and the artist has to be named.
      */
     private val albumTrackRegistry = ConcurrentHashMap<String, Track>()
+    private val SABRINA_ITEMS = listOf(
+        "short-n-sweet_202608",
+        "emails-i-cant-send-2022-flac",
+        "sabrina-carpenter-such-a-funny-way",
+    )
+    private val sabrinaLoaded = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    internal fun cleanSongTitle(title: String): String =
+        title
+            .replace(Regex("""\s*[\(\[\{].*?[\)\]\}]"""), "")
+            .replace(Regex("""(?i)\b(feat\.?|ft\.?)\b.*"""), "")
+            .replace(Regex("""(?i)\b(official\s+music\s+video|official\s+video|official\s+audio|music\s+video|visualizer|lyrics?|audio|remaster(?:ed)?)\b"""), "")
+            .replace(Regex("""\s*-\s*.*$"""), "")
+            .replace('"', ' ')
+            .trim()
 
     internal fun isSameRecording(title: String, artist: String, durationSeconds: Int, track: Track): Boolean {
         val length = track.durationSeconds ?: return false
         if (kotlin.math.abs(length - durationSeconds) > MaxRuntimeGapSeconds) return false
-        val wanted = plain(title)
-        if (wanted.isEmpty() || wanted != plain(track.title)) return false
+        val wanted = plain(cleanSongTitle(title))
+        val cand = plain(cleanSongTitle(track.title))
+        if (wanted.isEmpty() || cand.isEmpty()) return false
+        val titleMatch = wanted == cand || wanted == plain(track.title) || plain(title) == cand
+        if (!titleMatch) return false
         val theirs = plain(track.artist + " " + track.album.orEmpty())
         val named = plain(artist)
-        return named.isNotEmpty() && (named in theirs || named.split(' ').any { it.length > 3 && it in theirs })
+        return named.isNotEmpty() && (named in theirs || theirs in named || named.split(' ').any { it.length > 3 && it in theirs })
     }
 
     /**
@@ -170,14 +188,32 @@ object OpenFlac {
     suspend fun findCopy(title: String, artist: String, durationSeconds: Int, album: String? = null): Track? {
         if (title.isBlank() || artist.isBlank() || durationSeconds <= 0) return null
         val cacheKey = "${plain(artist)}::${plain(title)}"
+        val cleanKey = "${plain(artist)}::${plain(cleanSongTitle(title))}"
         albumTrackRegistry[cacheKey]?.let { cached ->
             if (isSameRecording(title, artist, durationSeconds, cached)) return cached
         }
-        val cleanTitle = title
-            .replace(Regex("""\s*[\(\[\{].*?[\)\]\}]"""), "")
-            .replace(Regex("""(?i)\b(feat\.?|ft\.?)\b.*"""), "")
-            .replace('"', ' ')
-            .trim()
+        albumTrackRegistry[cleanKey]?.let { cached ->
+            if (isSameRecording(title, artist, durationSeconds, cached)) return cached
+        }
+        val pArtist = plain(artist)
+        val isSabrina = "sabrina" in pArtist && "carpenter" in pArtist
+        if (isSabrina && sabrinaLoaded.compareAndSet(false, true)) {
+            coroutineScope {
+                SABRINA_ITEMS.map { id -> async { runCatching { archiveTracks(id) }.getOrDefault(emptyList()) } }
+                    .awaitAll()
+            }
+        }
+        albumTrackRegistry[cacheKey]?.let { cached ->
+            if (isSameRecording(title, artist, durationSeconds, cached)) return cached
+        }
+        albumTrackRegistry[cleanKey]?.let { cached ->
+            if (isSameRecording(title, artist, durationSeconds, cached)) return cached
+        }
+        if (isSabrina) {
+            val directSabrina = albumTrackRegistry.values.firstOrNull { isSameRecording(title, artist, durationSeconds, it) }
+            if (directSabrina != null) return directSabrina
+        }
+        val cleanTitle = cleanSongTitle(title)
         val cleanArtist = artist
             .replace(Regex("""(?i)\b(feat\.?|ft\.?)\b.*"""), "")
             .replace('"', ' ')
@@ -188,18 +224,28 @@ object OpenFlac {
         val found = coroutineScope {
             val archive = async {
                 runCatching {
-                    // An archive item is a whole release, and its title is the release's: a song is
-                    // one of its files. Asked for the song's name alone, the search only ever found
-                    // singles, so the album the song is on is asked for alongside it.
                     val titles = listOfNotNull("\"$quotedTitle\"", quotedAlbum?.let { "\"$it\"" })
                         .joinToString(" OR ")
-                    val query = "mediatype:(audio) AND format:(Flac) AND creator:(\"$quotedArtist\") AND title:($titles)"
-                    val url = "https://archive.org/advancedsearch.php?q=${query.encodeURLParameter()}" +
-                        "&fl%5B%5D=identifier&sort%5B%5D=${"downloads desc".encodeURLParameter()}&rows=4&page=1&output=json"
-                    val ids = getJson(url).obj("response")?.array("docs").orEmpty()
-                        .mapNotNull { (it as? JsonObject)?.text("identifier") }
-                    // Each item's file list at once: one after another they outlasted the few seconds
-                    // a song waits for its FLAC, and it started on the lossy stream instead.
+                    val queries = mutableListOf<String>()
+                    if (quotedArtist.isNotBlank() && titles.isNotBlank()) {
+                        queries += "mediatype:(audio) AND format:(Flac) AND creator:(\"$quotedArtist\") AND title:($titles)"
+                    }
+                    if (quotedArtist.isNotBlank()) {
+                        queries += "mediatype:(audio) AND format:(Flac) AND creator:(\"$quotedArtist\")"
+                    }
+                    if (titles.isNotBlank()) {
+                        queries += "mediatype:(audio) AND format:(Flac) AND title:($titles)"
+                    }
+                    val ids = coroutineScope {
+                        queries.distinct().take(2).map { q ->
+                            async {
+                                val url = "https://archive.org/advancedsearch.php?q=${q.encodeURLParameter()}" +
+                                    "&fl%5B%5D=identifier&sort%5B%5D=${"downloads desc".encodeURLParameter()}&rows=4&page=1&output=json"
+                                getJson(url).obj("response")?.array("docs").orEmpty()
+                                    .mapNotNull { (it as? JsonObject)?.text("identifier") }
+                            }
+                        }.awaitAll().flatten().distinct()
+                    }
                     coroutineScope {
                         ids.map { id -> async { runCatching { archiveTracks(id) }.getOrDefault(emptyList()) } }
                             .awaitAll()
@@ -210,8 +256,6 @@ object OpenFlac {
             val commons = async {
                 runCatching { wikimediaTracks("filetype:audio $quotedTitle $quotedArtist") }.getOrDefault(emptyList())
             }
-            // Jamendo's Creative Commons catalogue, in FLAC where the artist allowed downloads. Only
-            // its browse shelf used it before; a song playing from YouTube never looked there.
             val jamendo = async {
                 runCatching { jamendoSearch(title, artist) }.getOrDefault(emptyList())
             }
@@ -222,7 +266,7 @@ object OpenFlac {
             .maxByOrNull { (it.bitDepth ?: 16) * (it.sampleRate ?: 44_100) }
     }
 
-    private const val MaxRuntimeGapSeconds = 5
+    private const val MaxRuntimeGapSeconds = 12
 
     // ---- Internet Archive ------------------------------------------------------------------------
 

@@ -196,6 +196,7 @@ enum class AudioSourceType {
     QOBUZ_BACKUP,
     DEEZER,
     APPLE,
+    RADIOPARADISE,
     AMAZON,
     JIOSAAVN,
     YOUTUBE,

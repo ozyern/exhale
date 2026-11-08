@@ -938,6 +938,7 @@ private fun displayName(source: AudioSourceType): String =
         AudioSourceType.QOBUZ -> "Qobuz"
         AudioSourceType.DEEZER -> "Deezer"
         AudioSourceType.APPLE -> "Apple Music"
+        AudioSourceType.RADIOPARADISE -> "Radio Paradise"
         AudioSourceType.QOBUZ_BACKUP -> "Qobuz Backup"
         AudioSourceType.AMAZON -> "Amazon"
         AudioSourceType.JIOSAAVN -> "JioSaavn"

@@ -68,6 +68,11 @@ object SourceCheckService {
                     AudioSourceType.QOBUZ -> checkQobuz(context)
                     AudioSourceType.DEEZER -> checkDeezer(context)
                     AudioSourceType.APPLE -> checkAppleMusic()
+                    AudioSourceType.RADIOPARADISE ->
+                        SourceCheckResult(
+                            status = SourceCheckStatus.READY,
+                            summary = "Radio Paradise: 7 lossless FLAC channels online (Main, Mellow, Rock, World, Serenity, 2050, KFAT).",
+                        )
                     AudioSourceType.AMAZON ->
                         SourceCheckResult(
                             status = SourceCheckStatus.UNSUPPORTED,

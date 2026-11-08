@@ -1,4 +1,4 @@
-# Builds Exhale-Setup-<version>.exe: Exhale's own installer (desktop/installer/ExhaleSetup.cs) with the
+﻿# Builds Exhale-Setup-<version>.exe: Exhale's own installer (desktop/installer/ExhaleSetup.cs) with the
 # app image packed inside it. Needs nothing beyond Windows itself — the C# compiler and WPF ship with
 # .NET Framework 4.8 — plus the JBR SDK the Gradle packaging uses (see desktop/build.gradle.kts).
 #
@@ -190,6 +190,7 @@ if ($Stage -ne 'Prepare') {
     & $csc @common @refs "/resource:$uninstaller,uninstaller.exe" "/resource:$zip,payload.zip" "/out:$setup" @sources
     if ($LASTEXITCODE -ne 0) { throw "Setup didn't compile" }
     Invoke-Sign @($setup)
+    Unblock-File $setup -ErrorAction SilentlyContinue
 
     Write-Host ("Built {0} ({1:N0} MB)" -f $setup, ((Get-Item $setup).Length / 1MB))
 }

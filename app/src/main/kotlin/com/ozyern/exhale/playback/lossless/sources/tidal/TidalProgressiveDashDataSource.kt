@@ -20,6 +20,10 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.Callable
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 
 internal class TidalProgressiveDashDataSource(
     private val httpClient: OkHttpClient,
@@ -31,6 +35,12 @@ internal class TidalProgressiveDashDataSource(
     private var pendingOffset = 0
     private var bytesRemaining = C.LENGTH_UNSET.toLong()
     private var opened = false
+
+    /** Where this stream's segments are kept in [segmentCache]: one manifest file per resolved track. */
+    private var cacheKey: String = ""
+
+    /** Segments being fetched ahead of the reader, by index. */
+    private val inFlight = HashMap<Int, Future<ByteArray>>()
 
     override fun open(dataSpec: DataSpec): Long {
         val manifestPath =
@@ -54,6 +64,7 @@ internal class TidalProgressiveDashDataSource(
 
         currentUri = dataSpec.uri
         segmentUrls = urls
+        cacheKey = manifestFile.absolutePath
         nextSegmentIndex = 1
         pendingBytes =
             byteArrayOf(
@@ -61,7 +72,7 @@ internal class TidalProgressiveDashDataSource(
                 'L'.code.toByte(),
                 'a'.code.toByte(),
                 'C'.code.toByte(),
-            ) + fetchSegment(urls.first(), 0)
+            ) + segment(0)
         pendingOffset = 0
         bytesRemaining = C.LENGTH_UNSET.toLong()
         opened = true
@@ -111,11 +122,50 @@ internal class TidalProgressiveDashDataSource(
     private fun loadNextSegment(): Boolean {
         if (nextSegmentIndex >= segmentUrls.size) return false
         val segmentIndex = nextSegmentIndex
-        val payload = fetchSegment(segmentUrls[segmentIndex], segmentIndex)
+        val payload = segment(segmentIndex)
         nextSegmentIndex++
         pendingBytes = payload
         pendingOffset = 0
         return pendingBytes.isNotEmpty()
+    }
+
+    /**
+     * Segment [index]'s audio, from memory when it has been fetched before or is already on its way,
+     * and the next [READ_AHEAD] segments set downloading behind it.
+     *
+     * Segments used to be fetched one at a time, on demand: every boundary was a full round trip with
+     * the reader standing still, and every seek reopened the stream and downloaded the song again from
+     * its first segment up to the new position. On a slow mirror that is the stall mid-song and the
+     * long buffering after a scrub.
+     */
+    private fun segment(index: Int): ByteArray {
+        val key = "$cacheKey#$index"
+        val bytes = cachedSegment(key) ?: run {
+            val pending = inFlight.remove(index)
+            if (pending != null) {
+                try {
+                    pending.get()
+                } catch (error: ExecutionException) {
+                    val cause = error.cause
+                    if (cause is IOException) throw cause
+                    throw IOException("TIDAL FLAC segment ${index + 1} failed", cause)
+                } catch (error: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw java.io.InterruptedIOException("TIDAL FLAC segment ${index + 1} interrupted")
+                }
+            } else {
+                fetchSegment(segmentUrls[index], index).also { storeSegment(key, it) }
+            }
+        }
+        for (ahead in index + 1..minOf(index + READ_AHEAD, segmentUrls.lastIndex)) {
+            val aheadKey = "$cacheKey#$ahead"
+            if (ahead in inFlight || cachedSegment(aheadKey) != null) continue
+            val url = segmentUrls[ahead]
+            inFlight[ahead] = prefetcher.submit(
+                Callable { fetchSegment(url, ahead).also { storeSegment(aheadKey, it) } },
+            )
+        }
+        return bytes
     }
 
     private fun fetchSegment(
@@ -167,6 +217,9 @@ internal class TidalProgressiveDashDataSource(
     override fun getResponseHeaders(): Map<String, List<String>> = emptyMap()
 
     override fun close() {
+        // Fetches already under way are left to land in the cache: a close is usually a seek or a
+        // reload, and the reopened stream wants exactly those segments next.
+        inFlight.clear()
         segmentUrls = emptyList()
         nextSegmentIndex = 0
         pendingBytes = ByteArray(0)
@@ -183,5 +236,36 @@ internal class TidalProgressiveDashDataSource(
         private val httpClient: OkHttpClient,
     ) : DataSource.Factory {
         override fun createDataSource(): DataSource = TidalProgressiveDashDataSource(httpClient)
+    }
+
+    private companion object {
+        /** Segments fetched ahead of the one being read. */
+        const val READ_AHEAD = 2
+
+        /** Memory kept for recent segments across reopens: about one hi-res album side. */
+        const val CACHE_LIMIT_BYTES = 48L * 1024 * 1024
+
+        val prefetcher = Executors.newFixedThreadPool(2) { runnable ->
+            Thread(runnable, "tidal-segment-prefetch").apply { isDaemon = true }
+        }
+
+        private val segmentCache = LinkedHashMap<String, ByteArray>(64, 0.75f, true)
+        private var segmentCacheBytes = 0L
+
+        fun cachedSegment(key: String): ByteArray? = synchronized(segmentCache) { segmentCache[key] }
+
+        fun storeSegment(key: String, bytes: ByteArray) {
+            synchronized(segmentCache) {
+                segmentCache.put(key, bytes)?.let { segmentCacheBytes -= it.size }
+                segmentCacheBytes += bytes.size
+                val oldest = segmentCache.entries.iterator()
+                while (segmentCacheBytes > CACHE_LIMIT_BYTES && oldest.hasNext()) {
+                    val entry = oldest.next()
+                    if (entry.key == key) continue
+                    segmentCacheBytes -= entry.value.size
+                    oldest.remove()
+                }
+            }
+        }
     }
 }

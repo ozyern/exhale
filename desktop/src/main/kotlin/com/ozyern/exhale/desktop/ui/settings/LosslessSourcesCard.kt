@@ -155,7 +155,7 @@ private fun SourceRow(
         LosslessKind.WIKIMEDIA -> NavIcons.Language
         LosslessKind.JAMENDO -> NavIcons.Radio
         LosslessKind.DLNA -> NavIcons.Chip
-        LosslessKind.MONOCHROME, LosslessKind.TIDAL, LosslessKind.QOBUZ -> NavIcons.HighQuality
+        LosslessKind.MONOCHROME, LosslessKind.TIDAL, LosslessKind.QOBUZ, LosslessKind.RADIOPARADISE -> NavIcons.HighQuality
     }
     Row(
         Modifier
@@ -248,6 +248,7 @@ private fun AddSourceForm(onAdded: () -> Unit, modifier: Modifier = Modifier) {
                                 LosslessKind.MONOCHROME -> "Monochrome"
                                 LosslessKind.TIDAL -> "Tidal"
                                 LosslessKind.QOBUZ -> "Qobuz"
+                                LosslessKind.RADIOPARADISE -> "Radio Paradise"
                             },
                         )
                     },
@@ -268,6 +269,7 @@ private fun AddSourceForm(onAdded: () -> Unit, modifier: Modifier = Modifier) {
                 LosslessKind.MONOCHROME -> "Monochrome FLAC: Free CD-quality FLAC (44.1 kHz / 16-bit) streamed from public mirrors with no account needed. On by default."
                 LosslessKind.TIDAL -> "Tidal: Free CD-quality & Hi-Res FLAC streamed from public Tidal instances with no account needed. On by default."
                 LosslessKind.QOBUZ -> "Qobuz Studio FLAC: Studio Master Hi-Res (up to 24-bit / 192 kHz) streamed from public Qobuz endpoints. On by default."
+                LosslessKind.RADIOPARADISE -> "Radio Paradise: Free 24/7 CD-quality and Hi-Res FLAC streams (Main, Mellow, Rock, World, Serenity, 2050, KFAT). No account needed. On by default."
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

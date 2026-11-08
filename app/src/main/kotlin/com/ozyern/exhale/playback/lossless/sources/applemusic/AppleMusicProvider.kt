@@ -33,10 +33,10 @@ object AppleMusicProvider {
     var mediaUserTokenProvider: (() -> String?)? = null
 
     private val fallbackAppleMusicToken: String =
-        "eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiIsImtpZCI6IldlYlBsYXlLaWQifQ" +
-            ".eyJpc3MiOiJBTVBXZWJQbGF5IiwiaWF0IjoxNzg2NjMyOTI0LCJleHAiOjE3OTI2" +
-            "ODA5MjQsInJvb3RfaHR0cHNfb3JpZ2luIjpbImFwcGxlLmNvbSJdfQ" +
-            ".hBgj61sZf-y7bmuvT-joXAUAcf7TVJ51732xnH5vFkLHOmsQHxVqGMYUuI4h8c0-RX3fRY3moylhLW8fewFJyw"
+        "eyJraWQiOiJOWktGRzJEUzBKIiwiYWxnIjoiRVMyNTYifQ" +
+            ".eyJpc3MiOiJVREsyOFNOMTBQIiwiaWF0IjoxNzk0MDU3NTM2LCJleHAiOjE3OTY2" +
+            "NDk1MzYsIm1pZCI6ImJPQXdvUitCNGxYaDhLdGNFaDVaQ3BESTJuMD0ifQ" +
+            ".qjaoc-bMhozyyU0uLInyLNOHsJtz5YUjfWvYw3nYlKq8FrAw3ZnH3trH5YPFE4qTXobTtU6ryabr0u0SN3zAGw"
 
     @Volatile
     var appleMusicToken: String = fallbackAppleMusicToken
@@ -119,9 +119,29 @@ object AppleMusicProvider {
             }
         }.getOrNull()
 
+    private suspend fun fetchMintedToken(): String? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val req = Request.Builder()
+                    .url("https://am-mint.binimum.org/token")
+                    .header("User-Agent", APPLE_MUSIC_WEB_UA)
+                    .header("Accept", "application/json")
+                    .get()
+                    .build()
+                tokenClient.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) return@use null
+                    val body = resp.body?.string().orEmpty()
+                    if (body.isBlank()) return@use null
+                    val json = org.json.JSONObject(body)
+                    json.optString("token").takeIf { it.isNotBlank() }
+                }
+            }.getOrNull()
+        }
+
     private suspend fun scrapeTokenFromWeb(): String? =
         withContext(Dispatchers.IO) {
             try {
+                fetchMintedToken()?.let { return@withContext it }
                 val (homeCode, html) = get(APPLE_MUSIC_WEB_HOME) ?: return@withContext null
                 if (homeCode !in 200..299) {
                     Timber.tag(LOG_TAG).w("Apple Music home fetch failed: %d", homeCode)
