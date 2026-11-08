@@ -100,6 +100,11 @@ private fun GlassDialogSurface(
 ) {
     val scheme = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(28.dp)
+    // Text in a dialog takes the theme's on-surface colour. Nothing provided one, so every line of
+    // body text fell back to Compose's default black: dark type on dark glass.
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.material3.LocalContentColor provides scheme.onSurface,
+    ) {
     Box(
         modifier = modifier
             .clip(shape)
@@ -124,6 +129,7 @@ private fun GlassDialogSurface(
             .padding(24.dp),
     ) {
         Column(content = content)
+    }
     }
 }
 

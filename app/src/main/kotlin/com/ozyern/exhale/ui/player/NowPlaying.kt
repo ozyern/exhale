@@ -291,7 +291,22 @@ private val MAX_WIDTH = 560.dp
 private const val COLLAPSE_MS = 420
 
 /** Share of the full-bleed banner's height given over to its dissolve into the colours below. */
-private const val HERO_FADE_FRACTION = 0.42f
+private const val HERO_FADE_FRACTION = 0.5f
+
+/**
+ * The banner's dissolve as an eased curve rather than a straight ramp.
+ *
+ * A two-stop linear alpha fade has a visible start and end: the eye finds the line where the
+ * slope begins, and the cover reads as a photo with its bottom smudged off. Smootherstep starts
+ * and ends flat, so the picture lets go gradually and arrives in the blurred cover below without
+ * a seam. [floor] is the alpha left at the foot (1 once the banner has landed as a square).
+ */
+private fun heroDissolveStops(floor: Float): Array<Pair<Float, Color>> =
+    Array(9) { i ->
+        val t = i / 8f
+        val eased = t * t * t * (t * (t * 6f - 15f) + 10f)
+        t to Color.Black.copy(alpha = 1f - (1f - floor) * eased)
+    }
 
 /** How far up the cover has to be dragged for a release to open the queue. */
 private const val QUEUE_CARRY_FRACTION = 0.3f
@@ -894,6 +909,7 @@ internal fun NowPlayingScreen(
         LiveArtworkBackdrop(
             artUrl = artUrl,
             palette = palette,
+            heroHeight = heroHeight,
         )
 
         // The cover, edge to edge, dissolving into the mesh at its foot.
@@ -959,9 +975,10 @@ internal fun NowPlayingScreen(
                         if (depth > 0.001f) drawRect(Color.Black.copy(alpha = 0.28f * depth))
                         // The dissolve at the foot belongs to the banner; the square it lands as
                         // has none.
+                        val floor = g().coerceIn(0f, 1f)
                         drawRect(
                             brush = Brush.verticalGradient(
-                                colors = listOf(Color.Black, Color.Black.copy(alpha = g().coerceIn(0f, 1f))),
+                                *heroDissolveStops(floor),
                                 startY = size.height * (1f - HERO_FADE_FRACTION),
                                 endY = size.height,
                             ),
@@ -3937,16 +3954,122 @@ private val DefaultAccent = Color(0xFFF3CE6A)
 private fun LiveArtworkBackdrop(
     artUrl: String?,
     palette: MeshPalette,
+    /** Where the full-bleed cover ends. Given, the ground continues that cover below it. */
+    heroHeight: Dp? = null,
 ) {
-    // The lyrics page's ground, exactly: the cover as a slow field of its own colours with the
-    // cover blurred over it and a light scrim. It reads at an ordinary screen brightness, which
-    // the darker lock-screen treatment did not. [palette] is kept for callers; the field reads its
-    // own colours from the cover.
     val metadata = LocalPlayerConnection.current?.mediaMetadata?.collectAsState()?.value
-    if (metadata != null) {
-        AppleLyricsBackground(mediaMetadata = metadata)
-    } else {
+    if (metadata == null) {
         Box(Modifier.fillMaxSize().background(palette.colors.firstOrNull()?.dimmed() ?: Color.Black))
+        return
+    }
+    if (heroHeight == null || heroHeight <= 0.dp) {
+        // Landscape and the other layouts with no banner: the lyrics page's ground.
+        AppleLyricsBackground(mediaMetadata = metadata)
+        return
+    }
+    val isPlaying = LocalPlayerConnection.current?.isPlaying?.collectAsState()?.value ?: false
+    androidx.compose.animation.AnimatedContent(
+        targetState = metadata.thumbnailUrl,
+        transitionSpec = { fadeIn(tween(700)) togetherWith fadeOut(tween(700)) },
+        label = "bleedGround",
+        modifier = Modifier.fillMaxSize(),
+    ) { thumbnailUrl ->
+        Box(Modifier.fillMaxSize()) {
+            // A slow field of the cover's colours, for the little movement that shows through.
+            com.ozyern.exhale.ui.component.FluidArtworkBackground(
+                url = thumbnailUrl,
+                brightness = 0.7f,
+                paused = !isPlaying,
+                modifier = Modifier.fillMaxSize(),
+            )
+            if (thumbnailUrl != null) BleedingArtwork(thumbnailUrl, heroHeight)
+            // Only as dark as the controls need: clear under the cover, deepening towards the
+            // transport. The old flat 40-60% black is what turned every cover into the same brown.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Black.copy(alpha = 0.06f),
+                            0.45f to Color.Black.copy(alpha = 0.16f),
+                            0.75f to Color.Black.copy(alpha = 0.30f),
+                            1f to Color.Black.copy(alpha = 0.46f),
+                        ),
+                    ),
+            )
+        }
+    }
+}
+
+/**
+ * The cover, bled down the screen the way the lock screen does it: drawn exactly where the
+ * full-bleed banner sits, its last rows stretched to the foot, the whole blurred hard and its
+ * colours lifted. Under the banner's dissolve this is the same picture, softened, so the cover
+ * never ends — it melts into itself instead of into a palette sampled from it.
+ */
+@Composable
+private fun BleedingArtwork(url: String, heroHeight: Dp) {
+    val context = LocalContext.current
+    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, url) {
+        value = withContext(Dispatchers.IO) {
+            val request = ImageRequest.Builder(context)
+                .data(url.highRes())
+                // Small on purpose: it is about to be blurred past any detail a large one has.
+                .size(384, 384)
+                .allowHardware(false)
+                .build()
+            runCatching { context.imageLoader.execute(request).image?.toBitmap()?.asImageBitmap() }.getOrNull()
+        }
+    }
+    val image = bitmap ?: return
+    val saturate = remember {
+        androidx.compose.ui.graphics.ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(1.35f) })
+    }
+    val appear = remember(url) { Animatable(0f) }
+    LaunchedEffect(url) { appear.animateTo(1f, tween(500)) }
+    Canvas(
+        Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                alpha = appear.value * 0.92f
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    val radius = 56.dp.toPx()
+                    renderEffect = androidx.compose.ui.graphics.BlurEffect(
+                        radius, radius, androidx.compose.ui.graphics.TileMode.Clamp,
+                    )
+                }
+                // Clamped edges, so the blur pulls colour in from the sides rather than black.
+                clip = true
+            },
+    ) {
+        val bannerH = heroHeight.toPx().coerceAtMost(size.height)
+        // The banner's own crop: ContentScale.Crop of the cover into width x banner height.
+        val scale = maxOf(size.width / image.width, bannerH / image.height)
+        val srcW = (size.width / scale).coerceAtMost(image.width.toFloat())
+        val srcH = (bannerH / scale).coerceAtMost(image.height.toFloat())
+        val srcX = ((image.width - srcW) / 2f).roundToInt()
+        val srcY = ((image.height - srcH) / 2f).roundToInt()
+        drawImage(
+            image = image,
+            srcOffset = IntOffset(srcX, srcY),
+            srcSize = IntSize(srcW.roundToInt(), srcH.roundToInt()),
+            dstOffset = IntOffset.Zero,
+            dstSize = IntSize(size.width.roundToInt(), bannerH.roundToInt()),
+            colorFilter = saturate,
+        )
+        // Edge extension: the bottom 6% of the picture, stretched down to the foot of the screen.
+        val stripH = (srcH * 0.06f).roundToInt().coerceAtLeast(1)
+        val rest = (size.height - bannerH).roundToInt()
+        if (rest > 0) {
+            drawImage(
+                image = image,
+                srcOffset = IntOffset(srcX, srcY + srcH.roundToInt() - stripH),
+                srcSize = IntSize(srcW.roundToInt(), stripH),
+                dstOffset = IntOffset(0, bannerH.roundToInt()),
+                dstSize = IntSize(size.width.roundToInt(), rest),
+                colorFilter = saturate,
+            )
+        }
     }
 }
 

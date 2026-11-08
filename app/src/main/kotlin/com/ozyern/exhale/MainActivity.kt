@@ -622,31 +622,6 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            togetherInviteToConfirm?.let { link ->
-                androidx.compose.material3.AlertDialog(
-                    onDismissRequest = { togetherInviteToConfirm = null },
-                    title = { androidx.compose.material3.Text("Join Listen Together?") },
-                    text = {
-                        androidx.compose.material3.Text(
-                            "A link is asking Exhale to join a shared listening session. " +
-                                "Whoever runs it will control what plays. Only join if you trust who sent it.",
-                        )
-                    },
-                    confirmButton = {
-                        androidx.compose.material3.TextButton(onClick = {
-                            pendingTogetherJoinLink = link
-                            togetherInviteToConfirm = null
-                            startMusicServiceSafely()
-                            joinPendingTogetherIfReady()
-                        }) { androidx.compose.material3.Text("Join") }
-                    },
-                    dismissButton = {
-                        androidx.compose.material3.TextButton(onClick = { togetherInviteToConfirm = null }) {
-                            androidx.compose.material3.Text("Not now")
-                        }
-                    },
-                )
-            }
             val notificationPermissionLauncher =
                 rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
                     if (isGranted) {
@@ -795,6 +770,36 @@ class MainActivity : ComponentActivity() {
                 seedPalette = if (sabrinaTheme || !enableDynamicTheme) customThemeSeedPalette else null,
                 useSystemFont = useSystemFont,
             ) {
+                // Inside the theme: drawn above it, this was the stock purple Material alert, and it
+                // called the feature "Listen Together", a name used nowhere else in the app.
+                togetherInviteToConfirm?.let { link ->
+                    com.ozyern.exhale.ui.component.DefaultDialog(
+                        onDismiss = { togetherInviteToConfirm = null },
+                        title = { androidx.compose.material3.Text("Join Music Together?") },
+                        buttons = {
+                            androidx.compose.material3.TextButton(onClick = { togetherInviteToConfirm = null }) {
+                                androidx.compose.material3.Text("Not now")
+                            }
+                            androidx.compose.material3.TextButton(onClick = {
+                                pendingTogetherJoinLink = link
+                                togetherInviteToConfirm = null
+                                startMusicServiceSafely()
+                                joinPendingTogetherIfReady()
+                            }) {
+                                androidx.compose.material3.Text(
+                                    "Join",
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                                )
+                            }
+                        },
+                    ) {
+                        androidx.compose.material3.Text(
+                            "Someone shared a room with you. While you're in it, the host picks what plays. " +
+                                "Only join if you know who sent the link.",
+                            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
                 BoxWithConstraints(
                     modifier =
                         with(com.ozyern.exhale.ui.component.HoldTracker) {
