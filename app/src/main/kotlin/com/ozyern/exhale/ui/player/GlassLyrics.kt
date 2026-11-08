@@ -204,16 +204,8 @@ internal fun GlassLyricsView(
                     )
                 },
         ) {
-            val (motion) = com.ozyern.exhale.utils.rememberEnumPreference(
-                com.ozyern.exhale.constants.LyricsMotionKey,
-                com.ozyern.exhale.constants.LyricsMotion.EXHALE,
-            )
-            if (linesReady && motion == com.ozyern.exhale.constants.LyricsMotion.FLOW) {
-                com.ozyern.exhale.ui.lyricsflow.ExhaleFlowLyrics(
-                    sliderPositionProvider = sliderPositionProvider,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else if (linesReady) {
+            // LyricsV2 hands Flow to its panel itself, keeping translation and line sharing.
+            if (linesReady) {
                 LyricsV2(
                     sliderPositionProvider = sliderPositionProvider,
                     cornerButtons = false,

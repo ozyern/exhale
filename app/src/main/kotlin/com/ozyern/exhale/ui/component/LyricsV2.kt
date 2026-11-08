@@ -290,9 +290,13 @@ fun LyricsV2(
     val inactiveAlpha = 0.35f
     val lyricsMotion by com.ozyern.exhale.utils.rememberEnumPreference(
         com.ozyern.exhale.constants.LyricsMotionKey,
-        com.ozyern.exhale.constants.LyricsMotion.EXHALE,
+        com.ozyern.exhale.constants.LyricsMotion.FLOW,
     )
     val appleMotion = lyricsMotion == com.ozyern.exhale.constants.LyricsMotion.APPLE_MUSIC
+    // Flow draws through the ported panel (ui/lyricsflow): staggered line waterfall, feathered
+    // word wipe, depth falloff. This composable keeps the data around it — translation,
+    // pronunciation, the corner buttons and picking lines to share.
+    val flowMotion = lyricsMotion == com.ozyern.exhale.constants.LyricsMotion.FLOW
 
     // ── Selection mode state ──
     var isSelectionModeActive by rememberSaveable { mutableStateOf(false) }
@@ -516,8 +520,9 @@ fun LyricsV2(
     // number of *milliseconds of track* covers only two thirds of the wall-clock time it did at
     // 1x, so the highlight would drift late exactly when the words are hardest to follow.
     val smoothPosition = remember { com.ozyern.exhale.utils.SmoothPlaybackPosition() }
-    LaunchedEffect(entriesWithWords, isSynced) {
-        if (!isSynced || entriesWithWords.isEmpty()) return@LaunchedEffect
+    // Flow keeps its own clock; this loop would only recompose a column that is not on screen.
+    LaunchedEffect(entriesWithWords, isSynced, flowMotion) {
+        if (flowMotion || !isSynced || entriesWithWords.isEmpty()) return@LaunchedEffect
         while (isActive) {
             com.ozyern.exhale.utils.awaitAppVisible()
             val sliderPos = sliderPositionProvider()
@@ -758,8 +763,6 @@ fun LyricsV2(
             return@BoxWithConstraints
         }
 
-        val lyricsBackdrop = rememberLayerBackdrop()
-
         if (entriesWithWords.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -775,14 +778,69 @@ fun LyricsV2(
             return@BoxWithConstraints
         }
 
-        LazyColumn(
+        if (flowMotion) {
+            // Flow's rows are the lyric lines without the head spacer, index for index.
+            val headOffset = if (entriesWithWords.firstOrNull() === HEAD_LYRICS_ENTRY) 1 else 0
+            val flowEntries = remember(entriesWithWords) { entriesWithWords.drop(headOffset) }
+            // One small line under each lyric: its translation when that is on, else its
+            // pronunciation. The flows fill in line by line as the work finishes.
+            val subTexts by androidx.compose.runtime.produceState<List<String?>?>(
+                null, flowEntries, showTranslation, showPronunciation,
+            ) {
+                if ((!showTranslation && !showPronunciation) || flowEntries.isEmpty()) {
+                    value = null
+                    return@produceState
+                }
+                kotlinx.coroutines.flow.combine(
+                    flowEntries.map { entry ->
+                        kotlinx.coroutines.flow.combine(
+                            entry.translatedTextFlow,
+                            entry.romanizedTextFlow,
+                        ) { translated, romanized ->
+                            when {
+                                showTranslation && translated != null -> translated
+                                showPronunciation -> romanized
+                                else -> null
+                            }
+                        }
+                    },
+                ) { it.toList() }.collect { value = it }
+            }
+            fun toggle(row: Int) {
+                val index = row + headOffset
+                when {
+                    selectedIndices.contains(index) -> {
+                        selectedIndices.remove(index)
+                        if (selectedIndices.isEmpty()) isSelectionModeActive = false
+                    }
+                    selectedIndices.size < maxSelectionLimit -> selectedIndices.add(index)
+                    else -> showMaxSelectionToast = true
+                }
+            }
+            com.ozyern.exhale.ui.lyricsflow.ExhaleFlowLyrics(
+                sliderPositionProvider = sliderPositionProvider,
+                subTexts = subTexts?.takeIf { texts -> texts.any { it != null } },
+                picking = isSelectionModeActive,
+                picked = selectedIndices.map { it - headOffset }.toSet(),
+                onPickLine = { row ->
+                    if (!isSelectionModeActive) {
+                        isSelectionModeActive = true
+                        selectedIndices.add(row + headOffset)
+                    } else if (!selectedIndices.contains(row + headOffset)) {
+                        toggle(row)
+                    }
+                },
+                onTogglePick = ::toggle,
+                // Clear of the corner discs, so the last lines can be scrolled out from under them.
+                bottomInset = if (cornerButtons) 64.dp else 0.dp,
+                // The size slider's default (26) is Flow's own 34sp, the size in Apple's lyrics.
+                textScale = (lyricsTextSize / 26f).coerceIn(0.7f, 1.5f),
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else LazyColumn(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                // The layer the sync pill refracts. A sibling drawn *before* the pill, never the
-                // app's own content backdrop: consuming an ancestor layer from inside it is a
-                // re-entrant draw, which is the crash the glass chips hit on the Library page.
-                .layerBackdrop(lyricsBackdrop)
                 .nestedScroll(nestedScrollConnection)
                 .smoothFadingEdge(vertical = 80.dp)
                 .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
@@ -1147,17 +1205,9 @@ fun LyricsV2(
         }
 
         // ── Back to the line that is playing ──
-        AnimatedVisibility(
-            visible = isManualScrolling && isSynced,
-            enter = fadeIn(tween(160)) + scaleIn(initialScale = 0.86f, animationSpec = spring(dampingRatio = 0.72f, stiffness = 520f)),
-            exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.9f, animationSpec = tween(140)),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                // Above the row of round lyric buttons when they are there (44dp discs on an 18dp
-                // inset); on the same line it sat behind them, half covered.
-                .padding(bottom = if (cornerButtons) 76.dp else 18.dp),
-        ) {
-            // Where the sung line is from here: above the screen, below it, or on it.
+        // Only while that line is off screen: scrolled a little and still looking at it, the follow
+        // picks the column back up by itself a moment later.
+        if (!flowMotion) {
             val direction by remember {
                 derivedStateOf {
                     val visible = listState.layoutInfo.visibleItemsInfo
@@ -1169,25 +1219,32 @@ fun LyricsV2(
                     }
                 }
             }
-            val liveLine = entriesWithWords.getOrNull(currentLineIndex)?.text?.trim().orEmpty()
-            LyricsSyncPill(
-                backdrop = lyricsBackdrop,
-                tint = textColor,
+            LyricsReturnButton(
+                visible = isManualScrolling && isSynced && direction != 0 && !isSelectionModeActive,
                 direction = direction,
-                liveLine = liveLine,
-                restartKey = lastManualScrollTime,
                 onClick = {
                     isManualScrolling = false
                     scope.launch {
-                        // Onto the same anchor the follow holds the line at, so the hand-off back
-                        // to it is not a second little jump.
-                        val viewportHeight = listState.layoutInfo.viewportSize.height
+                        // Onto the anchor the follow holds the line at: its *centre* at 42%. The
+                        // old target put the line's top at 38%, so every tap ended in a second
+                        // little jump when the follow took over.
+                        // The line is off screen and unmeasured, so its height is taken as the
+                        // average of the rows that are: one movement, landing within a few pixels.
+                        val info = listState.layoutInfo
+                        val viewportHeight = info.viewportSize.height
+                        val halfLine = info.visibleItemsInfo.map { it.size }.average()
+                            .takeIf { !it.isNaN() }?.div(2.0)?.toInt() ?: 0
                         listState.animateScrollToItem(
                             index = currentLineIndex,
-                            scrollOffset = -(viewportHeight * 0.38f).toInt()
+                            scrollOffset = -((viewportHeight * 0.42f).toInt() - halfLine)
                         )
                     }
                 },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    // Above the row of round lyric buttons when they are there (44dp discs on an
+                    // 18dp inset).
+                    .padding(bottom = if (cornerButtons) 76.dp else 18.dp),
             )
         }
         if (isSelectionModeActive) {
@@ -1767,168 +1824,6 @@ private fun LyricsWaitingLines(color: Color) {
                         ),
                     ),
             )
-        }
-    }
-}
-
-
-/**
- * "Sync": the pill that puts you back on the line being sung.
- *
- * It said "Resume", which is what a *player* does - on a page with a play button a few hundred
- * pixels below it, a button reading Resume is a button that looks like it starts the music. What
- * it actually does is re-attach the scroll to the song, so it says so, with the sync glyph.
- *
- * Real glass, not a tonal button: it floats over the words rather than sitting in a layout, so it
- * has to bend what is behind it the way every other floating chip in the app does. It refracts the
- * lyric list alone - a local layer drawn before it - which is what keeps this off the re-entrant
- * draw that the chrome glass caused in page content. Where no runtime shader exists (below API 33)
- * it falls back to the painted glass surface.
- */
-/*
- * What it shows, beyond the word "Sync":
- *
- *  - Which way the song is. An arrow up or down while the sung line is off screen, the sync glyph
- *    while it is on it; the arrow turns rather than swaps, so scrolling past the line flips it in
- *    place.
- *  - What is being sung. The live line rides in the pill, so reading back through a verse never
- *    loses the song; it is the word "Sync" again through a gap with no words.
- *  - When it will go back by itself. A ring round the glyph fills over the same three seconds the
- *    follow waits before it takes over again, and starts over with every touch of the list - the
- *    timeout was always there, it just could not be seen.
- */
-@Composable
-private fun LyricsSyncPill(
-    backdrop: com.kyant.backdrop.Backdrop,
-    tint: Color,
-    direction: Int,
-    liveLine: String,
-    restartKey: Long,
-    onClick: () -> Unit,
-) {
-    val countdown = remember { androidx.compose.animation.core.Animatable(0f) }
-    LaunchedEffect(restartKey) {
-        countdown.snapTo(0f)
-        countdown.animateTo(
-            1f,
-            androidx.compose.animation.core.tween(MANUAL_SCROLL_TIMEOUT_MS.toInt(), easing = androidx.compose.animation.core.LinearEasing),
-        )
-    }
-    val arrowTurn by animateFloatAsState(
-        targetValue = if (direction < 0) 180f else 0f,
-        animationSpec = spring(dampingRatio = 0.62f, stiffness = 420f),
-        label = "syncArrowTurn",
-    )
-    val haptic = LocalHapticFeedback.current
-    val source = remember { MutableInteractionSource() }
-    val pressed by source.collectIsPressedAsState()
-    val press by animateFloatAsState(
-        targetValue = if (pressed) 0.94f else 1f,
-        animationSpec = spring(dampingRatio = 0.7f, stiffness = 900f),
-        label = "syncPillPress",
-    )
-    val shape = RoundedCornerShape(percent = 50)
-    val glassy = remember { isRuntimeShaderSupported() }
-
-    val base = Modifier
-        .graphicsLayer {
-            scaleX = press
-            scaleY = press
-        }
-        .shadow(18.dp, shape, clip = false, ambientColor = Color.Black.copy(alpha = 0.45f), spotColor = Color.Black.copy(alpha = 0.45f))
-
-    val surface = if (glassy) {
-        base.drawBackdrop(
-            backdrop = backdrop,
-            shape = { shape },
-            effects = {
-                // The dock's recipe, a size down: colour lifted, a light blur, and a lens deep
-                // enough that the words passing under the rim visibly bend.
-                colorControls(saturation = 1.5f)
-                blur(7f.dp.toPx())
-                lens(14f.dp.toPx(), 20f.dp.toPx(), true)
-            },
-            highlight = { Highlight.Default },
-            onDrawSurface = {
-                drawRect(Color.Black.copy(alpha = 0.26f))
-            },
-        )
-    } else {
-        base.liquidGlassSurface(shape, tint = Color.Black.copy(alpha = 0.32f))
-    }
-
-    Row(
-        modifier = surface
-            .clip(shape)
-            .clickable(interactionSource = source, indication = null) {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                onClick()
-            }
-            .animateContentSize(spring(dampingRatio = 0.8f, stiffness = 520f))
-            .padding(start = 8.dp, end = 18.dp, top = 7.dp, bottom = 7.dp)
-            .widthIn(max = 300.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        // The glyph in a ring that fills until the follow takes over again.
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(30.dp)) {
-            androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
-                val stroke = 2.dp.toPx()
-                val inset = stroke / 2
-                val arcSize = androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke)
-                val topLeft = Offset(inset, inset)
-                drawArc(tint.copy(alpha = 0.18f), 0f, 360f, false, topLeft, arcSize, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
-                drawArc(
-                    tint.copy(alpha = 0.9f), -90f, 360f * countdown.value, false, topLeft, arcSize,
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round),
-                )
-            }
-            androidx.compose.animation.Crossfade(targetState = direction == 0, animationSpec = tween(140), label = "syncGlyph") { onScreen ->
-                Icon(
-                    painter = painterResource(if (onScreen) R.drawable.sync else R.drawable.arrow_downward),
-                    contentDescription = null,
-                    tint = tint,
-                    modifier = Modifier
-                        .size(16.dp)
-                        .graphicsLayer { rotationZ = if (onScreen) 0f else arrowTurn },
-                )
-            }
-        }
-        androidx.compose.animation.AnimatedContent(
-            targetState = liveLine.ifBlank { null },
-            transitionSpec = {
-                (fadeIn(tween(220)) + androidx.compose.animation.slideInVertically(tween(260)) { it / 2 }) togetherWith
-                    (fadeOut(tween(140)) + androidx.compose.animation.slideOutVertically(tween(200)) { -it / 2 })
-            },
-            label = "syncLine",
-        ) { line ->
-            if (line == null) {
-                Text(
-                    text = stringResource(R.string.lyrics_sync),
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = tint,
-                )
-            } else {
-                Column {
-                    Text(
-                        text = stringResource(R.string.lyrics_sync),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 0.4.sp,
-                        color = tint.copy(alpha = 0.6f),
-                        maxLines = 1,
-                    )
-                    Text(
-                        text = line,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = tint,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
         }
     }
 }

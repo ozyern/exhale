@@ -707,7 +707,8 @@ enum class LyricsAnimationStyle {
 // A new key, so everyone starts again on the 1.0.405 motion: the ported panel had been the
 // default and was saved as a choice nobody made.
 // Moved again with the layout's key, so everyone lands on Exhale with Classic.
-val LyricsMotionKey = stringPreferencesKey("lyricsMotion406")
+// Moved once more so everyone lands on Flow, the motion this build is tuned around.
+val LyricsMotionKey = stringPreferencesKey("lyricsMotion507")
 enum class LyricsMotion {
     EXHALE,
     APPLE_MUSIC,

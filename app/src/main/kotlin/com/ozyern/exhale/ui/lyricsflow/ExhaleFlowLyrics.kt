@@ -15,6 +15,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import com.ozyern.exhale.LocalPlayerConnection
 import com.ozyern.exhale.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
@@ -31,6 +33,17 @@ import kotlinx.coroutines.isActive
 fun ExhaleFlowLyrics(
     sliderPositionProvider: () -> Long?,
     modifier: Modifier = Modifier,
+    /** A small second line under each lyric (translation or pronunciation), index for index; null for none. */
+    subTexts: List<String?>? = null,
+    picking: Boolean = false,
+    picked: Set<Int> = emptySet(),
+    /** Long-press on a line; null leaves line picking off. */
+    onPickLine: ((Int) -> Unit)? = null,
+    onTogglePick: (Int) -> Unit = {},
+    /** Room kept clear at the bottom for controls drawn over the panel. */
+    bottomInset: Dp = 0.dp,
+    /** Multiple of the panel's own type size. */
+    textScale: Float = 1f,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val player = playerConnection.player
@@ -74,8 +87,23 @@ fun ExhaleFlowLyrics(
         }
     }
 
+    // A line with no translation yet carries its own text, which the panel recognises and skips.
+    val subLines = remember(lines, subTexts) {
+        subTexts?.let { texts ->
+            lines.mapIndexed { i, line -> LyricLine(timeMs = line.timeMs, text = texts.getOrNull(i) ?: line.text) }
+        }
+    }
+
     LyricsPanel(
         lines = lines,
+        subLines = subLines,
+        canPick = onPickLine != null,
+        picking = picking,
+        picked = picked,
+        onPickLine = onPickLine ?: {},
+        onTogglePick = onTogglePick,
+        returnButtonInset = bottomInset,
+        textScale = textScale,
         trackKey = trackKey,
         playhead = rememberLyricPlayhead(position),
         looking = lyrics == null,
@@ -84,7 +112,10 @@ fun ExhaleFlowLyrics(
         controlsOpen = true,
         onRevealControls = {},
         onHideControls = {},
-        modifier = modifier.padding(horizontal = PLAYER_GUTTER),
+        // Exhale's lyric hosts already sit inside a margin of their own (12-16dp), so the panel
+        // takes 16dp more rather than its full 30dp gutter: the words then start ~32dp from the
+        // screen's edge, where Apple's do.
+        modifier = modifier.padding(horizontal = 16.dp),
     )
 }
 

@@ -40,6 +40,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -123,6 +124,7 @@ import androidx.compose.ui.text.style.ResolvedTextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import java.util.Locale
 import kotlin.math.PI
@@ -400,6 +402,14 @@ private const val SCROLL_LEAD_MAX_MS = 500L
  * start together.
  */
 private val LYRIC_EASING = CubicBezierEasing(0.41f, 0f, 0.12f, 0.99f)
+
+/** The lyric face: SF Pro Display Bold, as Apple sets its lyrics. */
+private val LyricFontFamily = androidx.compose.ui.text.font.FontFamily(
+    androidx.compose.ui.text.font.Font(R.font.sfprodisplaybold, FontWeight.Bold),
+)
+
+/** SF Display's own tracking at ~34pt (about -0.4pt), so the words sit as tight as Apple's. */
+private val LYRIC_TRACKING = (-0.012).em
 private const val LYRIC_SETTLE_MS = 400
 
 /**
@@ -1775,6 +1785,10 @@ internal fun LyricsPanel(
     onPickLine: (Int) -> Unit = {},
     /** Tap while picking: add or drop that line. */
     onTogglePick: (Int) -> Unit = {},
+    /** Room kept clear under the "back to the song" button for controls drawn over the panel. */
+    returnButtonInset: Dp = 0.dp,
+    /** The lyric settings' size, as a multiple of the default (34sp synced, 30sp unsynced). */
+    textScale: Float = 1f,
     modifier: Modifier = Modifier,
 ) {
     val panelPlaying = isPlaying && active
@@ -1980,9 +1994,11 @@ internal fun LyricsPanel(
         return
     }
 
+    Box(modifier) {
     LazyColumn(
         state = listState,
-        modifier = modifier
+        modifier = Modifier
+            .fillMaxSize()
             .bleedHorizontally(PLAYER_GUTTER)
             .nestedScroll(controlsOnScroll)
             .nestedScroll(keepScroll)
@@ -2157,18 +2173,25 @@ internal fun LyricsPanel(
                 }
             } else {
                 val alignEnd = duet && line.alignment == LyricAlignment.End
+                // SF Pro Display Bold at Apple's display tracking: the face, weight and spacing
+                // the iOS lyrics are set in. Bold, not ExtraBold — the file has one weight, and
+                // asking for more than it has makes Android smear a fake bold over it.
                 val style = if (isSynced) {
                     MaterialTheme.typography.headlineLarge.copy(
-                        fontSize = 34.sp,
-                        lineHeight = 41.sp,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = LyricFontFamily,
+                        fontSize = 34.sp * textScale,
+                        lineHeight = 41.sp * textScale,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = LYRIC_TRACKING,
                         textAlign = if (alignEnd) TextAlign.End else TextAlign.Start,
                     )
                 } else {
                     MaterialTheme.typography.headlineMedium.copy(
-                        fontSize = 30.sp,
-                        lineHeight = 38.sp,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = LyricFontFamily,
+                        fontSize = 30.sp * textScale,
+                        lineHeight = 38.sp * textScale,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = LYRIC_TRACKING,
                         textAlign = if (alignEnd) TextAlign.End else TextAlign.Start,
                     )
                 }
@@ -2465,6 +2488,29 @@ internal fun LyricsPanel(
                 }
             }
         }
+    }
+
+    // Back to the line being sung, only while it is out of sight. Close enough to see it, the
+    // follow takes the panel back by itself a moment later.
+    val returnDirection by remember(listState) {
+        derivedStateOf {
+            val visible = listState.layoutInfo.visibleItemsInfo
+            when {
+                visible.isEmpty() -> 0
+                currentLine < visible.first().index -> -1
+                currentLine > visible.last().index -> 1
+                else -> 0
+            }
+        }
+    }
+    com.ozyern.exhale.ui.component.LyricsReturnButton(
+        visible = active && isSynced && browsingByDrag && !picking && currentLine >= 0 && returnDirection != 0,
+        direction = returnDirection,
+        onClick = { browsingByDrag = false },
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = returnButtonInset + 18.dp),
+    )
     }
 }
 
