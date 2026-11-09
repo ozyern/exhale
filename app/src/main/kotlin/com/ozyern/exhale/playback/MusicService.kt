@@ -893,9 +893,12 @@ class MusicService :
                 decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
             ) {
                 val rate = format.sampleRate
-                if (rate > 0 && rate != inputSampleRate) {
+                // The file's own depth: a 24-bit FLAC must not be given a 16-bit bit-perfect mode.
+                val bits = BitPerfectUsb.bitsOf(format.pcmEncoding)
+                if (rate > 0 && (rate != inputSampleRate || bits != BitPerfectUsb.sourceBits)) {
                     inputSampleRate = rate
-                    if (bitPerfectUsb) BitPerfectUsb.update(audioManager, true, rate)
+                    if (bitPerfectUsb) BitPerfectUsb.update(audioManager, true, rate, bits)
+                    else BitPerfectUsb.sourceBits = bits
                 }
             }
         })
@@ -6194,6 +6197,8 @@ class MusicService :
                 // first lossless byte was the slowest source's, not the fastest's.
                 val own = ioScope.async {
                     runCatching { com.ozyern.exhale.playback.lossless.ServerLibrary.find(song) }.getOrNull()
+                        // Only the server's lossless files: an MP3 there is no upgrade on YouTube.
+                        ?.takeIf { it.format in LOSSLESS_CONTAINERS }
                         ?.let { FlacHit(it.url, "${it.serverName} (your server) · ${it.format.uppercase()}") }
                 }
                 val cloudLossless = ioScope.async {
@@ -6208,7 +6213,12 @@ class MusicService :
                                 durationMs = song.duration.takeIf { it > 0 }?.let { it * 1000L },
                             ),
                         )
-                    }.getOrNull()?.let { res ->
+                    }.getOrNull()
+                        // A source's lossy tier (Deezer MP3, Tidal or Apple AAC) is not a lossless
+                        // copy. Taken as one, it won the race against OpenFlac's FLAC and against
+                        // YouTube's own FLAC further down, and played labelled as FLAC.
+                        ?.takeIf { it.isLossless }
+                        ?.let { res ->
                         FlacHit(res.uri, res.label, res.sampleRate, res.bitDepth, res.bitrate)
                     }
                 }
@@ -6300,7 +6310,7 @@ class MusicService :
      * small: two minutes of AAC is under two megabytes, so there is no reason not to hold minutes
      * of it. Playback still starts on the first couple of seconds; it just doesn't stop again.
      */
-    private fun createLoadControl(): LoadControl =
+    private fun createLoadControl(): LoadControl = LosslessAwareLoadControl(
         DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 /* minBufferMs = */ 60_000,
@@ -6316,7 +6326,8 @@ class MusicService :
             .setTargetBufferBytes(64 * 1024 * 1024)
             .setPrioritizeTimeOverSizeThresholds(true)
             .setBackBuffer(/* backBufferDurationMs = */ 30_000, /* retainBackBufferFromKeyframe = */ true)
-            .build()
+            .build(),
+    )
 
     private fun createCacheDataSource(): DataSource.Factory {
         val baseCacheFactory = CacheDataSource
@@ -7371,7 +7382,18 @@ class MusicService :
                             ?: (dataStore.get(OutputFloatKey, true) && externalOutputActive())
                     },
                     // Bit-perfect promises the DAC the source's own samples: no added noise.
-                    ditherAllowed = { BitPerfectUsb.activeEncoding == null },
+                    // Except where a deeper file has to come down to a 16-bit DAC: dithered, not truncated.
+                    ditherAllowed = { BitPerfectUsb.activeEncoding == null || BitPerfectUsb.needsDither },
+                    // And none of Exhale's own processing either: the file, untouched.
+                    bypassProcessors = { BitPerfectUsb.activeEncoding != null },
+                    // The DAC switched to the track's rate on the playback thread, just before the
+                    // AudioTrack opens. Done only from the main thread's format callback, it could
+                    // land after the track had already opened at the old rate and been resampled.
+                    beforeConfigure = { format ->
+                        if (bitPerfectUsb && format.sampleRate > 0 && ::audioManager.isInitialized) {
+                            BitPerfectUsb.update(audioManager, true, format.sampleRate)
+                        }
+                    },
                 )
             }
         }
@@ -8058,8 +8080,16 @@ class MusicService :
         /** Before this a stall is the stream starting, or a seek landing, not the source falling behind. */
         private const val MID_SONG_MS = 5_000L
 
-        /** Past this, swapping a playing song to its FLAC copy costs a stall the copy isn't worth. */
-        private const val LATE_UPGRADE_MS = 20_000L
+        /**
+         * Past this, swapping a playing song to its FLAC copy costs a stall the copy isn't worth.
+         * It was 20 s: a copy landing a few seconds in reloaded the song mid-phrase, which is the
+         * stutter heard at the start of songs. Now only a song that has barely begun is swapped;
+         * any later and the copy waits for the song's next play.
+         */
+        private const val LATE_UPGRADE_MS = 3_000L
+
+        /** Lossless containers a listener's own server may hold; anything else is no upgrade. */
+        private val LOSSLESS_CONTAINERS = setOf("flac", "alac", "wav", "aiff", "aif", "ape", "wv")
         private const val MAX_NETWORK_RETRIES = 3
         private const val NETWORK_RETRY_STEP_MS = 1_000L
         private const val CONNECTIVITY_CHECKS = 3

@@ -27,6 +27,21 @@ data class DirectStream(
     val bitDepth: Int? = null,
 )
 
+/**
+ * Whether this stream is lossless (FLAC or ALAC). A source asked for lossless can still hand back
+ * its lossy tier — Deezer's MP3 on an account without HiFi, Tidal's AAC when the backend downgrades,
+ * Apple's AAC — and those must never outrank a real lossless copy from a lower-ranked source.
+ */
+val DirectStream.isLossless: Boolean
+    get() {
+        val label = label.uppercase(java.util.Locale.US)
+        if ("MP3" in label || "AAC" in label || "CTRP" in label || "OPUS" in label) return false
+        return codecs.contains("flac", ignoreCase = true) ||
+            codecs.contains("alac", ignoreCase = true) ||
+            mimeType.contains("flac", ignoreCase = true) ||
+            "LOSSLESS" in label || "FLAC" in label || "HI_RES" in label || "ALAC" in label
+    }
+
 fun DirectStream.pcmBitrateOrNull(channels: Int = 2): Int? {
     val rate = sampleRate?.takeIf { it > 0 } ?: return null
     val depth = bitDepth?.takeIf { it > 0 } ?: return null

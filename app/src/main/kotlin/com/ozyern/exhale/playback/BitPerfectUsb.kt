@@ -63,36 +63,80 @@ object BitPerfectUsb {
      * setting changes, when a DAC comes or goes, and when a track with a new format is about to
      * open its AudioTrack.
      */
-    fun update(audioManager: AudioManager, enabled: Boolean, sampleRate: Int) {
+    /**
+     * The source's bits per sample, from the file's own format (16 for lossy and CD-quality, 24 for
+     * most hi-res). Kept so a call that only knows the rate — a DAC plugged in, the setting turned on —
+     * still chooses the right mode.
+     */
+    @Volatile
+    var sourceBits: Int = 16
+
+    /** What was last applied, so a track that changes nothing makes no call to the framework. */
+    @Volatile private var appliedRate = 0
+    @Volatile private var appliedBits = 0
+
+    /** Why the DAC is not bit-perfect right now, for the output's status line; null when it is or is off. */
+    @Volatile
+    var unavailableReason: String? = null
+        private set
+
+    fun update(audioManager: AudioManager, enabled: Boolean, sampleRate: Int, bits: Int = sourceBits) {
         if (!supported) return
-        runCatching { updateApi34(audioManager, enabled, sampleRate) }
+        sourceBits = bits
+        runCatching { updateApi34(audioManager, enabled, sampleRate, bits) }
             .onFailure { Timber.w(it, "Bit-perfect USB update failed") }
     }
 
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    private fun updateApi34(audioManager: AudioManager, enabled: Boolean, sampleRate: Int) {
+    @Synchronized
+    private fun updateApi34(audioManager: AudioManager, enabled: Boolean, sampleRate: Int, bits: Int) {
         val device = if (enabled && sampleRate > 0) usbOutput(audioManager) else null
-        val pick = device?.let { bestMixer(audioManager, it, sampleRate) }
-        if (device == null || pick == null) {
+        if (device == null) {
+            unavailableReason = null
+            clear(audioManager)
+            return
+        }
+        // Already set for exactly this: called on every track configure, and the framework call is
+        // a round trip to the audio server that briefly reroutes the output.
+        if (appliedOn?.id == device.id && appliedRate == sampleRate && activeEncoding != null) {
+            // The mode does not depend on the depth; only whether coming down to 16-bit is dithered does.
+            appliedBits = bits
+            return
+        }
+        val pick = bestMixer(audioManager, device, sampleRate, bits)
+        if (pick == null) {
+            unavailableReason = "DAC has no bit-perfect mode at $sampleRate Hz"
+            Timber.i("Bit-perfect USB unavailable: %s", unavailableReason)
             clear(audioManager)
             return
         }
         if (appliedOn != null && appliedOn?.id != device.id) clear(audioManager)
         if (audioManager.setPreferredMixerAttributes(mediaAttributes, device, pick)) {
             appliedOn = device
+            appliedRate = sampleRate
+            appliedBits = bits
+            unavailableReason = null
             activeEncoding = when (pick.format.encoding) {
                 AudioFormat.ENCODING_PCM_FLOAT -> C.ENCODING_PCM_FLOAT
                 else -> C.ENCODING_PCM_16BIT
             }
-            Timber.i("Bit-perfect USB: ${pick.format.sampleRate} Hz, encoding ${pick.format.encoding}")
+            Timber.i("Bit-perfect USB: ${pick.format.sampleRate} Hz, encoding ${pick.format.encoding}, source $bits-bit")
         } else {
+            unavailableReason = "the system refused the bit-perfect mode"
             clear(audioManager)
         }
     }
 
-    /** The DAC's bit-perfect mode for this rate, stereo, float preferred over 16-bit. */
+    /**
+     * The DAC's bit-perfect mode for this rate, stereo, float preferred over 16-bit.
+     *
+     * Float carries 24 bits of mantissa, so any source up to 24-bit passes through it unchanged.
+     * Media3's sink writes only float or 16-bit, so a DAC that offers integer modes alone gets
+     * 16-bit; a deeper file is then reduced to it with dither ([needsDither]) rather than having its
+     * low bits cut off, and still reaches the DAC at its own rate, unresampled.
+     */
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-    private fun bestMixer(audioManager: AudioManager, device: AudioDeviceInfo, sampleRate: Int): AudioMixerAttributes? =
+    private fun bestMixer(audioManager: AudioManager, device: AudioDeviceInfo, sampleRate: Int, @Suppress("UNUSED_PARAMETER") bits: Int): AudioMixerAttributes? =
         audioManager.getSupportedMixerAttributes(device)
             .filter {
                 it.mixerBehavior == AudioMixerAttributes.MIXER_BEHAVIOR_BIT_PERFECT &&
@@ -102,13 +146,30 @@ object BitPerfectUsb {
             }
             .minByOrNull { WritableEncodings.indexOf(it.format.encoding) }
 
+    /**
+     * True when the DAC takes 16-bit but the file is deeper: the one case bit-perfect has to lose
+     * bits, and the place TPDF dither turns that loss into a flat noise floor ~96 dB down instead of
+     * distortion that follows the music.
+     */
+    val needsDither: Boolean
+        get() = activeEncoding == C.ENCODING_PCM_16BIT && appliedBits > 16
+
     private fun clear(audioManager: AudioManager) {
+        appliedRate = 0
+        appliedBits = 0
         val device = appliedOn ?: run { activeEncoding = null; return }
         if (supported) {
             runCatching { audioManager.clearPreferredMixerAttributes(mediaAttributes, device) }
         }
         appliedOn = null
         activeEncoding = null
+    }
+
+    /** Bits per sample of a Media3 PCM encoding, 16 where it is not said (lossy codecs). */
+    fun bitsOf(pcmEncoding: Int): Int = when (pcmEncoding) {
+        C.ENCODING_PCM_24BIT, C.ENCODING_PCM_24BIT_BIG_ENDIAN -> 24
+        C.ENCODING_PCM_32BIT, C.ENCODING_PCM_32BIT_BIG_ENDIAN, C.ENCODING_PCM_FLOAT -> 32
+        else -> 16
     }
 
     private val WritableEncodings = listOf(AudioFormat.ENCODING_PCM_FLOAT, AudioFormat.ENCODING_PCM_16BIT)

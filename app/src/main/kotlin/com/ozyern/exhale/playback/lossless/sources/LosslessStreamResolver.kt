@@ -35,6 +35,7 @@ import com.ozyern.exhale.playback.lossless.sources.audiosource.DirectStream
 import com.ozyern.exhale.playback.lossless.sources.audiosource.SongSourceOverride
 import com.ozyern.exhale.playback.lossless.sources.audiosource.TitleMatch
 import com.ozyern.exhale.playback.lossless.sources.audiosource.pcmBitrateOrNull
+import com.ozyern.exhale.playback.lossless.sources.audiosource.isLossless
 import com.ozyern.exhale.playback.lossless.sources.constants.AppleMusicQuality
 import com.ozyern.exhale.playback.lossless.sources.constants.AppleMusicQualityKey
 import com.ozyern.exhale.playback.lossless.sources.constants.AppleMusicMediaUserTokenKey
@@ -518,7 +519,8 @@ object LosslessStreamResolver {
                 directStreamCache.remove(cacheKey, cached)
                 continue
             }
-            if (!lowDataMode && streamStillUsable(cached.stream)) {
+            // A lossy hit in the cache must not stop the search for a lossless copy.
+            if (!lowDataMode && cached.stream.isLossless && streamStillUsable(cached.stream)) {
                 Timber.tag(TAG).d("Multi-source cache HIT for %s: %s [%s]", mediaId, source.name, cached.stream.label)
                 recordResolvedSource(mediaId, source)
                 return publish(mediaId, cached.stream, fromCache = true)
@@ -641,6 +643,7 @@ object LosslessStreamResolver {
         try {
             val finished = HashSet<AudioSourceType>()
             val accepted = HashMap<AudioSourceType, Pair<DirectStream, Double>>()
+            val lossyAccepted = HashMap<AudioSourceType, Pair<DirectStream, Double>>()
             var graceEndsAt = Long.MAX_VALUE
             while (finished.size < sourcesToTry.size) {
                 val answer =
@@ -657,12 +660,18 @@ object LosslessStreamResolver {
                     Timber.tag(TAG).d("Source %s did not resolve \"%s\"", source.name, request.title)
                 } else {
                     val match = matchOf(source, stream, request, overrideIsSourceOverride, override)
-                    if (match.accepted) {
+                    if (match.accepted && stream.isLossless) {
                         Timber.tag(TAG).d(
                             "Source %s candidate for \"%s\": match %.1f%% (%s) [%s]",
                             source.name, request.title, match.score * 100, match.reason, stream.label,
                         )
                         accepted[source] = stream to match.score
+                    } else if (match.accepted) {
+                        // A match, but lossy: kept only for when no source has the song lossless.
+                        // It used to win the race outright when its source ranked first, so a
+                        // Deezer MP3 played over Tidal's or Qobuz's FLAC of the same recording.
+                        Timber.tag(TAG).d("Source %s has \"%s\" only lossy [%s]", source.name, request.title, stream.label)
+                        lossyAccepted[source] = stream to match.score
                     } else {
                         Timber.tag(TAG).i(
                             "Source %s rejected for \"%s\": %s score=%.1f%% matched=\"%s\"",
@@ -677,8 +686,9 @@ object LosslessStreamResolver {
                     graceEndsAt = System.currentTimeMillis() + PRIORITY_GRACE_MS
                 }
             }
-            val winner = sourcesToTry.firstOrNull { it in accepted } ?: return null
-            return winner to accepted.getValue(winner)
+            sourcesToTry.firstOrNull { it in accepted }?.let { return it to accepted.getValue(it) }
+            val lossy = sourcesToTry.firstOrNull { it in lossyAccepted } ?: return null
+            return lossy to lossyAccepted.getValue(lossy)
         } finally {
             jobs.forEach { it.cancel() }
         }

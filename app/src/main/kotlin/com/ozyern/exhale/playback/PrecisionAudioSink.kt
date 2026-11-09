@@ -51,6 +51,16 @@ class PrecisionAudioSink(
     private val floatAllowed: () -> Boolean,
     /** False where the 16-bit output must stay bit-perfect: rounded, never dithered. */
     private val ditherAllowed: () -> Boolean = { true },
+    /**
+     * True while a bit-perfect DAC is taking the stream: the processors are skipped altogether and
+     * only the format the DAC was opened in is made. Read when a track is configured.
+     */
+    private val bypassProcessors: () -> Boolean = { false },
+    /**
+     * Called with the decoded format just before a track is configured, on the playback thread, so
+     * a bit-perfect DAC can be switched to the track's rate before the AudioTrack opens on it.
+     */
+    private val beforeConfigure: (Format) -> Unit = {},
 ) : ForwardingAudioSink(delegate) {
 
     private val pipeline = AudioProcessingPipeline(
@@ -60,6 +70,20 @@ class PrecisionAudioSink(
             .add(DitheredPcm16Processor(active = { !floatAllowed() }, dither = ditherAllowed))
             .build(),
     )
+
+    /**
+     * Bit-perfect's chain: nothing but the step to the DAC's encoding. The equaliser, the spatial
+     * stage, 8D, Automix's filters and normalisation all change samples, and a "bit-perfect" DAC fed
+     * through them was getting Exhale's mix, not the file's.
+     */
+    private val bitPerfectPipeline = AudioProcessingPipeline(
+        ImmutableList.of<AudioProcessor>(
+            DitheredPcm16Processor(active = { !floatAllowed() }, dither = ditherAllowed),
+        ),
+    )
+
+    /** The chain the configured track runs through. */
+    private var active: AudioProcessingPipeline = pipeline
 
     /** Whether the configured stream goes through [pipeline], or straight to [delegate]. */
     private var processing = false
@@ -82,15 +106,20 @@ class PrecisionAudioSink(
     override fun configure(audioSinkConfig: AudioSink.AudioSinkConfig) {
         val inputFormat = audioSinkConfig.format
         clearPending()
+        // The DAC is set to this track's rate first, then the chain is chosen by what it became.
+        runCatching { beforeConfigure(inputFormat) }
+        val chain = if (bypassProcessors()) bitPerfectPipeline else pipeline
+        if (chain !== active) active.reset()
+        active = chain
         val linear = MimeTypes.AUDIO_RAW == inputFormat.sampleMimeType &&
             Util.isEncodingLinearPcm(inputFormat.pcmEncoding) &&
             (inputFormat.pcmEncoding == C.ENCODING_PCM_16BIT || inputFormat.pcmEncoding == C.ENCODING_PCM_FLOAT) &&
             inputFormat.channelCount in 1..8 && inputFormat.sampleRate > 0
         if (linear) {
-            val out = runCatching { pipeline.configure(AudioProcessor.AudioFormat(inputFormat)) }.getOrNull()
+            val out = runCatching { active.configure(AudioProcessor.AudioFormat(inputFormat)) }.getOrNull()
             if (out != null && out != AudioProcessor.AudioFormat.NOT_SET) {
-                pipeline.flush(AudioProcessor.StreamMetadata.DEFAULT)
-                if (pipeline.isOperational) {
+                active.flush(AudioProcessor.StreamMetadata.DEFAULT)
+                if (active.isOperational) {
                     val processed = inputFormat.buildUpon()
                         .setPcmEncoding(out.encoding)
                         .setSampleRate(out.sampleRate)
@@ -128,8 +157,8 @@ class PrecisionAudioSink(
             }
             if (!buffer.hasRemaining()) return true
             val before = buffer.remaining()
-            pipeline.queueInput(buffer)
-            val out = pipeline.getOutput()
+            active.queueInput(buffer)
+            val out = active.getOutput()
             if (out.hasRemaining()) {
                 pending = out
                 pendingTimeUs = presentationTimeUs
@@ -143,11 +172,11 @@ class PrecisionAudioSink(
     override fun playToEndOfStream() {
         if (processing) {
             if (!endOfStreamQueued) {
-                pipeline.queueEndOfStream()
+                active.queueEndOfStream()
                 endOfStreamQueued = true
             }
             while (true) {
-                val out = pending?.takeIf { it.hasRemaining() } ?: pipeline.getOutput().also { pending = it }
+                val out = pending?.takeIf { it.hasRemaining() } ?: active.getOutput().also { pending = it }
                 if (!out.hasRemaining()) break
                 delegate.handleBuffer(out, pendingTimeUs, 1)
                 if (out.hasRemaining()) return
@@ -159,7 +188,7 @@ class PrecisionAudioSink(
     override fun isEnded(): Boolean =
         if (processing) {
             pending?.hasRemaining() != true &&
-                (!pipeline.isOperational || !endOfStreamQueued || pipeline.isEnded) &&
+                (!active.isOperational || !endOfStreamQueued || active.isEnded) &&
                 delegate.isEnded
         } else {
             delegate.isEnded
@@ -170,13 +199,15 @@ class PrecisionAudioSink(
 
     override fun flush() {
         clearPending()
-        if (processing) pipeline.flush(AudioProcessor.StreamMetadata.DEFAULT)
+        if (processing) active.flush(AudioProcessor.StreamMetadata.DEFAULT)
         delegate.flush()
     }
 
     override fun reset() {
         clearPending()
         pipeline.reset()
+        bitPerfectPipeline.reset()
+        active = pipeline
         processing = false
         delegate.reset()
     }
