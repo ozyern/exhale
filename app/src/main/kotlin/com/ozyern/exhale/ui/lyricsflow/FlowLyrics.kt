@@ -2126,7 +2126,7 @@ internal fun LyricsPanel(
                 ) {
                 Box(
                     modifier = Modifier
-                        .blur(blur, BlurredEdgeTreatment.Unbounded)
+                        .drawBlur { blur }
                         .clip(RoundedCornerShape(10.dp))
                         // A gap is nothing to pick, so it only ever seeks — and
                         // not even that while a pick is open, where a stray tap
@@ -2272,7 +2272,7 @@ internal fun LyricsPanel(
                                 )
                         }
                     }
-                    .blur(blur, BlurredEdgeTreatment.Unbounded)
+                    .drawBlur { blur }
                     .clip(RoundedCornerShape(10.dp))
                     // The chosen lines are marked on the row itself rather
                     // than with a mark beside it: a lane down the side would
@@ -2971,4 +2971,22 @@ private fun LyricsLoadingLine(text: String, modifier: Modifier = Modifier) {
         overflow = TextOverflow.Ellipsis,
         modifier = modifier.padding(vertical = 4.dp),
     )
+}
+
+/**
+ * [Modifier.blur] with the radius read at draw time instead of composition.
+ *
+ * Every visible line's blur steps along with its distance from the playing line, so a handover
+ * animates all of them at once. Passed to `blur(...)` as a value, each animation frame rebuilt every
+ * one of those rows: the dropped and bunched frames that read as the lyrics lagging. Read inside
+ * the layer, the same blur only redraws. Unbounded (decal edges, no clip), as before.
+ */
+private fun Modifier.drawBlur(radius: () -> androidx.compose.ui.unit.Dp): Modifier = graphicsLayer {
+    val px = radius().toPx()
+    renderEffect = if (px > 0.05f) {
+        androidx.compose.ui.graphics.BlurEffect(px, px, androidx.compose.ui.graphics.TileMode.Decal)
+    } else {
+        null
+    }
+    clip = false
 }

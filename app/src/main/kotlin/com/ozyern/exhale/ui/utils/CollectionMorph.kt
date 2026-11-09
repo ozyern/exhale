@@ -167,6 +167,32 @@ fun Modifier.collectionMorphSource(seed: CollectionSeed? = null): Modifier {
         }
 }
 
+/**
+ * Where a list row's page grows from: its artwork, marked with [collectionMorphOrigin], while the
+ * press is caught anywhere on the row by [collectionMorphTrigger]. A row is tapped along its title
+ * as often as on its cover, and the cover alone only caught the presses that landed on it.
+ */
+class CollectionMorphOrigin {
+    internal var coordinates: LayoutCoordinates? = null
+}
+
+/** Marks the artwork a row's page grows out of. */
+fun Modifier.collectionMorphOrigin(origin: CollectionMorphOrigin): Modifier =
+    onPlaced { origin.coordinates = it }
+
+/** Records a press anywhere on the row as a flight out of [origin]'s artwork. */
+@Composable
+fun Modifier.collectionMorphTrigger(origin: CollectionMorphOrigin, seed: CollectionSeed?): Modifier {
+    if (seed == null) return this
+    val currentSeed = androidx.compose.runtime.rememberUpdatedState(seed)
+    return pointerInput(origin) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            origin.coordinates?.takeIf { it.isAttached }?.let { CollectionMorph.press(it.boundsInWindow(), currentSeed.value) }
+        }
+    }
+}
+
 // The shelf cards' corner, so the flight starts on the tile's own outline.
 private val TileCornerRadius = 18.dp
 

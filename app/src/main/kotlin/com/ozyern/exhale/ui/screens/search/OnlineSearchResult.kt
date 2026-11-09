@@ -64,6 +64,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import com.ozyern.exhale.ui.utils.resize
+import com.ozyern.exhale.ui.utils.collectionMorphOrigin
+import com.ozyern.exhale.ui.utils.collectionMorphTrigger
+import com.ozyern.exhale.ui.component.collectionSeed
 import coil3.request.crossfade
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
@@ -656,12 +659,14 @@ private fun SearchHeroCard(
         is PlaylistItem -> "Playlist" to item.author?.name.orEmpty()
         else -> "" to ""
     }
+    val morphOrigin = remember { com.ozyern.exhale.ui.utils.CollectionMorphOrigin() }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .liquidGlassSurface(cardShape)
+            .collectionMorphTrigger(morphOrigin, item.collectionSeed())
             .clickable(onClick = onClick)
             .padding(14.dp),
     ) {
@@ -673,6 +678,7 @@ private fun SearchHeroCard(
             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
             modifier = Modifier
                 .size(92.dp)
+                .collectionMorphOrigin(morphOrigin)
                 .clip(artShape),
         )
         Spacer(Modifier.width(16.dp))
@@ -855,10 +861,13 @@ private fun SearchResultRow(
         else -> ""
     }
     val accent = MaterialTheme.colorScheme.primary
+    // An album, artist or playlist opens growing out of its cover, as from Home; songs just play.
+    val morphOrigin = remember { com.ozyern.exhale.ui.utils.CollectionMorphOrigin() }
     Row(
         modifier = modifier
             .fillMaxWidth()
             .background(if (isCurrent) accent.copy(alpha = 0.12f) else Color.Transparent)
+            .collectionMorphTrigger(morphOrigin, item.collectionSeed())
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -870,6 +879,7 @@ private fun SearchResultRow(
                 contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                 modifier = Modifier
                     .size(52.dp)
+                    .collectionMorphOrigin(morphOrigin)
                     .clip(artShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             )
@@ -966,10 +976,12 @@ private fun TopResultCard(
         else -> "" to ""
     }
     val artShape = if (item is ArtistItem) androidx.compose.foundation.shape.CircleShape else RoundedCornerShape(10.dp)
+    val morphOrigin = remember { com.ozyern.exhale.ui.utils.CollectionMorphOrigin() }
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 8.dp)
+            .collectionMorphTrigger(morphOrigin, item.collectionSeed())
             .combinedClickable(onClick = onOpen, onLongClick = onMore),
     ) {
         Text(
@@ -986,6 +998,7 @@ private fun TopResultCard(
                 contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                 modifier = Modifier
                     .size(72.dp)
+                    .collectionMorphOrigin(morphOrigin)
                     .clip(artShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             )

@@ -75,6 +75,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
@@ -368,6 +369,8 @@ fun TopSearch(
                     ) {
                         SearchFrostedPill(
                             contentColor = contentColorFor(colors.containerColor),
+                            overlayColor = activeOverlayColor,
+                            overlay = { animationProgress },
                             modifier = Modifier.weight(1f),
                         ) {
                             // NO animated padding here: that padding (which includes the status-bar
@@ -423,6 +426,9 @@ fun TopSearch(
 private fun SearchFrostedPill(
     contentColor: Color,
     modifier: Modifier = Modifier,
+    /** The suggestions page's colour, and how far it has faded in over everything, 0 to 1. */
+    overlayColor: Color = Color.Transparent,
+    overlay: () -> Float = { 0f },
     content: @Composable () -> Unit,
 ) {
     val shape = RoundedCornerShape(percent = 50)
@@ -434,7 +440,19 @@ private fun SearchFrostedPill(
         Box(
             modifier = modifier
                 .clip(shape)
-                .foldingDockGlass(shape),
+                .foldingDockGlass(shape)
+                // The glass refracts the page under the search overlay, not the overlay: once the
+                // suggestions cover the screen it showed the category tiles hidden beneath them,
+                // pink and blue patches in a pill sitting on a black page. It settles onto the
+                // overlay's own colour as the overlay fades in, with a faint film so it still reads
+                // as a pill. Drawn, not composed, so the fade costs no recomposition.
+                .drawBehind {
+                    val cover = overlay().coerceIn(0f, 1f)
+                    if (cover > 0f) {
+                        drawRect(overlayColor.copy(alpha = cover))
+                        drawRect(Color.White.copy(alpha = 0.08f * cover))
+                    }
+                },
         ) { content() }
     }
 }

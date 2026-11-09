@@ -6,6 +6,8 @@
 
 package com.ozyern.exhale.ui.screens.artist
 
+import com.ozyern.exhale.ui.component.collectionSeed
+import com.ozyern.exhale.ui.utils.collectionMorphSource
 import com.kyant.backdrop.backdrops.layerBackdrop
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.aspectRatio
@@ -1287,6 +1289,8 @@ private fun LatestReleaseTile(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
+                // The album grows out of this cover, as it does from Home's shelves.
+                .collectionMorphSource(album.collectionSeed())
                 .clip(coverShape)
                 .border(0.5.dp, Color.White.copy(alpha = 0.14f), coverShape)
                 .background(palette.elevated),
@@ -1351,6 +1355,7 @@ private fun LatestReleaseCard(
             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
             modifier = Modifier
                 .size(84.dp)
+                .collectionMorphSource(album.collectionSeed())
                 .clip(coverShape)
                 .border(0.5.dp, Color.White.copy(alpha = 0.14f), coverShape)
                 .background(palette.elevated),
@@ -1615,6 +1620,8 @@ private fun ArtistShelfCard(
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .size(150.dp)
+                // Albums, singles and playlists grow out of their cover; a song has no page.
+                .collectionMorphSource(item.collectionSeed())
                 .clip(shape)
                 .border(0.5.dp, Color.White.copy(alpha = 0.10f), shape)
                 .background(palette.elevated),

@@ -28,7 +28,8 @@ class OpenFlacAlbumProbe {
         val page = YouTube.album(browseId).getOrThrow()
         println("=== ${page.album.title} $browseId ${page.album.playlistId}")
         var found = 0
-        for (song in page.songs) {
+        val only = System.getenv("EXHALE_ONLY_TITLE")
+        for (song in page.songs.filter { only == null || it.title.startsWith(only) }) {
             val artist = song.artists.firstOrNull()?.name.orEmpty()
             val started = System.currentTimeMillis()
             val copy = OpenFlac.findCopy(song.title, artist, song.duration ?: -1, page.album.title)

@@ -38,6 +38,14 @@ class LosslessAwareLoadControl(
     @Volatile
     private var heavyStream = false
 
+    /**
+     * Whether this stream has already started once. A jump within a song (a tap on a lyric, a drag of
+     * the slider) waited on the same deep start as the song's first second, on a stream that has
+     * already shown it keeps up; it now starts on the ordinary threshold.
+     */
+    @Volatile
+    private var startedOnce = false
+
     override fun onPrepared(playerId: PlayerId) = delegate.onPrepared(playerId)
 
     override fun onTracksSelected(
@@ -45,6 +53,7 @@ class LosslessAwareLoadControl(
         trackGroups: TrackGroupArray,
         trackSelections: Array<out ExoTrackSelection?>,
     ) {
+        startedOnce = false
         heavyStream = trackSelections.any { selection ->
             val format = selection?.selectedFormat ?: return@any false
             val mime = format.sampleMimeType.orEmpty()
@@ -78,9 +87,9 @@ class LosslessAwareLoadControl(
     override fun shouldStartPlayback(parameters: LoadControl.Parameters): Boolean {
         if (!delegate.shouldStartPlayback(parameters)) return false
         // After a rebuffer the delegate already asks for more; only the first start is deepened.
-        if (!heavyStream || parameters.rebuffering) return true
+        if (!heavyStream || parameters.rebuffering || startedOnce) return true
         if (parameters.targetLiveOffsetUs != C.TIME_UNSET) return true
         val needed = (losslessStartUs / parameters.playbackSpeed.coerceAtLeast(0.25f)).toLong()
-        return parameters.bufferedDurationUs >= needed
+        return (parameters.bufferedDurationUs >= needed).also { if (it) startedOnce = true }
     }
 }

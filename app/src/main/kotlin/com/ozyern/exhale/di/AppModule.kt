@@ -38,6 +38,11 @@ import java.util.TreeSet
 @Retention(AnnotationRetention.BINARY)
 annotation class PlayerCache
 
+/** Animated covers (Apple motion artwork, canvases): kept so a looping clip is downloaded once. */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class CanvasVideoCache
+
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class DownloadCache
@@ -155,4 +160,35 @@ object AppModule {
         LazyCache {
             SimpleCache(context.filesDir.resolve("download"), NoOpCacheEvictor(), databaseProvider)
         }
+
+    /**
+     * Animated covers loop forever, and with no cache every loop downloaded the clip again — at
+     * Apple's top HEVC rendition, from every page showing one. That was gigabytes a day of the
+     * same few seconds of video. In the cache directory, so the system may clear it when short.
+     */
+    @Singleton
+    @Provides
+    @CanvasVideoCache
+    fun provideCanvasVideoCache(
+        @ApplicationContext context: Context,
+        databaseProvider: DatabaseProvider,
+    ): Cache =
+        LazyCache {
+            SimpleCache(
+                context.cacheDir.resolve("canvas_video"),
+                LeastRecentlyUsedCacheEvictor(CANVAS_VIDEO_CACHE_BYTES),
+                databaseProvider,
+            )
+        }
+}
+
+/** Plenty for a few hundred clips at the capped rendition. */
+private const val CANVAS_VIDEO_CACHE_BYTES = 256L * 1024 * 1024
+
+/** Hands Compose code the animated-cover cache, which it cannot have injected. */
+@dagger.hilt.EntryPoint
+@dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
+interface CanvasVideoCacheEntryPoint {
+    @CanvasVideoCache
+    fun canvasVideoCache(): Cache
 }

@@ -5697,6 +5697,28 @@ class MusicService :
 
         // Upgraded lossless / JioSaavn stream failed. Clean up and fall back cleanly to YouTube.
         if (currentMediaId != null && streamSource[currentMediaId].let { it != null && it != YOUTUBE_SOURCE }) {
+            // A FLAC copy asked of one Internet Archive server directly: that server can be down or
+            // unreachable from a network while archive.org itself still hands out the file. Once,
+            // the same copy is asked for through archive.org's own address before the song gives up
+            // lossless for YouTube's stream (and has it held against it for ten minutes).
+            val failedUrl = streamSource[currentMediaId].orEmpty()
+            val viaArchive = archiveDownloadUrl(failedUrl)
+            if (currentMediaId in flacCopies && viaArchive != null && archiveRetried.add(currentMediaId)) {
+                Timber.tag("MusicService").w("%s: archive server failed (code=%d); retrying through archive.org", currentMediaId, error.errorCode)
+                com.ozyern.exhale.openflac.OpenFlac.forgetServerFor(viaArchive)
+                streamSource[currentMediaId] = viaArchive
+                rememberFlacCopy(currentMediaId, viaArchive)
+                val index = player.currentMediaItemIndex
+                val item = runCatching { player.getMediaItemAt(index) }.getOrNull()
+                if (item != null && item.mediaId == currentMediaId) {
+                    val position = player.currentPosition
+                    player.replaceMediaItem(index, item.buildUpon().setUri(viaArchive.toUri()).build())
+                    player.seekTo(index, position)
+                    player.prepare()
+                    player.playWhenReady = true
+                }
+                return
+            }
             Timber.tag("MusicService").w("%s failed from upgraded stream (code=%d); falling back to YouTube", currentMediaId, error.errorCode)
             if (currentMediaId in flacCopies || isFlacStream(currentMediaId)) rejectFlac(currentMediaId)
             streamSource[currentMediaId] = YOUTUBE_SOURCE
@@ -6043,8 +6065,37 @@ class MusicService :
         return false
     }
 
+    /** Songs whose FLAC copy has already been retried through archive.org this session. */
+    private val archiveRetried = ConcurrentHashMap.newKeySet<String>()
+
+    /**
+     * archive.org's own address for a file asked of one of its servers directly
+     * (`https://ia800906.us.archive.org/11/items/<item>/<file>`), or null for anything else.
+     */
+    private fun archiveDownloadUrl(url: String): String? =
+        ARCHIVE_SERVER_FILE.matchEntire(url)?.let { "https://archive.org/download/${it.groupValues[1]}/${it.groupValues[2]}" }
+
+    /**
+     * FLAC copies found, kept across launches: song → address. The search behind one takes a few
+     * seconds (longer on a slow network, where it could run out of time and leave the song lossy),
+     * and a copy once found is the same file every time. A copy that fails is dropped again.
+     */
+    private val flacCopyStore by lazy { getSharedPreferences("flac_copies", MODE_PRIVATE) }
+
+    private fun rememberFlacCopy(mediaId: String, url: String) {
+        runCatching {
+            val store = flacCopyStore
+            if (store.all.size > MAX_REMEMBERED_FLAC_COPIES) store.edit().clear().apply()
+            store.edit().putString(mediaId, url).apply()
+        }
+    }
+
+    private fun rememberedFlacCopy(mediaId: String): String? =
+        runCatching { flacCopyStore.getString(mediaId, null) }.getOrNull()?.takeIf { it.isNotBlank() }
+
     /** The FLAC copy of [mediaId] failed: forget it, so the next try is a fresh search. */
     private fun rejectFlac(mediaId: String) {
+        runCatching { flacCopyStore.edit().remove(mediaId).apply() }
         rejectedFlac[mediaId] = System.currentTimeMillis()
         flacCopies.remove(mediaId)
         flacLookups.remove(mediaId)
@@ -6194,6 +6245,15 @@ class MusicService :
         }
         flacLookups[mediaId]?.let { return it }
         if (flacLookups.size > 400) flacLookups.clear()
+        // Found before, on this phone: no search, so nothing to run out of time on.
+        rememberedFlacCopy(mediaId)?.let { stored ->
+            val parts = stored.split('\t')
+            flacOrigins[mediaId] = "Sabrina's Basement · FLAC"
+            val rate = parts.getOrNull(1)?.toIntOrNull() ?: 44_100
+            val depth = parts.getOrNull(2)?.toIntOrNull() ?: 16
+            flacFormatSpecs[mediaId] = Triple(rate, depth, rate * depth * 2)
+            return flacLookups.getOrPut(mediaId) { kotlinx.coroutines.CompletableDeferred(parts[0]) }
+        }
         // The song's details before the search is started and kept, not inside it: a search started
         // without them answered null and was kept, so that song was never searched again.
         val song = songDetailsFor(mediaId) ?: return null
@@ -6238,8 +6298,14 @@ class MusicService :
                 }
                 val open = ioScope.async {
                     runCatching { com.ozyern.exhale.openflac.OpenFlac.findCopy(title, artist, song.duration, song.album?.title) }.getOrNull()
-                        ?.url
-                        ?.let { FlacHit(com.ozyern.exhale.openflac.OpenFlac.fastUrl(it), "Sabrina's Basement · FLAC") }
+                        ?.let { track ->
+                            FlacHit(
+                                com.ozyern.exhale.openflac.OpenFlac.fastUrl(track.url),
+                                "Sabrina's Basement · FLAC",
+                                sampleRate = track.sampleRate,
+                                bitDepth = track.bitDepth,
+                            )
+                        }
                 }
                 val searches = listOf(own, cloudLossless, open)
                 val hit = try {
@@ -6258,6 +6324,11 @@ class MusicService :
                     hit.bitDepth ?: 16,
                     hit.bitrate?.takeIf { it > 0 } ?: ((hit.sampleRate ?: 44100) * (hit.bitDepth ?: 16) * 2),
                 )
+                // Only a public catalogue's file is the same address next time; a streaming source's
+                // is signed and expires, so it is searched for afresh.
+                if (STABLE_FLAC_HOSTS.any { it in hit.url }) {
+                    rememberFlacCopy(mediaId, "${hit.url}\t${hit.sampleRate ?: 44100}\t${hit.bitDepth ?: 16}")
+                }
                 triggerSeamlessLosslessUpgrade(mediaId, hit.url)
                 hit.url
             }
@@ -6672,8 +6743,13 @@ class MusicService :
             // triggerSeamlessLosslessUpgrade instead.
             val startsStream = dataSpec.position == 0L || streamSource[mediaId] == null
             if (startsStream && preferLocalLossless && audioQuality != com.ozyern.exhale.constants.AudioQuality.LOW) {
+                // The fallbacks are asked now, not once the search has come back empty.
+                if (streamSource[mediaId] == null) {
+                    resolveStreamAhead(mediaId)
+                    saavnLookup(mediaId)
+                }
                 val flacCopy = flacLookup(mediaId)?.let { search ->
-                    runBlocking(Dispatchers.IO) { withTimeoutOrNull(FLAC_LOOKUP_GRACE_MS) { search.await() } }
+                    runBlocking(Dispatchers.IO) { awaitFlacOrFallback(mediaId, search) }
                 }
                 if (flacCopy != null) {
                     flacCopies += mediaId
@@ -6722,6 +6798,14 @@ class MusicService :
                     // Once per song, not on every range: a cached song re-enters here per range.
                     if (dataSpec.position == 0L) scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
                     return@Factory dataSpec
+                }
+            }
+
+            // A lookup started alongside the FLAC search is finished, or nearly: wait for it rather
+            // than asking YouTube a second time. Its answer lands in [playbackUrlCache].
+            if (streamSource[mediaId] == null) {
+                streamAhead.remove(mediaId)?.takeIf { it.isActive }?.let { ahead ->
+                    runBlocking(Dispatchers.IO) { withTimeoutOrNull(RESOLVE_TIMEOUT_MS) { ahead.join() } }
                 }
             }
 
@@ -7237,6 +7321,69 @@ class MusicService :
                 ).getOrNull() ?: return@runCatching
                 storeResolvedStream(mediaId, playbackData)
                 Timber.tag("StreamPrefetch").d("Warmed stream for %s at launch", mediaId)
+            }
+        }
+    }
+
+    /**
+     * The FLAC search's answer, waited for as long as it is worth holding the song's start for.
+     *
+     * It used to be waited on to the end, up to ten seconds. A song with no copy anywhere — most of
+     * them — sat buffering while the Internet Archive was searched (three to five seconds) with a
+     * playable stream already in hand. Now, once [FLAC_PATIENCE_MS] have gone by and YouTube or
+     * JioSaavn has a stream ready, the song starts on that; a copy found after still takes over
+     * through [triggerSeamlessLosslessUpgrade] within the first seconds. A copy already known (the
+     * rest of an album, the next song, searched ahead) answers at once and starts in FLAC as before.
+     */
+    private suspend fun awaitFlacOrFallback(mediaId: String, search: kotlinx.coroutines.Deferred<String?>): String? =
+        withTimeoutOrNull(FLAC_LOOKUP_GRACE_MS) {
+            val started = System.currentTimeMillis()
+            while (!search.isCompleted) {
+                if (System.currentTimeMillis() - started >= FLAC_PATIENCE_MS && fallbackReady(mediaId)) {
+                    Timber.tag("MusicService").i("%s: starting without waiting longer for a FLAC copy", mediaId)
+                    return@withTimeoutOrNull null
+                }
+                withTimeoutOrNull(FLAC_POLL_MS) { search.join() }
+            }
+            search.await()
+        }
+
+    /** Whether something other than a FLAC copy could start [mediaId] right now. */
+    private fun fallbackReady(mediaId: String): Boolean {
+        val now = System.currentTimeMillis()
+        if (playbackUrlCache[mediaId]?.second?.let { it > now } == true) return true
+        val saavn = saavnLookups[mediaId] ?: return false
+        return saavn.isCompleted && runCatching { saavn.getCompleted() }.getOrNull() != null
+    }
+
+    /** YouTube stream lookups started ahead of need, by song; see [resolveStreamAhead]. */
+    private val streamAhead = ConcurrentHashMap<String, kotlinx.coroutines.Job>()
+
+    /**
+     * Starts resolving [mediaId]'s YouTube stream now, alongside the lossless search, rather than
+     * after it. The search for a FLAC copy used to run to the end (a couple of seconds when there is
+     * none) before YouTube was even asked, and the song sat buffering through both in turn. The
+     * answer is stored where the resolver looks first; nothing about which stream wins changes.
+     */
+    private fun resolveStreamAhead(mediaId: String) {
+        if (com.ozyern.exhale.utils.OpenFlacSongs.isFlacId(mediaId) ||
+            com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaId)
+        ) return
+        if (playbackUrlCache[mediaId]?.second?.let { it > System.currentTimeMillis() } == true) return
+        if (streamAhead[mediaId]?.isActive == true) return
+        if (streamAhead.size > 16) streamAhead.entries.removeIf { !it.value.isActive }
+        streamAhead[mediaId] = ioScope.launch {
+            runCatching {
+                if (isDownloadedLocally(mediaId) || playerCacheHasWhole(mediaId)) return@runCatching
+                val playbackData = YTPlayerUtils.playerResponseForPlayback(
+                    mediaId,
+                    audioQuality = audioQuality,
+                    connectivityManager = connectivityManager,
+                    preferredStreamClient = preferredStreamClient,
+                    avoidCodecs = avoidCodecsFor(mediaId),
+                    preferredCodec = preferredAudioCodec,
+                ).getOrNull() ?: return@runCatching
+                storeResolvedStream(mediaId, playbackData)
             }
         }
     }
@@ -8232,6 +8379,19 @@ class MusicService :
          * any later and the copy waits for the song's next play.
          */
         private const val LATE_UPGRADE_MS = 3_000L
+
+        /** How long a song holds its start for a FLAC copy once another stream is ready. */
+        private const val FLAC_PATIENCE_MS = 2_500L
+
+        /** Enough for a large library's worth of found copies; past it the list starts over. */
+        private const val MAX_REMEMBERED_FLAC_COPIES = 5_000
+
+        /** Where a FLAC copy's address stays good across launches: the public catalogues. */
+        private val STABLE_FLAC_HOSTS = listOf("archive.org", "wikimedia.org", "jamendo.com")
+
+        /** A file asked of one Internet Archive server directly: its item and its path. */
+        private val ARCHIVE_SERVER_FILE = Regex("""https://[^/]+\.archive\.org/\d+/items/([^/]+)/(.+)""")
+        private const val FLAC_POLL_MS = 100L
 
         /** Lossless containers a listener's own server may hold; anything else is no upgrade. */
         private val LOSSLESS_CONTAINERS = setOf("flac", "alac", "wav", "aiff", "aif", "ape", "wv")

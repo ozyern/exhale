@@ -198,6 +198,12 @@ constructor(
         )
         val sessionCommands = connectionResult.availableSessionCommands
             .buildUpon()
+            // The library commands, for the media notification controller above all: the system's
+            // resume player (the lock screen's and the shade's card once the app has been closed)
+            // is given that controller's commands, and without the one for the library root it was
+            // refused ("No root for client com.android.systemui", "Cannot resume"), so its buttons
+            // did nothing and play/skip only worked from inside the app.
+            .addSessionCommands(MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.commands)
             .add(MediaSessionConstants.CommandToggleLike)
             .add(MediaSessionConstants.CommandToggleStartRadio)
             .add(MediaSessionConstants.CommandToggleLibrary)
@@ -983,3 +989,4 @@ constructor(
 
 /** Android Auto, as it connects to the session to drive the car display. */
 private const val AndroidAutoPackage = "com.google.android.projection.gearhead"
+

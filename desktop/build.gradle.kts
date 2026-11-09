@@ -102,6 +102,8 @@ tasks.test {
     environment("EXHALE_SMOKE", (findProperty("exhaleSmoke") as String?) ?: System.getenv("EXHALE_SMOKE") ?: "0")
     // Which video a probe should use, when the default isn't the one being looked into.
     (findProperty("exhaleVideoId") as String?)?.let { environment("EXHALE_VIDEO_ID", it) }
+    // Which album track a lossless probe should look up on its own (OpenFlacAlbumProbe).
+    (findProperty("exhaleOnlyTitle") as String?)?.let { environment("EXHALE_ONLY_TITLE", it) }
     // A copy of the settings folder for a test to run against, so it never writes to the real one.
     (findProperty("exhaleAppData") as String?)?.let { environment("APPDATA", it) }
     (findProperty("exhaleMpvLog") as String?)?.let { environment("EXHALE_MPV_LOG", it) }

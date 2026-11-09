@@ -111,13 +111,31 @@ private fun rememberCanvasPlayback(
         }
     val mediaSourceFactory =
         remember(okHttpClient) {
+            val network = DefaultDataSource.Factory(context, OkHttpDataSource.Factory(okHttpClient))
+            // Through a disk cache: the clip loops forever, and uncached every loop downloaded it
+            // again. A cache that fails to open just streams, as before.
+            val cache = runCatching {
+                dagger.hilt.android.EntryPointAccessors.fromApplication(
+                    context.applicationContext,
+                    com.ozyern.exhale.di.CanvasVideoCacheEntryPoint::class.java,
+                ).canvasVideoCache()
+            }.getOrNull()
             DefaultMediaSourceFactory(
-                DefaultDataSource.Factory(
-                    context,
-                    OkHttpDataSource.Factory(okHttpClient),
-                ),
+                if (cache == null) {
+                    network
+                } else {
+                    androidx.media3.datasource.cache.CacheDataSource.Factory()
+                        .setCache(cache)
+                        .setUpstreamDataSourceFactory(network)
+                        .setFlags(androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                },
             )
         }
+    // Never a rendition sharper than the screen can show, nor past a phone-sized bitrate: Apple's
+    // top variant is up to 4K HEVC, for a cover drawn at most the width of the screen and faded
+    // into the page. The pick looks the same; it costs a fraction of the data.
+    val screen = context.resources.displayMetrics
+    val maxSide = maxOf(screen.widthPixels, screen.heightPixels)
     val exoPlayer =
         remember(initial, mediaSourceFactory) {
             ExoPlayer.Builder(context)
@@ -149,6 +167,8 @@ private fun rememberCanvasPlayback(
                     // follow it — a source with no cover — instead of the song.
                     trackSelectionParameters = trackSelectionParameters.buildUpon()
                         .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                        .setMaxVideoSize(maxSide, maxSide)
+                        .setMaxVideoBitrate(CANVAS_MAX_VIDEO_BITRATE)
                         .build()
                     repeatMode = Player.REPEAT_MODE_ONE
                     playWhenReady = isPlaying
@@ -287,7 +307,9 @@ internal fun CanvasHeroVideo(
     val playback = rememberCanvasPlayback(
         primary = primaryUrl?.takeIf { it.isNotBlank() },
         fallback = fallbackUrl?.takeIf { it.isNotBlank() },
-        isPlaying = isPlaying,
+        // The player stays composed under the mini player; it played (and downloaded) its cover
+        // there for nobody. It picks up where it was the moment the player opens again.
+        isPlaying = isPlaying && com.ozyern.exhale.ui.component.LocalPlayerShown.current,
     )
     val latestOnRendered by rememberUpdatedState(onRenderedChanged)
     val rendered = playback?.ready?.invoke() == true
@@ -391,3 +413,6 @@ private fun TextureView.applyBottomFade(fraction: Float) {
         ),
     )
 }
+
+/** Ample for a phone-sized cover in HEVC or H.264; Apple's top variants run several times this. */
+private const val CANVAS_MAX_VIDEO_BITRATE = 6_000_000
