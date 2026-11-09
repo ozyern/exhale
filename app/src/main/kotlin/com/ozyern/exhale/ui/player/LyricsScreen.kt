@@ -8,6 +8,7 @@
 
 package com.ozyern.exhale.ui.player
 
+import com.ozyern.exhale.ui.component.filmGrain
 import androidx.compose.ui.graphics.Brush
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -839,7 +840,7 @@ internal fun AppleLyricsBackground(mediaMetadata: MediaMetadata) {
         label = "lyricsBackground",
         modifier = Modifier.fillMaxSize()
     ) { thumbnailUrl ->
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().filmGrain(0.05f)) {
             if (thumbnailUrl != null) {
                 // The desktop build's lyrics sit on the cover as a slowly moving field of its own
                 // colours, and that is the thing worth having: a still, hard-blurred bitmap is a
@@ -853,7 +854,12 @@ internal fun AppleLyricsBackground(mediaMetadata: MediaMetadata) {
                     modifier = Modifier.fillMaxSize(),
                 )
                 AsyncImage(
-                    model = thumbnailUrl.highRes(),
+                    // Small on purpose: a 42dp blur keeps nothing a 512px decode does not have, and
+                    // the full-size cover was a multi-megabyte decode on every change of song.
+                    model = coil3.request.ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
+                        .data(thumbnailUrl.highRes())
+                        .size(512, 512)
+                        .build(),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier

@@ -6,6 +6,7 @@
 
 package com.ozyern.exhale.ui.screens
 
+import com.ozyern.exhale.ui.component.fadesUnderPinnedHeader
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -89,7 +90,8 @@ fun MoodAndGenresScreen(
     val gridState = rememberLazyGridState()
     val density = LocalDensity.current
     val windowInsets = LocalPlayerAwareWindowInsets.current
-    val topPadding = with(density) { windowInsets.getTop(this).toDp() }
+    // The tab's own top, not the current destination's: see tabPagePadding.
+    val topPadding = com.ozyern.exhale.ui.component.tabPagePadding().calculateTopPadding()
     val bottomPadding = with(density) { windowInsets.getBottom(this).toDp() }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val scrollToTop =
@@ -110,6 +112,9 @@ fun MoodAndGenresScreen(
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
         state = gridState,
+        modifier = Modifier.fillMaxSize().fadesUnderPinnedHeader {
+            gridState.firstVisibleItemIndex > 0 || gridState.firstVisibleItemScrollOffset > 0
+        },
         contentPadding = PaddingValues(start = 16.dp, top = topPadding, end = 16.dp, bottom = bottomPadding + 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),

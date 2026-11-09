@@ -6,6 +6,7 @@
 
 package com.ozyern.exhale.ui.screens.library
 
+import com.ozyern.exhale.ui.component.fadesUnderPinnedHeader
 import com.ozyern.exhale.extensions.toMediaItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -286,8 +287,10 @@ fun LibraryMixScreen(
     ) {
         LazyColumn(
             state = lazyListState,
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
-            modifier = Modifier.fillMaxSize(),
+            contentPadding = com.ozyern.exhale.ui.component.tabPagePadding(),
+            modifier = Modifier
+                .fillMaxSize()
+                .fadesUnderPinnedHeader { lazyListState.firstVisibleItemIndex > 0 || lazyListState.firstVisibleItemScrollOffset > 0 },
         ) {
             // The title is pinned over the list (see below), as Home's is; this only clears it.
             item(key = "large_title", contentType = "large_title") {

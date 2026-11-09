@@ -68,6 +68,12 @@ fun ExhaleFlowLyrics(
                 position.seeks++
                 position.report(player.currentPosition)
             }
+
+            // Paused or resumed: the reading at that moment, not up to half a second later on the
+            // paused loop's clock — the words used to set off late after every resume.
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                position.report(player.currentPosition)
+            }
         }
         player.addListener(listener)
         onDispose { player.removeListener(listener) }
@@ -81,9 +87,12 @@ fun ExhaleFlowLyrics(
             if (dragged != null && dragged != lastSlider) position.seeks++
             lastSlider = dragged
             position.report(dragged ?: player.currentPosition)
-            // Twice a second while it plays, as the reference design's player reports: its clock runs the
-            // frames in between and is steered by these readings.
-            delay(if (dragged != null) 50L else if (player.isPlaying) 250L else 500L)
+            // Ten times a second while it plays: the clock runs the frames in between and is steered
+            // by these readings. At four a second it heard late about the audio output's own clock
+            // settling in the first moments of a song (its position is coarse until the output's
+            // timestamps arrive), and the words trailed the voice through the opening lines. A
+            // reading is one Long written to state that only the draw phase reads.
+            delay(if (dragged != null) 50L else if (player.isPlaying) 100L else 500L)
         }
     }
 

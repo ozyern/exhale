@@ -1465,8 +1465,24 @@ class MainActivity : ComponentActivity() {
                         // Every page opens with the dock open; it folds once that page is scrolled.
                         // A fold left over from the last page would open an album already folded.
                         if (previousRoute != currentRoute) searchBarScrollBehavior.state.resetHeightOffset()
+                        // The top bar on every new page: one behaviour serves every page, and a bar
+                        // scrolled away on the last page opened the next with its back button hidden
+                        // (album to album included, which share a route). Only once the new page has
+                        // covered the old one: reset at once, the page being left re-expanded its
+                        // header under the finger and jumped down before the card grew out of it.
+                        val resetsTopBar = currentRoute !in topLevelScreens
+                        val enteredRoute = currentRoute
 
                         previousRoute = currentRoute
+                        if (resetsTopBar) {
+                            launch {
+                                delay(TopBarResetDelayMs)
+                                if (navBackStackEntry?.destination?.route == enteredRoute) {
+                                    topAppBarScrollBehavior.state.resetHeightOffset()
+                                }
+                            }
+                        }
+
 
                         if (navBackStackEntry?.destination?.route?.startsWith("search/") == true) {
                             // CRASH FIX: capture the argument ONCE on the main thread before the
@@ -3332,6 +3348,9 @@ private val TabExit = fadeOut(tween(90, easing = androidx.compose.animation.core
 // UIKit's push is a critically damped spring of about ~380ms: the same curve the artwork
 // pages land on, tuned for buttery 120Hz high refresh displays.
 private const val PushMillis = 380
+
+/** How long after a page opens the shared top bar is re-expanded: past the push and the card morph. */
+private const val TopBarResetDelayMs = 480L
 
 /** Longest a tab tap waits for the page under it to settle: past the push, so only a stuck page hits it. */
 private const val DockTabSettleTimeoutMs = 500L

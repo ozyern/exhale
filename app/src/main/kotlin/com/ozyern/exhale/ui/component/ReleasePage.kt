@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -109,6 +110,9 @@ fun ReleaseBackground(
     onArtworkLongPress: (() -> Unit)? = null,
     overlay: @Composable BoxScope.() -> Unit = {},
 ) {
+    // On a phone on its side the sleeve's column draws the ground under the whole window; a ground
+    // here would cut the list's half off from it.
+    if (LocalCollectionPane.current?.bleed == true) return
     Box(modifier.clipToBounds().background(palette.background)) {
         ArtworkWash(palette = palette, modifier = Modifier.matchParentSize())
         // On a two-pane page the sleeve is in the left column, not behind the list.
@@ -296,6 +300,8 @@ fun ReleaseHeader(
     badges: @Composable () -> Unit = {},
     /** The sleeve, for the two-pane layout, where the header carries its own artwork. */
     artworkUrl: String? = null,
+    /** The release's editorial note, set in the sleeve's column on a phone on its side. */
+    about: String? = null,
     actions: @Composable RowScope.() -> Unit,
 ) {
     val inPane = publishToCollectionPane {
@@ -308,6 +314,7 @@ fun ReleaseHeader(
             explicit = explicit,
             lossless = lossless,
             losslessLabel = losslessLabel,
+            about = about,
             artwork = {
                 AsyncImage(
                     model = artworkUrl,
@@ -537,7 +544,8 @@ fun ReleaseTrackRow(
             .fillMaxWidth()
             .background(rowTint)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+            .heightIn(min = 52.dp)
+            .padding(start = 10.dp, end = 6.dp, top = 2.dp, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(52.dp), contentAlignment = Alignment.Center) {
@@ -576,14 +584,16 @@ fun ReleaseTrackRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = palette.onBackgroundVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (subtitle.isNotBlank()) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = palette.onBackgroundVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         if (duration != null) {
             Spacer(Modifier.width(8.dp))
@@ -596,8 +606,9 @@ fun ReleaseTrackRow(
                 .clickable(onClick = onMore),
             contentAlignment = Alignment.Center,
         ) {
+            // iOS's ellipsis lies on its side.
             Icon(
-                painterResource(R.drawable.more_vert),
+                painterResource(R.drawable.more_horiz),
                 contentDescription = null,
                 tint = palette.onBackgroundVariant,
                 modifier = Modifier.size(20.dp),

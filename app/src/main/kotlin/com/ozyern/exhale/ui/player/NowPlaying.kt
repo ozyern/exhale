@@ -4355,6 +4355,15 @@ internal fun LandscapeNowPlaying(
     }
 
     var showOutputSheet by remember { mutableStateOf(false) }
+    // The credits open their pages here too, as in portrait, and the player steps down for them.
+    val openAlbum: (String) -> Unit = { albumId ->
+        navController.navigate("album/$albumId")
+        playerSheetState.collapseSoft()
+    }
+    val openArtist: (String) -> Unit = { artistId ->
+        navController.navigate("artist/$artistId")
+        playerSheetState.collapseSoft()
+    }
     val density = LocalDensity.current
     val safeInsets = WindowInsets.safeDrawing
     BoxWithConstraints(modifier.fillMaxSize().background(Color.Black)) {
@@ -4446,6 +4455,7 @@ internal fun LandscapeNowPlaying(
                                 trailing = if (mediaMetadata.explicit) {
                                     { ExplicitBadge(color = Color.White.copy(alpha = 0.55f)) }
                                 } else null,
+                                modifier = Modifier.opensPage(mediaMetadata.album?.id, openAlbum),
                             )
                             Text(
                                 text = mediaMetadata.artists.joinToString { it.name },
@@ -4453,6 +4463,10 @@ internal fun LandscapeNowPlaying(
                                 color = Color.White.copy(alpha = 0.55f),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.opensPage(
+                                    mediaMetadata.artists.firstOrNull { !it.id.isNullOrBlank() }?.id,
+                                    openArtist,
+                                ),
                             )
                         }
                         Spacer(Modifier.width(10.dp))
@@ -4559,7 +4573,7 @@ internal fun LandscapeNowPlaying(
                     ) {
                         AnimatedContent(
                             targetState = upperPane,
-                            transitionSpec = { fadeIn(tween(220, delayMillis = 90)) togetherWith fadeOut(tween(140)) },
+                            transitionSpec = { LandscapePaneEnter togetherWith LandscapePaneExit },
                             label = "tabletopPane",
                             modifier = Modifier.fillMaxSize(),
                         ) { pane ->
@@ -4592,7 +4606,7 @@ internal fun LandscapeNowPlaying(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             LandscapeToggle(
-                                icon = R.drawable.lyrics,
+                                icon = R.drawable.lyrics_apple,
                                 active = upperPane == NowPlayingPanel.Lyrics,
                                 onClick = { panel = NowPlayingPanel.None },
                             )
@@ -4653,7 +4667,7 @@ internal fun LandscapeNowPlaying(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             LandscapeToggle(
-                                icon = R.drawable.lyrics,
+                                icon = R.drawable.lyrics_apple,
                                 active = rightPane == NowPlayingPanel.Lyrics,
                                 onClick = { panel = NowPlayingPanel.None },
                             )
@@ -4682,7 +4696,7 @@ internal fun LandscapeNowPlaying(
                     ) {
                         AnimatedContent(
                             targetState = rightPane,
-                            transitionSpec = { fadeIn(tween(220, delayMillis = 90)) togetherWith fadeOut(tween(140)) },
+                            transitionSpec = { LandscapePaneEnter togetherWith LandscapePaneExit },
                             label = "tabletPane",
                             modifier = Modifier.fillMaxSize(),
                         ) { pane ->
@@ -4726,7 +4740,7 @@ internal fun LandscapeNowPlaying(
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         AnimatedContent(
                             targetState = panel,
-                            transitionSpec = { fadeIn(tween(220, delayMillis = 90)) togetherWith fadeOut(tween(140)) },
+                            transitionSpec = { LandscapePaneEnter togetherWith LandscapePaneExit },
                             label = "landscapePane",
                             modifier = Modifier.fillMaxSize(),
                         ) { pane ->
@@ -4771,6 +4785,8 @@ internal fun LandscapeNowPlaying(
                                             )
                                         }
                                     },
+                                    onOpenAlbum = openAlbum,
+                                    onOpenArtist = openArtist,
                                 )
                             }
                         }
@@ -4799,7 +4815,7 @@ internal fun LandscapeNowPlaying(
                             onClick = { showOutputSheet = true },
                         )
                         PhoneLandscapeGlyph(
-                            icon = R.drawable.list,
+                            icon = R.drawable.queue_music,
                             active = panel == NowPlayingPanel.Queue,
                             onClick = { panel = if (panel == NowPlayingPanel.Queue) NowPlayingPanel.None else NowPlayingPanel.Queue },
                         )
@@ -4899,6 +4915,8 @@ private fun PhoneLandscapeControls(
     onSliderValueChangeFinished: () -> Unit,
     onToggleLike: () -> Unit,
     onMore: () -> Unit,
+    onOpenAlbum: (String) -> Unit,
+    onOpenArtist: (String) -> Unit,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val haptic = LocalHapticFeedback.current
@@ -4915,19 +4933,25 @@ private fun PhoneLandscapeControls(
                     trailing = if (mediaMetadata.explicit) {
                         { ExplicitBadge(color = Color.White.copy(alpha = 0.6f)) }
                     } else null,
+                    modifier = Modifier.opensPage(mediaMetadata.album?.id, onOpenAlbum),
                 )
+                // Opens the artist, as it does in portrait: on its side it did nothing.
                 Text(
                     text = mediaMetadata.artists.joinToString { it.name },
                     style = TextStyle(fontWeight = FontWeight.Medium, fontSize = 18.sp),
                     color = Color.White.copy(alpha = 0.72f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.opensPage(
+                        mediaMetadata.artists.firstOrNull { !it.id.isNullOrBlank() }?.id,
+                        onOpenArtist,
+                    ),
                 )
             }
             Spacer(Modifier.width(10.dp))
             // The portrait player's glass circles, refracting the field behind them.
             CircleGlyph(
-                icon = if (liked) R.drawable.star_filled else R.drawable.star,
+                icon = if (liked) R.drawable.favorite_filled else R.drawable.favorite_outline,
                 active = liked,
                 onClick = onToggleLike,
             )
@@ -5012,57 +5036,33 @@ private fun PhoneLandscapeControls(
     }
 }
 
-/** A toolbar button on the landscape ground: the portrait player's liquid glass disc, lit when on. */
+/**
+ * A toolbar button on the landscape ground. The portrait player's toggle, not a glass disc of its
+ * own: a bare glyph that turns into a white tile with the glyph cut out of it while it is on, and
+ * sinks under the finger. The two orientations used to draw these differently, so turning the
+ * phone changed the look of the same three buttons.
+ */
+/**
+ * The landscape and tablet players' page turn between the controls, the lyrics and the queue:
+ * the incoming page rises out of a little depth as the outgoing one sinks, as iOS swaps a sheet's
+ * pages, rather than a flat crossfade. Springs, so a quick second tap retargets mid-flight.
+ */
+private val LandscapePaneEnter =
+    fadeIn(tween(240, delayMillis = 70)) +
+        scaleIn(spring(dampingRatio = 0.9f, stiffness = 420f), initialScale = 0.96f)
+private val LandscapePaneExit =
+    fadeOut(tween(130)) + scaleOut(spring(dampingRatio = 1f, stiffness = 600f), targetScale = 1.02f)
+
 @Composable
 private fun PhoneLandscapeGlyph(
     icon: Int,
     active: Boolean,
     onClick: () -> Unit,
-    size: Dp = BOTTOM_ACTION_SIZE,
-    iconSize: Dp = 23.dp,
-) {
-    val haptic = LocalHapticFeedback.current
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .size(size)
-            .playerGlass(CircleShape, lit = active)
-            .clip(CircleShape)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                onClick()
-            },
-    ) {
-        Icon(
-            painter = painterResource(icon),
-            contentDescription = null,
-            tint = Color.White.copy(alpha = if (active) 1f else 0.85f),
-            modifier = Modifier.size(iconSize),
-        )
-    }
-}
+) = BottomGlyph(icon = icon, onClick = onClick, highlighted = active)
 
 @Composable
-private fun LandscapeToggle(icon: Int, active: Boolean, onClick: () -> Unit) {
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .size(44.dp)
-            .playerGlass(CircleShape, lit = active)
-            .clip(CircleShape)
-            .clickable(onClick = onClick),
-    ) {
-        Icon(
-            painter = painterResource(icon),
-            contentDescription = null,
-            tint = Color.White.copy(alpha = if (active) 1f else 0.8f),
-            modifier = Modifier.size(22.dp),
-        )
-    }
-}
+private fun LandscapeToggle(icon: Int, active: Boolean, onClick: () -> Unit) =
+    BottomGlyph(icon = icon, onClick = onClick, highlighted = active)
 
 /**
  * The song's animated cover, when it has one and the setting is on: from the cache when it has been

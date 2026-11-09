@@ -772,7 +772,12 @@ fun BottomSheetPlayer(
                 MiniPlayer(
                     position = position,
                     duration = duration,
-                    modifier = Modifier.nowPlayingAccessory(this),
+                    // Not a shared element where the swap is instant. The folding dock draws its own
+                    // pill and hands the song back in place, and the bar's end of this flight is
+                    // gone, so the pill's only partner was its own stale bounds: unfolding on the
+                    // search page it flew in from the folded row and faded up over ~300ms, the cover
+                    // sitting on the field's back arrow while an empty pill showed above it.
+                    modifier = if (instantMiniPlayerSwap) Modifier else Modifier.nowPlayingAccessory(this),
                     pureBlack = pureBlack,
                     navController = navController,
                     state = state,

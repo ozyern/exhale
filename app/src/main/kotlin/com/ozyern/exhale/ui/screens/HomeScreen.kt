@@ -8,6 +8,7 @@
 
 package com.ozyern.exhale.ui.screens
 
+import com.ozyern.exhale.ui.component.fadesUnderPinnedHeader
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import com.ozyern.exhale.extensions.toMediaItem
@@ -296,9 +297,11 @@ fun HomeScreen(
         ) {
             LazyColumn(
                 state = lazylistState,
-                contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+                contentPadding = com.ozyern.exhale.ui.component.tabPagePadding(),
                 // Pulled, the feed itself comes down to uncover the spinner, as iOS's does.
-                modifier = Modifier.iosRefreshPull(pullRefreshState),
+                modifier = Modifier
+                    .iosRefreshPull(pullRefreshState)
+                    .fadesUnderPinnedHeader { lazylistState.firstVisibleItemIndex > 0 || lazylistState.firstVisibleItemScrollOffset > 0 },
                 // The refresh pull is this list's rubber-band at the top; see iosRefreshPull.
                 overscrollEffect = null,
             ) {

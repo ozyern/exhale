@@ -111,8 +111,12 @@ class ArtistViewModel @Inject constructor(
      * page, so a deluxe or bonus-track release was only reachable from inside the standard one.
      *
      * Only editions under a title of their own are added; the clean copy of the same album, which
-     * the same shelf also lists, would just be the album twice. Fetched after the page has shown,
-     * a few albums at a time, and an album whose page fails simply gets nothing added.
+     * the same shelf also lists, would just be the album twice. An album whose page fails simply
+     * gets nothing added.
+     *
+     * Each album's editions go in as soon as its own page answers, in shelf order, and are kept for
+     * the session. They used to wait for every album's page — sixteen, four at a time — so the
+     * deluxe arrived seconds after the album beside it, and again on every visit.
      */
     private suspend fun addOtherEditions(hideExplicit: Boolean) {
         val page = artistPage ?: return
@@ -120,16 +124,45 @@ class ArtistViewModel @Inject constructor(
             .distinctBy { it.id }
             .take(MAX_ALBUMS_TO_EXPAND)
         if (albums.isEmpty()) return
+        val editions = java.util.concurrent.ConcurrentHashMap<String, List<AlbumItem>>()
+        // Known from an earlier visit: in with the page's first frame.
+        albums.forEach { album -> editionCache[album.id]?.let { editions[album.id] = it } }
+        if (editions.isNotEmpty()) applyEditions(editions, hideExplicit)
+        val missing = albums.filter { !editions.containsKey(it.id) }
+        if (missing.isEmpty()) return
         val gate = kotlinx.coroutines.sync.Semaphore(EDITION_FETCHES_AT_ONCE)
-        val editions: Map<String, List<AlbumItem>> = kotlinx.coroutines.coroutineScope {
-            albums.map { album ->
+        val arrivals = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
+        kotlinx.coroutines.coroutineScope {
+            val fetches = missing.map { album ->
                 async(Dispatchers.IO) {
-                    album.id to gate.withPermit {
-                        YouTube.album(album.browseId, withSongs = false).getOrNull()?.otherVersions.orEmpty()
+                    val found = gate.withPermit {
+                        YouTube.album(album.browseId, withSongs = false).getOrNull()?.otherVersions
+                    }
+                    if (found != null) {
+                        editionCache[album.id] = found
+                        editions[album.id] = found
+                        arrivals.trySend(Unit)
                     }
                 }
-            }.awaitAll().toMap()
+            }
+            // Arrivals within a frame or two are put in together, so the shelf moves once for a
+            // burst of answers rather than once per album.
+            launch {
+                while (true) {
+                    arrivals.receive()
+                    kotlinx.coroutines.delay(EDITION_BATCH_MS)
+                    applyEditions(editions, hideExplicit)
+                }
+            }.also { applier ->
+                fetches.awaitAll()
+                applier.cancel()
+            }
         }
+        applyEditions(editions, hideExplicit)
+    }
+
+    /** Puts [editions] beside their albums on the page as it is now. Idempotent: an edition already in is skipped. */
+    private fun applyEditions(editions: Map<String, List<AlbumItem>>, hideExplicit: Boolean) {
         // Read again: the page may have been refreshed while the editions were fetched.
         val current = artistPage ?: return
         val seenTitles = current.sections.flatMap { it.items }.filterIsInstance<AlbumItem>()
@@ -159,7 +192,13 @@ class ArtistViewModel @Inject constructor(
 
         /** How many of the artist's albums are looked into for other editions. */
         const val MAX_ALBUMS_TO_EXPAND = 16
-        const val EDITION_FETCHES_AT_ONCE = 4
+        const val EDITION_FETCHES_AT_ONCE = 8
+
+        /** How long arrivals are gathered before the shelf is updated with them. */
+        const val EDITION_BATCH_MS = 120L
+
+        /** Album id → its other editions, for the life of the process: a revisit has them at once. */
+        val editionCache = java.util.concurrent.ConcurrentHashMap<String, List<AlbumItem>>()
     }
 
     fun fetchArtistsFromYTM() {

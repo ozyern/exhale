@@ -532,10 +532,12 @@ fun AlbumScreen(
         }
     }
 
+    // A phone on its side: the sleeve's column (CollectionPanes) draws the ground under the whole page.
+    val bleedPane = com.ozyern.exhale.ui.component.LocalCollectionPane.current?.bleed == true
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(palette.background),
+            .then(if (bleedPane) Modifier else Modifier.background(palette.background)),
     ) {
         val artHeight = (maxWidth / com.ozyern.exhale.ui.component.ReleaseSleeveRatio)
             .coerceAtMost(maxHeight * 0.6f)
@@ -607,41 +609,59 @@ fun AlbumScreen(
                         explicit = isExplicit,
                         lossless = true,
                         losslessLabel = losslessLabel,
+                        about = albumAbout,
                         onCreditClick = albumWithSongs.artists.firstOrNull()?.let { artist ->
                             { navController.navigate("artist/${artist.id}") }
                         },
                         badges = {},
                     ) {
-                        val circle = 50.dp
-                        // Save · Play · Shuffle · More, as Apple Music sets a release: the two capsules
-                        // between the round controls. Search sits in the bar above; downloading in More.
+                        val circle = if (bleedPane) 44.dp else 50.dp
                         val saved = albumWithSongs.album.bookmarkedAt != null
-                        com.ozyern.exhale.ui.component.ReleaseCircle(
-                            icon = if (saved) R.drawable.check else R.drawable.add,
-                            contentDescription = null,
-                            palette = palette,
-                            size = circle,
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                database.query { update(albumWithSongs.album.toggleLike()) }
-                            },
-                        )
-                        CollectionPlay(
-                            contentDescription = stringResource(R.string.play),
-                            onClick = {
-                                playerConnection.service.getAutomix(playlistId)
-                                playerConnection.playQueue(LocalAlbumRadio(albumWithSongs))
-                            },
-                        )
-                        CollectionShuffle(
-                            contentDescription = stringResource(R.string.shuffle),
-                            onClick = {
-                                playerConnection.service.getAutomix(playlistId)
-                                playerConnection.playQueue(
-                                    LocalAlbumRadio(albumWithSongs.copy(songs = albumWithSongs.songs.shuffled()), shuffled = true),
-                                )
-                            },
-                        )
+                        val toggleSaved: () -> Unit = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            database.query { update(albumWithSongs.album.toggleLike()) }
+                        }
+                        val play: () -> Unit = {
+                            playerConnection.service.getAutomix(playlistId)
+                            playerConnection.playQueue(LocalAlbumRadio(albumWithSongs))
+                        }
+                        val shuffle: () -> Unit = {
+                            playerConnection.service.getAutomix(playlistId)
+                            playerConnection.playQueue(
+                                LocalAlbumRadio(albumWithSongs.copy(songs = albumWithSongs.songs.shuffled()), shuffled = true),
+                            )
+                        }
+                        if (bleedPane) {
+                            // On its side the column is half a phone wide: Shuffle · Play · Save, as the
+                            // iPhone sets it there, with one capsule wide enough for its word.
+                            com.ozyern.exhale.ui.component.ReleaseCircle(
+                                icon = R.drawable.shuffle,
+                                contentDescription = stringResource(R.string.shuffle),
+                                palette = palette,
+                                size = circle,
+                                onClick = shuffle,
+                            )
+                            CollectionPlay(contentDescription = stringResource(R.string.play), onClick = play)
+                            com.ozyern.exhale.ui.component.ReleaseCircle(
+                                icon = if (saved) R.drawable.check else R.drawable.add,
+                                contentDescription = null,
+                                palette = palette,
+                                size = circle,
+                                onClick = toggleSaved,
+                            )
+                        } else {
+                            // Save · Play · Shuffle · More, as Apple Music sets a release: the two capsules
+                            // between the round controls. Search sits in the bar above; downloading in More.
+                            com.ozyern.exhale.ui.component.ReleaseCircle(
+                                icon = if (saved) R.drawable.check else R.drawable.add,
+                                contentDescription = null,
+                                palette = palette,
+                                size = circle,
+                                onClick = toggleSaved,
+                            )
+                            CollectionPlay(contentDescription = stringResource(R.string.play), onClick = play)
+                            CollectionShuffle(contentDescription = stringResource(R.string.shuffle), onClick = shuffle)
+                        }
                         com.ozyern.exhale.ui.component.ReleaseCircle(
                             icon = R.drawable.more_horiz,
                             contentDescription = null,
@@ -672,7 +692,7 @@ fun AlbumScreen(
                     }
                 }
 
-                albumAbout?.takeIf { it.isNotBlank() && !searching }?.let { about ->
+                albumAbout?.takeIf { it.isNotBlank() && !searching && !bleedPane }?.let { about ->
                     item(key = "about_album") {
                         com.ozyern.exhale.ui.component.ReleaseAbout(
                             title = "About the album",
@@ -705,7 +725,11 @@ fun AlbumScreen(
                     com.ozyern.exhale.ui.component.ReleaseTrackRow(
                         number = index + 1,
                         title = song.song.title,
-                        subtitle = song.artists.joinToString(", ") { it.name },
+                        // Only a credit that differs from the album's, as Apple Music sets a track list:
+                        // "Megan Moroney & Ed Sheeran" under a duet, nothing under the rest.
+                        subtitle = song.artists.joinToString(", ") { it.name }
+                            .takeIf { credit -> credit != albumWithSongs.artists.joinToString(", ") { it.name } }
+                            .orEmpty(),
                         duration = song.song.duration.takeIf { it > 0 }?.let { makeTimeString(it * 1000L) },
                         explicit = song.song.explicit,
                         palette = palette,

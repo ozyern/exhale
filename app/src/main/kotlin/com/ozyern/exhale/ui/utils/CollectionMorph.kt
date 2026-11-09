@@ -259,7 +259,23 @@ fun AnimatedContentScope.CollectionMorphFrame(
         if (enter.value < 1f) {
             withFrameNanos {}
             withFrameNanos {}
-            enter.animateTo(1f, tween(CollectionMorph.EnterMillis, easing = CollectionMorph.Easing))
+            // Stepped by the frames actually drawn, each counted as at most a 120Hz-and-a-bit
+            // frame's worth. On a wall clock, the main thread still building the page (its list,
+            // its first images) for a few hundred milliseconds spent the morph unseen: the card sat
+            // on the tile, then filled the screen in two frames. Now a slow frame only slows the
+            // flight a touch, and every step of it is on screen.
+            val total = CollectionMorph.EnterMillis * 1_000_000L
+            var elapsed = 0L
+            var last = 0L
+            while (elapsed < total) {
+                withFrameNanos { now ->
+                    if (last != 0L) elapsed += (now - last).coerceAtMost(MaxMorphStepNanos)
+                    last = now
+                }
+                val t = (elapsed.toFloat() / total).coerceIn(0f, 1f)
+                enter.snapTo(CollectionMorph.Easing.transform(t))
+            }
+            enter.snapTo(1f)
         }
         CollectionMorph.markLanded(entry.id)
     }
@@ -325,6 +341,9 @@ fun AnimatedContentScope.CollectionMorphFrame(
         CompositionLocalProvider(LocalCollectionSeed provides seed) { content() }
     }
 }
+
+/** The most one drawn frame advances the morph by: a 60Hz frame and a little, so jank slows rather than skips. */
+private const val MaxMorphStepNanos = 20_000_000L
 
 /** The card's corners as it reaches the screen: about a phone display's own, so it lands flush. */
 private val ScreenCornerRadius = 28.dp

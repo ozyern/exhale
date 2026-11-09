@@ -189,10 +189,10 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable(
         route = "song_preferences",
-        enterTransition = { fadeIn(tween(300)) + slideInHorizontally { it / 3 } },
-        exitTransition = { fadeOut(tween(200)) },
-        popEnterTransition = { fadeIn(tween(250)) },
-        popExitTransition = { fadeOut(tween(200)) + slideOutHorizontally { it / 3 } },
+        enterTransition = { com.ozyern.exhale.ui.utils.ArtworkMotion.pushEnter() },
+        exitTransition = { com.ozyern.exhale.ui.utils.ArtworkMotion.pushExit() },
+        popEnterTransition = { com.ozyern.exhale.ui.utils.ArtworkMotion.popEnter() },
+        popExitTransition = { com.ozyern.exhale.ui.utils.ArtworkMotion.popExit() },
     ) {
         com.ozyern.exhale.ui.screens.onboarding.SongPreferencesScreen(navController)
     }
@@ -210,28 +210,28 @@ fun NavGraphBuilder.navigationBuilder(
             if (initialState.destination.route?.startsWith("search/") == true) {
                 fadeIn(tween(250))
             } else {
-                slideInHorizontally(tween(420, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))) { it }
+                com.ozyern.exhale.ui.utils.ArtworkMotion.pushEnter()
             }
         },
         exitTransition = {
             if (targetState.destination.route?.startsWith("search/") == true) {
                 fadeOut(tween(200))
             } else {
-                fadeOut(tween(210)) + slideOutHorizontally(tween(420)) { -it / 3 }
+                com.ozyern.exhale.ui.utils.ArtworkMotion.pushExit()
             }
         },
         popEnterTransition = {
             if (initialState.destination.route?.startsWith("search/") == true) {
                 fadeIn(tween(250))
             } else {
-                fadeIn(tween(210, delayMillis = 140)) + slideInHorizontally(tween(420)) { -it / 3 }
+                com.ozyern.exhale.ui.utils.ArtworkMotion.popEnter()
             }
         },
         popExitTransition = {
             if (targetState.destination.route?.startsWith("search/") == true) {
                 fadeOut(tween(200))
             } else {
-                slideOutHorizontally(tween(420, easing = androidx.compose.animation.core.CubicBezierEasing(0.2f, 0f, 0f, 1f))) { it }
+                com.ozyern.exhale.ui.utils.ArtworkMotion.popExit()
             }
         },
     ) {
@@ -406,16 +406,16 @@ fun NavGraphBuilder.navigationBuilder(
     composable(
         route = "settings/appearance/always_on_display",
         enterTransition = {
-            fadeIn(tween(300)) + slideInHorizontally { it / 3 }
+            com.ozyern.exhale.ui.utils.ArtworkMotion.pushEnter()
         },
         exitTransition = {
-            fadeOut(tween(200)) + slideOutHorizontally { -it / 3 }
+            com.ozyern.exhale.ui.utils.ArtworkMotion.pushExit()
         },
         popEnterTransition = {
-            fadeIn(tween(300)) + slideInHorizontally { -it / 3 }
+            com.ozyern.exhale.ui.utils.ArtworkMotion.popEnter()
         },
         popExitTransition = {
-            fadeOut(tween(200)) + slideOutHorizontally { it / 3 }
+            com.ozyern.exhale.ui.utils.ArtworkMotion.popExit()
         },
     ) {
         SettingsPage { AODSettings(navController, scrollBehavior) }

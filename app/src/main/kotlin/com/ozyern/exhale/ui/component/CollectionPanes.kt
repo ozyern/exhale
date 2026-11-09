@@ -6,8 +6,19 @@
 
 package com.ozyern.exhale.ui.component
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -62,20 +73,56 @@ import com.ozyern.exhale.LocalPlayerAwareWindowInsets
  * the page's state in reach — and only *draws* here: it publishes itself into this slot and leaves
  * a spacer in the list. See [publishToCollectionPane].
  */
-class CollectionPaneSlot {
+class CollectionPaneSlot(
+    /**
+     * A phone on its side, as the iPhone's music app sets a release there: the sleeve at the full
+     * height of the screen down the left, dissolving into the page's colours, with the title and the
+     * buttons over its foot and the tracks down the right. The pane is drawn under the whole page
+     * (the page is transparent over it), so the colours run on unbroken behind the list.
+     */
+    val bleed: Boolean = false,
+) {
     var content: (@Composable () -> Unit)? by mutableStateOf(null)
 }
 
 val LocalCollectionPane = staticCompositionLocalOf<CollectionPaneSlot?> { null }
 
-/** Two panes in the wide layout, the page alone everywhere else. */
+/** The share of a phone-on-its-side window the sleeve's column takes; the list has the rest. */
+const val BleedPaneFraction = 0.5f
+
+/** Whether this window lays a collection out as [CollectionPaneSlot.bleed]. */
+@Composable
+fun isPhoneLandscapeWindow(): Boolean {
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    return !LocalWideChrome.current &&
+        configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+}
+
+/** Two panes in the wide layout and on a phone on its side, the page alone everywhere else. */
 @Composable
 fun CollectionPanes(content: @Composable () -> Unit) {
-    if (!LocalWideChrome.current) {
+    val phoneSide = isPhoneLandscapeWindow()
+    if (!LocalWideChrome.current && !phoneSide) {
         content()
         return
     }
-    val slot = remember { CollectionPaneSlot() }
+    val slot = remember(phoneSide) { CollectionPaneSlot(bleed = phoneSide) }
+    if (phoneSide) {
+        CompositionLocalProvider(LocalCollectionPane provides slot) {
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val split = maxWidth * BleedPaneFraction
+                Box(Modifier.fillMaxSize()) { slot.content?.invoke() }
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(start = split),
+                ) {
+                    content()
+                }
+            }
+        }
+        return
+    }
     CompositionLocalProvider(LocalCollectionPane provides slot) {
         Row(Modifier.fillMaxSize()) {
             Box(
@@ -141,8 +188,34 @@ fun CollectionPaneHero(
     badges: @Composable () -> Unit = {},
     /** Lay the sleeve's wash over the ground, for pages whose list sits on one (an album's). */
     wash: Boolean = false,
+    /** The release's editorial note; shown under the buttons on a phone on its side. */
+    about: String? = null,
     actions: @Composable () -> Unit,
 ) {
+    if (LocalCollectionPane.current?.bleed == true) {
+        val body: @Composable () -> Unit = {
+            BleedPaneHero(
+                title = title,
+                meta = meta,
+                credit = credit,
+                palette = palette,
+                artwork = artwork,
+                onCreditClick = onCreditClick,
+                explicit = explicit,
+                lossless = lossless,
+                losslessLabel = losslessLabel,
+                about = about,
+                runsUnderList = wash,
+                actions = actions,
+            )
+        }
+        if (palette != null) {
+            CompositionLocalProvider(LocalReleasePalette provides palette) { body() }
+        } else {
+            body()
+        }
+        return
+    }
     val ground = palette?.background ?: MaterialTheme.colorScheme.surface
     val ink = palette?.onBackground ?: MaterialTheme.colorScheme.onSurface
     val quiet = palette?.onBackgroundVariant ?: MaterialTheme.colorScheme.onSurfaceVariant
@@ -268,5 +341,186 @@ fun CollectionPaneHero(
         CompositionLocalProvider(LocalReleasePalette provides palette) { body() }
     } else {
         body()
+    }
+}
+
+/**
+ * The phone-on-its-side hero (see [CollectionPaneSlot.bleed]). It is drawn under the whole window:
+ * the ground and the sleeve's wash everywhere, the sleeve itself full height down the left fading
+ * out to the right and towards the foot, and the words and buttons centred over that foot. The
+ * list's column lies over the right half with no ground of its own.
+ */
+@Composable
+private fun BleedPaneHero(
+    title: String,
+    meta: String,
+    credit: String?,
+    palette: ArtworkPalette?,
+    artwork: @Composable BoxScope.() -> Unit,
+    onCreditClick: (() -> Unit)?,
+    explicit: Boolean,
+    lossless: Boolean,
+    losslessLabel: String?,
+    about: String?,
+    runsUnderList: Boolean,
+    actions: @Composable () -> Unit,
+) {
+    val ground = palette?.background ?: MaterialTheme.colorScheme.surface
+    val bottom = LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding()
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val layoutDirection = androidx.compose.ui.platform.LocalLayoutDirection.current
+    val safeStart = with(density) { WindowInsets.safeDrawing.getLeft(density, layoutDirection).toDp() }
+    val words = Color.White
+    val quietWords = Color.White.copy(alpha = 0.64f)
+
+    // Arrives the way the sleeve does on iOS: settling from a touch larger as it fades up.
+    val shown = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { shown.animateTo(1f, spring(dampingRatio = 1f, stiffness = 260f)) }
+
+    BoxWithConstraints(
+        Modifier
+            .fillMaxSize()
+            .background(ground),
+    ) {
+        if (palette != null) ArtworkWash(palette = palette, modifier = Modifier.fillMaxSize(), washFraction = 0.9f)
+        val columnWidth = maxWidth * BleedPaneFraction
+        // A little wider than its column, so the fade runs on under the first of the tracks.
+        // Only where the list has no ground of its own (an album); a playlist page covers it.
+        val artWidth = if (runsUnderList) minOf(maxWidth * 0.62f, columnWidth + 120.dp) else columnWidth
+        Box(
+            Modifier
+                .fillMaxHeight()
+                .width(artWidth)
+                .graphicsLayer {
+                    alpha = shown.value
+                    val s = 1.04f - 0.04f * shown.value
+                    scaleX = s
+                    scaleY = s
+                    transformOrigin = TransformOrigin(0f, 0.5f)
+                    // Its own layer, so the fades are masks over the finished picture.
+                    compositingStrategy = CompositingStrategy.Offscreen
+                }
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            0f to Color.Black,
+                            0.66f to Color.Black,
+                            0.86f to Color.Black.copy(alpha = 0.4f),
+                            1f to Color.Transparent,
+                        ),
+                        blendMode = BlendMode.DstIn,
+                    )
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0f to Color.Black,
+                            0.5f to Color.Black,
+                            0.84f to Color.Black.copy(alpha = 0.35f),
+                            1f to Color.Transparent,
+                        ),
+                        blendMode = BlendMode.DstIn,
+                    )
+                },
+        ) {
+            Box(Modifier.fillMaxSize(), content = artwork)
+        }
+        // Weight under the words, so white type reads over a pale sleeve.
+        // Across the whole window: stopped at the column's edge, it left a seam down the middle.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to ground.copy(alpha = 0.6f))),
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .width(columnWidth)
+                .padding(start = safeStart + 20.dp, end = 20.dp, bottom = bottom + 8.dp)
+                .graphicsLayer {
+                    alpha = shown.value
+                    translationY = (1f - shown.value) * 24.dp.toPx()
+                },
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                Text(
+                    text = title,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-0.3).sp,
+                    color = words,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (explicit) {
+                    Spacer(Modifier.width(6.dp))
+                    Icon(
+                        painter = painterResource(com.ozyern.exhale.R.drawable.explicit),
+                        contentDescription = null,
+                        tint = quietWords,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+            if (!credit.isNullOrBlank()) {
+                Text(
+                    text = credit,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = words.copy(alpha = 0.92f),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .let { if (onCreditClick != null) it.clickable(onClick = onCreditClick) else it },
+                )
+            }
+            if (meta.isNotBlank() || lossless) {
+                Spacer(Modifier.height(3.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (meta.isNotBlank()) {
+                        Text(meta, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = quietWords, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (lossless) {
+                        if (meta.isNotBlank()) Text(" · ", fontSize = 12.sp, color = quietWords)
+                        Icon(
+                            painter = painterResource(com.ozyern.exhale.R.drawable.ic_apple_lossless),
+                            contentDescription = null,
+                            tint = quietWords,
+                            modifier = Modifier.size(width = 14.dp, height = 10.dp),
+                        )
+                        Spacer(Modifier.width(3.dp))
+                        Text(losslessLabel ?: "Lossless", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = quietWords)
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                actions()
+            }
+            if (!about.isNullOrBlank()) {
+                Spacer(Modifier.height(10.dp))
+                var expanded by remember(about) { mutableStateOf(false) }
+                Text(
+                    text = about,
+                    fontSize = 13.sp,
+                    lineHeight = 17.sp,
+                    color = quietWords,
+                    maxLines = if (expanded) 6 else 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { expanded = !expanded }
+                        .animateContentSize(),
+                )
+            }
+        }
     }
 }

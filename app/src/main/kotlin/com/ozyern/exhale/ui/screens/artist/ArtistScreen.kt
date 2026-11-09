@@ -9,6 +9,7 @@ package com.ozyern.exhale.ui.screens.artist
 import com.kyant.backdrop.backdrops.layerBackdrop
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.offset
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
@@ -79,6 +80,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -225,7 +227,10 @@ fun ArtistScreen(
     // Get thumbnail URL
     val thumbnail = artistPage?.artist?.thumbnail ?: libraryArtist?.artist?.thumbnailUrl
 
+    // The tile's name until the page answers, so the photo and title logo are looked up alongside
+    // the page rather than after it.
     val artistName = artistPage?.artist?.title ?: libraryArtist?.artist?.name
+        ?: com.ozyern.exhale.ui.utils.LocalCollectionSeed.current?.title
 
     val storefront = remember {
         java.util.Locale.getDefault()
@@ -279,7 +284,10 @@ fun ArtistScreen(
         val name = artistName?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         appleArt = com.ozyern.exhale.utils.AppleArtistArtRepository.artFor(name) ?: appleArt
     }
-    val heroImage = appleArt?.heroUrl ?: thumbnail?.resize(1200, 1200)
+    // Opened from a tile: its picture until the page's own arrives, so the card that grows out of
+    // the tile shows the artist from its first frame instead of a black ground.
+    val morphSeed = com.ozyern.exhale.ui.utils.LocalCollectionSeed.current
+    val heroImage = appleArt?.heroUrl ?: thumbnail?.resize(1200, 1200) ?: morphSeed?.thumbnail?.resize(1200, 1200)
 
     // The About page is the iOS music app's, written by Apple: biography, origin, birth and genres.
     // YouTube's channel description stands in for the biography until — and unless — it arrives.
@@ -295,8 +303,31 @@ fun ArtistScreen(
     val palette = com.ozyern.exhale.ui.component.rememberReleasePalette(heroImage)
     val artistBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
     val artistConfiguration = LocalConfiguration.current
-    val artistArtHeight = remember(artistConfiguration.screenWidthDp, artistConfiguration.screenHeightDp) {
-        minOf(artistConfiguration.screenWidthDp / 0.95f, artistConfiguration.screenHeightDp * 0.6f).dp
+    // A phone on its side, as the iPhone's music app sets an artist there: the photo is the screen,
+    // the name and the three round buttons at its foot, and Latest Release beside Top Songs just
+    // showing at the bottom edge, so it is plain the page goes on.
+    val phoneLandscape = com.ozyern.exhale.ui.component.isPhoneLandscapeWindow()
+    val artistArtHeight = remember(artistConfiguration.screenWidthDp, artistConfiguration.screenHeightDp, phoneLandscape) {
+        if (phoneLandscape) {
+            // The photo is the whole screen; the header below decides where the name sits.
+            artistConfiguration.screenHeightDp.dp
+        } else {
+            minOf(artistConfiguration.screenWidthDp / 0.95f, artistConfiguration.screenHeightDp * 0.6f).dp
+        }
+    }
+    // Where the name's block ends. On its side the dock and the mini player take a large share of
+    // a short screen, so the name and the buttons are stood on top of them, not at a fixed fraction
+    // of the height where the chrome covered them.
+    // Only ever grows: the dock folds while the page scrolls, and a header that followed it would
+    // jump under the finger.
+    val liveChromeBottom = LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding()
+    var chromeBottom by remember(phoneLandscape) { mutableStateOf(0.dp) }
+    if (liveChromeBottom > chromeBottom) chromeBottom = liveChromeBottom
+    val headerArtHeight = if (phoneLandscape) {
+        (artistConfiguration.screenHeightDp.dp - chromeBottom - 64.dp - 10.dp -
+            com.ozyern.exhale.ui.component.ReleaseHeaderDrop - 14.dp).coerceAtLeast(120.dp)
+    } else {
+        artistArtHeight
     }
 
     Box(
@@ -307,7 +338,7 @@ fun ArtistScreen(
 
         // The artist page: the photo drawn behind the list, the page tinted from it, and
         // one wide band of blur across the join so photo and page are one surface.
-        if (artistPage != null || showLocal) {
+        if (artistPage != null || showLocal || morphSeed != null) {
             com.ozyern.exhale.ui.component.ReleaseBackground(
                 artworkUrl = heroImage,
                 palette = palette,
@@ -336,6 +367,11 @@ fun ArtistScreen(
             )
         }
 
+        // The section Top Songs is, and whether Latest Release stands beside it (a phone on its side).
+        val topSongsTitle = artistPage?.sections
+            ?.firstOrNull { (it.items.firstOrNull() as? SongItem)?.album != null }?.title
+        val latestBesideTopSongs = phoneLandscape && !showLocal &&
+            viewModel.latestRelease != null && topSongsTitle != null
         LazyColumn(
             state = lazyListState,
             // No top inset: the photo runs to the top edge, under the see-through bar, as iOS's does.
@@ -343,7 +379,28 @@ fun ArtistScreen(
                 .only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
                 .asPaddingValues(),
         ) {
-            if (artistPage == null && !showLocal) {
+            if (artistPage == null && !showLocal && morphSeed != null) {
+                // Opened from a tile: the page as it is about to be — the tile's photo behind (see
+                // heroImage) and the name where the header will set it — rather than a grey skeleton
+                // on black. The real header lands on exactly these lines, so nothing jumps.
+                item(key = "seed_header") {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(headerArtHeight + com.ozyern.exhale.ui.component.ReleaseHeaderDrop),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .padding(start = 24.dp, end = 24.dp, top = 14.dp, bottom = 7.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            ArtistDisplayName(name = morphSeed.title, font = nameFont, color = palette.onBackground)
+                        }
+                    }
+                }
+            } else if (artistPage == null && !showLocal) {
                 // Shimmer loading state
                 item(key = "shimmer") {
                     ShimmerHost {
@@ -473,7 +530,7 @@ fun ArtistScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(artistArtHeight + com.ozyern.exhale.ui.component.ReleaseHeaderDrop),
+                                .height(headerArtHeight + com.ozyern.exhale.ui.component.ReleaseHeaderDrop),
                         ) {
                             // The name across the foot of the photo — in the face
                             // chosen for this artist, or the default. Hold it to choose another.
@@ -510,24 +567,112 @@ fun ArtistScreen(
                                 // iOS's own title logo for the artist when there is one, drawn
                                 // as they draw it; otherwise the name in the chosen face.
                                 val logo = appleArt?.logoUrl
+                                // The name in type stays until the logo has actually arrived, then
+                                // the two cross: the logo used to replace the name the moment its
+                                // address was known, leaving the header nameless while it downloaded.
+                                var logoLoaded by remember(logo) { mutableStateOf(false) }
+                                val logoShown by androidx.compose.animation.core.animateFloatAsState(
+                                    targetValue = if (logo != null && logoLoaded) 1f else 0f,
+                                    animationSpec = androidx.compose.animation.core.tween(320),
+                                    label = "artistLogo",
+                                )
+                                if (logoShown < 1f) {
+                                    Box(Modifier.graphicsLayer { alpha = 1f - logoShown }) {
+                                        ArtistDisplayName(name = artistName ?: stringResource(R.string.unknown_artist), font = nameFont, color = palette.onBackground)
+                                    }
+                                }
                                 if (logo != null) {
                                     val aspect = appleArt?.logoAspect?.coerceIn(0.4f, 6f) ?: 1f
-                                    val maxLogoHeight = artistArtHeight * 0.28f
-                                    BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                    val maxLogoHeight = minOf(headerArtHeight * 0.4f, artistArtHeight * 0.28f)
+                                    BoxWithConstraints(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            // Measured at its real size, so the image loads at it, but
+                                            // taking no height until it has: an invisible logo taller
+                                            // than the name pushed the name up as the page arrived.
+                                            .layout { measurable, constraints ->
+                                                val placeable = measurable.measure(constraints)
+                                                layout(placeable.width, if (logoLoaded) placeable.height else 0) {
+                                                    placeable.place(0, 0)
+                                                }
+                                            }
+                                            .graphicsLayer { alpha = logoShown },
+                                        contentAlignment = Alignment.Center,
+                                    ) {
                                         val width = minOf(maxWidth * 0.82f, maxLogoHeight * aspect)
                                         coil3.compose.AsyncImage(
                                             model = logo,
                                             contentDescription = artistName,
+                                            onSuccess = { logoLoaded = true },
                                             modifier = Modifier.width(width).aspectRatio(aspect),
                                         )
                                     }
-                                } else {
-                                    ArtistDisplayName(name = artistName ?: stringResource(R.string.unknown_artist), font = nameFont, color = palette.onBackground)
                                 }
                             }
                         }
 
                         val isSubscribed = libraryArtist?.artist?.bookmarkedAt != null
+                        val toggleSubscribe: () -> Unit = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            database.transaction {
+                                val artist = libraryArtist?.artist
+                                if (artist != null) {
+                                    update(artist.toggleLike())
+                                } else {
+                                    artistPage?.artist?.let {
+                                        insert(
+                                            ArtistEntity(
+                                                id = it.id,
+                                                name = it.title,
+                                                channelId = it.channelId,
+                                                thumbnailUrl = it.thumbnail,
+                                            ).toggleLike()
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        val playArtist: () -> Unit = {
+                            if (!showLocal) {
+                                val endpoint = artistPage?.artist?.playEndpoint
+                                    ?: artistPage?.artist?.shuffleEndpoint
+                                    ?: artistPage?.artist?.radioEndpoint
+                                endpoint?.let { playerConnection.playQueue(YouTubeQueue(it)) }
+                            } else if (librarySongs.isNotEmpty()) {
+                                playerConnection.playQueue(
+                                    ListQueue(
+                                        title = libraryArtist?.artist?.name ?: "Unknown Artist",
+                                        items = librarySongs.map { it.toMediaItem() },
+                                    )
+                                )
+                            }
+                        }
+                        if (phoneLandscape) {
+                            // About, a round Play, and the star: the iPhone's landscape trio.
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(22.dp, Alignment.CenterHorizontally),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                ArtistActionButton(
+                                    iconRes = R.drawable.info,
+                                    contentDescription = null,
+                                    palette = palette,
+                                    onClick = { showAbout = true },
+                                    size = 44.dp,
+                                )
+                                ArtistPlayDisc(onClick = playArtist)
+                                ArtistActionButton(
+                                    iconRes = if (isSubscribed) R.drawable.star_filled else R.drawable.star,
+                                    contentDescription = stringResource(
+                                        if (isSubscribed) R.string.subscribed else R.string.subscribe
+                                    ),
+                                    palette = palette,
+                                    onClick = toggleSubscribe,
+                                    size = 44.dp,
+                                )
+                            }
+                        } else
                         // The action row: subscribe beside Play — the circle about this
                         // artist — then the white Play pill, then shuffle.
                         Row(
@@ -541,43 +686,11 @@ fun ArtistScreen(
                                     if (isSubscribed) R.string.subscribed else R.string.subscribe
                                 ),
                                 palette = palette,
-                                onClick = {
-                                    database.transaction {
-                                        val artist = libraryArtist?.artist
-                                        if (artist != null) {
-                                            update(artist.toggleLike())
-                                        } else {
-                                            artistPage?.artist?.let {
-                                                insert(
-                                                    ArtistEntity(
-                                                        id = it.id,
-                                                        name = it.title,
-                                                        channelId = it.channelId,
-                                                        thumbnailUrl = it.thumbnail,
-                                                    ).toggleLike()
-                                                )
-                                            }
-                                        }
-                                    }
-                                },
+                                onClick = toggleSubscribe,
                             )
                             ArtistPlayPill(
                                 palette = palette,
-                                onClick = {
-                                    if (!showLocal) {
-                                        val endpoint = artistPage?.artist?.playEndpoint
-                                            ?: artistPage?.artist?.shuffleEndpoint
-                                            ?: artistPage?.artist?.radioEndpoint
-                                        endpoint?.let { playerConnection.playQueue(YouTubeQueue(it)) }
-                                    } else if (librarySongs.isNotEmpty()) {
-                                        playerConnection.playQueue(
-                                            ListQueue(
-                                                title = libraryArtist?.artist?.name ?: "Unknown Artist",
-                                                items = librarySongs.map { it.toMediaItem() },
-                                            )
-                                        )
-                                    }
-                                },
+                                onClick = playArtist,
                             )
                             ArtistActionButton(
                                 iconRes = R.drawable.shuffle,
@@ -598,11 +711,12 @@ fun ArtistScreen(
                             )
                         }
 
-                        Spacer(Modifier.height(22.dp))
+                        Spacer(Modifier.height(if (phoneLandscape) 10.dp else 22.dp))
 
                         // The newest release, on a card of its own under the actions — what
                         // someone opening an artist most often came for (as the reference design does).
-                        val latest = viewModel.latestRelease.takeIf { !showLocal }
+                        // On its side it stands beside Top Songs instead (see below).
+                        val latest = viewModel.latestRelease.takeIf { !showLocal && !(phoneLandscape && latestBesideTopSongs) }
                         if (latest != null) {
                             LatestReleaseCard(
                                 album = latest,
@@ -783,7 +897,15 @@ fun ArtistScreen(
                 } else {
                     // YouTube/Remote content sections
                     artistPage?.sections?.fastForEach { section ->
-                        if (section.items.isNotEmpty()) {
+                        val pairedWithLatest = latestBesideTopSongs && section.title == topSongsTitle
+                        val showAllTopSongs: (() -> Unit)? = section.moreEndpoint?.let {
+                            {
+                                navController.navigate(
+                                    "artist/${viewModel.artistId}/items?browseId=${it.browseId}&params=${it.params}",
+                                )
+                            }
+                        }
+                        if (section.items.isNotEmpty() && !pairedWithLatest) {
                             item {
                                 com.ozyern.exhale.ui.component.ReleaseSectionHeading(
                                     title = section.title,
@@ -812,59 +934,92 @@ fun ArtistScreen(
                                         .distinctBy { it.id }.take(20).chunked(4)
                                 }
                                 val rowState = rememberLazyListState()
-                                BoxWithConstraints(Modifier.fillMaxWidth()) {
-                                    // A phone shows one column and the edge of the next. A tablet fits whole
-                                    // columns across: at a fixed 420dp the third one was cut through its
-                                    // titles at the window's edge, which read as a layout fault, not a hint.
-                                    val columnWidth = if (maxWidth < 600.dp) {
-                                        minOf(maxWidth * 0.86f, 420.dp)
-                                    } else {
-                                        val usable = maxWidth - 20.dp
-                                        val count = ((usable + 12.dp) / (340.dp + 12.dp)).toInt().coerceAtLeast(2)
-                                        (usable - 12.dp * (count - 1)) / count
-                                    }
-                                    LazyRow(
-                                        state = rowState,
-                                        contentPadding = PaddingValues(horizontal = 10.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                        flingBehavior = rememberSnapFlingBehavior(rowState, SnapPosition.Start),
-                                    ) {
-                                        items(columns) { column ->
-                                            Column(Modifier.width(columnWidth)) {
-                                                column.forEach { song ->
-                                                    ArtistTopSongRow(
-                                                        song = song,
-                                                        palette = palette,
-                                                        isCurrent = mediaMetadata?.id == song.id,
-                                                        isPlaying = isPlaying,
-                                                        onClick = {
-                                                            if (song.id == mediaMetadata?.id) {
-                                                                playerConnection.player.togglePlayPause()
-                                                            } else {
-                                                                playerConnection.playQueue(
-                                                                    YouTubeQueue(
-                                                                        WatchEndpoint(videoId = song.id),
-                                                                        song.toMediaMetadata()
-                                                                    ),
-                                                                )
-                                                            }
-                                                        },
-                                                        onMore = {
-                                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                            menuState.show {
-                                                                YouTubeSongMenu(
-                                                                    song = song,
-                                                                    navController = navController,
-                                                                    onDismiss = menuState::dismiss,
-                                                                )
-                                                            }
-                                                        },
-                                                    )
+                                val topSongColumns: @Composable () -> Unit = {
+                                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                                        // A phone shows one column and the edge of the next. A tablet fits whole
+                                        // columns across: at a fixed 420dp the third one was cut through its
+                                        // titles at the window's edge, which read as a layout fault, not a hint.
+                                        val columnWidth = if (maxWidth < 600.dp) {
+                                            minOf(maxWidth * 0.86f, 420.dp)
+                                        } else {
+                                            val usable = maxWidth - 20.dp
+                                            val count = ((usable + 12.dp) / (340.dp + 12.dp)).toInt().coerceAtLeast(2)
+                                            (usable - 12.dp * (count - 1)) / count
+                                        }
+                                        LazyRow(
+                                            state = rowState,
+                                            contentPadding = PaddingValues(horizontal = 10.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            flingBehavior = rememberSnapFlingBehavior(rowState, SnapPosition.Start),
+                                        ) {
+                                            items(columns) { column ->
+                                                Column(Modifier.width(columnWidth)) {
+                                                    column.forEach { song ->
+                                                        ArtistTopSongRow(
+                                                            song = song,
+                                                            palette = palette,
+                                                            isCurrent = mediaMetadata?.id == song.id,
+                                                            isPlaying = isPlaying,
+                                                            onClick = {
+                                                                if (song.id == mediaMetadata?.id) {
+                                                                    playerConnection.player.togglePlayPause()
+                                                                } else {
+                                                                    playerConnection.playQueue(
+                                                                        YouTubeQueue(
+                                                                            WatchEndpoint(videoId = song.id),
+                                                                            song.toMediaMetadata()
+                                                                        ),
+                                                                    )
+                                                                }
+                                                            },
+                                                            onMore = {
+                                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                                menuState.show {
+                                                                    YouTubeSongMenu(
+                                                                        song = song,
+                                                                        navController = navController,
+                                                                        onDismiss = menuState::dismiss,
+                                                                    )
+                                                                }
+                                                            },
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
+                                val latest = viewModel.latestRelease
+                                if (pairedWithLatest && latest != null) Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.Top,
+                                ) {
+                                    Column(Modifier.weight(0.3f)) {
+                                        com.ozyern.exhale.ui.component.ReleaseSectionHeading(
+                                            title = "Latest Release",
+                                            palette = palette,
+                                        )
+                                        LatestReleaseTile(
+                                            album = latest,
+                                            palette = palette,
+                                            onClick = { navController.navigate("album/${latest.id}") },
+                                            onLongClick = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                menuState.show {
+                                                    YouTubeAlbumMenu(albumItem = latest, navController = navController, onDismiss = menuState::dismiss)
+                                                }
+                                            },
+                                        )
+                                    }
+                                    Column(Modifier.weight(0.7f)) {
+                                        com.ozyern.exhale.ui.component.ReleaseSectionHeading(
+                                            title = section.title,
+                                            palette = palette,
+                                            onShowAll = showAllTopSongs,
+                                        )
+                                        topSongColumns()
+                                    }
+                                } else topSongColumns()
                             }
                         } else {
                             // Grid items (albums, playlists, etc.)
@@ -1044,13 +1199,22 @@ private fun ArtistActionButton(
     palette: com.ozyern.exhale.ui.component.ArtworkPalette,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    size: androidx.compose.ui.unit.Dp = 52.dp,
 ) {
     val container = palette.elevated.copy(alpha = 0.72f)
     val content = palette.onBackground
+    val source = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        if (pressed) 0.9f else 1f,
+        androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 700f),
+        label = "artistActionPress",
+    )
 
     Box(
         modifier = modifier
-            .size(52.dp)
+            .size(size)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(CircleShape)
             .background(container)
             .border(
@@ -1058,15 +1222,90 @@ private fun ArtistActionButton(
                 color = Color.White.copy(alpha = 0.14f),
                 shape = CircleShape,
             )
-            .combinedClickable(onClick = onClick, onLongClick = {}),
+            .combinedClickable(interactionSource = source, indication = null, onClick = onClick, onLongClick = {}),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             painter = painterResource(iconRes),
             contentDescription = contentDescription,
             tint = content,
-            modifier = Modifier.size(22.dp),
+            modifier = Modifier.size(size * 0.42f),
         )
+    }
+}
+
+/** Play on its side: a white disc with the glyph alone, between the two smaller circles. */
+@Composable
+private fun ArtistPlayDisc(onClick: () -> Unit) {
+    val source = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        if (pressed) 0.92f else 1f,
+        androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 700f),
+        label = "artistPlayDiscPress",
+    )
+    Box(
+        modifier = Modifier
+            .size(64.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.92f))
+            .clickable(interactionSource = source, indication = null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.play),
+            contentDescription = stringResource(R.string.play),
+            tint = Color.Black.copy(alpha = 0.85f),
+            // Nudged right: a play triangle centred by its box looks left of centre.
+            modifier = Modifier.size(30.dp).offset(x = 2.dp),
+        )
+    }
+}
+
+/** Latest Release beside Top Songs: the sleeve, its title and its year, without a card round it. */
+@Composable
+private fun LatestReleaseTile(
+    album: AlbumItem,
+    palette: com.ozyern.exhale.ui.component.ArtworkPalette,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    val coverShape = RoundedCornerShape(10.dp)
+    Column(
+        modifier = Modifier
+            .padding(horizontal = 16.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+    ) {
+        coil3.compose.AsyncImage(
+            model = album.thumbnail.resize(480, 480),
+            contentDescription = null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(coverShape)
+                .border(0.5.dp, Color.White.copy(alpha = 0.14f), coverShape)
+                .background(palette.elevated),
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = album.title,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = palette.onBackground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        album.year?.let { year ->
+            Text(
+                text = year.toString(),
+                fontSize = 13.sp,
+                color = palette.onBackgroundVariant,
+                maxLines = 1,
+            )
+        }
     }
 }
 

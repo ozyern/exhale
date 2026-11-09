@@ -22,6 +22,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -59,30 +62,13 @@ fun PinnedPageHeader(
     modifier: Modifier = Modifier,
 ) {
     val chrome = com.ozyern.exhale.ui.screens.search.LocalSearchChrome.current
-    val surface = MaterialTheme.colorScheme.surface
-    // Derived, so the header recomposes when the page leaves or returns to the top, not per frame.
-    val isScrolled by remember { derivedStateOf(scrolled) }
-    val scrimDepth by animateFloatAsState(
-        targetValue = if (isScrolled) 1f else 0f,
-        animationSpec = tween(260, easing = FastOutSlowInEasing),
-        label = "pinnedHeaderScrim",
-    )
+    // No ground of its own. It used to lay the theme's surface colour behind the title, deepening
+    // to solid once the page moved — on a dark theme a black band across the top of the moving
+    // artwork. The page's content now fades out under the title instead (see
+    // [fadesUnderPinnedHeader]), so what shows behind "Home" is the same artwork as everywhere else.
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .drawBehind {
-                // At rest: just the status bar. Scrolled: down past the title.
-                val reach = size.height * (0.45f + 0.8f * scrimDepth)
-                drawRect(
-                    brush = Brush.verticalGradient(
-                        0f to surface.copy(alpha = 0.92f + 0.08f * scrimDepth),
-                        0.7f to surface.copy(alpha = 0.55f + 0.42f * scrimDepth),
-                        1f to Color.Transparent,
-                        endY = reach,
-                    ),
-                    size = size.copy(height = reach),
-                )
-            }
             .windowInsetsPadding(
                 WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
             )
@@ -162,6 +148,46 @@ fun PinnedPageHeader(
 
 /** Space a page leaves at its top so its content starts below the pinned header. */
 val PinnedPageHeaderHeight = 78.dp
+
+/**
+ * A tab page's list padding: the player-aware bottom, and the tab's own top (the status bar and
+ * cutout plus 8dp) rather than the app-wide inset's.
+ *
+ * The app-wide inset follows the *current* destination, and it changes the moment a tile is tapped:
+ * the new page has a bar, so its top grows by a bar's height. The tab is still on screen while the
+ * new page grows out of it, and reading that inset its whole feed jumped down ~56dp under the
+ * finger just as the card left the tile. A tab's top never changes, so it is fixed here.
+ */
+@Composable
+fun tabPagePadding(): androidx.compose.foundation.layout.PaddingValues {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val layoutDirection = androidx.compose.ui.platform.LocalLayoutDirection.current
+    val live = com.ozyern.exhale.LocalPlayerAwareWindowInsets.current
+    val system = WindowInsets.systemBars.union(androidx.compose.foundation.layout.WindowInsets.displayCutout)
+    return with(density) {
+        androidx.compose.foundation.layout.PaddingValues(
+            start = live.getLeft(this, layoutDirection).toDp(),
+            top = system.getTop(this).toDp() + 8.dp,
+            end = live.getRight(this, layoutDirection).toDp(),
+            bottom = live.getBottom(this).toDp(),
+        )
+    }
+}
+
+/**
+ * For the list under a [PinnedPageHeader]: whatever scrolls up under the title dissolves into the
+ * page's own background rather than running behind the word, as iOS's scroll edge does. It is the
+ * content that fades, not a colour laid over it, so there is no band — the moving artwork shows
+ * through exactly as it does at rest. Only drawn offscreen while something is under the title.
+ */
+@Composable
+fun Modifier.fadesUnderPinnedHeader(scrolled: () -> Boolean): Modifier {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val statusBars = WindowInsets.statusBars
+    // Gone by the foot of the title's line, then a short fade below it.
+    val clearPx = with(density) { (PinnedPageHeaderHeight - 14.dp).toPx() }
+    return topEdgeFade(active = scrolled) { statusBars.getTop(density) + clearPx }
+}
 
 /** Apple's large-title and shelf-title face: SF Pro Display Bold, which the app bundles. */
 val AppleTitleFont = androidx.compose.ui.text.font.FontFamily(

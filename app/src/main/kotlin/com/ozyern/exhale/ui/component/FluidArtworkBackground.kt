@@ -198,7 +198,10 @@ fun FluidArtworkBackground(
     Box(
         modifier
             .fillMaxSize()
-            .background(Color.Black),
+            .background(Color.Black)
+            // Grain at full resolution, over the half-resolution field: the shader's own dither
+            // is scaled up 2x with it and comes out too soft to stop the dark gradients banding.
+            .filmGrain(0.055f),
     ) {
         // Rendered at half the screen's resolution and scaled up with filtering. The field is soft
         // gradients sampled from a 48-pixel cover: a full-resolution pass worked out the same smooth

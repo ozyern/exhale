@@ -123,7 +123,8 @@ fun rememberReleasePalette(colors: List<Color>): ArtworkPalette {
  */
 @Composable
 fun ArtworkWash(palette: ArtworkPalette, modifier: Modifier = Modifier, washFraction: Float = 0.62f) {
-    Canvas(modifier.fillMaxSize()) {
+    // Grain over the wash: release and artist pages read as a printed sleeve, not a flat fill.
+    Canvas(modifier.fillMaxSize().filmGrain(0.045f)) {
         drawRect(
             Brush.verticalGradient(
                 0f to palette.wash,

@@ -1108,7 +1108,16 @@ fun SimilarRecommendationsTitle(
                 .size(48.dp)
                 .clip(shape)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center,
         ) {
+            // Under the picture: what shows when there is none (an artist kept without a photo),
+            // rather than a blank grey disc.
+            Text(
+                text = subject.title.trim().take(1).uppercase(),
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             AsyncImage(
                 model = subject.thumbnailUrl,
                 contentDescription = null,
