@@ -325,7 +325,9 @@ fun ArtistScreen(
     if (liveChromeBottom > chromeBottom) chromeBottom = liveChromeBottom
     val headerArtHeight = if (phoneLandscape) {
         (artistConfiguration.screenHeightDp.dp - chromeBottom - 64.dp - 10.dp -
-            com.ozyern.exhale.ui.component.ReleaseHeaderDrop - 14.dp).coerceAtLeast(120.dp)
+            // And a section heading's height more, so "Latest Release" and "Top Songs" stand above
+            // the slim bar rather than under it.
+            com.ozyern.exhale.ui.component.ReleaseHeaderDrop - 14.dp - 64.dp).coerceAtLeast(120.dp)
     } else {
         artistArtHeight
     }

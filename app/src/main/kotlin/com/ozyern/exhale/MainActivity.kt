@@ -945,6 +945,13 @@ class MainActivity : ComponentActivity() {
                     // right and the bottom carries only the player, as Apple Music lays itself out
                     // there. See WideChrome.
                     val wideChrome = com.ozyern.exhale.ui.component.isWideChromeWindow()
+                    // A phone on its side: the open dock and the pill above it took a third of the
+                    // screen's height, over the pages laid out for it. There the dock rests folded,
+                    // one slim row of home, song and search, as the iPhone's landscape bar is; a tap
+                    // on the page circle opens it for the tabs until the next page or scroll.
+                    val phoneLandscapeDock = !wideChrome &&
+                        LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                    var landscapeDockOpened by remember { mutableStateOf(false) }
                     val bottomInsetDp = windowsInsets.asPaddingValues().calculateBottomPadding()
                     // Shared by the floating bars, the mini-player pill and the morph target that
                     // has to land on them — see `safeHorizontalChromeInset` for why it is a single
@@ -1395,9 +1402,13 @@ class MainActivity : ComponentActivity() {
                             onSettingsRoute,
                             wideChrome,
                             isTabRoute,
+                            phoneLandscapeDock,
                         ) {
                             var bottom = bottomInset
                             if (shouldShowNavigationBar) bottom += getBottomNavPadding()
+                            // On its side the song rides in the folded dock's one row, as it does in
+                            // Settings: no pill above it to leave room for.
+                            val songInDock = phoneLandscapeDock && shouldShowNavigationBar
                             // Always the full slot, even for the slim pill: the compact layout is
                             // drawn *inside* an unchanged `MiniPlayerHeight` slot rather than
                             // shortening it, because the sheet's collapsed bound is captured once
@@ -1406,7 +1417,7 @@ class MainActivity : ComponentActivity() {
                             // In Settings the song rides inside the folded dock, so there is no separate
                             // mini player above it to leave room for — that room was the empty band.
                             // Every other page opens with the dock open and the mini player above it.
-                            if (!playerBottomSheetState.isDismissed && !(dockOnPage && onSettingsRoute)) {
+                            if (!playerBottomSheetState.isDismissed && !(dockOnPage && onSettingsRoute) && !songInDock) {
                                 bottom += MiniPlayerHeight
                             }
                             windowsInsets
@@ -2320,6 +2331,10 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
 
+                                        // Opened by a tap on its page circle: only until the next page or
+                                        // the next fold of a scroll, then it rests folded again.
+                                        LaunchedEffect(navBackStackEntry) { landscapeDockOpened = false }
+                                        LaunchedEffect(collapsedLatch) { if (collapsedLatch) landscapeDockOpened = false }
                                         val bottomBarCollapsed by remember(
                                             dockOnPage,
                                             onSettingsRoute,
@@ -2330,10 +2345,14 @@ class MainActivity : ComponentActivity() {
                                             shouldShowNavigationBar,
                                             nowPlayingMetadata,
                                             wideChrome,
+                                            phoneLandscapeDock,
                                         ) {
                                             derivedStateOf {
                                                 // The rail never folds: there is no dock to carry the song.
                                                 !wideChrome && (
+                                                // A phone on its side: one slim row unless the tabs were asked for.
+                                                (phoneLandscapeDock && shouldShowNavigationBar && !active &&
+                                                    !isSettingsScreen && !landscapeDockOpened) ||
                                                 // Off the tabs the dock now arrives open, as State A, and folds
                                                 // when the page is scrolled, the way the reference design's does. Settings keeps
                                                 // it folded: its own search capsule sits at the foot of the page.
@@ -2463,6 +2482,11 @@ class MainActivity : ComponentActivity() {
                                         // RESUMED with nothing left moving, and the effect above, already
                                         // done for that page, never replayed the tap: Home did nothing there.
                                         val requestDockTab: (Screens, Boolean) -> Unit = { screen, isSelected ->
+                                            // On its side, the folded page circle opens the tabs rather
+                                            // than only scrolling the page to its top.
+                                            if (phoneLandscapeDock && isSelected && !landscapeDockOpened) {
+                                                landscapeDockOpened = true
+                                            }
                                             val entry = navController.currentBackStackEntry
                                             val settled = entry?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) != false
                                             if (settled || isSelected || entry == null) {

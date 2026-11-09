@@ -435,7 +435,8 @@ fun Lyrics(
     val lyricsLineSpacing by rememberPreference(LyricsLineSpacingKey, 1.3f)
     val useSystemFont by rememberPreference(UseSystemFontKey, false)
     val lyricsFontFamily = remember(useSystemFont) {
-        if (useSystemFont) null else FontFamily(Font(R.font.linotte))
+        // Flow's face, as in every lyric view: SF Pro Display Bold.
+        if (useSystemFont) null else FontFamily(Font(R.font.sfprodisplaybold, androidx.compose.ui.text.font.FontWeight.Bold))
     }
 
     val verticalLineSpacing = with(LocalDensity.current) {

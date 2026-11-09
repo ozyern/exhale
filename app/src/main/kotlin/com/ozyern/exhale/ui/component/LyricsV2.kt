@@ -279,8 +279,10 @@ fun LyricsV2(
     val (showTranslation, setShowTranslation) = rememberPreference(com.ozyern.exhale.constants.LyricsShowTranslationKey, false)
     var translating by remember { mutableStateOf(false) }
     val (useSystemFont) = rememberPreference(UseSystemFontKey, defaultValue = false)
+    // Flow's face for every lyric style: SF Pro Display Bold, as Apple sets its lyrics, so the
+    // Exhale and Apple Music styles read as the same lyrics as Flow rather than in the UI's Linotte.
     val lyricsFontFamily = remember(useSystemFont) {
-        if (useSystemFont) null else FontFamily(Font(R.font.linotte))
+        if (useSystemFont) null else FontFamily(Font(R.font.sfprodisplaybold, androidx.compose.ui.text.font.FontWeight.Bold))
     }
     // ── Text colour ──
     // LyricsV2 only ever renders inside LyricsScreen, whose backdrop is ALWAYS the dark

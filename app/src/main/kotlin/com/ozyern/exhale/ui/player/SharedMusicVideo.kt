@@ -97,6 +97,8 @@ internal object SharedMusicVideo {
             .setLoadControl(
                 androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(8_000, 30_000, 500, 2_000)
+                    // Bounded: Media3's video default allows ~131 MB of heap.
+                    .setTargetBufferBytes(24 * 1024 * 1024)
                     .build(),
             )
             .build().apply {

@@ -122,6 +122,17 @@ private fun rememberCanvasPlayback(
         remember(initial, mediaSourceFactory) {
             ExoPlayer.Builder(context)
                 .setMediaSourceFactory(mediaSourceFactory)
+                // A few seconds of a short loop, not Media3's video default (up to ~131 MB of heap
+                // per player). Several of these play at once — the album's motion, the artist's,
+                // the player's hero, the landscape sleeve — and together they ran the app out of
+                // memory the moment the landscape player opened one more.
+                .setLoadControl(
+                    androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                        .setBufferDurationsMs(4_000, 10_000, 1_000, 2_000)
+                        .setTargetBufferBytes(6 * 1024 * 1024)
+                        .setPrioritizeTimeOverSizeThresholds(false)
+                        .build(),
+                )
                 .build()
                 .apply {
                     setAudioAttributes(

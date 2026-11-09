@@ -5810,6 +5810,20 @@ class MusicService :
             return
         }
 
+        // Anything else — above all a stream lookup that came back empty (a remote error, 1xxx) —
+        // gets one fresh attempt before the song is given up on: new URLs, and another client
+        // asked first. These used to skip on the first failure, and most of them play when asked
+        // again a moment later. The per-song allowance still stops a song that is truly broken.
+        val unknownError = error.errorCode in 1000..1999
+        if (unknownError && currentMediaId != null && markAndCheckRecoveryAllowance(currentMediaId)) {
+            Timber.tag("MusicService").w("Retrying %s after %s (code=%d)", currentMediaId, error.errorCodeName, error.errorCode)
+            YTPlayerUtils.invalidateCachedStreamUrls(currentMediaId)
+            playbackUrlCache.remove(currentMediaId)
+            YTPlayerUtils.markPreferredClientFailed(currentMediaId, preferredStreamClient, httpStatusCode)
+            retryAfterPause(currentMediaId)
+            return
+        }
+
         val skipSilenceCurrentlyEnabled = dataStore.get(SkipSilenceKey, false)
         val causeText = (error.cause?.stackTraceToString() ?: error.stackTraceToString()).lowercase()
         val looksLikeSilenceProcessor = skipSilenceCurrentlyEnabled && (
@@ -6321,9 +6335,9 @@ class MusicService :
                 // stuttered play-stop-play instead of pausing once.
                 /* bufferForPlaybackAfterRebufferMs = */ 5_000,
             )
-            // 32MB is under a minute and a half of 24-bit/96kHz FLAC. 64MB gives hi-res the same
-            // couple of minutes in hand that AAC gets, without risking the heap on small phones.
-            .setTargetBufferBytes(64 * 1024 * 1024)
+            // About a minute and a half of 24-bit/96kHz FLAC, half an hour of Opus. It was 64MB, and that
+            // on the Java heap beside the cover videos ran small-heap phones out of memory.
+            .setTargetBufferBytes(32 * 1024 * 1024)
             .setPrioritizeTimeOverSizeThresholds(true)
             .setBackBuffer(/* backBufferDurationMs = */ 30_000, /* retainBackBufferFromKeyframe = */ true)
             .build(),
@@ -6737,7 +6751,7 @@ class MusicService :
                             // and is the fallback: stored either way.
                             if (first != null && !youtubeHasFlac) {
                                 ioScope.launch {
-                                    youtube.await().getOrNull()?.let { storeResolvedStream(mediaId, it) }
+                                    youtube.await().getOrNull()?.let { storeResolvedStream(mediaId, it, playingInstead = first) }
                                 }
                             } else {
                                 // Stored where the lines below look first, so it is not asked twice.
@@ -6750,6 +6764,27 @@ class MusicService :
                     if (picked != null) {
                         streamSource[mediaId] = picked.url
                         Timber.tag("JioSaavn").i("%s playing from JioSaavn at %d kbps", mediaId, picked.kbps)
+                        // The song's format row says what is playing: JioSaavn's AAC, keeping any
+                        // loudness figure YouTube gave earlier. Taking over from a cached YouTube URL
+                        // wrote no row at all, and the badge kept showing the old Opus one.
+                        ioScope.launch {
+                            val earlier = runCatching { database.format(mediaId).first() }.getOrNull()
+                            database.query {
+                                upsert(
+                                    (earlier ?: FormatEntity(
+                                        id = mediaId, itag = -1, mimeType = "", codecs = "", bitrate = 0,
+                                        sampleRate = null, contentLength = 0L, loudnessDb = null, playbackUrl = null,
+                                    )).copy(
+                                        itag = -1,
+                                        mimeType = "audio/mp4",
+                                        codecs = "mp4a.40.2",
+                                        bitrate = picked.kbps * 1000,
+                                        sampleRate = 44_100,
+                                        contentLength = 0L,
+                                    ),
+                                )
+                            }
+                        }
                         return@Factory dataSpec.buildUpon().setUri(picked.url.toUri()).setKey(upgradeKey(mediaId)).build()
                     }
                 }
@@ -6776,6 +6811,15 @@ class MusicService :
                     )
                 } ?: Result.failure(java.net.SocketTimeoutException("No stream for $mediaId within ${RESOLVE_TIMEOUT_MS / 1000} s"))
             }.getOrElse { throwable ->
+                // YouTube has no stream for this song right now. Before the song is failed — and
+                // skipped — any other copy already being looked for is given its chance: the
+                // lossless search past its short start-of-song wait, then JioSaavn. Songs YouTube
+                // refused outright (a client it would not sign for, a region lock) used to skip
+                // even when a FLAC or a 320 kbps copy was a second away.
+                rescueStream(mediaId)?.let { url ->
+                    Timber.tag("MusicService").i("%s: YouTube failed (%s); playing %s instead", mediaId, throwable.javaClass.simpleName, streamSource[mediaId])
+                    return@Factory dataSpec.buildUpon().setUri(url.toUri()).setKey(upgradeKey(mediaId)).build()
+                }
                 when (throwable) {
                     is YTPlayerUtils.LoginRequiredForPlaybackException -> {
                         promptLoginRecovery(mediaId, throwable.targetUrl)
@@ -6868,6 +6912,12 @@ class MusicService :
     private fun storeResolvedStream(
         mediaId: String,
         playbackData: YTPlayerUtils.PlaybackData,
+        /**
+         * The JioSaavn file actually playing, when it won over YouTube. YouTube's answer still gives
+         * the loudness figure; the format row describes the file that plays. Written as YouTube's,
+         * the player's badge said Opus while the song's menu said JioSaavn, and either looked wrong.
+         */
+        playingInstead: JioSaavn.Stream? = null,
     ): String {
         val format = playbackData.format
         val loudnessDb = playbackData.audioConfig?.loudnessDb
@@ -6883,7 +6933,18 @@ class MusicService :
 
         database.query {
             upsert(
-                FormatEntity(
+                if (playingInstead != null) FormatEntity(
+                    id = mediaId,
+                    itag = -1,
+                    mimeType = "audio/mp4",
+                    codecs = "mp4a.40.2",
+                    bitrate = playingInstead.kbps * 1000,
+                    sampleRate = 44_100,
+                    contentLength = 0L,
+                    loudnessDb = loudnessDb,
+                    perceptualLoudnessDb = perceptualLoudnessDb,
+                    playbackUrl = playbackData.playbackTracking?.videostatsPlaybackUrl?.baseUrl,
+                ) else FormatEntity(
                     id = mediaId,
                     itag = format.itag,
                     mimeType = format.mimeType.split(";")[0],
@@ -6995,6 +7056,29 @@ class MusicService :
      * The JioSaavn lookup for [mediaId], started if it has not been, or null where it does not
      * apply: switched off, the low-data setting, a phone file, or a song whose details are unknown.
      */
+    /**
+     * Another copy of [mediaId] for when YouTube has none: the lossless search's answer (waited for
+     * past the start-of-song grace, up to the search's own limit), else JioSaavn's. Recorded as the
+     * song's source, so its later chunks come from the same place. Null when neither has one.
+     */
+    private fun rescueStream(mediaId: String): String? = runCatching {
+        runBlocking(Dispatchers.IO) {
+            flacLookup(mediaId)?.let { search -> withTimeoutOrNull(RESCUE_WAIT_MS) { search.await() } }
+                ?.takeIf { it.isNotBlank() }
+                ?.let { flac ->
+                    flacCopies += mediaId
+                    streamSource[mediaId] = flac
+                    rememberFlacFormat(mediaId)
+                    return@runBlocking flac
+                }
+            saavnLookup(mediaId)?.let { lookup -> withTimeoutOrNull(RESCUE_WAIT_MS) { lookup.await() } }
+                ?.let { saavn ->
+                    streamSource[mediaId] = saavn.url
+                    return@runBlocking saavn.url
+                }
+        }
+    }.getOrNull()
+
     private fun saavnLookup(mediaId: String): kotlinx.coroutines.Deferred<JioSaavn.Stream?>? {
         if (!jioSaavnUpgrade || audioQuality == com.ozyern.exhale.constants.AudioQuality.LOW) return null
         if (com.ozyern.exhale.utils.LocalMediaScanner.isLocalId(mediaId)) return null
@@ -8062,6 +8146,8 @@ class MusicService :
          */
         private const val FLAC_LOOKUP_GRACE_MS = 10_000L
         private const val FLAC_LOOKUP_TIMEOUT_MS = 10_000L
+        /** How long a song YouTube refused waits for another copy before it is failed. */
+        private const val RESCUE_WAIT_MS = 8_000L
         /** How long a FLAC copy that failed to play is left alone before the song is searched again. */
         private const val FLAC_REJECT_MS = 10 * 60 * 1000L
         /** How long "no FLAC of this song anywhere" is believed before the song is searched again. */

@@ -40,6 +40,7 @@
         android:name=".App"
         android:allowBackup="true"
         android:appCategory="audio"
+        android:largeHeap="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"
         android:fullBackupContent="@xml/backup_rules"

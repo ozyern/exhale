@@ -414,8 +414,9 @@ private fun BleedPaneHero(
                     drawRect(
                         brush = Brush.verticalGradient(
                             0f to Color.Black,
-                            0.5f to Color.Black,
-                            0.84f to Color.Black.copy(alpha = 0.35f),
+                            // Gone by the words: the cover's own lettering ran into the title over it.
+                            0.34f to Color.Black,
+                            0.66f to Color.Black.copy(alpha = 0.22f),
                             1f to Color.Transparent,
                         ),
                         blendMode = BlendMode.DstIn,
@@ -429,7 +430,13 @@ private fun BleedPaneHero(
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to ground.copy(alpha = 0.6f))),
+                .background(
+                    Brush.verticalGradient(
+                        0.3f to Color.Transparent,
+                        0.62f to ground.copy(alpha = 0.55f),
+                        1f to ground.copy(alpha = 0.9f),
+                    ),
+                ),
         )
         Column(
             modifier = Modifier
@@ -442,6 +449,13 @@ private fun BleedPaneHero(
                 },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // A soft shadow under every word here: white type over a pale cover (yellow, white) had
+            // only the scrim to stand on, and the scrim alone could not carry it.
+            CompositionLocalProvider(
+                androidx.compose.material3.LocalTextStyle provides androidx.compose.material3.LocalTextStyle.current.copy(
+                    shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.45f), androidx.compose.ui.geometry.Offset(0f, 2f), 14f),
+                ),
+            ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                 Text(
                     text = title,
@@ -521,6 +535,7 @@ private fun BleedPaneHero(
                         .animateContentSize(),
                 )
             }
+        }
         }
     }
 }
