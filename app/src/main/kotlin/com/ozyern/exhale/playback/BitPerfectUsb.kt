@@ -28,9 +28,9 @@ import timber.log.Timber
  * signal (the DAC's own volume does, or it plays at full level), and while it is active other
  * apps' sounds do not mix into the DAC.
  *
- * The mixer can only be bit-perfect for a format the app actually writes, and Exhale's sink writes
- * float or 16-bit PCM, so those are the two encodings considered — float first, since that is what
- * the processing chain produces with no quantisation at all.
+ * The mixer can only be bit-perfect for a format the app actually writes. Exhale writes float,
+ * 32-bit integer (carried through Media3's float path, see [Int32Carriage]) or 16-bit PCM, in that
+ * order of preference: the first two pass any source up to 24-bit through unchanged.
  */
 object BitPerfectUsb {
 
@@ -43,9 +43,9 @@ object BitPerfectUsb {
     private var appliedOn: AudioDeviceInfo? = null
 
     /**
-     * The encoding the DAC is bit-perfect at right now ([C.ENCODING_PCM_FLOAT] or
-     * [C.ENCODING_PCM_16BIT]), or null when bit-perfect is not active. The sink reads this to write
-     * exactly that encoding.
+     * The encoding the DAC is bit-perfect at right now ([C.ENCODING_PCM_FLOAT],
+     * [C.ENCODING_PCM_32BIT] or [C.ENCODING_PCM_16BIT]), or null when bit-perfect is not active. The
+     * sink reads this to write exactly that encoding.
      */
     @Volatile
     var activeEncoding: Int? = null
@@ -118,6 +118,7 @@ object BitPerfectUsb {
             unavailableReason = null
             activeEncoding = when (pick.format.encoding) {
                 AudioFormat.ENCODING_PCM_FLOAT -> C.ENCODING_PCM_FLOAT
+                AudioFormat.ENCODING_PCM_32BIT -> C.ENCODING_PCM_32BIT
                 else -> C.ENCODING_PCM_16BIT
             }
             Timber.i("Bit-perfect USB: ${pick.format.sampleRate} Hz, encoding ${pick.format.encoding}, source $bits-bit")
@@ -128,12 +129,12 @@ object BitPerfectUsb {
     }
 
     /**
-     * The DAC's bit-perfect mode for this rate, stereo, float preferred over 16-bit.
+     * The DAC's bit-perfect mode for this rate, stereo: float, then 32-bit integer, then 16-bit.
      *
-     * Float carries 24 bits of mantissa, so any source up to 24-bit passes through it unchanged.
-     * Media3's sink writes only float or 16-bit, so a DAC that offers integer modes alone gets
-     * 16-bit; a deeper file is then reduced to it with dither ([needsDither]) rather than having its
-     * low bits cut off, and still reaches the DAC at its own rate, unresampled.
+     * Float carries 24 bits of mantissa and a 32-bit integer has room for all 24, so a source up to
+     * 24-bit passes through either unchanged. A DAC with only 16-bit (or a 24-bit packed mode, which
+     * nothing here can write) gets 16-bit; a deeper file is then reduced with dither ([needsDither])
+     * rather than having its low bits cut off, and still reaches the DAC at its own rate, unresampled.
      */
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     private fun bestMixer(audioManager: AudioManager, device: AudioDeviceInfo, sampleRate: Int, @Suppress("UNUSED_PARAMETER") bits: Int): AudioMixerAttributes? =
@@ -172,5 +173,10 @@ object BitPerfectUsb {
         else -> 16
     }
 
-    private val WritableEncodings = listOf(AudioFormat.ENCODING_PCM_FLOAT, AudioFormat.ENCODING_PCM_16BIT)
+    /** Best first: float and 32-bit integer carry any source up to 24-bit untouched; 16-bit last. */
+    private val WritableEncodings = listOf(
+        AudioFormat.ENCODING_PCM_FLOAT,
+        AudioFormat.ENCODING_PCM_32BIT,
+        AudioFormat.ENCODING_PCM_16BIT,
+    )
 }

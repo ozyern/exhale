@@ -205,7 +205,6 @@ fun CollectionPaneHero(
                 lossless = lossless,
                 losslessLabel = losslessLabel,
                 about = about,
-                runsUnderList = wash,
                 actions = actions,
             )
         }
@@ -362,7 +361,6 @@ private fun BleedPaneHero(
     lossless: Boolean,
     losslessLabel: String?,
     about: String?,
-    runsUnderList: Boolean,
     actions: @Composable () -> Unit,
 ) {
     val ground = palette?.background ?: MaterialTheme.colorScheme.surface
@@ -384,9 +382,9 @@ private fun BleedPaneHero(
     ) {
         if (palette != null) ArtworkWash(palette = palette, modifier = Modifier.fillMaxSize(), washFraction = 0.9f)
         val columnWidth = maxWidth * BleedPaneFraction
-        // A little wider than its column, so the fade runs on under the first of the tracks.
-        // Only where the list has no ground of its own (an album); a playlist page covers it.
-        val artWidth = if (runsUnderList) minOf(maxWidth * 0.62f, columnWidth + 120.dp) else columnWidth
+        // Within its own column. It used to run 120dp on under the tracks, and that overhang read as
+        // a band of a different colour behind the back button at the top of the track list.
+        val artWidth = columnWidth
         Box(
             Modifier
                 .fillMaxHeight()

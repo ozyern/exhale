@@ -43,6 +43,8 @@ import com.ozyern.exhale.utils.YTPlayerUtils
 import com.ozyern.exhale.utils.StreamClientUtils
 import com.ozyern.exhale.utils.enumPreference
 import com.ozyern.exhale.constants.NetworkMeteredKey
+import com.ozyern.exhale.constants.PreferLocalLosslessKey
+import com.ozyern.exhale.models.toMediaMetadata
 import com.ozyern.exhale.utils.dataStore
 import com.ozyern.exhale.utils.get
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -61,7 +63,7 @@ import javax.inject.Singleton
 class DownloadUtil
 @Inject
 constructor(
-    @ApplicationContext context: Context,
+    @ApplicationContext private val context: Context,
     val database: MusicDatabase,
     val databaseProvider: DatabaseProvider,
     @DownloadCache val downloadCache: Cache,
@@ -154,6 +156,14 @@ constructor(
                 // The length of *this* stream, never the shared format row, which playback rewrites.
                 return@Factory bounded(dataSpec.withUri(it.first.toUri()), mediaId, it.third, useStoredLength = false)
             }
+            // A lossless copy of the song, when there is one, is what gets saved: a lossy download
+            // used to outrank the FLAC copy the same song streamed from, every time it played.
+            losslessCopyForDownload(mediaId)?.let { copy ->
+                songUrlCache[mediaId] = Triple(copy.url, System.currentTimeMillis() + LOSSLESS_URL_TTL_MS, copy.size)
+                LosslessDownloads.mark(context, mediaId, lossless = true)
+                return@Factory dataSpec.withUri(copy.url.toUri())
+            }
+            LosslessDownloads.mark(context, mediaId, lossless = false)
             val playbackData = runBlocking(Dispatchers.IO) { resolveForDownload(context, mediaId) }
             val format = playbackData.format
 
@@ -421,7 +431,44 @@ constructor(
         }.getOrDefault(false)
     }
 
+    /**
+     * The lossless file to download for [mediaId], or null to save YouTube's stream: the setting
+     * off, the data-saving quality, or no copy found. Records the download and its format the way
+     * the YouTube path below does.
+     */
+    private fun losslessCopyForDownload(mediaId: String): LosslessDownloads.Copy? {
+        if (audioQuality == AudioQuality.LOW) return null
+        return runBlocking(Dispatchers.IO) {
+            if (!context.dataStore.get(PreferLocalLosslessKey, true)) return@runBlocking null
+            val song = database.song(mediaId).first() ?: return@runBlocking null
+            val copy = LosslessDownloads.find(context, mediaId, song.toMediaMetadata()) ?: return@runBlocking null
+            val sampleRate = copy.sampleRate ?: 44_100
+            val bitDepth = copy.bitDepth ?: 16
+            val size = LosslessDownloads.remoteFileSize(mediaOkHttpClient, copy.url) ?: 0L
+            database.query {
+                upsert(
+                    FormatEntity(
+                        id = mediaId,
+                        itag = 0,
+                        mimeType = "audio/flac",
+                        codecs = "flac",
+                        bitrate = copy.bitrate?.takeIf { it > 0 } ?: (sampleRate * bitDepth * 2),
+                        sampleRate = sampleRate,
+                        contentLength = size,
+                        loudnessDb = null,
+                        playbackUrl = null,
+                    ),
+                )
+                if (song.song.dateDownload == null) upsert(song.song.copy(dateDownload = LocalDateTime.now()))
+            }
+            copy.copy(size = size.takeIf { it > 0L })
+        }
+    }
+
     private companion object {
+        /** How long a lossless copy's address is reused across a download's requests. */
+        const val LOSSLESS_URL_TTL_MS = 30 * 60_000L
+
         /** The gap between two downloads asking YouTube for a stream. */
         const val RESOLVE_SPACING_MS = 1_500L
         /** The first cool-down after a bot check; it doubles with each refusal in a row. */

@@ -63,6 +63,8 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import com.ozyern.exhale.ui.utils.resize
+import coil3.request.crossfade
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -173,6 +175,12 @@ fun OnlineSearchResult(
                     }
             }
         }
+
+    PreloadResultArt(
+        remember(allModeSections, itemsPage) {
+            allModeSections.flatMap { it.second } + itemsPage?.items.orEmpty()
+        },
+    )
 
     val isAllModeLoaded =
         searchSummary != null ||
@@ -365,7 +373,7 @@ fun OnlineSearchResult(
                     item(key = "lyrics_header") {
                         SearchSectionHeader(title = "From the lyrics", onSeeAll = null, modifier = Modifier.animateItem())
                     }
-                    itemsIndexed(fromLyrics, key = { _, match -> "lyrics/${match.song.id}" }) { i, match ->
+                    itemsIndexed(fromLyrics, key = { _, match -> "lyrics/${match.song.id}" }, contentType = { _, _ -> "lyrics_row" }) { i, match ->
                         ytItemContent(match.song)
                         LyricsMatchNote(line = match.line)
                         if (i < fromLyrics.lastIndex) SearchRowDivider()
@@ -435,7 +443,7 @@ fun OnlineSearchResult(
                         }
                     }
                     val rows = if (hero != null) sectionItems.filter { it.id != hero.id } else sectionItems
-                    if (rows.isNotEmpty()) item(key = "section_header_${title}_$index") {
+                    if (rows.isNotEmpty()) item(key = "section_header_${title}_$index", contentType = "section_header") {
                         SearchSectionHeader(
                             title = title,
                             // "See all" swaps the chip row onto this section's filter, which is
@@ -454,6 +462,10 @@ fun OnlineSearchResult(
                     itemsIndexed(
                         items = rows,
                         key = { itemIndex, item -> "$title/${item.id}/$itemIndex" },
+                        // Rows reuse each other's composition as they scroll in and out; with no type
+                        // they shared one pool with the headers and the hero card and were mostly built
+                        // from nothing, a slow frame for every row that came on screen.
+                        contentType = { _, _ -> "result_row" },
                     ) { itemIndex, item ->
                         // Each section is one grouped card, as the iOS music app lists results: the rows
                         // share a plate, rounded at its ends, parted by hairlines inset to the text.
@@ -490,6 +502,7 @@ fun OnlineSearchResult(
                 itemsIndexed(
                     items = filtered,
                     key = { _, it -> "filtered_${it.id}" },
+                    contentType = { _, _ -> "filtered_row" },
                 ) { i, item ->
                     ytItemContent(item)
                     if (i < filtered.lastIndex) SearchRowDivider()
@@ -655,7 +668,7 @@ private fun SearchHeroCard(
         val artShape = if (item is ArtistItem) androidx.compose.foundation.shape.CircleShape
         else androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
         coil3.compose.AsyncImage(
-            model = item.thumbnail,
+            model = rememberSizedArt(item.thumbnail, 92.dp),
             contentDescription = null,
             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
             modifier = Modifier
@@ -852,7 +865,7 @@ private fun SearchResultRow(
     ) {
         Box(contentAlignment = Alignment.Center) {
             coil3.compose.AsyncImage(
-                model = item.thumbnail,
+                model = rememberSizedArt(item.thumbnail, 52.dp),
                 contentDescription = null,
                 contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                 modifier = Modifier
@@ -968,7 +981,7 @@ private fun TopResultCard(
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             coil3.compose.AsyncImage(
-                model = item.thumbnail,
+                model = rememberSizedArt(item.thumbnail, 72.dp),
                 contentDescription = null,
                 contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                 modifier = Modifier
@@ -1081,3 +1094,46 @@ private fun LyricsMatchNote(line: String?) {
         }
     }
 }
+
+/**
+ * A result's cover, asked for at the size it is drawn. Handed the bare URL, every row decoded
+ * whatever the server sent (up to several hundred pixels a side for an album) and uploaded it to
+ * the GPU as the row scrolled in: one slow frame per row, which is what made the results stutter
+ * where Home, which already asks for its covers this way, did not. Google's image servers resize on
+ * request; YouTube video stills are left as they are and decoded down to the slot.
+ */
+@Composable
+private fun rememberSizedArt(url: String?, size: androidx.compose.ui.unit.Dp): Any? {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val px = with(androidx.compose.ui.platform.LocalDensity.current) { size.roundToPx() }
+    return remember(url, px) { url?.let { sizedArtRequest(context, it, px) } }
+}
+
+/** The request [rememberSizedArt] makes; the preloader makes the same one, so the row finds it cached. */
+private fun sizedArtRequest(context: android.content.Context, url: String, px: Int): coil3.request.ImageRequest {
+    val sized = if ("i.ytimg.com" in url) url else url.resize(px * 3 / 2, px * 3 / 2)
+    return coil3.request.ImageRequest.Builder(context)
+        .data(sized)
+        .size(px, px)
+        // No fade: a row's cover fading in redraws the row every frame while it scrolls in.
+        .crossfade(false)
+        .build()
+}
+
+/**
+ * Fetches and decodes the result rows' covers as soon as the results arrive, so scrolling finds
+ * them in memory. Left to the scroll, each cover's download and decode landed on the frames that
+ * brought its row on screen: the first pass over a fresh search stuttered, the second did not.
+ */
+@Composable
+private fun PreloadResultArt(items: List<YTItem>) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val px = with(androidx.compose.ui.platform.LocalDensity.current) { 52.dp.roundToPx() }
+    LaunchedEffect(items, px) {
+        val loader = coil3.SingletonImageLoader.get(context)
+        items.asSequence().mapNotNull { it.thumbnail }.distinct().take(MaxPreloadedArt)
+            .forEach { loader.enqueue(sizedArtRequest(context, it, px)) }
+    }
+}
+
+private const val MaxPreloadedArt = 60

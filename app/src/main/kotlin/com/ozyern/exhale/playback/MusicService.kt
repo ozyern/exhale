@@ -6434,22 +6434,32 @@ class MusicService :
         val bRate = bitrate?.takeIf { it > 0 } ?: cachedSpec?.third ?: (sRate * bDepth * 2)
         flacFormatSpecs[mediaId] = Triple(sRate, bDepth, bRate)
         flacFormatsWritten.add(mediaId)
-        database.query {
-            upsert(
-                FormatEntity(
-                    id = mediaId,
-                    itag = -1,
-                    mimeType = "audio/flac",
-                    codecs = "flac",
-                    bitrate = bRate,
-                    sampleRate = sRate,
-                    contentLength = 0L,
-                    loudnessDb = null,
-                    playbackUrl = null,
-                ),
-            )
+        val url = streamSource[mediaId]?.takeIf { it != YOUTUBE_SOURCE }
+        ioScope.launch {
+            // The file's real size. Written as 0 before, so a lossless song's details said "0 B".
+            val size = flacSizes[mediaId]
+                ?: url?.let { LosslessDownloads.remoteFileSize(mediaOkHttpClient, it) }?.also { flacSizes[mediaId] = it }
+                ?: 0L
+            database.query {
+                upsert(
+                    FormatEntity(
+                        id = mediaId,
+                        itag = -1,
+                        mimeType = "audio/flac",
+                        codecs = "flac",
+                        bitrate = bRate,
+                        sampleRate = sRate,
+                        contentLength = size,
+                        loudnessDb = null,
+                        playbackUrl = null,
+                    ),
+                )
+            }
         }
     }
+
+    /** FLAC copies' sizes, measured once per song. */
+    private val flacSizes = ConcurrentHashMap<String, Long>()
 
     /**
      * The catalogue song a music video is a video of: searched by its title and artist, and
@@ -6529,7 +6539,7 @@ class MusicService :
                 .getOrNull()?.takeIf { it > 0L }
                 ?: runCatching { playerCache.getContentMetadata(id).get(ContentMetadata.KEY_CONTENT_LENGTH, -1L) }
                     .getOrNull()?.takeIf { it > 0L }
-                ?: runBlocking(Dispatchers.IO) { database.format(id).first()?.contentLength }?.takeIf { it > 0L }
+                ?: runBlocking(Dispatchers.IO) { database.format(id).first()?.takeIf { it.itag > 0 }?.contentLength }?.takeIf { it > 0L }
 
         val factory = createDataSourceFactory()
         val length = knownLength() ?: run {
@@ -6616,7 +6626,22 @@ class MusicService :
             // the network for itself — which offline is an error. The download cache knows its own
             // file's length; ask it first.
             if (dataSpec.length < 0 && isDownloadedLocally(mediaId)) {
-                return@Factory dataSpec
+                // Downloads made before they saved FLAC hold YouTube's lossy stream. Online, a FLAC
+                // copy of the song outranks that file: it used to be skipped for it every time, so a
+                // song played lossless from an album not downloaded and lossy from one that was.
+                // Given a moment only; a copy found later swaps in through the seamless upgrade.
+                val flacCopy = if (preferLocalLossless && !LosslessDownloads.isLossless(this, mediaId) && hasValidatedInternet()) {
+                    flacLookup(mediaId)?.let { search ->
+                        runBlocking(Dispatchers.IO) { withTimeoutOrNull(DOWNLOAD_FLAC_GRACE_MS) { search.await() } }
+                            ?: null.also { streamSource.putIfAbsent(mediaId, YOUTUBE_SOURCE) }
+                    }
+                } else null
+                if (flacCopy == null) return@Factory dataSpec
+                flacCopies += mediaId
+                streamSource[mediaId] = flacCopy
+                rememberFlacFormat(mediaId)
+                Timber.tag("MusicService").i("%s: FLAC copy over the lossy download: %s", mediaId, flacOrigins[mediaId])
+                return@Factory dataSpec.buildUpon().setUri(flacCopy.toUri()).setKey(upgradeKey(mediaId)).build()
             }
 
             // Saved to the phone (Music/Exhale): play the file, the way a local music player would.
@@ -6671,7 +6696,8 @@ class MusicService :
                     val contentLength =
                         // A stored length of 0 means the stream never said; ask the caches instead.
                         runBlocking(Dispatchers.IO) {
-                            database.format(mediaId).first()?.contentLength?.takeIf { it > 0L }
+                            // A FLAC copy's row (itag -1 or 0) sizes that file, not the YouTube stream cached under this key.
+                            database.format(mediaId).first()?.takeIf { it.itag > 0 }?.contentLength?.takeIf { it > 0L }
                         } ?: runCatching {
                             downloadCache
                                 .getContentMetadata(mediaId)
@@ -6930,6 +6956,24 @@ class MusicService :
 
         dropCachedBytesOfOtherFile(mediaId, format)
         if (YTPlayerUtils.isLosslessMime(format.mimeType)) losslessFromYouTube += mediaId else losslessFromYouTube -= mediaId
+
+        // A FLAC copy is what plays: its row stays, taking only YouTube's loudness figures. A
+        // background answer (the launch warm-up, the fallback lookup) used to overwrite it with
+        // YouTube's Opus row, and the song's details said Opus while FLAC was playing.
+        if (mediaId in flacCopies && !YTPlayerUtils.isLosslessMime(format.mimeType)) {
+            ioScope.launch {
+                val current = runCatching { database.format(mediaId).first() }.getOrNull()
+                if (current != null && YTPlayerUtils.isLosslessMime(current.mimeType)) {
+                    database.query { upsert(current.copy(loudnessDb = loudnessDb, perceptualLoudnessDb = perceptualLoudnessDb)) }
+                } else {
+                    rememberFlacFormat(mediaId)
+                }
+            }
+            scope.launch(Dispatchers.IO) { recoverSong(mediaId, playbackData) }
+            playbackUrlCache[mediaId] =
+                playbackData.streamUrl to System.currentTimeMillis() + (playbackData.streamExpiresInSeconds * 1000L)
+            return playbackData.streamUrl
+        }
 
         database.query {
             upsert(
@@ -7417,18 +7461,6 @@ class MusicService :
                     // On the float path the sink runs no processors of its own, Sonic included,
                     // so speed has to be the AudioTrack's job there.
                     .setEnableAudioTrackPlaybackParams(true)
-                    // A deeper AudioTrack buffer than Media3's 250ms floor. Hi-res FLAC goes out as
-                    // float at 96-192kHz through the whole processor chain below, and at those
-                    // rates one slow pass of the playback thread (a GC, a chunk opening on the
-                    // network) drained the default buffer: the crackle and micro-stutter heard on
-                    // lossless and nowhere else. Pause and seek still act at once; only live EQ
-                    // moves arrive a fraction of a second later.
-                    .setAudioTrackBufferSizeProvider(
-                        androidx.media3.exoplayer.audio.DefaultAudioTrackBufferSizeProvider.Builder()
-                            .setMinPcmBufferDurationUs(500_000)
-                            .setMaxPcmBufferDurationUs(1_000_000)
-                            .build(),
-                    )
                     .setAudioProcessorChain(
                         DefaultAudioSink.DefaultAudioProcessorChain(
                             SilenceSkippingAudioProcessor(
@@ -7440,7 +7472,29 @@ class MusicService :
                             ),
                             SonicAudioProcessor(),
                         ),
-                    ).build()
+                    )
+                    // Opens the AudioTrack in 32-bit integer for a DAC that takes nothing deeper
+                    // in float; otherwise Media3's own provider, unchanged. See Int32Carriage.
+                    .setAudioOutputProvider(
+                        Int32Carriage.Provider(
+                            androidx.media3.exoplayer.audio.AudioTrackAudioOutputProvider.Builder(this@MusicService)
+                                // A deeper AudioTrack buffer than Media3's 250ms floor. Hi-res FLAC goes
+                                // out as float at 96-192kHz through the whole processor chain, and at
+                                // those rates one slow pass of the playback thread (a GC, a chunk opening
+                                // on the network) drained the default buffer: the crackle and
+                                // micro-stutter heard on lossless and nowhere else. Pause and seek still
+                                // act at once; only live EQ moves arrive a fraction of a second later.
+                                // Set here: Media3 takes it from the provider once one is given.
+                                .setAudioTrackBufferSizeProvider(
+                                    androidx.media3.exoplayer.audio.DefaultAudioTrackBufferSizeProvider.Builder()
+                                        .setMinPcmBufferDurationUs(500_000)
+                                        .setMaxPcmBufferDurationUs(1_000_000)
+                                        .build(),
+                                )
+                                .build(),
+                        ),
+                    )
+                    .build()
                 // Exhale's own processors run in front of the sink, where float cannot skip them.
                 // See PrecisionAudioSink for the whole story.
                 return PrecisionAudioSink(
@@ -7461,8 +7515,9 @@ class MusicService :
                     ),
                     // A bit-perfect DAC takes exactly the encoding its mixer was opened with;
                     // otherwise float goes out wherever it is safe to.
+                    // A 32-bit integer DAC is fed from float too, turned to integers at the very end.
                     floatAllowed = {
-                        BitPerfectUsb.activeEncoding?.let { it == C.ENCODING_PCM_FLOAT }
+                        BitPerfectUsb.activeEncoding?.let { it == C.ENCODING_PCM_FLOAT || it == C.ENCODING_PCM_32BIT }
                             ?: (dataStore.get(OutputFloatKey, true) && externalOutputActive())
                     },
                     // Bit-perfect promises the DAC the source's own samples: no added noise.
@@ -7478,6 +7533,7 @@ class MusicService :
                             BitPerfectUsb.update(audioManager, true, format.sampleRate)
                         }
                     },
+                    carryInt32 = { BitPerfectUsb.activeEncoding == C.ENCODING_PCM_32BIT },
                 )
             }
         }
@@ -8145,6 +8201,9 @@ class MusicService :
          * only ever spent when every source is unreachable.
          */
         private const val FLAC_LOOKUP_GRACE_MS = 10_000L
+
+        /** How long a downloaded lossy song waits for its FLAC copy before playing the file. */
+        private const val DOWNLOAD_FLAC_GRACE_MS = 2_500L
         private const val FLAC_LOOKUP_TIMEOUT_MS = 10_000L
         /** How long a song YouTube refused waits for another copy before it is failed. */
         private const val RESCUE_WAIT_MS = 8_000L

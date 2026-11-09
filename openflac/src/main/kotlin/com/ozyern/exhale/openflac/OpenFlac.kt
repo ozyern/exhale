@@ -187,14 +187,7 @@ object OpenFlac {
      */
     suspend fun findCopy(title: String, artist: String, durationSeconds: Int, album: String? = null): Track? {
         if (title.isBlank() || artist.isBlank() || durationSeconds <= 0) return null
-        val cacheKey = "${plain(artist)}::${plain(title)}"
-        val cleanKey = "${plain(artist)}::${plain(cleanSongTitle(title))}"
-        albumTrackRegistry[cacheKey]?.let { cached ->
-            if (isSameRecording(title, artist, durationSeconds, cached)) return cached
-        }
-        albumTrackRegistry[cleanKey]?.let { cached ->
-            if (isSameRecording(title, artist, durationSeconds, cached)) return cached
-        }
+        bestRegistered(title, artist, durationSeconds)?.let { return it }
         val pArtist = plain(artist)
         val isSabrina = "sabrina" in pArtist && "carpenter" in pArtist
         if (isSabrina && sabrinaLoaded.compareAndSet(false, true)) {
@@ -203,16 +196,7 @@ object OpenFlac {
                     .awaitAll()
             }
         }
-        albumTrackRegistry[cacheKey]?.let { cached ->
-            if (isSameRecording(title, artist, durationSeconds, cached)) return cached
-        }
-        albumTrackRegistry[cleanKey]?.let { cached ->
-            if (isSameRecording(title, artist, durationSeconds, cached)) return cached
-        }
-        if (isSabrina) {
-            val directSabrina = albumTrackRegistry.values.firstOrNull { isSameRecording(title, artist, durationSeconds, it) }
-            if (directSabrina != null) return directSabrina
-        }
+        bestRegistered(title, artist, durationSeconds)?.let { return it }
         val cleanTitle = cleanSongTitle(title)
         val cleanArtist = artist
             .replace(Regex("""(?i)\b(feat\.?|ft\.?)\b.*"""), "")
@@ -261,10 +245,24 @@ object OpenFlac {
             }
             archive.await() + commons.await() + jamendo.await()
         }
-        return found
-            .filter { isSameRecording(title, artist, durationSeconds, it) }
-            .maxByOrNull { (it.bitDepth ?: 16) * (it.sampleRate ?: 44_100) }
+        return closest(found.filter { isSameRecording(title, artist, durationSeconds, it) }, durationSeconds)
     }
+
+    /**
+     * The release tracks already read this session that are this recording, closest in length first.
+     * An album's first song reads the whole release, so the rest of it is answered from here without
+     * another search. Taken by the first key that matched, an upload carrying two edits of a song
+     * ("Evil Deeds" at 4:13 and its 4:20 album version) handed whichever was read first.
+     */
+    private fun bestRegistered(title: String, artist: String, durationSeconds: Int): Track? =
+        closest(albumTrackRegistry.values.filter { isSameRecording(title, artist, durationSeconds, it) }, durationSeconds)
+
+    /** The candidate nearest [durationSeconds], then the finest; edits seconds apart are different cuts. */
+    private fun closest(candidates: Collection<Track>, durationSeconds: Int): Track? =
+        candidates.minWithOrNull(
+            compareBy<Track> { kotlin.math.abs((it.durationSeconds ?: Int.MAX_VALUE) - durationSeconds) }
+                .thenByDescending { (it.bitDepth ?: 16) * (it.sampleRate ?: 44_100) },
+        )
 
     private const val MaxRuntimeGapSeconds = 12
 

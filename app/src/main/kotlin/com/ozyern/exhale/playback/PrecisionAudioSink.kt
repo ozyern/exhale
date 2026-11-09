@@ -61,6 +61,11 @@ class PrecisionAudioSink(
      * a bit-perfect DAC can be switched to the track's rate before the AudioTrack opens on it.
      */
     private val beforeConfigure: (Format) -> Unit = {},
+    /**
+     * True while the bit-perfect DAC was opened in 32-bit integer: the samples leave as integers
+     * labelled float (see [Int32Carriage]). Read when a track is configured.
+     */
+    private val carryInt32: () -> Boolean = { false },
 ) : ForwardingAudioSink(delegate) {
 
     private val pipeline = AudioProcessingPipeline(
@@ -79,6 +84,7 @@ class PrecisionAudioSink(
     private val bitPerfectPipeline = AudioProcessingPipeline(
         ImmutableList.of<AudioProcessor>(
             DitheredPcm16Processor(active = { !floatAllowed() }, dither = ditherAllowed),
+            Int32Carriage.ToInt32Processor(active = carryInt32),
         ),
     )
 
@@ -120,6 +126,7 @@ class PrecisionAudioSink(
             if (out != null && out != AudioProcessor.AudioFormat.NOT_SET) {
                 active.flush(AudioProcessor.StreamMetadata.DEFAULT)
                 if (active.isOperational) {
+                    arm(chain === bitPerfectPipeline && carryInt32())
                     val processed = inputFormat.buildUpon()
                         .setPcmEncoding(out.encoding)
                         .setSampleRate(out.sampleRate)
@@ -140,7 +147,19 @@ class PrecisionAudioSink(
             }
         }
         processing = false
+        arm(false)
         delegate.configure(audioSinkConfig)
+    }
+
+    /**
+     * Sets whether the next AudioTrack carries 32-bit integers. On a change the delegate lets go of
+     * its AudioTrack first: it reuses one whose settings look the same, and a float track handed
+     * integers (or the other way round) plays noise at full scale.
+     */
+    private fun arm(int32: Boolean) {
+        if (Int32Carriage.armed == int32) return
+        delegate.reset()
+        Int32Carriage.armed = int32
     }
 
     override fun handleBuffer(buffer: ByteBuffer, presentationTimeUs: Long, encodedAccessUnitCount: Int): Boolean {

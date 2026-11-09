@@ -138,7 +138,7 @@ fun ShowMediaInfo(videoId: String) {
         add("Itag" to (format.itag?.toString() ?: unknown))
         add(
             stringResource(R.string.file_size) to
-                (format.contentLength?.let { Formatter.formatShortFileSize(context, it) } ?: unknown),
+                (format.contentLength?.takeIf { it > 0L }?.let { Formatter.formatShortFileSize(context, it) } ?: unknown),
         )
         add(
             stringResource(R.string.volume) to
