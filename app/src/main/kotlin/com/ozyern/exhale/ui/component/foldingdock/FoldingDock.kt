@@ -148,6 +148,9 @@ private val SearchRowHeight = 48.dp
 private val ComponentSpacing = 8.dp
 private val FoldingIconSize = 32.dp
 
+/** How many times faster than the fold the search field fades: gone by 40% of the way. */
+private const val FieldFadeRate = 2.5f
+
 /** Where the dock is parked while the typing field has taken over: well below the screen. */
 private const val OFF_SCREEN_PX = 100_000
 
@@ -442,7 +445,9 @@ fun FoldingDock(
     }
     val circlesAlpha = { maxOf(foldC(), searchC()) }
     val fieldAlpha = object {
-        val value: Float get() = (searchC() * (1f - foldC())).coerceIn(0f, 1f)
+        // Gone in the first part of the fold: the player comes down into this row, and a field
+        // still half there had its text and back arrow showing through the song's cover.
+        val value: Float get() = (searchC() * (1f - foldC() * FieldFadeRate)).coerceIn(0f, 1f)
     }
 
     // The dock draws the player whenever it is not resting open: folded, or on its way. Typing, the
@@ -629,7 +634,10 @@ fun FoldingDock(
             ) {
                 if (searchTab != null) {
                     // Convx: the detached glyph gives way to the field as the search row opens.
-                    Box(Modifier.graphicsLayer { alpha = 1f - searchC() * (1f - foldC()) }) {
+                    // In once the field's text has gone, so the two are never read together.
+                    Box(Modifier.graphicsLayer {
+                        alpha = 1f - searchC() * (1f - ((foldC() - 1f / FieldFadeRate) / (1f - 1f / FieldFadeRate)).coerceIn(0f, 1f))
+                    }) {
                         // Never lit on the search page itself, as Convx draws it: there the circle is
                         // the way back to the field, not a tab saying where you are.
                         icon(searchTab, selectedKey == searchTab.key && !inSearch)

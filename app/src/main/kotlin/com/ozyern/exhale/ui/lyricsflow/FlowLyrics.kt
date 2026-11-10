@@ -466,7 +466,7 @@ private class ScrollRun(val id: Int, val delta: Float, val durationMs: Int) {
  * nor the drift is what you want to be reading against.
  */
 private fun scrollLead(lines: List<LyricLine>, positionMs: Long): Long {
-    val current = lines.indexOfLast { it.timeMs <= positionMs }
+    val current = latestLyricRow(lines, positionMs)
     // Before the first line's own timestamp there is no current line to
     // measure a run-up from. [indexOfLast] answers -1 there, and the guard
     // below does not catch it: `current + 1` is 0, which is a perfectly real
@@ -591,7 +591,7 @@ internal fun CurrentLyricStrip(
     if (isSynced) {
         val clock = rememberLyricClock(trackKey, playhead, isPlaying)
         val index by remember(lines) {
-            derivedStateOf { lines.indexOfLast { it.timeMs <= clock.longValue } }
+            derivedStateOf { latestLyricRow(lines, clock.longValue) }
         }
         val current = lines.getOrNull(index)
         val instrumental = current == null || current.isGap
@@ -830,6 +830,10 @@ private fun SweptLyricLine(
             }
         }
     }
+    // Whether a held word is mid-bloom: flips a few times a line, read by the glow's draw.
+    val glowLive = remember(line, clock) {
+        derivedStateOf(structuralEqualityPolicy()) { line.isGrowing(clock.longValue) }
+    }
     val drawnAt: () -> Long = {
         when (phase.value) {
             PHASE_MOVING -> clock.longValue
@@ -914,7 +918,10 @@ private fun SweptLyricLine(
             onTextLayout = { layout = it },
             modifier = riseAgainst(room),
         )
-        if (glowAlpha > 0.01f) {
+        // Only a line with a held word has anything to bloom. Every other line carried this
+        // copy all the same: a blurred offscreen layer redrawn on each frame of the line being
+        // sung, to draw nothing into it.
+        if (glowAlpha > 0.01f && line.growingWords.isNotEmpty()) {
             Text(
                 text = line.text,
                 style = style,
@@ -935,6 +942,9 @@ private fun SweptLyricLine(
                         // being held. Most lines draw nothing here at all, which
                         // is the whole difference between this and a halo
                         // travelling under the highlight.
+                        // Dark between held words, and then it does not follow the clock:
+                        // the blur behind it is only worked out again while a word is lit.
+                        if (!glowLive.value) return@drawWithContent
                         val measured = layout ?: return@drawWithContent
                         glowGrown(
                             layout = measured,
@@ -1403,11 +1413,8 @@ private fun ContentDrawScope.sweepTo(
         // For RTL lines the sweep fills right-to-left: clip from the line's
         // right edge down to the feather's leading edge.  For LTR it fills
         // left-to-right as before.
-        val (clipLeft, clipRight) = if (rtl) {
-            lead to lineRight
-        } else {
-            lineLeft to lead
-        }
+        val clipLeft = if (rtl) lead else lineLeft
+        val clipRight = if (rtl) lineRight else lead
 
         // Guard: an empty or inverted clip is a no-op; skip it cleanly.
         if (clipLeft >= clipRight) continue
@@ -1801,9 +1808,11 @@ internal fun LyricsPanel(
     // panel into lanes for it would just be a narrower panel.
     val duet = remember(lines) { lines.any { it.alignment == LyricAlignment.End } }
 
+    // Asked on every frame: see [ActiveLyricRows] for why it is not worked out afresh each time.
+    val activeRowsAt = remember(lines) { ActiveLyricRows(lines) }
     val activeRows by remember(lines, isSynced) {
         derivedStateOf {
-            if (!isSynced) emptyList() else activeLyricRows(lines, clock.longValue)
+            if (!isSynced) emptyList() else activeRowsAt.at(clock.longValue)
         }
     }
     // The newest line to start owns the scroll anchor. Anchored on the uppermost
@@ -1824,7 +1833,8 @@ internal fun LyricsPanel(
                 -1
             } else {
                 val now = clock.longValue
-                activeLyricRows(lines, now + scrollLead(lines, now)).lastOrNull() ?: -1
+                // The newest line to have started is always the last active row.
+                latestLyricRow(lines, now + scrollLead(lines, now))
             }
         }
     }
@@ -2805,7 +2815,7 @@ private fun CurrentLyricLine(
     val clock = rememberLyricClock(trackKey, playhead, isPlaying)
 
     val index by remember(lines) {
-        derivedStateOf { lines.indexOfLast { it.timeMs <= clock.longValue } }
+        derivedStateOf { latestLyricRow(lines, clock.longValue) }
     }
     val current = lines.getOrNull(index)
     // Before the first line, and through instrumental breaks, show the note.

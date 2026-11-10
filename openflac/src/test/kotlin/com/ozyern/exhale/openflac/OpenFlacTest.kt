@@ -43,6 +43,33 @@ class OpenFlacTest {
         assertTrue(OpenFlac.isSameRecording("Tití Me Preguntó", "Bad Bunny", 243, track("Titi Me Pregunto", "Bad Bunny", 243)))
     }
 
+    /** Uploads name their files and titles every which way; the song is still the song. */
+    @Test
+    fun numberedAndPrefixedTitlesAreTheSameSong() {
+        fun same(theirs: String) =
+            OpenFlac.isSameRecording("Evil Deeds", "Eminem", 259, track(theirs, "Eminem", 260))
+        assertTrue(same("07 - Evil Deeds"))
+        assertTrue(same("07. Evil Deeds"))
+        assertTrue(same("1-07 Evil Deeds"))
+        assertTrue(same("Eminem - Evil Deeds"))
+        assertTrue(same("Evil Deeds - Album Version"))
+        assertFalse(same("07 - Evil Deeds Pt. 2"))
+        // A number that is the song's own name is not a running order.
+        assertTrue(OpenFlac.isSameRecording("7 rings", "Ariana Grande", 178, track("7 rings", "Ariana Grande", 178)))
+        // A hyphen inside a name is not the start of a suffix.
+        assertFalse(OpenFlac.isSameRecording("Anti-Hero", "Taylor Swift", 200, track("Anti-Social", "Taylor Swift", 200)))
+        assertTrue(OpenFlac.isSameRecording("Anti-Hero", "Taylor Swift", 200, track("03 Anti-Hero", "Taylor Swift", 201)))
+    }
+
+    @Test
+    fun titlesFromFileNames() {
+        assertEquals("Evil Deeds", OpenFlac.titleFromFileName("Encore/07_Evil_Deeds.flac"))
+        assertEquals("Evil Deeds", OpenFlac.titleFromFileName("Eminem - Encore - 07 - Evil Deeds.flac"))
+        assertEquals("Evil Deeds", OpenFlac.titleFromFileName("disc 1/1-07 Evil Deeds.flac"))
+        assertEquals("gd77-05-08d2t05", OpenFlac.titleFromFileName("gd77-05-08d2t05.flac"))
+        assertEquals("1999", OpenFlac.titleFromFileName("1999.flac"))
+    }
+
     @Test
     fun archiveFilesGoStraightToTheirServerOnceItIsKnown() {
         val link = "https://archive.org/download/some-item/disc%201/track.flac"

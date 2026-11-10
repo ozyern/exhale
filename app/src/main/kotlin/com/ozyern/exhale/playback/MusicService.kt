@@ -800,11 +800,17 @@ class MusicService :
             return
         }
 
+        // Stopping takes the media session with it: the lock screen's and the shade's card goes,
+        // a headset's button has nothing of ours to reach, and the system offers whichever other
+        // player it last knew instead. Five minutes paused, or thirty seconds after a song failed
+        // or the queue ran out, was all it took — "pause, come back later, and the controls are
+        // another app's". A paused player costs nothing, so a song that can still be resumed keeps
+        // its session for a long while; only an empty player goes quickly.
         val delayMs =
-            when (state) {
-                Player.STATE_READY -> 5 * 60_000L
-                Player.STATE_ENDED, Player.STATE_IDLE -> 30_000L
-                else -> 60_000L
+            when {
+                player.mediaItemCount == 0 -> 30_000L
+                state == Player.STATE_READY || state == Player.STATE_BUFFERING -> IDLE_STOP_PAUSED_MS
+                else -> IDLE_STOP_STOPPED_MS
             }
 
         cancelIdleStop()
@@ -6308,13 +6314,45 @@ class MusicService :
                         }
                 }
                 val searches = listOf(own, cloudLossless, open)
+                var timedOut = false
                 val hit = try {
                     withTimeoutOrNull(FLAC_LOOKUP_TIMEOUT_MS) { firstFound(searches) }
+                        .also { timedOut = it == null && searches.any { search -> search.isActive } }
                 } finally {
-                    searches.forEach { it.cancel() }
+                    // Out of time, the public catalogues' search is left to finish: see below.
+                    searches.forEach { if (!(timedOut && it === open)) it.cancel() }
                 }
                 if (hit == null || hit.url.isBlank()) {
                     flacMissAt[mediaId] = System.currentTimeMillis()
+                    // A catalogue search for a song with no album to go on reads several uploads
+                    // and often ran past the deadline. Cancelled there, the copy it was about to
+                    // find was thrown away and the song searched from nothing every time it was
+                    // played, so it was never lossless from search while the same song played from
+                    // its album (found at once, by the album's name) was. Left to finish, what it
+                    // finds is kept for the next play, and swapped in now if the song has only
+                    // just started.
+                    if (timedOut) {
+                        ioScope.launch {
+                            val late = withTimeoutOrNull(FLAC_LATE_LOOKUP_MS) { open.await() }
+                            if (late == null) {
+                                open.cancel()
+                                return@launch
+                            }
+                            if (late.url.isBlank() || isFlacRejected(mediaId)) return@launch
+                            flacOrigins[mediaId] = "Sabrina's Basement · FLAC"
+                            flacFormatSpecs[mediaId] = Triple(
+                                late.sampleRate ?: 44100,
+                                late.bitDepth ?: 16,
+                                (late.sampleRate ?: 44100) * (late.bitDepth ?: 16) * 2,
+                            )
+                            if (STABLE_FLAC_HOSTS.any { it in late.url }) {
+                                rememberFlacCopy(mediaId, "${late.url}\t${late.sampleRate ?: 44100}\t${late.bitDepth ?: 16}")
+                            }
+                            flacMissAt.remove(mediaId)
+                            flacLookups[mediaId] = kotlinx.coroutines.CompletableDeferred(late.url)
+                            triggerSeamlessLosslessUpgrade(mediaId, late.url)
+                        }
+                    }
                     return@async null
                 }
                 // Only the copy that will play describes the song: its origin and its format.
@@ -8352,12 +8390,21 @@ class MusicService :
         /** How long a downloaded lossy song waits for its FLAC copy before playing the file. */
         private const val DOWNLOAD_FLAC_GRACE_MS = 2_500L
         private const val FLAC_LOOKUP_TIMEOUT_MS = 10_000L
+
+        /** How long past that deadline a catalogue search is let run, for the copy to be kept. */
+        private const val FLAC_LATE_LOOKUP_MS = 45_000L
         /** How long a song YouTube refused waits for another copy before it is failed. */
         private const val RESCUE_WAIT_MS = 8_000L
         /** How long a FLAC copy that failed to play is left alone before the song is searched again. */
         private const val FLAC_REJECT_MS = 10 * 60 * 1000L
         /** How long "no FLAC of this song anywhere" is believed before the song is searched again. */
         private const val FLAC_MISS_RETRY_MS = 3 * 60 * 1000L
+
+        /** How long a paused song keeps the service, and with it the lock-screen controls. */
+        private const val IDLE_STOP_PAUSED_MS = 60 * 60_000L
+
+        /** The same for a queue that has stopped: ended, or halted by an error. */
+        private const val IDLE_STOP_STOPPED_MS = 15 * 60_000L
         /** How long the stream's thread waits for the main thread to read a song's details. */
         private const val SONG_DETAILS_WAIT_MS = 1_000L
         /**

@@ -164,18 +164,53 @@ object OpenFlac {
             .replace(Regex("""\s*[\(\[\{].*?[\)\]\}]"""), "")
             .replace(Regex("""(?i)\b(feat\.?|ft\.?)\b.*"""), "")
             .replace(Regex("""(?i)\b(official\s+music\s+video|official\s+video|official\s+audio|music\s+video|visualizer|lyrics?|audio|remaster(?:ed)?)\b"""), "")
-            .replace(Regex("""\s*-\s*.*$"""), "")
+            // A dash set off by spaces opens a suffix ("Song - 2011 Remaster"). A bare hyphen is
+            // part of the name: cut there, "Anti-Hero" and "Anti-Social" were both "Anti".
+            .replace(Regex("""\s+[-–—]\s+.*$"""), "")
             .replace('"', ' ')
             .trim()
+
+    private val leadingTrackNumber = Regex("""^\s*(?:\d{1,2}[-.]\d{1,2}|[A-Da-d]?\d{1,3})\s*[-._)]*\s+(?=\S)""")
+
+    /** [title] without a running-order number in front of it: "07 - Evil Deeds", "1-07 Evil Deeds", "A2. Evil Deeds". */
+    internal fun withoutTrackNumber(title: String): String =
+        leadingTrackNumber.replace(title, "").ifBlank { title }
+
+    /**
+     * A song's name from its file's, for uploads whose files carry no title of their own:
+     * "02 - Short n' Sweet/07_Evil_Deeds.flac" and "Eminem - Encore - 07 - Evil Deeds.flac" are both
+     * "Evil Deeds". The name alone was compared before, so every song of such an upload was a miss.
+     */
+    internal fun titleFromFileName(name: String): String {
+        val base = name.substringAfterLast('/').substringBeforeLast('.').replace('_', ' ').trim()
+        val parts = base.split(Regex("""\s+[-–—]\s+""")).map { it.trim() }.filter { it.isNotEmpty() }
+        // "Artist - Album - 07 - Song": the song is what follows the number.
+        val numbered = parts.indexOfLast { part -> part.all { it.isDigit() } }
+        val tail = if (numbered in 0 until parts.lastIndex) parts.drop(numbered + 1).joinToString(" - ") else base
+        return withoutTrackNumber(tail).ifBlank { base }
+    }
+
+    /** Every way [title] may be naming the song, plain: whole, cleaned, unnumbered, and each dash-separated part. */
+    private fun titleForms(title: String): Set<String> = buildSet {
+        val unnumbered = withoutTrackNumber(title)
+        add(plain(title))
+        add(plain(cleanSongTitle(title)))
+        add(plain(unnumbered))
+        add(plain(cleanSongTitle(unnumbered)))
+        // "Linkin Park - In the End": the artist in front, which the cleaning took for the song.
+        unnumbered.split(Regex("""\s+[-–—]\s+""")).takeIf { it.size > 1 }?.forEach { part ->
+            add(plain(cleanSongTitle(withoutTrackNumber(part))))
+        }
+        remove("")
+    }
 
     internal fun isSameRecording(title: String, artist: String, durationSeconds: Int, track: Track): Boolean {
         val length = track.durationSeconds ?: return false
         if (kotlin.math.abs(length - durationSeconds) > MaxRuntimeGapSeconds) return false
-        val wanted = plain(cleanSongTitle(title))
-        val cand = plain(cleanSongTitle(track.title))
-        if (wanted.isEmpty() || cand.isEmpty()) return false
-        val titleMatch = wanted == cand || wanted == plain(track.title) || plain(title) == cand
-        if (!titleMatch) return false
+        val wanted = setOf(plain(cleanSongTitle(title)), plain(title)) - ""
+        if (wanted.isEmpty()) return false
+        val theirTitles = titleForms(track.title)
+        if (wanted.none { it in theirTitles }) return false
         val theirs = plain(track.artist + " " + track.album.orEmpty())
         val named = plain(artist)
         return named.isNotEmpty() && (named in theirs || theirs in named || named.split(' ').any { it.length > 3 && it in theirs })
@@ -214,6 +249,13 @@ object OpenFlac {
                     if (quotedArtist.isNotBlank() && titles.isNotBlank()) {
                         queries += "mediatype:(audio) AND format:(Flac) AND creator:(\"$quotedArtist\") AND title:($titles)"
                     }
+                    // An upload is an album, named for the album: asked for by the song's name alone
+                    // (a song played from search carries no album) it was never found, while the same
+                    // song played from its album page was. The song's name anywhere in the upload's
+                    // details, where track lists are written out, finds it without knowing the album.
+                    if (quotedArtist.isNotBlank() && quotedTitle.isNotBlank()) {
+                        queries += "mediatype:(audio) AND format:(Flac) AND creator:(\"$quotedArtist\") AND \"$quotedTitle\""
+                    }
                     if (quotedArtist.isNotBlank()) {
                         queries += "mediatype:(audio) AND format:(Flac) AND creator:(\"$quotedArtist\")"
                     }
@@ -221,14 +263,25 @@ object OpenFlac {
                         queries += "mediatype:(audio) AND format:(Flac) AND title:($titles)"
                     }
                     val ids = coroutineScope {
-                        queries.distinct().take(2).map { q ->
+                        queries.distinct().take(MaxArchiveQueries).map { q ->
                             async {
                                 val url = "https://archive.org/advancedsearch.php?q=${q.encodeURLParameter()}" +
-                                    "&fl%5B%5D=identifier&sort%5B%5D=${"downloads desc".encodeURLParameter()}&rows=4&page=1&output=json"
-                                getJson(url).obj("response")?.array("docs").orEmpty()
-                                    .mapNotNull { (it as? JsonObject)?.text("identifier") }
+                                    "&fl%5B%5D=identifier&sort%5B%5D=${"downloads desc".encodeURLParameter()}&rows=$ArchiveRowsPerQuery&page=1&output=json"
+                                // One query failing (a time-out) must not lose what the others found.
+                                runCatching {
+                                    getJson(url).obj("response")?.array("docs").orEmpty()
+                                        .mapNotNull { (it as? JsonObject)?.text("identifier") }
+                                }.getOrDefault(emptyList())
                             }
-                        }.awaitAll().flatten().distinct()
+                        }.awaitAll()
+                            // The narrowest query's uploads first, a few from each, and no more than
+                            // a handful in all: each is a request for its whole file list.
+                            .let { perQuery ->
+                                val longest = perQuery.maxOfOrNull { it.size } ?: 0
+                                (0 until longest).flatMap { row -> perQuery.mapNotNull { it.getOrNull(row) } }
+                            }
+                            .distinct()
+                            .take(MaxArchiveItems)
                     }
                     coroutineScope {
                         ids.map { id -> async { runCatching { archiveTracks(id) }.getOrDefault(emptyList()) } }
@@ -265,6 +318,9 @@ object OpenFlac {
         )
 
     private const val MaxRuntimeGapSeconds = 12
+    private const val MaxArchiveQueries = 3
+    private const val ArchiveRowsPerQuery = 5
+    private const val MaxArchiveItems = 8
 
     // ---- Internet Archive ------------------------------------------------------------------------
 
@@ -345,7 +401,7 @@ object OpenFlac {
                 }
                 Track(
                     // A taper's file name — "gd77-05-08d2t05" — says little; the file's own title says more.
-                    title = file.text("title") ?: name.substringAfterLast('/').substringBeforeLast('.'),
+                    title = file.text("title")?.takeIf { it.isNotBlank() } ?: titleFromFileName(name),
                     artist = file.text("artist") ?: file.text("creator") ?: creator,
                     album = file.text("album") ?: album,
                     durationSeconds = parseLength(file.text("length")),

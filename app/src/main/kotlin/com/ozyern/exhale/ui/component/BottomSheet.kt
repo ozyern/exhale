@@ -699,6 +699,9 @@ const val EXPANDED_ANCHOR = 2
 const val COLLAPSED_ANCHOR = 1
 const val DISMISSED_ANCHOR = 0
 
+/** A collapsed bound moved by no more than this is followed at once rather than sprung after. */
+private const val CollapsedFollowLimitDp = 32f
+
 @Composable
 fun rememberBottomSheetState(
     dismissedBound: Dp,
@@ -734,6 +737,9 @@ fun rememberBottomSheetState(
             Animatable(0.dp, Dp.VectorConverter)
         }
 
+    // The collapsed bound this state last rested on, to tell a nudge of it from a change of place.
+    val lastCollapsedBound = remember { arrayOfNulls<Dp>(1) }
+
     return remember(dismissedBound, expandedBound, collapsedBound, coroutineScope, density) {
         val initialValue =
             when (previousAnchor) {
@@ -744,8 +750,21 @@ fun rememberBottomSheetState(
             }
 
         animatable.updateBounds(dismissedBound.coerceAtMost(expandedBound), expandedBound)
+        // Resting collapsed while the place it rests is being moved a little at a time (the dock's
+        // row changing height under it, itself animated): it goes with it. Sprung after it instead,
+        // the sheet trailed its own resting place for as long as that lasted, so it read as
+        // slightly open: the cover was lifted out of the mini player for a flight that never came
+        // and hung where it had last been seen, over the search field, until the row settled.
+        val resting = previousAnchor == COLLAPSED_ANCHOR &&
+            lastCollapsedBound[0]?.let { last ->
+                (!animatable.isRunning || animatable.targetValue == last) &&
+                    kotlin.math.abs((animatable.value - last).value) < 0.5f &&
+                    kotlin.math.abs((initialValue - last).value) <= CollapsedFollowLimitDp
+            } == true
+        lastCollapsedBound[0] = collapsedBound
         coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            animatable.animateTo(initialValue, BottomSheetAnimationSpec)
+            if (resting) animatable.snapTo(initialValue)
+            else animatable.animateTo(initialValue, BottomSheetAnimationSpec)
         }
 
         BottomSheetState(
