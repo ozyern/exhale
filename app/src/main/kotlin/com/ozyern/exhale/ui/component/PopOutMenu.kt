@@ -341,7 +341,12 @@ fun PopOutPanel(
     val measured = panelSize != IntSize.Zero && hostSize != IntSize.Zero
 
     LaunchedEffect(measured, visible) {
-        if (!measured) return@LaunchedEffect
+        if (!measured) {
+            // Dismissed before it was ever laid out: nothing to run back, and left composed it
+            // would sit over the page, unseen, taking its touches.
+            if (!visible) onClosed()
+            return@LaunchedEffect
+        }
         if (visible) {
             launch { alpha.animateTo(1f, tween(90)) }
             launch { scaleX.animateTo(1f, spring(dampingRatio = 0.72f, stiffness = 700f)) }

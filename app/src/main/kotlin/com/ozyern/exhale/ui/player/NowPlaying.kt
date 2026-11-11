@@ -321,8 +321,8 @@ private const val LYRICS_CONTROLS_IDLE_MS = 5_000L
 
 private val SWIPE_SKIP_THRESHOLD = 72.dp
 
-/** How far the cover sinks back while paused, as a share of its size. */
-private const val PAUSE_SINK = 0.08f
+/** How much darker the cover is while paused. */
+private const val PAUSE_DIM = 0.24f
 
 private val BOTTOM_ACTION_SIZE = 44.dp
 private val PILL_SEGMENT_WIDTH = 64.dp
@@ -346,7 +346,8 @@ internal val LocalPlayerAccent = compositionLocalOf { DefaultAccent }
  */
 @Composable
 internal fun Modifier.playerGlass(shape: Shape, lit: Boolean = false): Modifier {
-    val film = Color.White.copy(alpha = if (lit) 0.22f else 0.07f)
+    // Lit is a brighter pane of the same glass. At 0.22 it was a flat grey disc beside clear ones.
+    val film = Color.White.copy(alpha = if (lit) 0.15f else 0.07f)
     val backdrop = LocalPlayerBackdrop.current
         ?: return this.clip(shape).background(film.copy(alpha = film.alpha + 0.06f))
     return this.drawBackdrop(
@@ -899,12 +900,13 @@ internal fun NowPlayingScreen(
         val landing = g()
         val settle = 1f - landing
         val t = coverDrift.floatValue
-        look.scale = (1f - PAUSE_SINK * depth) * (1f + settle * (0.05f + 0.035f * sin(t * 0.21f)))
-        look.shiftX = settle * 0.018f * sin(t * 0.13f)
-        look.shiftY = settle * 0.014f * cos(t * 0.17f)
+        val live = settle * (1f - depth)
+        look.scale = 1f + live * (0.05f + 0.035f * sin(t * 0.21f))
+        look.shiftX = live * 0.018f * sin(t * 0.13f)
+        look.shiftY = live * 0.014f * cos(t * 0.17f)
         look.pivotY = 0.42f
-        look.dim = 0.28f * depth
-        look.cornerDp = if (landing > 0.001f) 8f * landing else 28f * depth
+        look.dim = PAUSE_DIM * depth
+        look.cornerDp = if (landing > 0.001f) 8f * landing else 0f
         look.footFade = HERO_FADE_FRACTION
         look.footFloor = landing.coerceIn(0f, 1f)
     }
@@ -964,30 +966,28 @@ internal fun NowPlayingScreen(
                             shape = RoundedCornerShape((8f * landing).dp)
                             clip = true
                         }
-                        // Paused, the picture recedes: smaller, rounded, a shade darker.
+                        // Paused, the picture recedes: its zoom eases out and it dims. It comes
+                        // back to exactly edge to edge and no further. It used to shrink 8% past
+                        // that into a rounded card, and a full-bleed picture has nothing beyond
+                        // its edges: the card's sides showed as hard lines down a cover whose
+                        // foot still dissolved, a frame half drawn round the picture.
                         val depth = pauseDepth.value.coerceIn(0f, 1f) // a spring: it dips below 0 coming back
-                        val sink = 1f - PAUSE_SINK * depth
                         // A slow breath of zoom and a drift across the picture, gone as it
                         // shrinks into the header so it lands square.
                         val t = coverDrift.floatValue
-                        val settle = 1f - g()
-                        val zoom = 1f + settle * (0.05f + 0.035f * kotlin.math.sin(t * 0.21f))
-                        scaleX = sink * zoom
-                        scaleY = sink * zoom
-                        translationX = settle * size.width * 0.018f * kotlin.math.sin(t * 0.13f)
-                        translationY = settle * size.height * 0.014f * kotlin.math.cos(t * 0.17f)
+                        val live = (1f - g()) * (1f - depth)
+                        val zoom = 1f + live * (0.05f + 0.035f * kotlin.math.sin(t * 0.21f))
+                        scaleX = zoom
+                        scaleY = zoom
+                        translationX = live * size.width * 0.018f * kotlin.math.sin(t * 0.13f)
+                        translationY = live * size.height * 0.014f * kotlin.math.cos(t * 0.17f)
                         transformOrigin = TransformOrigin(0.5f, 0.42f)
-                        if (depth > 0.001f && landing <= 0.001f) {
-                            shape = RoundedCornerShape((28f * depth).dp)
-                            clip = true
-                        } else if (landing <= 0.001f) {
-                            clip = false
-                        }
+                        if (landing <= 0.001f) clip = false
                     }
                     .drawWithContent {
                         drawContent()
                         val depth = pauseDepth.value.coerceIn(0f, 1f) // a spring: it dips below 0 coming back
-                        if (depth > 0.001f) drawRect(Color.Black.copy(alpha = 0.28f * depth))
+                        if (depth > 0.001f) drawRect(Color.Black.copy(alpha = PAUSE_DIM * depth))
                         // The dissolve at the foot belongs to the banner; the square it lands as
                         // has none.
                         val floor = g().coerceIn(0f, 1f)
@@ -1038,7 +1038,7 @@ internal fun NowPlayingScreen(
                         0f
                     }
                 },
-                scale = { 1f - PAUSE_SINK * pauseDepth.value },
+                scale = { 1f },
                 onRenderedChanged = { canvasRendered = it },
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -2295,7 +2295,8 @@ private fun VolumeRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            painter = painterResource(R.drawable.volume_off),
+            // A quiet speaker, not a struck-through one: at full volume the bar read as muted.
+            painter = painterResource(R.drawable.volume_low),
             contentDescription = null,
             tint = Color.White.copy(alpha = 0.5f),
             modifier = Modifier.size(18.dp),
@@ -4068,7 +4069,7 @@ private fun LiveArtworkBackdrop(
 @Composable
 private fun BleedingArtwork(url: String, heroHeight: Dp) {
     val context = LocalContext.current
-    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, url) {
+    val bitmap by produceState<Pair<androidx.compose.ui.graphics.ImageBitmap, Color>?>(null, url) {
         value = withContext(Dispatchers.IO) {
             val request = ImageRequest.Builder(context)
                 .data(url.highRes())
@@ -4077,10 +4078,12 @@ private fun BleedingArtwork(url: String, heroHeight: Dp) {
                 .transformations(com.ozyern.exhale.ui.component.TrimVideoBars)
                 .allowHardware(false)
                 .build()
-            runCatching { context.imageLoader.execute(request).image?.toBitmap()?.asImageBitmap() }.getOrNull()
+            runCatching {
+                context.imageLoader.execute(request).image?.toBitmap()?.let { it.asImageBitmap() to footColour(it) }
+            }.getOrNull()
         }
     }
-    val image = bitmap ?: return
+    val (image, foot) = bitmap ?: return
     val saturate = remember {
         androidx.compose.ui.graphics.ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(1.35f) })
     }
@@ -4128,8 +4131,55 @@ private fun BleedingArtwork(url: String, heroHeight: Dp) {
                 dstSize = IntSize(size.width.roundToInt(), rest),
                 colorFilter = saturate,
             )
+            // Those rows stretched straight down keep every column's own colour all the way to
+            // the foot: a cover with a figure in the middle of it became a brown stripe between
+            // two blue ones behind the controls. They now run together on the way down, into the
+            // one colour the cover's foot averages to, so the ground under the transport is calm
+            // and still unmistakably this cover's.
+            drawRect(
+                brush = Brush.verticalGradient(
+                    0f to foot.copy(alpha = 0f),
+                    0.55f to foot.copy(alpha = 0.62f),
+                    1f to foot.copy(alpha = 0.86f),
+                    startY = bannerH,
+                    endY = size.height,
+                ),
+                topLeft = Offset(0f, bannerH),
+                size = Size(size.width, size.height - bannerH),
+            )
         }
     }
+}
+
+/** The colour the last rows of [bitmap] average to, a little richer: what the ground settles into. */
+private fun footColour(bitmap: android.graphics.Bitmap): Color {
+    val w = bitmap.width
+    val h = bitmap.height
+    if (w <= 0 || h <= 0) return Color.Black
+    val rows = (h * 0.08f).toInt().coerceAtLeast(1)
+    val pixels = IntArray(w * rows)
+    bitmap.getPixels(pixels, 0, w, 0, h - rows, w, rows)
+    var r = 0L
+    var g = 0L
+    var b = 0L
+    for (pixel in pixels) {
+        r += (pixel shr 16) and 0xFF
+        g += (pixel shr 8) and 0xFF
+        b += pixel and 0xFF
+    }
+    val n = pixels.size.toFloat() * 255f
+    val hsv = FloatArray(3)
+    android.graphics.Color.RGBToHSV(
+        (r / n * 255f).toInt().coerceIn(0, 255),
+        (g / n * 255f).toInt().coerceIn(0, 255),
+        (b / n * 255f).toInt().coerceIn(0, 255),
+        hsv,
+    )
+    // An average is greyer than anything it was made of: give some of the colour back, and keep
+    // it dark enough for white type.
+    hsv[1] = (hsv[1] * 1.35f).coerceAtMost(0.85f)
+    hsv[2] = hsv[2].coerceIn(0.16f, 0.55f)
+    return Color(android.graphics.Color.HSVToColor(hsv))
 }
 
 /**
