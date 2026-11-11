@@ -678,6 +678,19 @@ internal fun NowPlayingScreen(
     // are not part of (glass cannot sample a layer it is inside).
     val glassBackdrop = rememberLayerBackdrop()
 
+    // The app's menus open over the player as the same glass its own "…" does: see PopOutPanel.
+    run {
+        val shownNow = com.ozyern.exhale.ui.component.LocalPlayerShown.current
+        DisposableEffect(glassBackdrop, shownNow) {
+            if (shownNow) com.ozyern.exhale.ui.component.PopOutBackdrops.player = glassBackdrop
+            onDispose {
+                if (com.ozyern.exhale.ui.component.PopOutBackdrops.player === glassBackdrop) {
+                    com.ozyern.exhale.ui.component.PopOutBackdrops.player = null
+                }
+            }
+        }
+    }
+
     // ---- Skipping by swiping the cover sideways ----
     val swipeOffset = remember { Animatable(0f) }
     val swipeThresholdPx = with(density) { SWIPE_SKIP_THRESHOLD.toPx() }
@@ -4325,6 +4338,19 @@ internal fun LandscapeNowPlaying(
     // The same glass as the portrait player: everything under the controls is recorded into this
     // layer, so the buttons bend the cover's colours at their rims instead of being flat discs.
     val glassBackdrop = rememberLayerBackdrop()
+
+    // The app's menus open over the player as the same glass its own "…" does: see PopOutPanel.
+    run {
+        val shownNow = com.ozyern.exhale.ui.component.LocalPlayerShown.current
+        DisposableEffect(glassBackdrop, shownNow) {
+            if (shownNow) com.ozyern.exhale.ui.component.PopOutBackdrops.player = glassBackdrop
+            onDispose {
+                if (com.ozyern.exhale.ui.component.PopOutBackdrops.player === glassBackdrop) {
+                    com.ozyern.exhale.ui.component.PopOutBackdrops.player = null
+                }
+            }
+        }
+    }
     // Paused, the sleeve steps back, as it does on the phone.
     val sleeveScale by animateFloatAsState(
         targetValue = if (isPlaying) 1f else 0.9f,

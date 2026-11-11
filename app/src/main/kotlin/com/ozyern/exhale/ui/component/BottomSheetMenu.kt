@@ -27,6 +27,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,7 +50,8 @@ class MenuState(
 
     @OptIn(ExperimentalMaterial3Api::class)
     fun show(content: @Composable ColumnScope.() -> Unit) {
-        heldAt = HoldTracker.heldNow()
+        // The touch that opened it, hold or tap: the menu grows out of that point.
+        heldAt = HoldTracker.heldNow() ?: HoldTracker.touchedNow()
         isVisible = true
         this.content = content
     }
@@ -66,21 +68,46 @@ fun BottomSheetMenu(
     modifier: Modifier = Modifier,
     state: MenuState,
     background: Color = MaterialTheme.colorScheme.surface,
+    /** The player is covering the page: a pop-out bends the player's glass, not the page's. */
+    playerOpen: Boolean = false,
 ) {
     val focusManager = LocalFocusManager.current
 
-    // Every "More options" menu is a sheet of liquid glass: the window behind blurs and dims
-    // with it, and it rides in on the same spring as every other glass sheet in the app.
-    if (state.isVisible) {
+    // Opened by a touch, a menu is the player's pop-out: glass grown out of the point touched,
+    // bending the page behind it. Opened any other way it has no point to grow from, and is a sheet.
+    val anchor = state.heldAt
+    var popOutAlive by remember { mutableStateOf(false) }
+    if (state.isVisible && anchor != null) popOutAlive = true
+    if (popOutAlive && anchor != null) {
+        val playerBackdrop = PopOutBackdrops.player
+        PopOutPanel(
+            anchor = anchor,
+            visible = state.isVisible,
+            // Over the open player it is the player's glass; over a page, the page's. Over a
+            // player that publishes none, a plain pane rather than a picture of the page behind it.
+            backdrop = playerBackdrop ?: if (playerOpen) null else com.ozyern.exhale.ui.component.liquid.LocalAppBackdrop.current,
+            onDismissRequest = {
+                focusManager.clearFocus()
+                state.isVisible = false
+            },
+            onClosed = { popOutAlive = false },
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp)
+                    .weight(1f, fill = false),
+            ) {
+                state.content(this)
+            }
+        }
+    } else if (state.isVisible) {
         LiquidGlassSheet(
             onDismiss = {
                 focusManager.clearFocus()
                 state.isVisible = false
             },
             maxHeightFraction = 0.9f,
-            // A long press opens the menu where the finger is, as a popup; a tap on ⋮ keeps
-            // the sheet.
-            anchor = state.heldAt,
             modifier = modifier,
         ) {
             Column(

@@ -300,6 +300,13 @@ fun LyricsV2(
     // pronunciation, the corner buttons and picking lines to share.
     val flowMotion = lyricsMotion == com.ozyern.exhale.constants.LyricsMotion.FLOW
 
+    // The moving ground behind the lyrics stands still while they are on screen: see AmbientHold.
+    val lyricsOnScreen = LocalPlayerShown.current
+    DisposableEffect(lyricsOnScreen) {
+        if (lyricsOnScreen) com.ozyern.exhale.utils.AmbientHold.acquire()
+        onDispose { if (lyricsOnScreen) com.ozyern.exhale.utils.AmbientHold.release() }
+    }
+
     // ── Selection mode state ──
     var isSelectionModeActive by rememberSaveable { mutableStateOf(false) }
     val selectedIndices = remember { mutableStateListOf<Int>() }
