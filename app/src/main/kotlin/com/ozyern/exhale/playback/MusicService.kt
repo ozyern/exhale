@@ -6275,6 +6275,14 @@ class MusicService :
                 // purpose: their HTTP calls block and cannot be cancelled, and the old structured
                 // version kept the timeout below waiting on the slowest of them — the wait for the
                 // first lossless byte was the slowest source's, not the fastest's.
+                // The album, for a song that came without one (search, a playlist, a radio queue):
+                // the library's row for the song if it has been seen on its album, else YouTube.
+                // Asked only if the catalogue search gets as far as needing it.
+                val albumName: suspend () -> String? = {
+                    song.album?.title?.takeIf { it.isNotBlank() }
+                        ?: runCatching { database.song(mediaId).first()?.toMediaMetadata()?.album?.title }.getOrNull()?.takeIf { it.isNotBlank() }
+                        ?: runCatching { com.ozyern.exhale.utils.FlacItemMemory.albumNameFor(mediaId) }.getOrNull()
+                }
                 val own = ioScope.async {
                     runCatching { com.ozyern.exhale.playback.lossless.ServerLibrary.find(song) }.getOrNull()
                         // Only the server's lossless files: an MP3 there is no upgrade on YouTube.
@@ -6303,7 +6311,9 @@ class MusicService :
                     }
                 }
                 val open = ioScope.async {
-                    runCatching { com.ozyern.exhale.openflac.OpenFlac.findCopy(title, artist, song.duration, song.album?.title) }.getOrNull()
+                    runCatching {
+                        com.ozyern.exhale.openflac.OpenFlac.findCopy(title, artist, song.duration, song.album?.title, albumName)
+                    }.getOrNull()
                         ?.let { track ->
                             FlacHit(
                                 com.ozyern.exhale.openflac.OpenFlac.fastUrl(track.url),

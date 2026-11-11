@@ -65,7 +65,31 @@ object OpenFlac {
         val bitDepth: Int? = null,
         val sampleRate: Int? = null,
         val credit: Credit,
+        /** The release this file belongs to, as [tracks] takes it ("ia:<identifier>"), where known. */
+        val releaseKey: String? = null,
     )
+
+    /**
+     * The uploads an artist's songs have been found in, kept by the app across launches.
+     *
+     * An upload is a whole album. Found once (from the album's page, where the album's name leads
+     * straight to it) it holds every other song of that album too, but nothing remembered that: the
+     * same song played from search, a playlist or a radio queue after a restart was searched for from
+     * nothing, by its own name, against a deadline, and played lossy more often than not. Remembered,
+     * the upload is read first, in one request, wherever the song is played from.
+     */
+    interface ItemMemory {
+        /** Upload identifiers known to hold [artist]'s music, most recently useful first. */
+        fun itemsFor(artist: String): List<String>
+
+        fun remember(artist: String, identifier: String)
+
+        /** The upload is gone, or holds no FLAC any more. */
+        fun forget(artist: String, identifier: String)
+    }
+
+    /** Set once at start-up. Without one, uploads are only remembered for the session. */
+    @Volatile var itemMemory: ItemMemory? = null
 
     /** What the licence asks to be shown: the licence's name and where the recording lives. */
     data class Credit(
@@ -211,7 +235,10 @@ object OpenFlac {
         if (wanted.isEmpty()) return false
         val theirTitles = titleForms(track.title)
         if (wanted.none { it in theirTitles }) return false
-        val theirs = plain(track.artist + " " + track.album.orEmpty())
+        // The upload's own title, creator and subjects too: files tagged with nothing but a song
+        // name sit in uploads called "Artist - Album (FLAC)", and were turned away for not naming
+        // the artist.
+        val theirs = plain(track.artist + " " + track.album.orEmpty()) + " " + track.releaseKey?.let { itemContext[it] }.orEmpty()
         val named = plain(artist)
         return named.isNotEmpty() && (named in theirs || theirs in named || named.split(' ').any { it.length > 3 && it in theirs })
     }
@@ -219,11 +246,21 @@ object OpenFlac {
     /**
      * A FLAC of exactly this recording from the public catalogues, or null. Most commercial releases
      * won't be there; this is for the ones that are. Failures just mean no copy.
+     *
+     * [albumLookup] is asked for the album's name when [album] is not known and nothing already read
+     * holds the song: uploads are albums, named for the album, so the name is what finds one.
      */
-    suspend fun findCopy(title: String, artist: String, durationSeconds: Int, album: String? = null): Track? {
+    suspend fun findCopy(
+        title: String,
+        artist: String,
+        durationSeconds: Int,
+        album: String? = null,
+        albumLookup: (suspend () -> String?)? = null,
+    ): Track? {
         if (title.isBlank() || artist.isBlank() || durationSeconds <= 0) return null
-        bestRegistered(title, artist, durationSeconds)?.let { return it }
         val pArtist = plain(artist)
+        fun registered(): Track? = bestRegistered(title, artist, durationSeconds)?.also { noteFound(pArtist, it) }
+        registered()?.let { return it }
         val isSabrina = "sabrina" in pArtist && "carpenter" in pArtist
         if (isSabrina && sabrinaLoaded.compareAndSet(false, true)) {
             coroutineScope {
@@ -231,7 +268,11 @@ object OpenFlac {
                     .awaitAll()
             }
         }
-        bestRegistered(title, artist, durationSeconds)?.let { return it }
+        registered()?.let { return it }
+        // The uploads this artist's songs were found in before: one request each, no search.
+        readKnownItems(pArtist)
+        registered()?.let { return it }
+
         val cleanTitle = cleanSongTitle(title)
         val cleanArtist = artist
             .replace(Regex("""(?i)\b(feat\.?|ft\.?)\b.*"""), "")
@@ -239,54 +280,26 @@ object OpenFlac {
             .trim()
         val quotedArtist = cleanArtist.ifBlank { artist.replace('"', ' ') }
         val quotedTitle = cleanTitle.ifBlank { title.replace('"', ' ') }
-        val quotedAlbum = album?.replace(Regex("""\s*[\(\[\{].*?[\)\]\}]"""), "")?.replace('"', ' ')?.trim()?.takeIf { it.isNotBlank() && plain(it) != plain(title) }
+        val albumName = album?.takeIf { it.isNotBlank() }
+            ?: albumLookup?.let { lookup -> runCatching { lookup() }.getOrNull() }?.takeIf { it.isNotBlank() }
+        val quotedAlbum = albumName?.replace(Regex("""\s*[\(\[\{].*?[\)\]\}]"""), "")?.replace('"', ' ')?.trim()?.takeIf { it.isNotBlank() }
+        fun close(track: Track) = kotlin.math.abs((track.durationSeconds ?: Int.MAX_VALUE) - durationSeconds) <= CloseRuntimeGapSeconds
         val found = coroutineScope {
             val archive = async {
                 runCatching {
-                    val titles = listOfNotNull("\"$quotedTitle\"", quotedAlbum?.let { "\"$it\"" })
-                        .joinToString(" OR ")
-                    val queries = mutableListOf<String>()
-                    if (quotedArtist.isNotBlank() && titles.isNotBlank()) {
-                        queries += "mediatype:(audio) AND format:(Flac) AND creator:(\"$quotedArtist\") AND title:($titles)"
-                    }
-                    // An upload is an album, named for the album: asked for by the song's name alone
-                    // (a song played from search carries no album) it was never found, while the same
-                    // song played from its album page was. The song's name anywhere in the upload's
-                    // details, where track lists are written out, finds it without knowing the album.
-                    if (quotedArtist.isNotBlank() && quotedTitle.isNotBlank()) {
-                        queries += "mediatype:(audio) AND format:(Flac) AND creator:(\"$quotedArtist\") AND \"$quotedTitle\""
-                    }
-                    if (quotedArtist.isNotBlank()) {
-                        queries += "mediatype:(audio) AND format:(Flac) AND creator:(\"$quotedArtist\")"
-                    }
-                    if (titles.isNotBlank()) {
-                        queries += "mediatype:(audio) AND format:(Flac) AND title:($titles)"
-                    }
-                    val ids = coroutineScope {
-                        queries.distinct().take(MaxArchiveQueries).map { q ->
-                            async {
-                                val url = "https://archive.org/advancedsearch.php?q=${q.encodeURLParameter()}" +
-                                    "&fl%5B%5D=identifier&sort%5B%5D=${"downloads desc".encodeURLParameter()}&rows=$ArchiveRowsPerQuery&page=1&output=json"
-                                // One query failing (a time-out) must not lose what the others found.
-                                runCatching {
-                                    getJson(url).obj("response")?.array("docs").orEmpty()
-                                        .mapNotNull { (it as? JsonObject)?.text("identifier") }
-                                }.getOrDefault(emptyList())
-                            }
-                        }.awaitAll()
-                            // The narrowest query's uploads first, a few from each, and no more than
-                            // a handful in all: each is a request for its whole file list.
-                            .let { perQuery ->
-                                val longest = perQuery.maxOfOrNull { it.size } ?: 0
-                                (0 until longest).flatMap { row -> perQuery.mapNotNull { it.getOrNull(row) } }
-                            }
-                            .distinct()
-                            .take(MaxArchiveItems)
-                    }
+                    val ids = archiveCandidates(quotedArtist, quotedTitle, quotedAlbum)
                     coroutineScope {
-                        ids.map { id -> async { runCatching { archiveTracks(id) }.getOrDefault(emptyList()) } }
-                            .awaitAll()
-                            .flatten()
+                        val reads = ids.map { id -> async { runCatching { archiveTracks(id) }.getOrDefault(emptyList()) } }
+                        val matches = mutableListOf<Track>()
+                        // In ranked order, and no further than the first upload holding the song at
+                        // its own length: the rest are other pressings of it, or other albums.
+                        for (read in reads) {
+                            val here = read.await().filter { isSameRecording(title, artist, durationSeconds, it) }
+                            matches += here
+                            if (here.any(::close)) break
+                        }
+                        reads.forEach { it.cancel() }
+                        matches
                     }
                 }.getOrDefault(emptyList())
             }
@@ -296,9 +309,123 @@ object OpenFlac {
             val jamendo = async {
                 runCatching { jamendoSearch(title, artist) }.getOrDefault(emptyList())
             }
-            archive.await() + commons.await() + jamendo.await()
+            val fromArchive = archive.await()
+            if (fromArchive.any(::close)) {
+                // Found: the other catalogues are not waited for.
+                commons.cancel()
+                jamendo.cancel()
+                fromArchive
+            } else {
+                fromArchive + (commons.await() + jamendo.await()).filter { isSameRecording(title, artist, durationSeconds, it) }
+            }
         }
-        return closest(found.filter { isSameRecording(title, artist, durationSeconds, it) }, durationSeconds)
+        return closest(found, durationSeconds)?.also { noteFound(pArtist, it) }
+    }
+
+    /** [track] is [artist]'s song: its upload is worth reading first for the artist's next one. */
+    private fun noteFound(artist: String, track: Track) {
+        val identifier = track.releaseKey?.takeIf { it.startsWith("ia:") }?.removePrefix("ia:") ?: return
+        if (identifier in SABRINA_ITEMS) return
+        runCatching { itemMemory?.remember(artist, identifier) }
+    }
+
+    private val knownItemsRead = ConcurrentHashMap.newKeySet<String>()
+    private val knownItemsLocks = ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
+
+    /** Reads the uploads remembered for [artist] into the session's tracks, once. */
+    private suspend fun readKnownItems(artist: String) {
+        val memory = itemMemory ?: return
+        if (artist in knownItemsRead) return
+        // One reader per artist: the song after this one is looked up while this one still is, and
+        // must find the uploads read rather than start a search of its own beside them.
+        val lock = knownItemsLocks.getOrPut(artist) { kotlinx.coroutines.sync.Mutex() }
+        lock.lock()
+        try {
+            if (artist in knownItemsRead) return
+            val ids = runCatching { memory.itemsFor(artist) }.getOrDefault(emptyList()).take(MaxKnownItems)
+            val allRead = coroutineScope {
+                ids.map { id ->
+                    async {
+                        val tracks = runCatching { archiveTracks(id) }
+                        // Read, and empty: taken down, or its FLACs removed.
+                        if (tracks.getOrNull()?.isEmpty() == true) runCatching { memory.forget(artist, id) }
+                        tracks.isSuccess
+                    }
+                }.awaitAll().all { it }
+            }
+            // A failed read is a bad moment on the network; the next song tries again.
+            if (allRead) knownItemsRead += artist
+        } finally {
+            lock.unlock()
+        }
+    }
+
+    private class ArchiveDoc(val identifier: String, val title: String, val creator: String)
+
+    /** A search's uploads, kept for the session: every song of an artist asks the same few. */
+    private val archiveSearches = ConcurrentHashMap<String, List<ArchiveDoc>>()
+
+    private suspend fun archiveSearch(query: String): List<ArchiveDoc> {
+        archiveSearches[query]?.let { return it }
+        val url = "https://archive.org/advancedsearch.php?q=${query.encodeURLParameter()}" +
+            "&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=creator" +
+            "&sort%5B%5D=${"downloads desc".encodeURLParameter()}&rows=$ArchiveRowsPerQuery&page=1&output=json"
+        val docs = getJson(url).obj("response")?.array("docs").orEmpty().mapNotNull { element ->
+            val doc = element as? JsonObject ?: return@mapNotNull null
+            ArchiveDoc(doc.text("identifier") ?: return@mapNotNull null, doc.text("title").orEmpty(), doc.text("creator").orEmpty())
+        }
+        if (archiveSearches.size > 300) archiveSearches.clear()
+        archiveSearches[query] = docs
+        return docs
+    }
+
+    /** Whether [words] appear in [text] as whole words, both plain: "red" is not in "hundred". */
+    private fun hasWords(text: String, words: String): Boolean = words.isNotEmpty() && " $words " in " $text "
+
+    /**
+     * The uploads most likely to hold the song, best first.
+     *
+     * They used to be taken a few from each search in the order the archive listed them (by
+     * downloads), so an artist's most downloaded uploads were read whether or not they were the
+     * album, and the album's own upload was often past the cut. Each is now weighed by what its
+     * title says: the album's name first, then the song's, then the artist's.
+     */
+    private suspend fun archiveCandidates(artist: String, title: String, album: String?): List<String> {
+        val base = "mediatype:(audio) AND format:(Flac)"
+        val r = "\"$artist\""
+        val t = "\"$title\""
+        val queries = buildList {
+            if (artist.isBlank() || title.isBlank()) return@buildList
+            if (album != null) {
+                val a = "\"$album\""
+                add("$base AND creator:($r) AND title:($a)")
+                // Uploads with no creator set, titled "Artist - Album (2024) [FLAC]".
+                add("$base AND $r AND title:($a)")
+            }
+            add("$base AND creator:($r) AND title:($t)")
+            // The song's name anywhere in the upload's details, where track lists are written out.
+            add("$base AND $r AND $t")
+            add("$base AND creator:($r)")
+            if (album == null) add("$base AND title:($t)")
+        }
+        val pArtist = plain(artist)
+        val pTitle = plain(title)
+        val pAlbum = album?.let(::plain).orEmpty()
+        val scores = HashMap<String, Int>()
+        coroutineScope {
+            // One query failing (a time-out) must not lose what the others found.
+            queries.map { q -> async { runCatching { archiveSearch(q) }.getOrDefault(emptyList()) } }.awaitAll()
+        }.forEachIndexed { queryIndex, docs ->
+            docs.forEachIndexed { row, doc ->
+                val docTitle = plain(doc.title)
+                var score = -(queryIndex * 3 + row)
+                if (hasWords(docTitle, pAlbum)) score += 100
+                if (hasWords(docTitle, pTitle)) score += 50
+                if (hasWords(plain(doc.creator), pArtist) || hasWords(docTitle, pArtist)) score += 40
+                scores.merge(doc.identifier, score, ::maxOf)
+            }
+        }
+        return scores.entries.sortedByDescending { it.value }.take(MaxArchiveItems).map { it.key }
     }
 
     /**
@@ -318,9 +445,12 @@ object OpenFlac {
         )
 
     private const val MaxRuntimeGapSeconds = 12
-    private const val MaxArchiveQueries = 3
-    private const val ArchiveRowsPerQuery = 5
-    private const val MaxArchiveItems = 8
+
+    /** Within this of the song's length it is the song's own cut, and the search stops there. */
+    private const val CloseRuntimeGapSeconds = 2
+    private const val ArchiveRowsPerQuery = 10
+    private const val MaxArchiveItems = 10
+    private const val MaxKnownItems = 8
 
     // ---- Internet Archive ------------------------------------------------------------------------
 
@@ -375,7 +505,21 @@ object OpenFlac {
         )
     }.getOrNull()
 
+    /** An upload's files, kept for the session: a search for the next song reads the same uploads. */
+    private val archiveItems = ConcurrentHashMap<String, List<Track>>()
+
+    /** Release → its title, creator and subjects, plain: what the upload says it is. */
+    private val itemContext = ConcurrentHashMap<String, String>()
+
     private suspend fun archiveTracks(identifier: String): List<Track> {
+        archiveItems[identifier]?.let { return it }
+        return readArchiveTracks(identifier).also {
+            if (archiveItems.size > 300) archiveItems.clear()
+            archiveItems[identifier] = it
+        }
+    }
+
+    private suspend fun readArchiveTracks(identifier: String): List<Track> {
         val root = getJson("https://archive.org/metadata/${identifier.encodeURLPathPart()}")
         val server = root.text("server")
         val dir = root.text("dir")
@@ -386,6 +530,13 @@ object OpenFlac {
         val licenceUrl = metadata?.text("licenseurl")
         val art = "https://archive.org/services/img/${identifier.encodeURLPathPart()}"
         val credit = Credit(licenceName(licenceUrl), licenceUrl, "https://archive.org/details/$identifier")
+        val releaseKey = "ia:$identifier"
+        if (itemContext.size > 500) itemContext.clear()
+        itemContext[releaseKey] = plain(
+            listOfNotNull(album, metadata?.text("creator"), (metadata?.get("subject") as? JsonArray)?.joinToString(" ") {
+                (it as? JsonPrimitive)?.contentOrNull.orEmpty()
+            } ?: metadata?.text("subject")).joinToString(" "),
+        )
         return root.array("files").orEmpty()
             .mapNotNull { it as? JsonObject }
             // By name, not by format: "Flac FingerPrint" files (.ffp) say Flac too.
@@ -410,6 +561,7 @@ object OpenFlac {
                     bitDepth = if (file.text("format")?.startsWith("24bit") == true) 24 else 16,
                     sampleRate = file.text("sample_rate")?.toIntOrNull(),
                     credit = credit,
+                    releaseKey = releaseKey,
                 ).also { parsed ->
                     val k = "${plain(parsed.artist)}::${plain(parsed.title)}"
                     albumTrackRegistry.putIfAbsent(k, parsed)

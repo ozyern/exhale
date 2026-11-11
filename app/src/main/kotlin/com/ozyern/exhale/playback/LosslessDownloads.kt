@@ -73,7 +73,11 @@ object LosslessDownloads {
         return withTimeoutOrNull(LOOKUP_TIMEOUT_MS) {
             coroutineScope {
                 val open = async {
-                    runCatching { OpenFlac.findCopy(title, artist, song.duration, song.album?.title) }.getOrNull()
+                    runCatching {
+                        OpenFlac.findCopy(title, artist, song.duration, song.album?.title) {
+                            com.ozyern.exhale.utils.FlacItemMemory.albumNameFor(mediaId)
+                        }
+                    }.getOrNull()
                         ?.let { Copy(OpenFlac.fastUrl(it.url), it.sampleRate, it.bitDepth, null) }
                 }
                 val cloud = async {
