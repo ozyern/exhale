@@ -411,6 +411,17 @@ fun AppearanceSettings(
                 onCheckedChange = onSabrinaThemeChange,
             )
 
+            run {
+                val (lensSplash, onLensSplashChange) = rememberPreference(com.ozyern.exhale.constants.LensSplashKey, false)
+                SwitchPreference(
+                    title = { Text("Liquid lens intro") },
+                    description = "Open Exhale on the lens film, the mark under a dome of oil, instead of the neon mark",
+                    icon = { Icon(painterResource(R.drawable.image), null) },
+                    checked = lensSplash,
+                    onCheckedChange = onLensSplashChange,
+                )
+            }
+
             AnimatedVisibility(visible = !sabrinaTheme) {
                 SwitchPreference(
                     title = { Text(stringResource(R.string.enable_dynamic_theme)) },

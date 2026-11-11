@@ -142,11 +142,12 @@ internal fun LyricsSettingsSheet(
                     Modifier.weight(1f),
                 ) { setMotion(com.ozyern.exhale.constants.LyricsMotion.EXHALE) }
                 StyleCard(
-                    "Karaoke",
-                    "Sung lines stay lit, held notes glow",
-                    motion == com.ozyern.exhale.constants.LyricsMotion.APPLE_MUSIC,
+                    "Melody",
+                    "Sheet music: a note pops for every word",
+                    motion == com.ozyern.exhale.constants.LyricsMotion.MELODY ||
+                        motion == com.ozyern.exhale.constants.LyricsMotion.APPLE_MUSIC,
                     Modifier.weight(1f),
-                ) { setMotion(com.ozyern.exhale.constants.LyricsMotion.APPLE_MUSIC) }
+                ) { setMotion(com.ozyern.exhale.constants.LyricsMotion.MELODY) }
             }
 
             SectionLabel("Text")

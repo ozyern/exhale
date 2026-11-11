@@ -107,7 +107,8 @@ fun buildSettingsGroups(
         com.ozyern.exhale.constants.PlayerDesignStyleKey,
         com.ozyern.exhale.constants.PlayerDesignStyle.V8,
     )
-    val playerStyle = currentPlayerStyle(classicPlayer, playerDesign, liquidGlassPlayer)
+    val (espressoPlayer) = com.ozyern.exhale.utils.rememberPreference(com.ozyern.exhale.constants.EspressoPlayerKey, false)
+    val playerStyle = currentPlayerStyle(classicPlayer, playerDesign, liquidGlassPlayer, espressoPlayer)
     return buildList {
         add(
             SettingsGroup(

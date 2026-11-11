@@ -239,6 +239,7 @@ fun BottomSheetPlayer(
 
     val (classicPlayer) = rememberPreference(ClassicPlayerKey, defaultValue = false)
     val (liquidGlassPlayer) = rememberPreference(com.ozyern.exhale.constants.LiquidGlassPlayerKey, false)
+    val (espressoPlayer) = rememberPreference(com.ozyern.exhale.constants.EspressoPlayerKey, false)
     // Now Playing in every orientation: a wide window (a tablet, an unfolded foldable, a phone on
     // its side) gets its two-column layout, `LandscapeNowPlaying`, instead of falling back to the
     // classic design. It used to be gated to portrait here, which left the landscape layout
@@ -1104,6 +1105,20 @@ fun BottomSheetPlayer(
                             it.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
                         } && !FullscreenVideoState.active && !FullscreenVideoState.watching && !FullscreenVideoState.requested
                         if (landscapeWindow) LandscapeNowPlaying(
+                            playerSheetState = state,
+                            navController = navController,
+                            mediaMetadata = metadata,
+                            playbackState = playbackState,
+                            isPlaying = isPlaying,
+                            canSkipPrevious = canSkipPrevious,
+                            canSkipNext = canSkipNext,
+                            currentFormat = currentFormat,
+                            positionProvider = { position },
+                            durationProvider = { duration },
+                            sliderPositionProvider = { sliderPosition },
+                            onSliderValueChange = onSliderValueChange,
+                            onSliderValueChangeFinished = onSliderValueChangeFinished,
+                        ) else if (espressoPlayer) EspressoPlayerScreen(
                             playerSheetState = state,
                             navController = navController,
                             mediaMetadata = metadata,

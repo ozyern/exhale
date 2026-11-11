@@ -55,6 +55,46 @@ fun ExhaleFlowLyrics(
 
     val lines = remember(lyrics) { lyrics?.let(::toFlowLines).orEmpty() }
 
+    val position = rememberFlowPosition(player, sliderPositionProvider)
+
+    // A line with no translation yet carries its own text, which the panel recognises and skips.
+    val subLines = remember(lines, subTexts) {
+        subTexts?.let { texts ->
+            lines.mapIndexed { i, line -> LyricLine(timeMs = line.timeMs, text = texts.getOrNull(i) ?: line.text) }
+        }
+    }
+
+    LyricsPanel(
+        lines = lines,
+        subLines = subLines,
+        canPick = onPickLine != null,
+        picking = picking,
+        picked = picked,
+        onPickLine = onPickLine ?: {},
+        onTogglePick = onTogglePick,
+        returnButtonInset = bottomInset,
+        textScale = textScale,
+        trackKey = trackKey,
+        playhead = rememberLyricPlayhead(position),
+        looking = lyrics == null,
+        isPlaying = isPlaying,
+        onSeekToLine = { player.seekTo(it) },
+        controlsOpen = true,
+        onRevealControls = {},
+        onHideControls = {},
+        // Exhale's lyric hosts already sit inside a margin of their own (12-16dp), so the panel
+        // takes 16dp more rather than its full 30dp gutter: the words then start ~32dp from the
+        // screen's edge, where Apple's do.
+        modifier = modifier.padding(horizontal = 16.dp),
+    )
+}
+
+/**
+ * The player's position as the lyric clock wants it: a reading, when it was taken, and a count of
+ * the jumps. Shared by every lyric style drawn off that clock.
+ */
+@Composable
+internal fun rememberFlowPosition(player: Player, sliderPositionProvider: () -> Long?): PlaybackPosition {
     // the reference design's playhead: a reading of the player, when it was taken, and a count of the jumps.
     val position = remember { PlaybackPosition() }
     val slider by rememberUpdatedState(sliderPositionProvider)
@@ -95,41 +135,11 @@ fun ExhaleFlowLyrics(
             delay(if (dragged != null) 50L else if (player.isPlaying) 100L else 500L)
         }
     }
-
-    // A line with no translation yet carries its own text, which the panel recognises and skips.
-    val subLines = remember(lines, subTexts) {
-        subTexts?.let { texts ->
-            lines.mapIndexed { i, line -> LyricLine(timeMs = line.timeMs, text = texts.getOrNull(i) ?: line.text) }
-        }
-    }
-
-    LyricsPanel(
-        lines = lines,
-        subLines = subLines,
-        canPick = onPickLine != null,
-        picking = picking,
-        picked = picked,
-        onPickLine = onPickLine ?: {},
-        onTogglePick = onTogglePick,
-        returnButtonInset = bottomInset,
-        textScale = textScale,
-        trackKey = trackKey,
-        playhead = rememberLyricPlayhead(position),
-        looking = lyrics == null,
-        isPlaying = isPlaying,
-        onSeekToLine = { player.seekTo(it) },
-        controlsOpen = true,
-        onRevealControls = {},
-        onHideControls = {},
-        // Exhale's lyric hosts already sit inside a margin of their own (12-16dp), so the panel
-        // takes 16dp more rather than its full 30dp gutter: the words then start ~32dp from the
-        // screen's edge, where Apple's do.
-        modifier = modifier.padding(horizontal = 16.dp),
-    )
+    return position
 }
 
 /** Exhale's lyric text, LRC or TTML, as the reference design's lines. */
-private fun toFlowLines(lyrics: String): List<LyricLine> {
+internal fun toFlowLines(lyrics: String): List<LyricLine> {
     if (lyrics == LYRICS_NOT_FOUND) return emptyList()
     val entries: List<LyricsEntry> = when {
         LyricsUtils.isTtml(lyrics) -> LyricsUtils.parseTtml(lyrics)
