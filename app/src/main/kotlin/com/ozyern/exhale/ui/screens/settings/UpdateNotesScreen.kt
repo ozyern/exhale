@@ -58,6 +58,9 @@ import com.ozyern.exhale.LocalPlayerAwareWindowInsets
 import com.ozyern.exhale.R
 import com.ozyern.exhale.ui.component.ColorOsType
 import com.ozyern.exhale.ui.component.LiquidBackButton
+import com.ozyern.exhale.ui.component.UpdateArtwork
+import com.ozyern.exhale.ui.component.frostedGlass
+import androidx.compose.ui.graphics.Color
 import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.utils.Updater
 import com.ozyern.exhale.utils.VersionChangelog
@@ -115,112 +118,115 @@ private fun UpdateNotesContent(navController: NavController) {
         )
     }
 
-    val cardShape = RoundedCornerShape(26.dp)
-    val card = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
+    val cardShape = RoundedCornerShape(30.dp)
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    // The software update page's own artwork behind the notes, and the notes in one pane of
+    // frosted glass over it, as ColorOS sets them: the page you came from, read through.
+    val artwork = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
+    val ink = Color.White
+    val quiet = Color.White.copy(alpha = 0.72f)
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            start = 16.dp,
-            end = 16.dp,
-            top = top + 8.dp,
-            bottom = 32.dp + LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding(),
-        ),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item(key = "bar") {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
-                LiquidBackButton(onClick = navController::navigateUp, icon = R.drawable.chevron_back)
-                Spacer(Modifier.size(12.dp))
-                Text("Notes", fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
-            }
-        }
-
-        item(key = "version") {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(cardShape)
-                    .background(card)
-                    .padding(horizontal = 20.dp, vertical = 18.dp),
+    Box(Modifier.fillMaxSize()) {
+        UpdateArtwork(artwork, dim = 0.12f)
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.material3.LocalContentColor provides ink,
+        ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = top + 8.dp,
+                    bottom = 32.dp + LocalPlayerAwareWindowInsets.current.asPaddingValues().calculateBottomPadding(),
+                ),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("Software version", fontSize = 19.sp, fontWeight = FontWeight.Medium)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "Exhale_${state?.version ?: BuildConfig.VERSION_NAME}_${BuildConfig.ARCHITECTURE}(${BuildConfig.GIT_COMMIT.take(7)})",
-                    fontSize = 15.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
-        item(key = "about") {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(cardShape)
-                    .background(card),
-            ) {
-                val turn by animateFloatAsState(if (expanded) 0f else 180f, label = "notesChevron")
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { expanded = !expanded }
-                        .padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 16.dp),
-                ) {
-                    Text("About this update", fontSize = 22.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                    Box(
-                        Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.expand_less),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(22.dp).graphicsLayer { rotationZ = turn },
-                        )
+                item(key = "bar") {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+                        LiquidBackButton(onClick = navController::navigateUp, icon = R.drawable.chevron_back)
+                        Spacer(Modifier.size(12.dp))
+                        Text("Notes", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = ink)
                     }
                 }
-                AnimatedVisibility(
-                    visible = expanded,
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut(),
-                ) {
-                    Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 22.dp)) {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                        Spacer(Modifier.height(10.dp))
-                        val s = state
-                        when {
-                            s != null && s.blocks.isNotEmpty() -> s.blocks.forEach { NoteRow(it) }
-                            s != null -> NoteRow(NoteBlock.Para("No notes were published with this release."))
-                            failed -> NoteRow(NoteBlock.Para("Couldn't load the notes. Check your connection and try again."))
-                            else -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                                LoadingRing(modifier = Modifier.size(28.dp))
+
+                item(key = "notes") {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .frostedGlass(artwork, cardShape),
+                    ) {
+                        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 18.dp)) {
+                            Text("Software version", fontSize = 21.sp, fontWeight = FontWeight.SemiBold, color = ink)
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "Exhale_${state?.version ?: BuildConfig.VERSION_NAME}_${BuildConfig.ARCHITECTURE}(${BuildConfig.GIT_COMMIT.take(7)})",
+                                fontSize = 15.sp,
+                                color = quiet,
+                            )
+                        }
+                        HorizontalDivider(color = Color.White.copy(alpha = 0.12f), modifier = Modifier.padding(horizontal = 20.dp))
+                        val turn by animateFloatAsState(if (expanded) 0f else 180f, label = "notesChevron")
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(
+                                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                    indication = null,
+                                ) { expanded = !expanded }
+                                .padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 10.dp),
+                        ) {
+                            Text("About this update", fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = ink, modifier = Modifier.weight(1f))
+                            Box(
+                                Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    painterResource(R.drawable.expand_less),
+                                    contentDescription = null,
+                                    tint = quiet,
+                                    modifier = Modifier.size(22.dp).graphicsLayer { rotationZ = turn },
+                                )
+                            }
+                        }
+                        AnimatedVisibility(
+                            visible = expanded,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut(),
+                        ) {
+                            Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 22.dp)) {
+                                val s = state
+                                when {
+                                    s != null && s.blocks.isNotEmpty() -> s.blocks.forEach { NoteRow(it) }
+                                    s != null -> NoteRow(NoteBlock.Para("No notes were published with this release."))
+                                    failed -> NoteRow(NoteBlock.Para("Couldn't load the notes. Check your connection and try again."))
+                                    else -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                                        LoadingRing(modifier = Modifier.size(28.dp), color = ink)
+                                    }
+                                }
                             }
                         }
                     }
                 }
-            }
-        }
 
-        state?.url?.let { url ->
-            item(key = "source") {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(cardShape)
-                        .background(card)
-                        .clickable { uriHandler.openUri(url) }
-                        .padding(horizontal = 20.dp, vertical = 18.dp),
-                ) {
-                    Text("View release on GitHub", fontSize = 17.sp, modifier = Modifier.weight(1f))
-                    Icon(painterResource(R.drawable.navigate_next), null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                state?.url?.let { url ->
+                    item(key = "source") {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .frostedGlass(artwork, cardShape)
+                                .clip(cardShape)
+                                .clickable { uriHandler.openUri(url) }
+                                .padding(horizontal = 20.dp, vertical = 18.dp),
+                        ) {
+                            Text("View release on GitHub", fontSize = 17.sp, color = ink, modifier = Modifier.weight(1f))
+                            Icon(painterResource(R.drawable.navigate_next), null, tint = quiet)
+                        }
+                    }
                 }
             }
         }
@@ -234,20 +240,21 @@ private fun NoteRow(block: NoteBlock) {
             text = block.text,
             fontSize = 19.sp,
             fontWeight = FontWeight.Medium,
+            color = Color.White.copy(alpha = 0.62f),
             modifier = Modifier.padding(top = 18.dp, bottom = 8.dp),
         )
         is NoteBlock.Point -> Text(
             text = "• " + block.text,
             fontSize = 16.sp,
             lineHeight = 24.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = Color.White.copy(alpha = 0.9f),
             modifier = Modifier.padding(vertical = 6.dp),
         )
         is NoteBlock.Para -> Text(
             text = block.text,
             fontSize = 16.sp,
             lineHeight = 24.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = Color.White.copy(alpha = 0.9f),
             modifier = Modifier.padding(vertical = 6.dp),
         )
     }

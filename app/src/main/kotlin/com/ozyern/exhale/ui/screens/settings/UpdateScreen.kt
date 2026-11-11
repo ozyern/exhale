@@ -11,6 +11,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import com.ozyern.exhale.ui.component.settingsGlassGroup
+import com.ozyern.exhale.ui.component.frostedGlass
 import com.ozyern.exhale.utils.DeviceNames
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.border
@@ -303,24 +304,9 @@ private fun UpdateScreenContent(
     // ColorOS 17's software update page: the artwork is the whole screen, the release mark sits
     // large in its upper half, and everything you can read or press is in one frosted card at
     // the foot, where the thumb already is.
+    val artwork = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        androidx.compose.foundation.Image(
-            painter = painterResource(R.drawable.exhale_update_bg),
-            contentDescription = null,
-            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    androidx.compose.ui.graphics.Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.35f),
-                        0.4f to Color.Transparent,
-                        1f to Color.Black.copy(alpha = 0.25f),
-                    ),
-                ),
-        )
+        com.ozyern.exhale.ui.component.UpdateArtwork(artwork)
 
         Scaffold(
             containerColor = Color.Transparent,
@@ -384,9 +370,10 @@ private fun UpdateScreenContent(
                     label = "updateFoot",
                 ) { isChecking ->
                     if (isChecking) {
-                        CheckingPill()
+                        CheckingPill(artwork)
                     } else {
                         UpdateResultCard(
+                            artwork = artwork,
                             statusTitle = statusTitle,
                             state = updateCheckState,
                             canDownload = canDownload,
@@ -449,15 +436,13 @@ private const val MinCheckingMillis = 1800L
 
 /** ColorOS's "Checking for updates" pill: frosted, the words on the left, a spinner on the right. */
 @Composable
-private fun CheckingPill() {
+private fun CheckingPill(artwork: com.kyant.backdrop.backdrops.LayerBackdrop) {
     val shape = RoundedCornerShape(28.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp)
-            .clip(shape)
-            .background(Color(0xB3141018))
-            .border(0.8.dp, Color.White.copy(alpha = 0.12f), shape)
+            .frostedGlass(artwork, shape)
             .padding(start = 22.dp, end = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -474,6 +459,7 @@ private fun CheckingPill() {
 /** The answer: status, the build, and ColorOS's two pills. */
 @Composable
 private fun UpdateResultCard(
+    artwork: com.kyant.backdrop.backdrops.LayerBackdrop,
     statusTitle: String,
     state: UpdateCheckState,
     canDownload: Boolean,
@@ -484,13 +470,9 @@ private fun UpdateResultCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(cardShape)
-            .background(
-                androidx.compose.ui.graphics.Brush.verticalGradient(
-                    listOf(Color(0x99231C2C), Color(0xCC120E18)),
-                ),
-            )
-            .border(0.8.dp, Color.White.copy(alpha = 0.14f), cardShape)
+            // Glass, as ColorOS's card is: the artwork behind it blurred through the pane. It
+            // was a dark film, which hid the picture where this lets its colours through.
+            .frostedGlass(artwork, cardShape)
             .padding(horizontal = 22.dp, vertical = 24.dp),
     ) {
         Text(
