@@ -687,7 +687,7 @@ fun LyricsMenu(
                 start = 0.dp,
                 top = 0.dp,
                 end = 0.dp,
-                bottom = 80.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
+                bottom = 80.dp + com.ozyern.exhale.ui.component.menuBottomInset(),
             ),
         ) {
             item {
@@ -702,7 +702,7 @@ fun LyricsMenu(
                 .padding(
                     start = 16.dp,
                     end = 16.dp,
-                    bottom = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
+                    bottom = com.ozyern.exhale.ui.component.menuBottomInset()
                 ),
             expanded = toolbarExpanded,
             colors = FloatingToolbarDefaults.vibrantFloatingToolbarColors(),

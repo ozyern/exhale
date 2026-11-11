@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BottomSheetDefaults
@@ -62,6 +64,19 @@ class MenuState(
     }
 }
 
+/** True inside a menu drawn as a pop-out beside the touch rather than as a sheet at the foot. */
+val LocalMenuIsPopOut = compositionLocalOf { false }
+
+/**
+ * The room a menu leaves under its last row. A sheet sits on the navigation bar and clears it; a
+ * pop-out floats in the middle of the screen, where that same padding was a dead strip at the
+ * foot of the panel.
+ */
+@Composable
+fun menuBottomInset(): androidx.compose.ui.unit.Dp =
+    if (LocalMenuIsPopOut.current) 0.dp
+    else androidx.compose.foundation.layout.WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BottomSheetMenu(
@@ -92,13 +107,15 @@ fun BottomSheetMenu(
             },
             onClosed = { popOutAlive = false },
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp)
-                    .weight(1f, fill = false),
-            ) {
-                state.content(this)
+            androidx.compose.runtime.CompositionLocalProvider(LocalMenuIsPopOut provides true) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp)
+                        .weight(1f, fill = false),
+                ) {
+                    state.content(this)
+                }
             }
         }
     } else if (state.isVisible) {

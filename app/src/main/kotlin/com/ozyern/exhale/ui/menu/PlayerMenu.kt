@@ -358,7 +358,7 @@ fun ColumnScope.PlayerMenu(
             start = 0.dp,
             top = 0.dp,
             end = 0.dp,
-            bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
+            bottom = 8.dp + com.ozyern.exhale.ui.component.menuBottomInset(),
         ),
     ) {
         // ── The song this is all about ───────────────────────────────────────
