@@ -3070,7 +3070,8 @@ class MainActivity : ComponentActivity() {
 
                         BottomSheetMenu(
                             state = LocalMenuState.current,
-                            modifier = Modifier.align(Alignment.BottomCenter)
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                            playerOpen = !playerBottomSheetState.isCollapsed && !playerBottomSheetState.isDismissed,
                         )
 
                         BottomSheetPage(
@@ -3135,7 +3136,23 @@ class MainActivity : ComponentActivity() {
 
                     var bootSplashDone by remember { mutableStateOf(bootSplashShown) }
                     if (!bootSplashDone) {
-                        BootSplash(onFinished = { bootSplashShown = true; bootSplashDone = true })
+                        // Read before the first frame: decided a frame late, the wrong intro would
+                        // start and be cut off by the right one.
+                        val lensSplash = remember {
+                            com.ozyern.exhale.utils.PreferenceStore.get(com.ozyern.exhale.constants.LensSplashKey)
+                                ?: kotlinx.coroutines.runBlocking {
+                                    kotlinx.coroutines.withTimeoutOrNull(400) {
+                                        dataStore.data.first()[com.ozyern.exhale.constants.LensSplashKey]
+                                    }
+                                }
+                                ?: false
+                        }
+                        val splashDone = { bootSplashShown = true; bootSplashDone = true }
+                        if (lensSplash) {
+                            com.ozyern.exhale.ui.component.lensboot.LensBootSplash(onFinished = splashDone)
+                        } else {
+                            BootSplash(onFinished = splashDone)
+                        }
                     }
 
                     // The first run after an update, and only that.

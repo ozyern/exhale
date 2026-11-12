@@ -699,7 +699,7 @@ private fun nanosToMs(nanos: Long): Double = nanos / 1_000_000.0
  * whole line would recompose sixty times a second.
  */
 @Composable
-private fun rememberLyricClock(
+internal fun rememberLyricClock(
     trackKey: Any,
     playhead: LyricPlayhead,
     isPlaying: Boolean,

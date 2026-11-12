@@ -27,7 +27,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -300,5 +302,145 @@ fun PopOutMenu(
                 }
             }
         }
+    }
+}
+
+
+/** The glass a pop-out bends when the player is what is on screen; set by the player while shown. */
+object PopOutBackdrops {
+    var player: Backdrop? by mutableStateOf(null)
+}
+
+/**
+ * [PopOutMenu]'s panel around any content: the same blob growing out of the touch into a pane of
+ * glass that bends what is behind it, for the app's own menus.
+ *
+ * Those opened as a sheet from the bottom edge on a tap, and as a dimmed, blurred window on a
+ * hold, while the player's "…" opened this; three answers to "more options" in one app. Every menu
+ * opened by a touch now opens here, out of the thing that was touched.
+ *
+ * [anchor] is the touch, on screen. Stays composed through its own closing: [visible] going false
+ * runs it back into the touch and then calls [onClosed].
+ */
+@Composable
+fun PopOutPanel(
+    anchor: Offset,
+    visible: Boolean,
+    backdrop: Backdrop?,
+    onDismissRequest: () -> Unit,
+    onClosed: () -> Unit,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+) {
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    var hostSize by remember { mutableStateOf(IntSize.Zero) }
+    var panelSize by remember { mutableStateOf(IntSize.Zero) }
+    val density = LocalDensity.current
+    val scaleX = remember { Animatable(0.12f) }
+    val scaleY = remember { Animatable(0.12f) }
+    val alpha = remember { Animatable(0f) }
+    val measured = panelSize != IntSize.Zero && hostSize != IntSize.Zero
+
+    LaunchedEffect(measured, visible) {
+        if (!measured) {
+            // Dismissed before it was ever laid out: nothing to run back, and left composed it
+            // would sit over the page, unseen, taking its touches.
+            if (!visible) onClosed()
+            return@LaunchedEffect
+        }
+        if (visible) {
+            launch { alpha.animateTo(1f, tween(90)) }
+            launch { scaleX.animateTo(1f, spring(dampingRatio = 0.72f, stiffness = 700f)) }
+            scaleY.animateTo(1f, spring(dampingRatio = 0.78f, stiffness = 420f))
+        } else {
+            launch { scaleX.animateTo(0.12f, spring(dampingRatio = 1f, stiffness = 900f)) }
+            launch { scaleY.animateTo(0.12f, spring(dampingRatio = 1f, stiffness = 900f)) }
+            alpha.animateTo(0f, tween(140, delayMillis = 40))
+            onClosed()
+        }
+    }
+    val dismiss by androidx.compose.runtime.rememberUpdatedState(onDismissRequest)
+    BackHandler(enabled = visible) { dismiss() }
+
+    // Beside the touch and wholly on screen: above it when there is room, else below, its far
+    // edge on the touch so the panel opens away from the finger.
+    fun place(touch: Offset): IntOffset = with(density) {
+        val m = 12.dp.toPx()
+        val leftHalf = touch.x < hostSize.width / 2f
+        val x = (if (leftHalf) touch.x - 14.dp.toPx() else touch.x + 14.dp.toPx() - panelSize.width)
+            .coerceIn(m, (hostSize.width - panelSize.width - m).coerceAtLeast(m))
+        val above = touch.y - 22.dp.toPx() - panelSize.height
+        val y = (if (above >= m * 3f) above else touch.y + 22.dp.toPx())
+            .coerceIn(m * 3f, (hostSize.height - panelSize.height - m * 3f).coerceAtLeast(m * 3f))
+        IntOffset(x.roundToInt(), y.roundToInt())
+    }
+
+    val scheme = androidx.compose.material3.MaterialTheme.colorScheme
+    val dark = remember(scheme.surface) {
+        0.299f * scheme.surface.red + 0.587f * scheme.surface.green + 0.114f * scheme.surface.blue < 0.5f
+    }
+    val glass = backdrop != null && remember { com.kyant.backdrop.isRuntimeShaderSupported() }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { origin = it.localToScreen(Offset.Zero); hostSize = it.size }
+            .pointerInput(Unit) { detectTapGestures { dismiss() } },
+    ) {
+        val touch = anchor - origin
+        val shape = RoundedCornerShape(26.dp)
+        Column(
+            Modifier
+                .offset { place(touch) }
+                .onSizeChanged { panelSize = it }
+                .graphicsLayer {
+                    val at = place(touch)
+                    transformOrigin = if (panelSize.width > 0 && panelSize.height > 0) {
+                        TransformOrigin(
+                            ((touch.x - at.x) / panelSize.width).coerceIn(0f, 1f),
+                            ((touch.y - at.y) / panelSize.height).coerceIn(0f, 1f),
+                        )
+                    } else {
+                        TransformOrigin.Center
+                    }
+                    this.scaleX = scaleX.value
+                    this.scaleY = scaleY.value
+                    this.alpha = if (measured) alpha.value else 0f
+                }
+                // A menu beside a finger: most of a phone's width, never a sheet's.
+                .widthIn(max = 360.dp)
+                .fillMaxWidth(0.92f)
+                .then(
+                    if (hostSize.height > 0) {
+                        Modifier.heightIn(max = with(density) { (hostSize.height * 0.72f).toDp() })
+                    } else {
+                        Modifier
+                    },
+                )
+                .then(
+                    if (glass) {
+                        Modifier.drawBackdrop(
+                            backdrop = backdrop!!,
+                            shape = { shape },
+                            effects = {
+                                vibrancy()
+                                blur(18f.dp.toPx())
+                                lens(16f.dp.toPx(), 24f.dp.toPx())
+                            },
+                            highlight = { Highlight.Default.copy(alpha = if (dark) 0.6f else 0.9f) },
+                            shadow = { Shadow(alpha = if (dark) 0.5f else 0.22f) },
+                            onDrawSurface = {
+                                // The player's dark pane; in the light theme the same pane in white,
+                                // heavy enough that page text under it stays colour, not letters.
+                                drawRect(if (dark) Color(0xFF151515).copy(alpha = 0.58f) else Color.White.copy(alpha = 0.72f))
+                            },
+                        )
+                    } else {
+                        Modifier.clip(shape).background(scheme.surfaceContainerHigh.copy(alpha = 0.97f))
+                    },
+                )
+                // Touches on the panel are the panel's: never a tap on the page beside it.
+                .pointerInput(Unit) { detectTapGestures { } }
+                .padding(vertical = 10.dp),
+            content = content,
+        )
     }
 }

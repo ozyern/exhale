@@ -6,6 +6,8 @@
 
 package com.ozyern.exhale.ui.screens.settings
 
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.ozyern.exhale.ui.component.frostedGlass
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -582,6 +584,10 @@ private fun AboutReleaseCard(status: String?, wide: Boolean, modifier: Modifier 
             .background(Color(0xFF0B0A22))
             .border(1.dp, Color.White.copy(alpha = 0.12f), shape),
     ) {
+        // The picture is recorded, so the pill at its foot can be glass over it: the artwork
+        // behind the pill blurred through it, as ColorOS's "Version up to date" is.
+        val art = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
+        Box(Modifier.matchParentSize().layerBackdrop(art)) {
         Image(
             painter = painterResource(R.drawable.exhale_about_card),
             contentDescription = null,
@@ -630,8 +636,9 @@ private fun AboutReleaseCard(status: String?, wide: Boolean, modifier: Modifier 
                     ),
                 ),
         )
+        }
         if (wide) {
-            AboutBannerContent(status)
+            AboutBannerContent(status, art)
         } else {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -644,7 +651,7 @@ private fun AboutReleaseCard(status: String?, wide: Boolean, modifier: Modifier 
                 com.ozyern.exhale.ui.component.ColorOsVersionText(BuildConfig.VERSION_NAME, fontSize = 19.sp, modifier = Modifier.padding(top = 10.dp))
                 Spacer(Modifier.weight(1f))
                 if (status != null) {
-                    AboutStatusPill(status, fontSize = 14.sp, horizontal = 18.dp, vertical = 8.dp)
+                    AboutStatusPill(status, art, fontSize = 15.sp, horizontal = 22.dp, vertical = 10.dp)
                 } else {
                     Spacer(Modifier.height(36.dp))
                 }
@@ -660,7 +667,7 @@ private fun AboutReleaseCard(status: String?, wide: Boolean, modifier: Modifier 
  * narrower pane and on a 13" tablet alike.
  */
 @Composable
-private fun AboutBannerContent(status: String?) {
+private fun AboutBannerContent(status: String?, art: com.kyant.backdrop.backdrops.LayerBackdrop) {
     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
         val h = maxHeight.value
         Column(
@@ -679,6 +686,7 @@ private fun AboutBannerContent(status: String?) {
         if (status != null) {
             AboutStatusPill(
                 status,
+                art,
                 fontSize = (h * 0.062f).sp,
                 horizontal = (h * 0.07f).dp,
                 vertical = (h * 0.032f).dp,
@@ -694,6 +702,7 @@ private fun AboutBannerContent(status: String?) {
 @Composable
 private fun AboutStatusPill(
     status: String,
+    art: com.kyant.backdrop.backdrops.LayerBackdrop,
     fontSize: androidx.compose.ui.unit.TextUnit,
     horizontal: androidx.compose.ui.unit.Dp,
     vertical: androidx.compose.ui.unit.Dp,
@@ -706,9 +715,7 @@ private fun AboutStatusPill(
         fontWeight = FontWeight.Medium,
         color = Color.White,
         modifier = modifier
-            .clip(pillShape)
-            .background(Color.White.copy(alpha = 0.16f))
-            .border(0.5.dp, Color.White.copy(alpha = 0.28f), pillShape)
+            .frostedGlass(art, pillShape, tint = Color.White.copy(alpha = 0.13f), blur = 16.dp, rim = 0.32f)
             .padding(horizontal = horizontal, vertical = vertical),
     )
 }

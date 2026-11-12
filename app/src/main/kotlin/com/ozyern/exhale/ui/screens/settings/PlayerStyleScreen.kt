@@ -73,6 +73,7 @@ import com.ozyern.exhale.utils.rememberPreference
 enum class PlayerStyleOption(val label: String, val detail: String, val design: PlayerDesignStyle?) {
     NOW_PLAYING("Now Playing", "The cover up top; lyrics and queue inside", null),
     LIQUID_GLASS("Liquid Glass", "Every control a piece of glass over the cover's colour", null),
+    ESPRESSO("Espresso", "The song on an instrument cluster: a rev counter for a scrubber", null),
     APPLE_MUSIC("Floating", "A floating cover over its own colours", PlayerDesignStyle.V8),
     IMMERSIVE("Immersive", "The cover fills the screen", PlayerDesignStyle.V7),
     CLASSIC("Classic", "Centred cover, round play button", PlayerDesignStyle.V1),
@@ -83,7 +84,13 @@ enum class PlayerStyleOption(val label: String, val detail: String, val design: 
     EXPRESSIVE("Expressive", "Soft, shaped buttons", PlayerDesignStyle.V6),
 }
 
-fun currentPlayerStyle(classic: Boolean, design: PlayerDesignStyle, liquidGlass: Boolean = false): PlayerStyleOption = when {
+fun currentPlayerStyle(
+    classic: Boolean,
+    design: PlayerDesignStyle,
+    liquidGlass: Boolean = false,
+    espresso: Boolean = false,
+): PlayerStyleOption = when {
+    !classic && espresso -> PlayerStyleOption.ESPRESSO
     !classic && liquidGlass -> PlayerStyleOption.LIQUID_GLASS
     !classic -> PlayerStyleOption.NOW_PLAYING
     else -> PlayerStyleOption.entries.firstOrNull { it.design == design } ?: PlayerStyleOption.APPLE_MUSIC
@@ -103,7 +110,8 @@ fun PlayerStyleScreen(
     val (design, setDesign) = rememberEnumPreference(PlayerDesignStyleKey, PlayerDesignStyle.V8)
     val (background, setBackground) = rememberEnumPreference(PlayerBackgroundStyleKey, PlayerBackgroundStyle.DEFAULT)
     val (liquidGlass, setLiquidGlass) = rememberPreference(com.ozyern.exhale.constants.LiquidGlassPlayerKey, false)
-    val selected = currentPlayerStyle(classic, design, liquidGlass)
+    val (espresso, setEspresso) = rememberPreference(com.ozyern.exhale.constants.EspressoPlayerKey, false)
+    val selected = currentPlayerStyle(classic, design, liquidGlass, espresso)
 
     Column(
         Modifier
@@ -134,9 +142,11 @@ fun PlayerStyleScreen(
                         onClick = {
                             if (option.design == null) {
                                 setLiquidGlass(option == PlayerStyleOption.LIQUID_GLASS)
+                                setEspresso(option == PlayerStyleOption.ESPRESSO)
                                 setClassic(false)
                             } else {
                                 setDesign(option.design)
+                                setEspresso(false)
                                 setClassic(true)
                             }
                         },
@@ -305,6 +315,43 @@ private fun DrawScope.drawPreview(option: PlayerStyleOption, accent: Color, ink:
             bar(pad, h * 0.74f, w - pad * 2, h * 0.010f, Color.White.copy(alpha = 0.35f))
             transport(h * 0.84f, w * 0.07f, Color.White)
             bar(w * 0.3f, h * 0.94f, w * 0.4f, h * 0.018f, Color.White.copy(alpha = 0.18f))
+        }
+        PlayerStyleOption.ESPRESSO -> {
+            drawRect(Color.Black)
+            art(Offset(0f, 0f), Size(w, h * 0.5f), 0f, accent)
+            drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black), startY = h * 0.26f, endY = h * 0.52f))
+            bar(w * 0.24f, h * 0.56f, w * 0.52f, h * 0.030f, Color.White.copy(alpha = 0.9f))
+            bar(w * 0.34f, h * 0.61f, w * 0.32f, h * 0.020f, Color.White.copy(alpha = 0.5f))
+            // The dial: a ring of keys, the scale, the sweep and the needle, standing on the foot.
+            val pivot = Offset(w / 2, h * 0.97f)
+            val ro = w * 0.46f
+            val ri = w * 0.36f
+            val cyan = Color(0xFF3FE3F2)
+            val red = Color(0xFFFF3B30)
+            drawArc(Color.White.copy(alpha = 0.3f), 180f, 180f, false, Offset(pivot.x - ro, pivot.y - ro), Size(ro * 2, ro * 2), style = androidx.compose.ui.graphics.drawscope.Stroke(w * 0.008f))
+            drawArc(Color.White.copy(alpha = 0.18f), 180f, 180f, false, Offset(pivot.x - ri, pivot.y - ri), Size(ri * 2, ri * 2), style = androidx.compose.ui.graphics.drawscope.Stroke(w * 0.008f))
+            for (i in 0..7) {
+                val a = (Math.PI * (1.0 - i / 7.0)).toFloat()
+                val dir = Offset(kotlin.math.cos(a), -kotlin.math.sin(a))
+                drawLine(Color.White.copy(alpha = 0.2f), pivot + dir * ri, pivot + dir * ro, strokeWidth = w * 0.006f)
+            }
+            val r = w * 0.31f
+            for (i in 0..20) {
+                val a = (Math.PI * (1.0 - i / 20.0)).toFloat()
+                val dir = Offset(kotlin.math.cos(a), -kotlin.math.sin(a))
+                val long = i % 2 == 0
+                drawLine(
+                    if (i >= 18) red else Color.White.copy(alpha = if (i <= 8) 0.9f else 0.35f),
+                    pivot + dir * (r - if (long) w * 0.045f else w * 0.022f),
+                    pivot + dir * r,
+                    strokeWidth = w * 0.008f,
+                )
+            }
+            drawArc(cyan, 180f, 72f, false, Offset(pivot.x - r * 1.06f, pivot.y - r * 1.06f), Size(r * 2.12f, r * 2.12f), style = androidx.compose.ui.graphics.drawscope.Stroke(w * 0.02f))
+            val na = (Math.PI * 0.6).toFloat()
+            val nd = Offset(kotlin.math.cos(na), -kotlin.math.sin(na))
+            drawLine(red, pivot + nd * (r * 0.45f), pivot + nd * (r * 1.04f), strokeWidth = w * 0.014f)
+            bar(w * 0.41f, h * 0.90f, w * 0.18f, h * 0.030f, Color.White)
         }
         PlayerStyleOption.LIQUID_GLASS -> {
             drawRect(Brush.verticalGradient(listOf(accent.copy(alpha = 0.55f), Color(0xFF2A0A0A), Color.Black)))

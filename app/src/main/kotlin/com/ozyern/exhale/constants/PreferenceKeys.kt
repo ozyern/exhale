@@ -714,6 +714,13 @@ enum class LyricsMotion {
     APPLE_MUSIC,
     /** the reference design's lyric panel, ported whole (ui/lyricsflow). */
     FLOW,
+
+    /**
+     * The song set as sheet music: a note to each word on a staff, the word popping up under its
+     * note as it is sung and the tune drawn through them. Took Karaoke's place ([APPLE_MUSIC] is
+     * read as this now, so nobody is left on a style that can no longer be chosen).
+     */
+    MELODY,
 }
 
 /** Which full-screen lyrics view the player opens: the classic one, or the the iOS music app glass one. */
@@ -1070,6 +1077,16 @@ val ShowSpotifyPlaylistsKey = booleanPreferencesKey("show_spotify_playlists")
 val SpotifyLibraryPlaylistsCacheKey = stringPreferencesKey("spotify_library_playlists_cache")
 /** How the open dock (state A) draws its tabs. The folded dock is the same in every style. */
 val DockStyleKey = stringPreferencesKey("dockStyle")
+
+/**
+ * The cold-start intro: off, Exhale's own (the neon mark that beats and opens onto the app); on,
+ * the liquid-lens film ported from AETHER (the mark under a dome of oil, then the wordmark decoding
+ * out of type).
+ */
+val LensSplashKey = booleanPreferencesKey("lensSplash")
+
+/** The Espresso player: the song on an instrument cluster. Wins over Liquid Glass when both are set. */
+val EspressoPlayerKey = booleanPreferencesKey("espressoPlayer")
 
 /** A gear beside the account picture at the top of Home, Library and Mood & Genres. Off by default. */
 val SettingsShortcutKey = booleanPreferencesKey("settingsShortcut")

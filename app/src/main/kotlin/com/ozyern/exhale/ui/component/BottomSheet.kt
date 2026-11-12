@@ -221,6 +221,29 @@ fun BottomSheet(
             BackHandler(onBack = state::collapseSoft)
         }
 
+        // Nothing ambient moves while the sheet does. The colour fields behind the page and
+        // inside the player, the glows and every pane of glass that samples them redraw thirty
+        // times a second, and on the way up or down they did it in the same frames as the cover's
+        // flight, the sheet and the player fading in: the frames that are dropped are the ones
+        // being watched. They stand still for the trip and carry on when it lands.
+        LaunchedEffect(state) {
+            var holding = false
+            try {
+                androidx.compose.runtime.snapshotFlow { state.progress > 0.001f && state.progress < 0.999f }
+                    .collect { moving ->
+                        if (moving && !holding) {
+                            holding = true
+                            com.ozyern.exhale.utils.AmbientHold.acquire()
+                        } else if (!moving && holding) {
+                            holding = false
+                            com.ozyern.exhale.utils.AmbientHold.release()
+                        }
+                    }
+            } finally {
+                if (holding) com.ozyern.exhale.utils.AmbientHold.release()
+            }
+        }
+
         // Built ahead of time. The expanded content used to be composed on the frame the sheet
         // left its collapsed bound, and composing a whole player in one frame cost 50-60 ms on
         // every open — three dropped frames at the start of the motion, exactly where they show.

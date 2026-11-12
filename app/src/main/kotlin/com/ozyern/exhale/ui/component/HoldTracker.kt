@@ -47,6 +47,13 @@ object HoldTracker {
         return if (held) position else null
     }
 
+    /** A menu shown this soon after a tap was let go was opened by that tap. */
+    private const val AFTER_TAP_MS = 450L
+
+    /** Where the screen was last touched, if that touch is what is opening a menu now. */
+    fun touchedNow(): Offset? =
+        if (down || SystemClock.uptimeMillis() - upAt <= AFTER_TAP_MS) position else null
+
     fun Modifier.trackHolds(): Modifier = this
         .onGloballyPositioned { root = it }
         .pointerInput(Unit) {

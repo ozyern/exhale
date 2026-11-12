@@ -1006,8 +1006,14 @@ class MusicService :
         }
 
         combine(
-            combine(playerVolume, normalizeFactor, audioFocusVolumeFactor, playbackFadeFactor) { playerVolume, normalizeFactor, audioFocusVolumeFactor, playbackFadeFactor ->
-                playerVolume * normalizeFactor * audioFocusVolumeFactor * playbackFadeFactor
+            combine(playerVolume, normalizeFactor, audioFocusVolumeFactor, playbackFadeFactor, BitPerfectUsb.active) { playerVolume, normalizeFactor, audioFocusVolumeFactor, playbackFadeFactor, bitPerfect ->
+                // Normalisation turns a loud master down on the AudioTrack's volume, and a track
+                // scaled there is not the file's samples any more: with it on (it is by default),
+                // a "bit-perfect" DAC was being sent every loud song a few dB quieter and requantised.
+                // The lift for quiet masters already stood aside for bit-perfect; this is its other
+                // half. The player's own volume stays: with the system's out of the path it may be
+                // the only one there is, and at full it changes nothing.
+                playerVolume * (if (bitPerfect) 1f else normalizeFactor) * audioFocusVolumeFactor * playbackFadeFactor
             },
             castMirror.active,
         ) { volume, casting ->
@@ -1351,6 +1357,10 @@ class MusicService :
                 globalAutomix = globalAutomix,
             )
         }
+            // A bit-perfect DAC plays one stream, the file's: a crossfade is two songs mixed (and
+            // the second player's track is not let onto a bit-perfect output at all), and Automix
+            // filters both. Songs follow each other gaplessly there instead.
+            .combine(BitPerfectUsb.active) { transition, bitPerfect -> if (bitPerfect) 0 to false else transition }
             .distinctUntilChanged()
             .collectLatest(scope) { (crossfadeMs, automix) ->
                 crossfadeDurationMs.value = crossfadeMs
@@ -6275,6 +6285,14 @@ class MusicService :
                 // purpose: their HTTP calls block and cannot be cancelled, and the old structured
                 // version kept the timeout below waiting on the slowest of them — the wait for the
                 // first lossless byte was the slowest source's, not the fastest's.
+                // The album, for a song that came without one (search, a playlist, a radio queue):
+                // the library's row for the song if it has been seen on its album, else YouTube.
+                // Asked only if the catalogue search gets as far as needing it.
+                val albumName: suspend () -> String? = {
+                    song.album?.title?.takeIf { it.isNotBlank() }
+                        ?: runCatching { database.song(mediaId).first()?.toMediaMetadata()?.album?.title }.getOrNull()?.takeIf { it.isNotBlank() }
+                        ?: runCatching { com.ozyern.exhale.utils.FlacItemMemory.albumNameFor(mediaId) }.getOrNull()
+                }
                 val own = ioScope.async {
                     runCatching { com.ozyern.exhale.playback.lossless.ServerLibrary.find(song) }.getOrNull()
                         // Only the server's lossless files: an MP3 there is no upgrade on YouTube.
@@ -6303,7 +6321,9 @@ class MusicService :
                     }
                 }
                 val open = ioScope.async {
-                    runCatching { com.ozyern.exhale.openflac.OpenFlac.findCopy(title, artist, song.duration, song.album?.title) }.getOrNull()
+                    runCatching {
+                        com.ozyern.exhale.openflac.OpenFlac.findCopy(title, artist, song.duration, song.album?.title, albumName)
+                    }.getOrNull()
                         ?.let { track ->
                             FlacHit(
                                 com.ozyern.exhale.openflac.OpenFlac.fastUrl(track.url),

@@ -49,7 +49,16 @@ object BitPerfectUsb {
      */
     @Volatile
     var activeEncoding: Int? = null
-        private set
+        private set(value) {
+            field = value
+            active.value = value != null
+        }
+
+    /**
+     * Whether a DAC is taking the stream bit-perfect right now, for everything else that must then
+     * leave the samples alone: see where the service reads it.
+     */
+    val active = kotlinx.coroutines.flow.MutableStateFlow(false)
 
     val supported: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
 

@@ -168,8 +168,14 @@ internal object BarMotion {
     const val CollapseMorphMs = 560
     const val ExpandMorphMs = 470
 
-    /** FoldingTabBar's single fold: collapse lands with a deeper overshoot than the expand. */
-    val FoldCollapseSpring = SpringEasing(zeta = 0.55f)
+    /**
+     * FoldingTabBar's single fold. Folding lands without overshooting: at zeta 0.55 the whole row
+     * swung 12% past its place, so the song's pill arrived, went 16dp narrower and sat lower than
+     * the circles beside it, then came back, and its title was cut to a different length at each
+     * width on the way ("Busy Woman", "Busy Wom…", "Busy Woma…"). That read as the pill flickering
+     * just after it had landed. Opening keeps its gentle swing: nothing there is re-cut by it.
+     */
+    val FoldCollapseSpring: Easing = CriticalEasing()
     val FoldExpandSpring = SpringEasing(zeta = 0.74f)
 
     /** The mini player's height: ~9% overshoot folding, ~11% unfolding. */

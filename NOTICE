@@ -29,3 +29,10 @@ It includes or adapts work from these open-source projects, under their licenses
 - Phosphor Icons (https://phosphoricons.com), MIT License, Copyright (c) 2023 Phosphor Icons:
   the Windows sidebar's glyphs (desktop/.../ui/shell/Sidebar.kt) and the Android top bar's
   settings gear (app/src/main/res/drawable/gearshape.xml).
+
+- AETHER (https://github.com/GHOSTxASR/AETHER), GNU General Public License v3.0: the liquid-lens
+  intro (app/.../ui/component/lensboot) and the dial and ring the Espresso player and the Melody
+  lyrics are drawn after. The lens film's optical model is adapted there from Travis Fischer's
+  MIT-licensed recreation of the liquid-lens effect.
+- Pinyon Script (https://fonts.google.com/specimen/Pinyon+Script), SIL Open Font License 1.1,
+  Copyright (c) Nicole Fally: the script the lens intro signs "Exhale" in.

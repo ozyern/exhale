@@ -221,6 +221,8 @@ fun YouTubeSongMenu(
     }  
 
     ListItem(  
+        // Clear, so the header sits on the menu's glass rather than on a slab of its own.
+        colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
         headlineContent = {
             Text(
                 text = song.title,
@@ -293,7 +295,7 @@ fun YouTubeSongMenu(
             start = 0.dp,
             top = 0.dp,
             end = 0.dp,
-            bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
+            bottom = 8.dp + com.ozyern.exhale.ui.component.menuBottomInset(),
         ),
     ) {
 

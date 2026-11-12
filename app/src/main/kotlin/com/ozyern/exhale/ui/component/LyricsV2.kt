@@ -294,11 +294,21 @@ fun LyricsV2(
         com.ozyern.exhale.constants.LyricsMotionKey,
         com.ozyern.exhale.constants.LyricsMotion.FLOW,
     )
-    val appleMotion = lyricsMotion == com.ozyern.exhale.constants.LyricsMotion.APPLE_MUSIC
+    // Karaoke gave its place to Melody: anyone still set to it gets Melody, not a style with no card.
+    val melodyMotion = lyricsMotion == com.ozyern.exhale.constants.LyricsMotion.MELODY ||
+        lyricsMotion == com.ozyern.exhale.constants.LyricsMotion.APPLE_MUSIC
+    val appleMotion = false
     // Flow draws through the ported panel (ui/lyricsflow): staggered line waterfall, feathered
     // word wipe, depth falloff. This composable keeps the data around it — translation,
     // pronunciation, the corner buttons and picking lines to share.
     val flowMotion = lyricsMotion == com.ozyern.exhale.constants.LyricsMotion.FLOW
+
+    // The moving ground behind the lyrics stands still while they are on screen: see AmbientHold.
+    val lyricsOnScreen = LocalPlayerShown.current
+    DisposableEffect(lyricsOnScreen) {
+        if (lyricsOnScreen) com.ozyern.exhale.utils.AmbientHold.acquire()
+        onDispose { if (lyricsOnScreen) com.ozyern.exhale.utils.AmbientHold.release() }
+    }
 
     // ── Selection mode state ──
     var isSelectionModeActive by rememberSaveable { mutableStateOf(false) }
@@ -523,8 +533,8 @@ fun LyricsV2(
     // 1x, so the highlight would drift late exactly when the words are hardest to follow.
     val smoothPosition = remember { com.ozyern.exhale.utils.SmoothPlaybackPosition() }
     // Flow keeps its own clock; this loop would only recompose a column that is not on screen.
-    LaunchedEffect(entriesWithWords, isSynced, flowMotion) {
-        if (flowMotion || !isSynced || entriesWithWords.isEmpty()) return@LaunchedEffect
+    LaunchedEffect(entriesWithWords, isSynced, flowMotion, melodyMotion) {
+        if (flowMotion || melodyMotion || !isSynced || entriesWithWords.isEmpty()) return@LaunchedEffect
         while (isActive) {
             com.ozyern.exhale.utils.awaitAppVisible()
             val sliderPos = sliderPositionProvider()
@@ -780,7 +790,13 @@ fun LyricsV2(
             return@BoxWithConstraints
         }
 
-        if (flowMotion) {
+        if (melodyMotion) {
+            com.ozyern.exhale.ui.lyricsflow.ExhaleMelodyLyrics(
+                sliderPositionProvider = sliderPositionProvider,
+                textScale = (lyricsTextSize / 26f).coerceIn(0.7f, 1.5f),
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else if (flowMotion) {
             // Flow's rows are the lyric lines without the head spacer, index for index.
             val headOffset = if (entriesWithWords.firstOrNull() === HEAD_LYRICS_ENTRY) 1 else 0
             val flowEntries = remember(entriesWithWords) { entriesWithWords.drop(headOffset) }
