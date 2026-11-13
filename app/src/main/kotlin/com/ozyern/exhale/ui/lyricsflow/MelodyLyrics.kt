@@ -66,10 +66,10 @@ import kotlin.math.sqrt
 import kotlin.random.Random
 
 /**
- * The song, written along one line that curves with it.
+ * The song, played as a tune: every word a note, the notes joined by one curving line.
  *
- * Every word of the song sits on a single flowing curve, one line after the next, and the letters
- * follow its bends. A point of light runs along the curve at the exact moment being sung: inside a
+ * Each word sits on its own note, a short lit bar at its own pitch, and the line glides up or down
+ * from one note to the next, so the song reads as a melody rising and falling word by word. A point of light runs along the curve at the exact moment being sung: inside a
  * word it sweeps across the letters, lighting them as it passes, and between words it travels the
  * space, so the line never stands still. Words to come wait faint ahead of it; words sung stay lit
  * and fade behind it. The view rides along with the point.
@@ -115,7 +115,7 @@ fun ExhaleMelodyLyrics(
     val textPaint = remember(typeface, textScale, density) {
         Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
             this.typeface = typeface
-            textSize = with(density) { 30.sp.toPx() } * textScale
+            textSize = with(density) { 28.sp.toPx() } * textScale
             letterSpacing = -0.01f
         }
     }
@@ -166,6 +166,8 @@ fun ExhaleMelodyLyrics(
 
         // Drawing state, made once and reused every frame.
         val window = remember { android.graphics.Path() }
+        val bar = remember { android.graphics.Path() }
+        val barPaint = remember { Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND } }
         val linePaint = remember { Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND } }
         val litPaint = remember { Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND } }
         val fadeIn = remember(glow, w) {
@@ -257,7 +259,7 @@ fun ExhaleMelodyLyrics(
                 }
 
                 // ---- The words, on the curve ----
-                val lift = 7.dp.toPx()
+                val lift = 12.dp.toPx()
                 val sweepWidth = 3.dp.toPx()
                 for (i in song.firstFrom(from) until song.words.size) {
                     val word = song.words[i]
@@ -265,6 +267,25 @@ fun ExhaleMelodyLyrics(
                     if (word.to < from) continue
                     val h0 = word.from - from
                     val behind = d - word.to
+                    // The note: a rounded bar under the word, at its pitch. Lit as far as sung.
+                    barPaint.strokeWidth = 6.dp.toPx()
+                    barPaint.shader = null
+                    val inset = 2.dp.toPx()
+                    if (d < word.to) {
+                        bar.reset()
+                        song.measure.getSegment(max(word.from + inset, d), word.to - inset, bar, true)
+                        barPaint.color = android.graphics.Color.argb(56, 255, 255, 255)
+                        n.drawPath(bar, barPaint)
+                    }
+                    if (d > word.from) {
+                        bar.reset()
+                        song.measure.getSegment(word.from + inset, min(d, word.to - inset), bar, true)
+                        val fade = if (d >= word.to) (1f - behind / (w * 0.95f)).coerceIn(0.25f, 1f) else 1f
+                        barPaint.color = glow.copy(alpha = 0.95f * fade).toArgb()
+                        barPaint.setShadowLayer(8.dp.toPx(), 0f, 0f, glow.copy(alpha = 0.6f * fade).toArgb())
+                        n.drawPath(bar, barPaint)
+                        barPaint.clearShadowLayer()
+                    }
                     when {
                         // Sung: lit, fading as the point leaves it behind.
                         d >= word.to -> {
@@ -405,16 +426,41 @@ private class Ribbon(
 }
 
 /**
- * Lays the song out along its curve. The words are set end to end, a space between words and a
- * wider breath between lines; the curve under them is a slow swell with a gentler wander on top,
- * the same for the same song every time, never steep enough to crowd the letters on its bends.
+ * Lays the song out as a tune. Every word is a note: a short level bar at its own pitch, as long
+ * as the word is wide, with the word written on it. Between one note and the next the line glides
+ * up or down in a smooth S, so the whole song is one curving line that rises and falls word by
+ * word, the way a melody does. Pitches walk mostly by step, sometimes by a leap, and each line
+ * starts afresh a little higher or lower. The same song always makes the same tune.
  */
 private fun ribbon(lines: List<LyricLine>, paint: Paint, width: Float, density: Density): Ribbon {
     val space = paint.measureText(" ")
-    val breath = with(density) { 54.dp.toPx() }
+    val breath = with(density) { 64.dp.toPx() }
+    val pitchStep = with(density) { 15.dp.toPx() }
+    val glideRoom = with(density) { 10.dp.toPx() }
     val words = ArrayList<Word>()
     val lineStarts = ArrayList<Long>()
-    var at = 0f
+    val path = android.graphics.Path()
+    val piece = android.graphics.Path()
+    val measure = PathMeasure()
+    var x = 0f
+    var arc = 0f
+    var pitch = 0
+    var y = 0f
+    path.moveTo(0f, 0f)
+
+    /** Adds a glide from where the line is to ([toX], [toY]), and how long it is along the curve. */
+    fun glide(toX: Float, toY: Float) {
+        val mid = (x + toX) / 2f
+        piece.reset()
+        piece.moveTo(x, y)
+        piece.cubicTo(mid, y, mid, toY, toX, toY)
+        measure.setPath(piece, false)
+        arc += measure.length
+        path.cubicTo(mid, y, mid, toY, toX, toY)
+        x = toX
+        y = toY
+    }
+
     lines.forEachIndexed { i, line ->
         val nextMs = lines.getOrNull(i + 1)?.timeMs
         val timed: List<Triple<String, Long, Long>> = if (line.words.isNotEmpty()) {
@@ -426,7 +472,7 @@ private fun ribbon(lines: List<LyricLine>, paint: Paint, width: Float, density: 
             tokens.mapIndexed { j, token -> Triple(token, line.timeMs + span * j, line.timeMs + span * (j + 1)) }
         }
         if (timed.isEmpty()) return@forEachIndexed
-        if (words.isNotEmpty()) at += breath
+        val rnd = Random(i * 7919 + 17 + line.text.hashCode())
         lineStarts += min(line.timeMs, timed.first().second)
         timed.forEachIndexed { j, (text, start, rawEnd) ->
             // A word's end is when the next begins at the latest, and never before its own start:
@@ -434,44 +480,45 @@ private fun ribbon(lines: List<LyricLine>, paint: Paint, width: Float, density: 
             val nextStart = timed.getOrNull(j + 1)?.second ?: nextMs
             var end = if (rawEnd > start) rawEnd else start + 300L
             if (nextStart != null && nextStart > start) end = min(end, nextStart)
+
+            // This note's pitch: a fresh start for a line, otherwise a step or two from the last.
+            val before = pitch
+            pitch = if (j == 0) {
+                if (words.isEmpty()) 0 else (pitch + rnd.nextInt(-2, 3)).coerceIn(-2, 2)
+            } else {
+                val move = when (rnd.nextInt(10)) {
+                    0 -> 3
+                    1 -> -3
+                    2, 3 -> 2
+                    4, 5 -> -2
+                    6, 7 -> 1
+                    else -> -1
+                }
+                (pitch + move).let { if (it < -3 || it > 3) pitch - move else it }.coerceIn(-3, 3)
+            }
+            val noteY = -pitch * pitchStep
+            if (words.isEmpty()) {
+                path.moveTo(0f, noteY)
+                y = noteY
+            } else {
+                // Room for the glide: a space between words, a breath between lines, and more
+                // the further it has to climb or fall, so it never turns steep.
+                val room = if (j == 0) breath else space + glideRoom + kotlin.math.abs(pitch - before) * pitchStep * 0.55f
+                glide(x + room, noteY)
+            }
             val wide = paint.measureText(text)
-            words += Word(text, at, at + wide, start, max(end, start + 1))
-            at += wide + space
+            words += Word(text, arc, arc + wide, start, max(end, start + 1))
+            // The note itself: level, as long as the word.
+            path.lineTo(x + wide, y)
+            x += wide
+            arc += wide
         }
     }
+    // A last stretch past the end, so the final note has somewhere to lead.
+    if (words.isNotEmpty()) glide(x + width, y)
     // Words must be in time order for the search; sources occasionally are not.
     val ordered = words.withIndex().all { (k, wd) -> k == 0 || words[k - 1].startMs <= wd.startMs }
     val sorted = if (ordered) words else words.sortedBy { it.startMs }
-
-    // The curve, as a function of x. Its arc is longer than x, so it is made long enough to carry
-    // every word whatever the bends add.
-    val path = android.graphics.Path()
-    val swell = with(density) { 46.dp.toPx() }
-    val wander = with(density) { 16.dp.toPx() }
-    val step = with(density) { 70.dp.toPx() }
-    val rnd = Random(lines.size * 7919 + lines.first().text.hashCode())
-    val period = width * 1.6f
-    val phase = rnd.nextFloat() * 2f * PI.toFloat()
-    val total = at + width * 2f
-    val count = (total / step).toInt() + 2
-    val ys = FloatArray(count)
-    var drift = 0f
-    for (k in 0 until count) {
-        val x = k * step
-        drift = (drift + (rnd.nextFloat() - 0.5f) * 0.9f).coerceIn(-1f, 1f)
-        ys[k] = swell * sin(2f * PI.toFloat() * x / period + phase) + wander * drift
-    }
-    // Catmull-Rom through the points, as cubic curves: smooth through every one of them.
-    path.moveTo(0f, ys[0])
-    for (k in 0 until count - 1) {
-        val y0 = ys[max(k - 1, 0)]
-        val y1 = ys[k]
-        val y2 = ys[k + 1]
-        val y3 = ys[min(k + 2, count - 1)]
-        val x1 = k * step
-        val x2 = (k + 1) * step
-        path.cubicTo(x1 + step / 3f, y1 + (y2 - y0) / 6f, x2 - step / 3f, y2 - (y3 - y1) / 6f, x2, y2)
-    }
     return Ribbon(path, sorted, lineStarts)
 }
 
