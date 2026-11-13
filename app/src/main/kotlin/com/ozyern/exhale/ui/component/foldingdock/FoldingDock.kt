@@ -241,7 +241,7 @@ private enum class DockVisual { Inline, Expanded, Search, Typing }
 
 // What a tab's label adds under its glyph: 2dp of gap and one line of 10sp text.
 private val TabLabelGap = 2.dp
-private val TabLabelLineHeight = 12.sp
+private val TabLabelLineHeight = 13.sp
 
 /** Where every piece of the bar sits in one shape, y measured up from the bar's bottom edge. */
 private class DockRects(val pill: Rect, val search: Rect, val player: Rect, val glyph: Rect)
@@ -471,7 +471,8 @@ fun FoldingDock(
     val appBackdrop = LocalAppBackdrop.current
 
     val ink = if (isSystemInDarkTheme()) Color.White else Color.Black
-    val inactiveInk = ink.copy(alpha = 0.82f)
+    // Apple Music's tab bar: the tabs not chosen in full ink, the chosen one in the accent.
+    val inactiveInk = ink
 
     // The whole row bounces as the bar folds or opens, and a tab bounces as it is selected.
     val foldKey = visual == DockVisual.Inline
@@ -495,8 +496,8 @@ fun FoldingDock(
                 com.composables.sfsymbols.SfSymbolIcon(
                     symbol = sf,
                     size = tab.glyphSize * 0.8f,
-                    // Apple Music's tab bar draws its symbols at medium weight, not bold.
-                    weight = com.composables.sfsymbols.SfWeight.Medium,
+                    // Apple Music's tab bar draws its symbols filled and firm: semibold.
+                    weight = com.composables.sfsymbols.SfWeight.Semibold,
                     mode = com.composables.sfsymbols.SfRenderingMode.Monochrome,
                     tint = if (isSelected) accentColor else inactiveInk,
                     effect = DockSymbolBounce,
@@ -520,7 +521,7 @@ fun FoldingDock(
                 color = if (isSelected) accentColor else inactiveInk,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                fontSize = 10.sp,
+                fontSize = 11.sp,
                 // One line of its own height, not the body style's 22sp, so it sits 2dp under the glyph.
                 lineHeight = TabLabelLineHeight,
                 letterSpacing = 0.sp,
@@ -781,10 +782,12 @@ private fun FoldingTabGroup(
         }
 
         val offsetAnimation = remember { Animatable(0f) }
+        // The finger's pull on the panel, set straight from each pointer event (see DockDragAnimation).
+        val pull = remember { mutableFloatStateOf(0f) }
         val panelOffset by remember(density) {
             derivedStateOf {
                 val width = widthPx.floatValue
-                val fraction = if (width > 0f) (offsetAnimation.value / width).fastCoerceIn(-1f, 1f) else 0f
+                val fraction = if (width > 0f) ((offsetAnimation.value + pull.floatValue) / width).fastCoerceIn(-1f, 1f) else 0f
                 with(density) { 4.dp.toPx() * fraction.sign * EaseOut.transform(abs(fraction)) }
             }
         }
@@ -807,14 +810,18 @@ private fun FoldingTabGroup(
                     if (targetIndex == currentIndex) onSelected(targetIndex)
                     currentIndex = targetIndex
                     animateToValue(targetIndex.toFloat())
-                    animationScope.launch { offsetAnimation.animateTo(0f, spring(1f, 300f, 0.5f)) }
+                    animationScope.launch {
+                        offsetAnimation.snapTo(offsetAnimation.value + pull.floatValue)
+                        pull.floatValue = 0f
+                        offsetAnimation.animateTo(0f, spring(1f, 300f, 0.5f))
+                    }
                 },
                 onDrag = { _, dragAmount ->
                     updateValue(
                         (targetValue + dragAmount.x / tabWidth() * if (isLtr) 1f else -1f)
                             .fastCoerceIn(0f, (tabsCount - 1).toFloat()),
                     )
-                    animationScope.launch { offsetAnimation.snapTo(offsetAnimation.value + dragAmount.x) }
+                    pull.floatValue += dragAmount.x
                 },
             )
         }

@@ -263,12 +263,18 @@ internal class DockDragAnimation(
     private val velocityTracker = VelocityTracker()
     private val startMark = TimeSource.Monotonic.markNow()
 
-    val value: Float get() = valueAnimation.value
-    val targetValue: Float get() = valueAnimation.targetValue
+    // Where the finger has the selector, while it does: written straight from each pointer event
+    // and read in the same frame. It used to go through a coroutine launched per event to snap the
+    // animation, so the slot drew a frame behind the finger, and when events bunched up it jumped
+    // two at once: the stutter in a swipe along the bar. NaN when no finger holds it.
+    private val held = androidx.compose.runtime.mutableFloatStateOf(Float.NaN)
+
+    val value: Float get() = held.floatValue.takeUnless { it.isNaN() } ?: valueAnimation.value
+    val targetValue: Float get() = held.floatValue.takeUnless { it.isNaN() } ?: valueAnimation.targetValue
     val pressProgress: Float get() = pressProgressAnimation.value
     val scaleX: Float get() = scaleXAnimation.value
     val scaleY: Float get() = scaleYAnimation.value
-    val velocity: Float get() = velocityAnimation.value
+    val velocity: Float get() = if (held.floatValue.isNaN()) velocityAnimation.value else heldVelocity.floatValue
 
     val modifier: Modifier = Modifier.pointerInput(Unit) {
         inspectDragGestures(
@@ -303,6 +309,7 @@ internal class DockDragAnimation(
         pressJob?.cancel()
         releaseJob = animationScope.launch {
             withFrameMillis { }
+            letGo()
             if (value != targetValue) {
                 val threshold = (valueRange.endInclusive - valueRange.start) * 0.025f
                 // Only a moment for the slot to arrive before the glass deflates; it settles the rest of
@@ -319,13 +326,25 @@ internal class DockDragAnimation(
         }
     }
 
-    /** Drag path: the finger owns the position, so it snaps rather than queueing springs. */
+    /** Drag path: the finger owns the position, so it is set at once rather than queued. */
     fun updateValue(value: Float) {
-        val coerced = if (value.isFinite()) value.coerceIn(valueRange) else valueAnimation.value
-        animationScope.launch {
-            valueAnimation.snapTo(coerced)
-            snapVelocity()
-        }
+        val coerced = if (value.isFinite()) value.coerceIn(valueRange) else this.value
+        held.floatValue = coerced
+        velocityTracker.addPosition(startMark.elapsedNow().inWholeMilliseconds, Offset(coerced, 0f))
+        val span = (valueRange.endInclusive - valueRange.start).coerceAtLeast(1e-6f)
+        val raw = velocityTracker.calculateVelocity().x / span
+        heldVelocity.floatValue = if (raw.isFinite()) raw else 0f
+    }
+
+    private val heldVelocity = androidx.compose.runtime.mutableFloatStateOf(0f)
+
+    /** Hands the selector back from the finger to its animation, where the finger left it. */
+    private suspend fun letGo() {
+        val at = held.floatValue
+        if (at.isNaN()) return
+        valueAnimation.snapTo(at)
+        velocityAnimation.snapTo(heldVelocity.floatValue)
+        held.floatValue = Float.NaN
     }
 
     /** Tap path: single-flight, and the swell always deflates even when a newer tap wins. */
@@ -335,6 +354,7 @@ internal class DockDragAnimation(
             mutatorMutex.mutate {
                 var released = false
                 try {
+                    letGo()
                     press()
                     val target = if (value.isFinite()) value.coerceIn(valueRange) else valueAnimation.value
                     valueAnimation.animateTo(target, valueAnimationSpec)
@@ -356,12 +376,6 @@ internal class DockDragAnimation(
         }
     }
 
-    private suspend fun snapVelocity() {
-        velocityTracker.addPosition(startMark.elapsedNow().inWholeMilliseconds, Offset(valueAnimation.value, 0f))
-        val span = (valueRange.endInclusive - valueRange.start).coerceAtLeast(1e-6f)
-        val raw = velocityTracker.calculateVelocity().x / span
-        velocityAnimation.snapTo(if (raw.isFinite()) raw else 0f)
-    }
 }
 
 /** Reports every gesture as a drag, taps included, without consuming it. */
