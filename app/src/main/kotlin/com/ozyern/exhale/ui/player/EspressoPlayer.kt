@@ -708,6 +708,34 @@ private fun EspressoTurntable(
                             center = pivot,
                             radius = reach,
                         )
+                        val r = record.toPx()
+                        val platterR = r + 9.dp.toPx()
+                        // The record lies on its platter and lifts it a hair off: a soft shadow
+                        // round its edge, darkest right under it.
+                        val shadow = Brush.radialGradient(
+                            0f to Color.Black.copy(alpha = 0.55f),
+                            (r / (platterR + 22.dp.toPx())) to Color.Black.copy(alpha = 0.45f),
+                            1f to Color.Transparent,
+                            center = pivot,
+                            radius = platterR + 22.dp.toPx(),
+                        )
+                        // The platter: brushed dark metal, its edge catching the lamp.
+                        val platter = Brush.radialGradient(
+                            0f to Color(0xFF1A1714),
+                            0.92f to Color(0xFF26221D),
+                            0.975f to Color(0xFF3A342C),
+                            1f to Color(0xFF14110E),
+                            center = pivot,
+                            radius = platterR,
+                        )
+                        val platterEdge = Brush.sweepGradient(
+                            0.50f to Color.White.copy(alpha = 0.05f),
+                            0.62f to Color.White.copy(alpha = 0.30f),
+                            0.75f to Color.White.copy(alpha = 0.08f),
+                            0.88f to Color.White.copy(alpha = 0.24f),
+                            1.00f to Color.White.copy(alpha = 0.05f),
+                            center = pivot,
+                        )
                         onDrawBehind {
                             val beat = pulse()
                             // One gradient made once, tinted and scaled where it is drawn: the halo
@@ -723,6 +751,9 @@ private fun EspressoTurntable(
                                     blendMode = androidx.compose.ui.graphics.BlendMode.Plus,
                                 )
                             }
+                            drawCircle(shadow, radius = platterR + 22.dp.toPx(), center = pivot)
+                            drawCircle(platter, radius = platterR, center = pivot)
+                            drawCircle(platterEdge, radius = platterR - 0.6.dp.toPx(), center = pivot, style = Stroke(1.2.dp.toPx()))
                         }
                     },
             )
@@ -825,22 +856,53 @@ private fun EspressoTurntable(
                         val startDeg = -(180f - reach * 180f / PI.toFloat())
                         val sweepDeg = 180f - 2f * reach * 180f / PI.toFloat()
                         val p = keys.indexOfFirst { it.primary }
-                        // The light across the vinyl: two soft bands from a lamp that stays where it is.
+                        // The light across the vinyl, from a lamp that stays where it is: the grooves
+                        // catch it in two opposite fans, as a record's do, each with a soft halo
+                        // either side of a bright core. Stands still while the record turns under it.
                         val sheen = Brush.sweepGradient(
                             0.00f to Color.Transparent,
-                            0.52f to Color.Transparent,
-                            0.58f to Color.White.copy(alpha = 0.16f),
-                            0.63f to Color.Transparent,
-                            0.80f to Color.Transparent,
-                            0.86f to Color.White.copy(alpha = 0.22f),
-                            0.92f to Color.Transparent,
+                            0.50f to Color.Transparent,
+                            0.57f to Color.White.copy(alpha = 0.06f),
+                            0.605f to Color.White.copy(alpha = 0.26f),
+                            0.64f to Color.White.copy(alpha = 0.06f),
+                            0.71f to Color.Transparent,
+                            0.79f to Color.Transparent,
+                            0.85f to Color.White.copy(alpha = 0.05f),
+                            0.885f to Color.White.copy(alpha = 0.20f),
+                            0.92f to Color.White.copy(alpha = 0.05f),
+                            0.98f to Color.Transparent,
                             1.00f to Color.Transparent,
                             center = pivot,
                         )
+                        // Brighter mid-groove than at the run-in and the lip.
+                        val sheenFall = Brush.radialGradient(
+                            0f to Color.Transparent,
+                            LabelFraction to Color.Transparent,
+                            (LabelFraction + 0.02f) to Color.Black,
+                            0.7f to Color.Black,
+                            1f to Color.Black.copy(alpha = 0.55f),
+                            center = pivot,
+                            radius = r,
+                        )
+                        // The raised lip at the edge, lit from the top left.
+                        val lip = Brush.sweepGradient(
+                            0.50f to Color.White.copy(alpha = 0.10f),
+                            0.64f to Color.White.copy(alpha = 0.55f),
+                            0.80f to Color.White.copy(alpha = 0.12f),
+                            1.00f to Color.White.copy(alpha = 0.04f),
+                            center = pivot,
+                        )
                         val discClip = Path().apply { addOval(Rect(pivot, r)) }
+                        val sheenLayer = Rect(pivot, r)
                         onDrawBehind {
                             val at = stylus.coerceIn(0f, 1f)
-                            clipPath(discClip) { drawCircle(sheen, radius = r, center = pivot) }
+                            clipPath(discClip) {
+                                drawContext.canvas.saveLayer(sheenLayer, androidx.compose.ui.graphics.Paint())
+                                drawCircle(sheen, radius = r, center = pivot)
+                                drawCircle(sheenFall, radius = r, center = pivot, blendMode = androidx.compose.ui.graphics.BlendMode.DstIn)
+                                drawContext.canvas.restore()
+                            }
+                            drawCircle(lip, radius = r - 0.8.dp.toPx(), center = pivot, style = Stroke(1.4.dp.toPx()))
 
                             // ---- The ring of keys: two hairline arcs, a hairline between each key ----
                             if (p >= 0) {
@@ -890,10 +952,19 @@ private fun EspressoTurntable(
                             val dir = Offset(cos(a), -sin(a))
                             val tip = pivot + dir * (r - 20.dp.toPx())
                             val tail = pivot + dir * (rimR + 3.dp.toPx())
-                            drawLine(Color.Black.copy(alpha = 0.35f), tip + Offset(0f, 2.dp.toPx()), tail + Offset(0f, 2.dp.toPx()), strokeWidth = 6.dp.toPx(), cap = StrokeCap.Round)
-                            drawLine(Cream, tip, tail, strokeWidth = 4.dp.toPx(), cap = StrokeCap.Round)
+                            val drop = Offset(0f, 3.dp.toPx())
+                            // Its shadow on the vinyl, then the arm, then the headshell over the tip.
+                            drawLine(Color.Black.copy(alpha = 0.45f), tip + drop, tail + drop, strokeWidth = 7.dp.toPx(), cap = StrokeCap.Round)
+                            drawLine(
+                                Brush.linearGradient(listOf(Cream, Brass), start = tail, end = tip),
+                                tip, tail, strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round,
+                            )
+                            val shellAt = tip + dir * 7.dp.toPx()
+                            drawLine(Color.Black.copy(alpha = 0.45f), shellAt - dir * 6.dp.toPx() + drop, shellAt + dir * 6.dp.toPx() + drop, strokeWidth = 10.dp.toPx(), cap = StrokeCap.Round)
+                            drawLine(Brass, shellAt - dir * 6.dp.toPx(), shellAt + dir * 6.dp.toPx(), strokeWidth = 9.dp.toPx(), cap = StrokeCap.Round)
+                            drawLine(Cream.copy(alpha = 0.7f), shellAt - dir * 5.dp.toPx() - Offset(0f, 1.5.dp.toPx()), shellAt + dir * 5.dp.toPx() - Offset(0f, 1.5.dp.toPx()), strokeWidth = 1.2.dp.toPx(), cap = StrokeCap.Round)
                             drawCircle(Brass.copy(alpha = 0.35f * beat), radius = (6f + 8f * beat).dp.toPx(), center = tip)
-                            drawCircle(Brass, radius = 2.4.dp.toPx(), center = tip)
+                            drawCircle(Cream, radius = 1.6.dp.toPx(), center = tip)
                         }
                     },
             )
@@ -1048,12 +1119,22 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRecord(vinyl: C
         g += if (gap) 0.022f else 0.011f
         n++
     }
-    // The platter's strobe: dots at the edge that make its turning plain.
-    val dots = 72
-    for (i in 0 until dots) {
-        val a = (2 * PI * i / dots).toFloat()
-        drawCircle(Color.White.copy(alpha = 0.26f), radius = 0.9.dp.toPx(), center = c + Offset(cos(a), sin(a)) * (r * 0.982f))
+    // Microgrooves between the bands: too fine to count, there to give the wax its grain.
+    var fine = 0.405f
+    var k = 0
+    while (fine < 0.962f) {
+        drawCircle(
+            Color.White.copy(alpha = if (k % 3 == 0) 0.035f else 0.018f),
+            radius = r * fine,
+            center = c,
+            style = Stroke(0.4.dp.toPx()),
+        )
+        fine += 0.0037f
+        k++
     }
+    // The run-out: the smooth band before the label, with its locked groove.
+    drawCircle(Color.Black.copy(alpha = 0.25f), radius = r * 0.385f, center = c, style = Stroke(r * 0.03f))
+    drawCircle(Color.White.copy(alpha = 0.08f), radius = r * 0.39f, center = c, style = Stroke(0.6.dp.toPx()))
 }
 
 /** The label's edge, in brass, and the spindle through it. */
@@ -1065,8 +1146,20 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawLabelRings() {
     drawCircle(Brass, radius = label, center = c, style = Stroke(1.8.dp.toPx()))
     drawCircle(Brass.copy(alpha = 0.6f), radius = label - 5.dp.toPx(), center = c, style = Stroke(0.8.dp.toPx()))
     drawCircle(Color.Black.copy(alpha = 0.35f), radius = label + 3.dp.toPx(), center = c, style = Stroke(2.dp.toPx()))
-    drawCircle(Color(0xFF0B0907), radius = 4.5.dp.toPx(), center = c)
-    drawCircle(Brass.copy(alpha = 0.8f), radius = 4.5.dp.toPx(), center = c, style = Stroke(1.dp.toPx()))
+    // The spindle: polished metal through the hole, lit from the top left.
+    val pin = 5.dp.toPx()
+    drawCircle(Color.Black.copy(alpha = 0.5f), radius = pin + 1.5.dp.toPx(), center = c + Offset(0f, 1.dp.toPx()))
+    drawCircle(
+        Brush.radialGradient(
+            0f to Color(0xFFFFF6E4),
+            0.45f to Color(0xFFBFB3A0),
+            1f to Color(0xFF4A433A),
+            center = c - Offset(pin * 0.35f, pin * 0.35f),
+            radius = pin * 1.4f,
+        ),
+        radius = pin,
+        center = c,
+    )
 }
 
 private fun espressoClock(ms: Long): String {
