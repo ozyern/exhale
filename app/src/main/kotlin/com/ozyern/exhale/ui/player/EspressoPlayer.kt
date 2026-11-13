@@ -1219,7 +1219,8 @@ private fun EspressoTurntable(
 
 /**
  * The photograph of a song's actual pressing, where there is one to play instead of a drawn record.
- * Sabrina Carpenter's: Bed Chem's silver 7", and from Man's Best Friend, Manchild's clear 7",
+ * Sabrina Carpenter's: from Short n' Sweet, Bed Chem's silver 7", Please Please Please's cream one,
+ * Taste's pink one and Espresso's coffee-splash 12"; and from Man's Best Friend, Manchild's clear 7",
  * Tears' red 7", House Tour's pink one, and the album's picture disc for every other song on it.
  * Matched on the song, wherever it is playing from.
  */
@@ -1231,6 +1232,9 @@ private fun pressingFor(song: MediaMetadata): Int? {
         .replace(Regex("[^a-z]"), "")
     return when {
         title.startsWith("bedchem") -> R.drawable.bed_chem_vinyl
+        title == "pleasepleaseplease" -> R.drawable.please_please_please_vinyl
+        title == "taste" -> R.drawable.taste_vinyl
+        title == "espresso" -> R.drawable.espresso_vinyl
         title == "manchild" -> R.drawable.manchild_vinyl
         title == "tears" -> R.drawable.tears_vinyl
         title == "housetour" -> R.drawable.house_tour_vinyl
