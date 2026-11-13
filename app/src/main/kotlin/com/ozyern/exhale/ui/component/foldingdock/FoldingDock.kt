@@ -121,6 +121,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -598,9 +600,10 @@ fun FoldingDock(
                     height = OpenRowHeight,
                     indicatorVisible = contentTabs.any { it.key == selectedKey },
                 ) {
-                    groupTabs.forEach { tab ->
+                    groupTabs.forEachIndexed { cell, tab ->
                         val isSelected = tab.key == selectedKey
-                        FoldingTabCell(onClick = tab.onClick) {
+                        val tap = LocalTabTap.current
+                        FoldingTabCell(onClick = { if (tap != null) tap(cell) else tab.onClick() }) {
                             icon(tab, isSelected)
                             title(tab, isSelected)
                         }
@@ -737,6 +740,13 @@ fun FoldingDock(
 
 private val LocalTabPressScale = compositionLocalOf<() -> Float> { { 1f } }
 
+/** The tab group's own way of selecting a cell by index, so its slot can lead the page; null outside one. */
+private val LocalTabTap = compositionLocalOf<((Int) -> Unit)?> { null }
+
+/** How long a page change waits for the slot to arrive, and how near counts as arrived (in tabs). */
+private const val TabNavigateMaxWaitMs = 180L
+private const val TabNavigateArrival = 0.15f
+
 /**
  * The open bar's tabs with a draggable glass slot under the selected one. Press-and-drag moves
  * the slot; releasing selects the nearest tab, including the one already selected. The group
@@ -808,6 +818,11 @@ private fun FoldingTabGroup(
                 },
             )
         }
+        // A tap on a tab moves the slot there first, like a drag let go on it; a tap on the tab
+        // already selected goes straight through (it is how a page gets back to its top).
+        val tapTab: (Int) -> Unit = { index ->
+            if (index == currentIndex || index == selectedTabIndex()) onSelected(index) else currentIndex = index
+        }
         LaunchedEffect(Unit) {
             // No tab at all (-1) leaves the slot where it was: sent to -1 it was clamped onto the
             // first tab, so a page off the tabs lit Home whichever tab it was opened from.
@@ -818,7 +833,18 @@ private fun FoldingTabGroup(
                 .drop(1)
                 .collectLatest { index ->
                     dragAnimation.animateToValue(index.toFloat())
-                    if (index != selectedTabIndex()) onSelected(index)
+                    if (index != selectedTabIndex()) {
+                        // The slot travels first, then the page changes. Building the next page
+                        // holds the main thread for a couple of hundred milliseconds and no spring
+                        // advances while it does: navigating at once froze the slot on the old tab
+                        // and then cut it to the new one, which is the swipe that never felt as
+                        // fluid as the liquid bar's (it has always waited). Capped, so a slow frame
+                        // never makes a tap feel ignored.
+                        withTimeoutOrNull(TabNavigateMaxWaitMs) {
+                            snapshotFlow { abs(dragAnimation.value - index) < TabNavigateArrival }.first { it }
+                        }
+                        if (index != selectedTabIndex()) onSelected(index)
+                    }
                 }
         }
 
@@ -835,17 +861,19 @@ private fun FoldingTabGroup(
             )
         }
 
-        Row(
-            Modifier
-                .graphicsLayer { translationX = panelOffset }
-                .clip(DockShape)
-                .then(interactiveHighlight.modifier)
-                .height(height)
-                .fillMaxWidth()
-                .padding(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            content = content,
-        )
+        CompositionLocalProvider(LocalTabTap provides tapTab) {
+            Row(
+                Modifier
+                    .graphicsLayer { translationX = panelOffset }
+                    .clip(DockShape)
+                    .then(interactiveHighlight.modifier)
+                    .height(height)
+                    .fillMaxWidth()
+                    .padding(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                content = content,
+            )
+        }
 
         // The tabs again, tinted and invisible: what the slot shows the selected tab through.
         CompositionLocalProvider(
@@ -879,18 +907,13 @@ private fun FoldingTabGroup(
                     if (isLtr) dragAnimation.value * tabWidth() + panelOffset
                     else size.width - (dragAnimation.value + 1f) * tabWidth() + panelOffset
             }
-        val slotGrowth = Modifier.layout { measurable, constraints ->
+        // The swell and the stretch, on the glass's own layer: read when it is drawn. They used
+        // to be a new size laid out on every frame of a press or a slide, so each frame measured
+        // the slot again and the glass rebuilt its buffers at the new size before drawing.
+        val slotGrowth: GraphicsLayerScope.() -> Unit = {
             val velocity = dragAnimation.velocity / 10f
-            val scaleX = dragAnimation.scaleX / (1f - (velocity * 0.75f).fastCoerceIn(-0.2f, 0.2f))
-            val scaleY = dragAnimation.scaleY * (1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f))
-            val width = constraints.maxWidth
-            val slotHeight = constraints.maxHeight
-            val grownWidth = (width * scaleX).roundToInt().coerceAtLeast(1)
-            val grownHeight = (slotHeight * scaleY).roundToInt().coerceAtLeast(1)
-            val child = measurable.measure(Constraints.fixed(grownWidth, grownHeight))
-            layout(width, slotHeight) {
-                child.placeRelative((width - grownWidth) / 2, (slotHeight - grownHeight) / 2)
-            }
+            scaleX = dragAnimation.scaleX / (1f - (velocity * 0.75f).fastCoerceIn(-0.2f, 0.2f))
+            scaleY = dragAnimation.scaleY * (1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f))
         }
         val slotLens: BackdropEffectScope.() -> Unit = {
             val progress = dragAnimation.pressProgress
@@ -930,10 +953,10 @@ private fun FoldingTabGroup(
                 .then(dragAnimation.modifier)
                 .height(height - 8.dp)
                 .fillMaxWidth(1f / tabsCount)
-                .then(slotGrowth)
                 .drawBackdrop(
                     backdrop = pressedBackdrop,
                     shape = { DockShape },
+                    layerBlock = slotGrowth,
                     effects = {
                         vibrancy()
                         blur(8.dp.toPx() * (1f - dragAnimation.pressProgress.coerceIn(0f, 1f)))
@@ -959,10 +982,10 @@ private fun FoldingTabGroup(
             slotPlacement
                 .height(height - 8.dp)
                 .fillMaxWidth(1f / tabsCount)
-                .then(slotGrowth)
                 .drawBackdrop(
                     backdrop = tabsBackdrop,
                     shape = { DockShape },
+                    layerBlock = slotGrowth,
                     effects = slotLens,
                     highlight = null,
                     shadow = null,

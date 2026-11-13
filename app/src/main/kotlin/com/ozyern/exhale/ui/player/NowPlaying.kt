@@ -2843,7 +2843,7 @@ private fun stripLyricsOf(raw: String?): StripLyrics = when {
  * there is no polled clock to reconcile and the line can never step backwards on a late report.
  */
 @Composable
-private fun CurrentLyricStrip(
+internal fun CurrentLyricStrip(
     trackKey: String,
     isPlaying: Boolean,
     onClick: () -> Unit,

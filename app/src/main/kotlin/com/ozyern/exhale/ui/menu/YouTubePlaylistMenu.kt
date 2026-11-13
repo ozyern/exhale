@@ -41,7 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import com.ozyern.exhale.ui.component.LoadingRing
 import com.ozyern.exhale.ui.component.liquid.LiquidToggle
-import androidx.compose.material3.ListItem
+import com.ozyern.exhale.ui.component.MenuListItem as ListItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState

@@ -6,6 +6,9 @@
 
 package com.ozyern.exhale.ui.screens.artist
 
+import com.ozyern.exhale.ui.component.edgeRefraction
+import com.ozyern.exhale.ui.component.gentleEdgeRefraction
+import com.ozyern.exhale.ui.component.StepIndicator
 import com.ozyern.exhale.ui.component.collectionSeed
 import com.ozyern.exhale.ui.utils.collectionMorphSource
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -863,8 +866,14 @@ fun ArtistScreen(
                                 libraryAlbums
                             }
 
+                            // The shelf's glass: what passes the screen's edge is bent, lifted and
+                            // smeared, and a step indicator under the row says where it is.
+                            val shelfState = rememberLazyListState()
+                            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                             LazyRow(
-                                contentPadding = PaddingValues(horizontal = 12.dp),
+                                state = shelfState,
+                                modifier = Modifier.fillMaxWidth().edgeRefraction(shelfState),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 items(
@@ -895,6 +904,8 @@ fun ArtistScreen(
                                             .animateItem()
                                     )
                                 }
+                            }
+                            StepIndicator(shelfState, Modifier.offset(y = (-4).dp))
                             }
                         }
                     }
@@ -952,6 +963,7 @@ fun ArtistScreen(
                                         }
                                         LazyRow(
                                             state = rowState,
+                                            modifier = Modifier.gentleEdgeRefraction(rowState),
                                             contentPadding = PaddingValues(horizontal = 10.dp),
                                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                                             flingBehavior = rememberSnapFlingBehavior(rowState, SnapPosition.Start),
@@ -1028,8 +1040,12 @@ fun ArtistScreen(
                         } else {
                             // Grid items (albums, playlists, etc.)
                             item {
+                                val shelfState = rememberLazyListState()
+                                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                                 LazyRow(
-                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    state = shelfState,
+                                    modifier = Modifier.fillMaxWidth().edgeRefraction(shelfState),
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                                     horizontalArrangement = Arrangement.spacedBy(14.dp)
                                 ) {
                                     items(
@@ -1109,6 +1125,8 @@ fun ArtistScreen(
                                                 .animateItem(),
                                         )
                                     }
+                                }
+                                StepIndicator(shelfState, Modifier.offset(y = (-4).dp))
                                 }
                             }
                         }

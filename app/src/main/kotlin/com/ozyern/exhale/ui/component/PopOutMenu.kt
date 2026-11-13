@@ -386,7 +386,6 @@ fun PopOutPanel(
             .pointerInput(Unit) { detectTapGestures { dismiss() } },
     ) {
         val touch = anchor - origin
-        val shape = RoundedCornerShape(26.dp)
         Column(
             Modifier
                 .offset { place(touch) }
@@ -410,33 +409,14 @@ fun PopOutPanel(
                 .fillMaxWidth(0.92f)
                 .then(
                     if (hostSize.height > 0) {
-                        Modifier.heightIn(max = with(density) { (hostSize.height * 0.72f).toDp() })
+                        Modifier.heightIn(max = with(density) { (hostSize.height * 0.84f).toDp() })
                     } else {
                         Modifier
                     },
                 )
-                .then(
-                    if (glass) {
-                        Modifier.drawBackdrop(
-                            backdrop = backdrop!!,
-                            shape = { shape },
-                            effects = {
-                                vibrancy()
-                                blur(18f.dp.toPx())
-                                lens(16f.dp.toPx(), 24f.dp.toPx())
-                            },
-                            highlight = { Highlight.Default.copy(alpha = if (dark) 0.6f else 0.9f) },
-                            shadow = { Shadow(alpha = if (dark) 0.5f else 0.22f) },
-                            onDrawSurface = {
-                                // The player's dark pane; in the light theme the same pane in white,
-                                // heavy enough that page text under it stays colour, not letters.
-                                drawRect(if (dark) Color(0xFF151515).copy(alpha = 0.58f) else Color.White.copy(alpha = 0.72f))
-                            },
-                        )
-                    } else {
-                        Modifier.clip(shape).background(scheme.surfaceContainerHigh.copy(alpha = 0.97f))
-                    },
-                )
+                // BitChord's menu material: the page behind blurred hard with its colour drawn up,
+                // under a thin charcoal (or frost) film, in a 30dp corner with a hairline rim.
+                .iosMenuPanel(backdrop)
                 // Touches on the panel are the panel's: never a tap on the page beside it.
                 .pointerInput(Unit) { detectTapGestures { } }
                 .padding(vertical = 10.dp),

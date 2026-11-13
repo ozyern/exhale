@@ -7,6 +7,50 @@ Release notes for the build you are running are also bundled into the app itself
 **Settings → Updates → Changelog**. Every later version's notes are pulled from this repository's
 [GitHub releases](https://github.com/ozyern/Exhale/releases).
 
+## [1.0.600] — 2026-11-13
+
+A record on the turntable, the song as its own tune, and lossless wherever you press play.
+
+### Added
+
+**Espresso, a new player.** The song as a record: half a vinyl turns at the foot of the screen,
+pressed in the cover's own colour with the cover as its label. It spins up when the song plays and
+runs down when it stops. A brass rim fills as the song goes, the stylus stands at the moment being
+heard, and you drag round the rim to seek. The title is signed in script, with the line being sung
+under it. Settings → Appearance → Player style.
+
+**Melody lyrics.** The song written as its tune: every line a run of staff, every word a note. The
+word blooms above the staff as it is sung and settles under its note, a point of light runs along
+the tune from one word to the next, and the view glides from line to line. It takes Karaoke's
+place.
+
+**Liquid lens intro.** An optional opening film, the mark under a dome of oil and the wordmark
+decoding out of type. Settings → Appearance → Liquid lens intro. The neon mark stays the default.
+
+**Also new**
+
+- Album names are signed in script over their sleeves.
+- Artist pages: shelves bend light at the screen's edges as covers pass, with a step indicator
+  under each row.
+- Menus open as a frosted panel out of the point you touched, everywhere in the app.
+- The update, notes and About pages are frosted glass over their artwork.
+
+### Improved
+
+- Lossless from anywhere: a song played from search, a playlist or a radio queue finds the same
+  FLAC its album page does. Uploads an artist's songs were found in are remembered, a song without
+  an album asks for its album's name first, and results are ranked by what they are rather than by
+  downloads.
+- Bit-perfect USB: volume normalisation, crossfade and Automix stand aside while a DAC is
+  bit-perfect, so it is sent the file's own samples.
+- The dock: the default bar's selection travels to its tab before the page changes, and grows
+  without being laid out again every frame, so a swipe along it is as fluid as the liquid bar's.
+  Folding it no longer overshoots and re-cuts the song's title.
+- Lyrics: the moving background stands still while lyrics are on screen, and while the player is
+  opening or closing.
+- The player: a paused cover stays edge to edge, the ground under the controls is one calm colour
+  of the cover, and the quiet end of the volume bar no longer looks muted.
+
 ## [1.0.506] — 2026-10-31
 
 Silky smooth. Hear it all around you. Spatial audio on every phone, lyrics that flow a letter at a

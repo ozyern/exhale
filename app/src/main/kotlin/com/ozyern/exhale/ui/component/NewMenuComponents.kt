@@ -356,10 +356,15 @@ class MenuDividers {
 @Composable
 fun MenuDividers.Next() {
     if (needed) {
-        HorizontalDivider(
-            modifier = Modifier.padding(start = 56.dp),
-            color = MaterialTheme.colorScheme.outlineVariant,
-        )
+        if (LocalMenuIsPopOut.current) {
+            // In a pop-out the groups are parted the iOS way: a hairline inset from both edges.
+            IosMenuSeparator(inset = 10.dp)
+        } else {
+            HorizontalDivider(
+                modifier = Modifier.padding(start = 56.dp),
+                color = MaterialTheme.colorScheme.outlineVariant,
+            )
+        }
     }
     needed = true
 }

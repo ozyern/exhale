@@ -113,6 +113,13 @@ private class BootKit(private val context: Context) {
     private var marksFor: Size? = null
     private val floor = TypeFloor(atlas)
 
+    // One brush for the whole film: a new one every frame was a new object, and a new native
+    // shader wrapper behind it, a hundred and twenty times a second.
+    private val brush = ShaderBrush(shader)
+
+    // The mark's place, worked out into the same four numbers each frame rather than a new array.
+    private val rect = FloatArray(4)
+
     fun draw(scope: androidx.compose.ui.graphics.drawscope.DrawScope, t: Float) = with(scope) {
         if (marks == null || marksFor != size) {
             marks = listOf(Mark.symbol(context, LensFilm.SYMBOL), Mark.wordmark(context, LensFilm.WORDMARK))
@@ -128,10 +135,10 @@ private class BootKit(private val context: Context) {
         val half = LensFilm.viewHalf(aspect)
         // The symbol falls away into the cut: its rect shrinks about its centre.
         val k = f.recede
-        val rect = floatArrayOf(
-            mark.rect[0] + mark.rect[2] * (1 - k) / 2, mark.rect[1] + mark.rect[3] * (1 - k) / 2,
-            mark.rect[2] * k, mark.rect[3] * k,
-        )
+        rect[0] = mark.rect[0] + mark.rect[2] * (1 - k) / 2
+        rect[1] = mark.rect[1] + mark.rect[3] * (1 - k) / 2
+        rect[2] = mark.rect[2] * k
+        rect[3] = mark.rect[3] * k
         floor.build(aspect, half, mark, rect)
 
         shader.setFloatUniform("res", size.width, size.height)
@@ -180,7 +187,7 @@ private class BootKit(private val context: Context) {
         shader.setFloatUniform("fade", f.fade)
         shader.setFloatUniform("saturation", look.saturation)
         shader.setFloatUniform("blackLevel", look.black)
-        drawRect(ShaderBrush(shader))
+        drawRect(brush)
     }
 }
 
@@ -306,7 +313,11 @@ private class TypeFloor(private val atlas: GlyphAtlas) {
     var originX = 0f; var originY = 0f; var cellW = 1f; var cellH = 1f; var cols = 1; var rows = 1
     var shader: BitmapShader? = null
     private var bitmap: Bitmap? = null
-    private var key: String? = null
+    // What the floor was last built for: compared as numbers. It was a string made of them every
+    // frame, built only to be thrown away whenever nothing had moved.
+    private val builtFor = FloatArray(6) { Float.NaN }
+    private var builtMark: Any? = null
+    private var pixels = IntArray(0)
     private val dot = atlas.chars.indexOf('.').coerceAtLeast(0)
 
     fun build(aspect: Float, half: Float, mark: Mark, rect: FloatArray) {
@@ -318,11 +329,17 @@ private class TypeFloor(private val atlas: GlyphAtlas) {
         originY = floor(-hh / cellH) * cellH
         cols = ceil(2 * hw / cellW).toInt() + 2
         rows = ceil(2 * hh / cellH).toInt() + 2
-        val k = "$cols|$rows|${rect.joinToString()}|${System.identityHashCode(mark)}"
-        if (k == key) return
-        key = k
+        if (builtMark === mark && builtFor[0] == cols.toFloat() && builtFor[1] == rows.toFloat() &&
+            builtFor[2] == rect[0] && builtFor[3] == rect[1] && builtFor[4] == rect[2] && builtFor[5] == rect[3]
+        ) return
+        builtMark = mark
+        builtFor[0] = cols.toFloat(); builtFor[1] = rows.toFloat()
+        builtFor[2] = rect[0]; builtFor[3] = rect[1]; builtFor[4] = rect[2]; builtFor[5] = rect[3]
         val empty = (0xFF shl 24) or (dot shl 16)
-        val pixels = IntArray(cols * rows) { empty }
+        // The same buffer every time the floor is rebuilt (each frame while the mark recedes).
+        if (pixels.size != cols * rows) pixels = IntArray(cols * rows)
+        java.util.Arrays.fill(pixels, empty)
+        val pixels = pixels
         val footprint = 2f * GlyphAtlas.CIRCLE_RADIUS * cellW
         val cx0 = max(0, floor((rect[0] - originX) / cellW).toInt() - 1)
         val cx1 = min(cols - 1, ceil((rect[0] + rect[2] - originX) / cellW).toInt() + 1)
@@ -339,7 +356,7 @@ private class TypeFloor(private val atlas: GlyphAtlas) {
                 if (v[i] > top) top = v[i]
             }
             if (top < 0.04f) continue
-            val mean = v.sum() / 6f
+            val mean = (v[0] + v[1] + v[2] + v[3] + v[4] + v[5]) / 6f
             // Global contrast: normalise by the largest, raise, scale back.
             for (i in 0 until 6) v[i] = (v[i] / top).pow(CONTRAST) * top
             var best = 0

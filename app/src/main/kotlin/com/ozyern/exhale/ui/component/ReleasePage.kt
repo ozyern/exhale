@@ -350,14 +350,23 @@ fun ReleaseHeader(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
             ) {
+                // The album's name signed in script over its sleeve, as AETHER sets it: the one
+                // place on the page that is the record's own rather than the app's. One weight,
+                // as the face has; letters it does not have (another script) fall to the system's.
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontFamily = AlbumScript,
+                        fontWeight = FontWeight.Normal,
+                        fontSize = 46.sp,
+                        lineHeight = 50.sp,
+                        letterSpacing = 0.sp,
+                    ),
                     color = palette.onBackground,
                     textAlign = TextAlign.Center,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
                 if (explicit) {
                     Spacer(Modifier.width(6.dp))
@@ -694,3 +703,6 @@ fun ReleaseSearchField(
         }
     }
 }
+
+/** The script album names are signed in (Pinyon Script, as AETHER's are). */
+private val AlbumScript = androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font(R.font.pinyon_script))

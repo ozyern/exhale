@@ -3,10 +3,9 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * The half dial the song is read from, the ring of keys round it and the way a drag round the arc
- * seeks follow AETHER's player (github.com/GHOSTxASR/AETHER, GPL-3.0: ClockDial and RingControls).
- * The cluster it is dressed as — the numbered tach, the swept arc, the redline, the mesh — is
- * Exhale's.
+ * The ring of keys round the record and the way a drag round its rim seeks follow AETHER's player
+ * (github.com/GHOSTxASR/AETHER, GPL-3.0: ClockDial and RingControls). The record, the turntable it
+ * sits on and everything written round it are Exhale's.
  */
 
 package com.ozyern.exhale.ui.player
@@ -85,6 +84,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.withFrameNanos
 import androidx.media3.common.Player
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
@@ -101,6 +106,7 @@ import com.ozyern.exhale.ui.component.LyricsV2
 import com.ozyern.exhale.ui.menu.PlayerMenu
 import com.ozyern.exhale.ui.utils.ShowMediaInfo
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.abs
@@ -109,36 +115,37 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 
-private val EspressoTitleFont = FontFamily(Font(R.font.unbounded_semibold, FontWeight.SemiBold))
-private val EspressoDigitFont = FontFamily(Font(R.font.sfprodisplaybold, FontWeight.Bold))
+private val RecordScript = FontFamily(Font(R.font.pinyon_script))
+private val RecordCaps = FontFamily(Font(R.font.poppins, FontWeight.Medium))
+private val RecordDigits = FontFamily(Font(R.font.sfprodisplaybold, FontWeight.Bold))
 
-/** The swept arc and everything lit: the cluster's cold blue. */
-private val Sweep = Color(0xFF3FE3F2)
+/** Old paper: every word and hairline on the sleeve. */
+private val Cream = Color(0xFFF3E7CF)
 
-/** The needle, the redline and a key that is on. */
-private val Redline = Color(0xFFFF3B30)
+/** The turntable's metal: the rim that fills as the song plays, the label's rings, a key that is on. */
+private val Brass = Color(0xFFD2AA5E)
+
+/** The room the record plays in: black with a little warmth in it. */
+private val Lounge = Color(0xFF0D0A08)
 
 private enum class EspressoPanel { Cover, Lyrics, Queue }
 
-/** Marks round the half dial: one every three degrees, a long numbered one every sixth. */
-private const val Marks = 60
-private const val MarksPerNumber = 6
-
-/** The last stretch of the song is the redline. */
-private const val RedlineFrom = 0.88f
+/** A long-player turns 33⅓ times a minute. */
+private const val DegreesPerSecond = 200f
 
 /**
- * The Espresso player: the song on an instrument cluster.
+ * The Espresso player: the song as a record on a turntable.
  *
- * The cover runs edge to edge up top and falls away into black; under it the title, and at the foot
- * a half dial read like a rev counter. The song's length is its scale, numbered nought to ten; a
- * blue arc sweeps round as far as the song has got, a red needle stands at the moment being heard,
- * and the last of the scale is the redline. The time gone sits at the dial's heart where a gear
- * would, with the previous and next songs either side of it, and every other control is a key on
- * the ring round the dial, Play at its crown.
+ * The cover runs edge to edge up top and falls away into a dark, warm room. Under it the title is
+ * signed in script, as a label's would be, with the artist and the pressing (the stream) in small
+ * capitals and the line being sung beneath. At the foot half a record turns, pressed in the cover's
+ * own colour with the cover as its label: it spins up when the song plays and runs down when it
+ * stops. A brass rim fills round its edge as far as the song has got, with the stylus standing at
+ * the moment being heard; the time is written across the vinyl, the previous and next songs sit on
+ * it either side, and every other control is a key on the ring round the record, Play at its crown.
  *
- * Drag round the arc to seek: the drag has to start on the scale and travel along it, so a pull
- * down to close the player never moves the song.
+ * Drag round the record's rim to seek: the drag has to start on the rim and travel along it, so a
+ * pull down to close the player never moves the song.
  */
 @Composable
 internal fun EspressoPlayerScreen(
@@ -166,6 +173,15 @@ internal fun EspressoPlayerScreen(
     val repeatMode by playerConnection.repeatMode.collectAsState()
     val queueTitle by playerConnection.queueTitle.collectAsState()
     var panel by remember { mutableStateOf(EspressoPanel.Cover) }
+    val palette = rememberArtworkPalette(mediaMetadata.thumbnailUrl)
+    val vinyl by animateColorAsState(palette.accent, tween(900), label = "espressoVinyl")
+    val flight = LocalCoverFlight.current
+    val artRequest = mediaMetadata.thumbnailUrl?.let {
+        com.ozyern.exhale.ui.component.playerArtworkRequest(androidx.compose.ui.platform.LocalContext.current, it)
+    }
+    // The player arriving: 0 on the dock, 1 open. Everything that rises or fades in reads it where
+    // it is drawn, so the trip is a draw pass per frame and never a recomposition.
+    val arrive: () -> Float = { playerSheetState.progress.coerceIn(0f, 1f) }
 
     val openMenu: () -> Unit = {
         menuState.show {
@@ -179,28 +195,42 @@ internal fun EspressoPlayerScreen(
         }
     }
 
-    Box(modifier.fillMaxSize().background(Color.Black)) {
-        // ---- The cover, edge to edge, falling away into the cluster's black ----
-        val coverDim by animateFloatAsState(if (panel == EspressoPanel.Cover) 1f else 0.22f, tween(320), label = "espressoCover")
+    Box(
+        modifier
+            .fillMaxSize()
+            .background(Lounge)
+            .then(flight?.run { Modifier.fullSpace() } ?: Modifier),
+    ) {
+        // ---- The cover, edge to edge, falling away into the room. The dock's cover flies to it. ----
+        val coverDim by animateFloatAsState(if (panel == EspressoPanel.Cover) 1f else 0.2f, tween(320), label = "espressoCover")
         AsyncImage(
-            model = mediaMetadata.thumbnailUrl?.let { com.ozyern.exhale.ui.component.playerArtworkRequest(androidx.compose.ui.platform.LocalContext.current, it) },
+            model = artRequest,
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.6f)
+                .fillMaxHeight(0.58f)
+                .then(
+                    flight?.run {
+                        Modifier.reportFull { look ->
+                            // The travelling cover lands as this one is drawn: dissolving at its foot.
+                            look.footFade = 0.5f
+                            look.footFloor = 0f
+                        }
+                    } ?: Modifier,
+                )
                 .graphicsLayer { alpha = coverDim },
         )
         Box(
             Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.6f)
+                .fillMaxHeight(0.58f)
                 .background(
                     Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.34f),
-                        0.22f to Color.Transparent,
-                        0.62f to Color.Black.copy(alpha = 0.18f),
-                        1f to Color.Black,
+                        0f to Lounge.copy(alpha = 0.42f),
+                        0.2f to Color.Transparent,
+                        0.55f to Lounge.copy(alpha = 0.2f),
+                        1f to Lounge,
                     ),
                 ),
         )
@@ -216,9 +246,10 @@ internal fun EspressoPlayerScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 8.dp),
+                    .padding(horizontal = 18.dp, vertical = 8.dp)
+                    .graphicsLayer { alpha = ((arrive() - 0.45f) / 0.4f).coerceIn(0f, 1f) },
             ) {
-                EspressoDisc(R.drawable.expand_more, 26.dp) { playerSheetState.collapseSoft() }
+                StampButton(R.drawable.expand_more, 24.dp) { playerSheetState.collapseSoft() }
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
@@ -227,22 +258,22 @@ internal fun EspressoPlayerScreen(
                 ) {
                     Text(
                         text = when (panel) {
-                            EspressoPanel.Queue -> "UP NEXT"
-                            EspressoPanel.Lyrics -> "LYRICS"
-                            EspressoPanel.Cover -> "NOW PLAYING"
+                            EspressoPanel.Queue -> "SIDE B  ·  UP NEXT"
+                            EspressoPanel.Lyrics -> "LINER NOTES"
+                            EspressoPanel.Cover -> "NOW SPINNING"
                         },
-                        style = TextStyle(fontFamily = EspressoDigitFont, fontSize = 13.sp, letterSpacing = 3.sp),
-                        color = Color.White,
+                        style = TextStyle(fontFamily = RecordCaps, fontSize = 11.sp, letterSpacing = 3.4.sp),
+                        color = Cream,
                     )
                     Text(
                         text = queueTitle?.takeIf { it.isNotBlank() } ?: mediaMetadata.album?.title ?: "Exhale",
                         fontSize = 13.sp,
-                        color = Color.White.copy(alpha = 0.6f),
+                        color = Cream.copy(alpha = 0.6f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                EspressoDisc(R.drawable.more_vert, 22.dp, onClick = openMenu)
+                StampButton(R.drawable.more_horiz, 22.dp, onClick = openMenu)
             }
 
             // ---- The cover's room, or what took its place ----
@@ -279,42 +310,66 @@ internal fun EspressoPlayerScreen(
                 }
             }
 
-            // ---- The song ----
+            // ---- The song, written as a label writes it ----
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 28.dp)
-                    .padding(top = 10.dp, bottom = 6.dp),
+                    .padding(horizontal = 26.dp)
+                    .padding(top = 4.dp)
+                    .graphicsLayer {
+                        // Up into place a beat behind the sheet that carries it.
+                        val e = ((arrive() - 0.3f) / 0.6f).coerceIn(0f, 1f)
+                        alpha = e
+                        translationY = 22.dp.toPx() * (1f - e) * (1f - e)
+                    },
             ) {
                 Text(
-                    text = mediaMetadata.title.uppercase(Locale.getDefault()),
-                    style = TextStyle(fontFamily = EspressoTitleFont, fontSize = 19.sp, letterSpacing = 1.4.sp),
-                    color = Color.White,
+                    text = mediaMetadata.title,
+                    style = TextStyle(fontFamily = RecordScript, fontSize = 40.sp, lineHeight = 44.sp),
+                    color = Cream,
                     maxLines = 1,
                     modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
                 )
                 Text(
-                    text = mediaMetadata.artists.joinToString { it.name },
-                    fontSize = 16.sp,
-                    color = Color.White.copy(alpha = 0.66f),
+                    text = mediaMetadata.artists.joinToString { it.name }.uppercase(Locale.getDefault()),
+                    style = TextStyle(fontFamily = RecordCaps, fontSize = 12.sp, letterSpacing = 3.sp),
+                    color = Cream.copy(alpha = 0.78f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 4.dp),
                 )
                 Text(
                     text = espressoStream(currentFormat),
-                    style = TextStyle(fontFamily = EspressoDigitFont, fontSize = 11.sp, letterSpacing = 2.6.sp),
-                    color = Sweep.copy(alpha = 0.78f),
+                    style = TextStyle(fontFamily = RecordCaps, fontSize = 10.sp, letterSpacing = 2.4.sp),
+                    color = Brass.copy(alpha = 0.85f),
                     modifier = Modifier.padding(top = 8.dp),
                 )
+                // The line being sung, as the other player shows it; a tap opens the lyrics.
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp)
+                        .height(34.dp),
+                ) {
+                    if (panel != EspressoPanel.Lyrics) {
+                        CurrentLyricStrip(
+                            trackKey = mediaMetadata.id,
+                            isPlaying = isPlaying,
+                            onClick = { panel = EspressoPanel.Lyrics },
+                        )
+                    }
+                }
             }
 
-            // ---- The cluster ----
+            // ---- The turntable ----
             val buffering = playbackState == Player.STATE_BUFFERING
-            EspressoCluster(
+            EspressoTurntable(
+                artRequest = artRequest,
+                vinyl = vinyl,
                 isPlaying = isPlaying,
                 buffering = buffering,
+                arrive = arrive,
                 durationProvider = durationProvider,
                 positionProvider = { sliderPositionProvider() ?: playerConnection.player.currentPosition },
                 onScrub = onSliderValueChange,
@@ -343,17 +398,16 @@ internal fun EspressoPlayerScreen(
                 onNext = playerConnection::seekToNext,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp)
-                    .padding(bottom = 6.dp),
+                    .padding(horizontal = 10.dp),
             )
         }
     }
 }
 
-/** One key on the ring round the dial. */
+/** One key on the ring round the record. */
 private class EspressoKey(val icon: Int, val on: Boolean = false, val primary: Boolean = false, val onClick: () -> Unit)
 
-/** "FLAC · 1411 KBPS": what is playing, in the cluster's small capitals. */
+/** "FLAC  ·  44.1 KHZ  ·  1411 KBPS": the pressing, in the label's small capitals. */
 private fun espressoStream(format: FormatEntity?): String {
     if (format == null) return "STREAMING"
     val codec = when {
@@ -367,21 +421,27 @@ private fun espressoStream(format: FormatEntity?): String {
     return codec + rate + bits
 }
 
-/** A round key off the dial: dark, with a hairline rim, as the cluster's own switches are. */
+/**
+ * A button off the record, struck like a stamp on a sleeve: no plate, two fine rings in the paper's
+ * colour and the glyph inside them.
+ */
 @Composable
-private fun EspressoDisc(icon: Int, glyph: Dp, enabled: Boolean = true, size: Dp = 46.dp, onClick: () -> Unit) {
+private fun StampButton(icon: Int, glyph: Dp, enabled: Boolean = true, size: Dp = 46.dp, onClick: () -> Unit) {
     val haptic = LocalHapticFeedback.current
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .size(size)
             .clip(CircleShape)
-            .background(
-                Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.13f), Color.White.copy(alpha = 0.04f))),
-            )
+            .background(Lounge.copy(alpha = 0.28f))
             .drawWithCache {
-                val rim = Stroke(1.dp.toPx())
-                onDrawBehind { drawCircle(Color.White.copy(alpha = 0.16f), style = rim) }
+                val outer = Stroke(1.2.dp.toPx())
+                val inner = Stroke(0.6.dp.toPx())
+                onDrawBehind {
+                    val ink = Cream.copy(alpha = if (enabled) 0.72f else 0.25f)
+                    drawCircle(ink, radius = this.size.minDimension / 2f - outer.width, style = outer)
+                    drawCircle(ink.copy(alpha = ink.alpha * 0.5f), radius = this.size.minDimension / 2f - 4.dp.toPx(), style = inner)
+                }
             }
             .clickable(enabled = enabled) {
                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -391,7 +451,7 @@ private fun EspressoDisc(icon: Int, glyph: Dp, enabled: Boolean = true, size: Dp
         Icon(
             painterResource(icon),
             contentDescription = null,
-            tint = Color.White.copy(alpha = if (enabled) 1f else 0.3f),
+            tint = Cream.copy(alpha = if (enabled) 1f else 0.3f),
             modifier = Modifier.size(glyph),
         )
     }
@@ -414,13 +474,21 @@ private fun Modifier.espressoSwipe(onSwipe: (forward: Boolean) -> Unit): Modifie
 }
 
 /**
- * The dial and its ring. Everything is fitted to the width it is given: the ring of keys outermost,
- * the scale inside it, the time at the heart.
+ * Half a record on its platter, and the ring of keys round it. Everything is fitted to the width
+ * it is given: the keys outermost, the record inside them, its label at the centre on the foot of
+ * the screen.
+ *
+ * The record is one picture that only turns: its vinyl, grooves and label are drawn once into a
+ * layer and the layer is rotated, so a frame of it spinning costs a transform, not a drawing. What
+ * does not turn with it (the light across it, the brass rim, the stylus) is drawn over it.
  */
 @Composable
-private fun EspressoCluster(
+private fun EspressoTurntable(
+    artRequest: Any?,
+    vinyl: Color,
     isPlaying: Boolean,
     buffering: Boolean,
+    arrive: () -> Float,
     durationProvider: () -> Long,
     positionProvider: () -> Long,
     onScrub: (Long) -> Unit,
@@ -437,9 +505,9 @@ private fun EspressoCluster(
     val duration by rememberUpdatedState(durationProvider)
     val scrubTo by rememberUpdatedState(onScrub)
     val scrubDone by rememberUpdatedState(onScrubEnd)
+    val shown = com.ozyern.exhale.ui.component.LocalPlayerShown.current
 
-    // How far the song has got, 0 to 1: read fifteen times a second while it plays (the needle
-    // moves a fraction of a pixel a step), four times a second otherwise, and only ever drawn.
+    // How far the song has got, 0 to 1: read fifteen times a second while it plays, and only drawn.
     val head = remember { mutableFloatStateOf(0f) }
     var scrub by remember { mutableStateOf<Float?>(null) }
     val shownMs = remember { androidx.compose.runtime.mutableLongStateOf(0L) }
@@ -453,11 +521,10 @@ private fun EspressoCluster(
             delay(if (isPlaying) 66L else 250L)
         }
     }
-    // The needle swings to where it is going rather than jumping there: a seek, a new song.
-    val needle by animateFloatAsState(
+    val stylus by animateFloatAsState(
         targetValue = scrub ?: head.floatValue,
-        animationSpec = if (scrub != null) spring(dampingRatio = 1f, stiffness = 900f) else spring(dampingRatio = 0.86f, stiffness = 120f),
-        label = "espressoNeedle",
+        animationSpec = if (scrub != null) spring(dampingRatio = 1f, stiffness = 900f) else spring(dampingRatio = 0.9f, stiffness = 120f),
+        label = "espressoStylus",
     )
     val second by remember {
         derivedStateOf {
@@ -465,22 +532,81 @@ private fun EspressoCluster(
             (scrub?.let { (it * d).toLong() } ?: shownMs.longValue) / 1000
         }
     }
-    val measurer = rememberTextMeasurer()
-    val numberStyle = remember { TextStyle(fontFamily = EspressoDigitFont, fontSize = 11.sp, fontStyle = FontStyle.Italic, color = Color.White) }
-    val keyGlow by animateColorAsState(if (isPlaying || buffering) Sweep else Color.White, tween(400), label = "espressoCrown")
+
+    // The platter: it runs up to speed when the song plays and runs down when it stops, as one
+    // with a motor does. Asleep while the player is out of sight or at rest.
+    val angle = remember { mutableFloatStateOf(0f) }
+    val spinning by rememberUpdatedState((isPlaying || buffering) && shown)
+    LaunchedEffect(Unit) {
+        var speed = 0f
+        var last = 0L
+        while (true) {
+            if (!spinning && speed < 0.004f) {
+                speed = 0f
+                androidx.compose.runtime.snapshotFlow { spinning }.first { it }
+                last = 0L
+            }
+            withFrameNanos { now ->
+                val dt = if (last == 0L) 0f else ((now - last) / 1e9f).coerceIn(0f, 0.05f)
+                last = now
+                speed += ((if (spinning) 1f else 0f) - speed) * (1f - kotlin.math.exp(-dt / 0.55f))
+                angle.floatValue = (angle.floatValue + DegreesPerSecond * speed * dt) % 360f
+            }
+        }
+    }
+    val crown by animateColorAsState(if (isPlaying || buffering) Brass else Cream, tween(400), label = "espressoCrown")
 
     BoxWithConstraints(modifier) {
         val w = maxWidth
-        val foot = 8.dp
-        val height = (w * 0.6f).coerceIn(190.dp, 330.dp)
-        val ringOuter = min((w / 2 - 4.dp).value, (height - foot - 4.dp).value).dp
-        val ringInner = ringOuter - 46.dp
-        val scale = ringInner - 12.dp
+        val height = (w * 0.58f).coerceIn(180.dp, 320.dp)
+        val ringOuter = min((w / 2 - 4.dp).value, (height - 4.dp).value).dp
+        val ringInner = ringOuter - 44.dp
+        val record = ringInner - 12.dp
         val reach = 0.10f // radians left clear at either end of the ring
         val slot = (PI.toFloat() - 2f * reach) / keys.size
         fun angleOf(i: Int) = PI.toFloat() - reach - (i + 0.5f) * slot
 
-        Box(Modifier.fillMaxWidth().height(height)) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(height)
+                .graphicsLayer {
+                    // The turntable comes up from under the screen's foot as the player opens.
+                    val e = ((arrive() - 0.15f) / 0.75f).coerceIn(0f, 1f)
+                    val eased = 1f - (1f - e) * (1f - e) * (1f - e)
+                    translationY = size.height * 0.55f * (1f - eased)
+                    alpha = (e * 2f).coerceIn(0f, 1f)
+                },
+        ) {
+            // ---- The record: the whole disc, its lower half under the screen's foot, turning ----
+            Box(
+                Modifier
+                    .layout { measurable, constraints ->
+                        val d = (record * 2).roundToPx()
+                        val placeable = measurable.measure(Constraints.fixed(d, d))
+                        layout(constraints.maxWidth, constraints.maxHeight) {
+                            placeable.place((constraints.maxWidth - d) / 2, constraints.maxHeight - d / 2)
+                        }
+                    }
+                    .graphicsLayer {
+                        rotationZ = angle.floatValue
+                        transformOrigin = TransformOrigin.Center
+                    },
+            ) {
+                Canvas(Modifier.fillMaxSize()) { drawRecord(vinyl) }
+                AsyncImage(
+                    model = artRequest,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxSize(LabelFraction)
+                        .clip(CircleShape),
+                )
+                Canvas(Modifier.fillMaxSize()) { drawLabelRings() }
+            }
+
+            // ---- What does not turn: the light, the rim, the stylus, the ring of keys ----
             Spacer(
                 Modifier
                     .fillMaxSize()
@@ -489,12 +615,12 @@ private fun EspressoCluster(
                             val down = awaitFirstDown(requireUnconsumed = false)
                             val d0 = duration()
                             if (d0 <= 0) return@awaitEachGesture
-                            val r = scale.toPx()
-                            val pivot = Offset(size.width / 2f, size.height - foot.toPx())
+                            val r = record.toPx()
+                            val pivot = Offset(size.width / 2f, size.height.toFloat())
                             val from = down.position - pivot
                             val dist = from.getDistance()
-                            // On the scale, give or take a fingertip, and above the dial's foot.
-                            if (dist < r * 0.56f || dist > r + 10.dp.toPx() || from.y > 12.dp.toPx()) return@awaitEachGesture
+                            // On the record's rim, give or take a fingertip.
+                            if (dist < r * 0.74f || dist > r + 12.dp.toPx()) return@awaitEachGesture
                             val a0 = atan2(-from.y, from.x).coerceIn(0f, PI.toFloat())
                             val along = Offset(sin(a0), cos(a0))
                             val out = Offset(cos(a0), -sin(a0))
@@ -506,7 +632,7 @@ private fun EspressoCluster(
                                 val moved = change.position - down.position
                                 if (!scrubbing) {
                                     if (moved.getDistance() < viewConfiguration.touchSlop) continue
-                                    // Travelling round the arc seeks; anything else (a pull down) is the sheet's.
+                                    // Travelling round the rim seeks; anything else (a pull down) is the sheet's.
                                     val round = abs(moved.x * along.x + moved.y * along.y)
                                     val across = abs(moved.x * out.x + moved.y * out.y)
                                     if (round < across * 0.9f) return@awaitEachGesture
@@ -520,7 +646,7 @@ private fun EspressoCluster(
                                 val t = (1f - a / PI.toFloat()).coerceIn(0f, 1f)
                                 scrub = t
                                 scrubTo((t * d0).toLong())
-                                val m = (t * Marks / MarksPerNumber).toInt()
+                                val m = (t * 20f).toInt()
                                 if (m != mark) {
                                     if (mark >= 0) haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
                                     mark = m
@@ -531,183 +657,81 @@ private fun EspressoCluster(
                         }
                     }
                     .drawWithCache {
-                        val pivot = Offset(size.width / 2f, size.height - foot.toPx())
+                        val pivot = Offset(size.width / 2f, size.height)
                         val ro = ringOuter.toPx()
                         val ri = ringInner.toPx()
-                        val r = scale.toPx()
-                        val long = 14.dp.toPx()
-                        val short = 6.dp.toPx()
-                        // The scale, made once: short marks, long marks, and the redline's own.
-                        val minor = Path()
-                        val major = Path()
-                        val redMarks = Path()
-                        for (i in 0..Marks) {
-                            val a = PI.toFloat() * (1f - i / Marks.toFloat())
-                            val dir = Offset(cos(a), -sin(a))
-                            val isMajor = i % MarksPerNumber == 0
-                            val from = pivot + dir * (r - if (isMajor) long else short)
-                            val to = pivot + dir * r
-                            val path = when {
-                                i / Marks.toFloat() >= RedlineFrom -> redMarks
-                                isMajor -> major
-                                else -> minor
-                            }
-                            path.moveTo(from.x, from.y)
-                            path.lineTo(to.x, to.y)
-                        }
-                        // The mesh behind the dial: a honeycomb, faint, under everything.
-                        val mesh = Path()
-                        val cell = 9.dp.toPx()
-                        val rowH = cell * 0.866f
-                        var row = 0
-                        var y = pivot.y - r * 0.86f
-                        while (y < pivot.y) {
-                            var x = pivot.x - r + if (row % 2 == 0) 0f else cell / 2f
-                            while (x < pivot.x + r) {
-                                val dx = x - pivot.x
-                                val dy = y - pivot.y
-                                if (dx * dx + dy * dy < (r * 0.84f) * (r * 0.84f)) {
-                                    for (k in 0 until 6) {
-                                        val t = (PI / 3 * k + PI / 6).toFloat()
-                                        val px = x + cos(t) * cell * 0.36f
-                                        val py = y + sin(t) * cell * 0.36f
-                                        if (k == 0) mesh.moveTo(px, py) else mesh.lineTo(px, py)
-                                    }
-                                    mesh.close()
-                                }
-                                x += cell
-                            }
-                            y += rowH
-                            row++
-                        }
-                        val numbers = (0..Marks / MarksPerNumber).map { measurer.measure(it.toString(), numberStyle) }
-                        val minorStroke = Stroke(1.dp.toPx(), cap = StrokeCap.Round)
-                        val majorStroke = Stroke(1.8.dp.toPx(), cap = StrokeCap.Round)
-                        val meshStroke = Stroke(0.7.dp.toPx())
-                        val sweepR = r + 6.dp.toPx()
-                        val sweepStroke = Stroke(4.dp.toPx(), cap = StrokeCap.Round)
-                        val wedge = Path()
-                        val crown = Path()
+                        val r = record.toPx()
+                        val rimR = r + 5.dp.toPx()
+                        val crownPath = Path()
                         val startDeg = -(180f - reach * 180f / PI.toFloat())
                         val sweepDeg = 180f - 2f * reach * 180f / PI.toFloat()
                         val p = keys.indexOfFirst { it.primary }
+                        // The light across the vinyl: two soft bands from a lamp that stays where it is.
+                        val sheen = Brush.sweepGradient(
+                            0.00f to Color.Transparent,
+                            0.52f to Color.Transparent,
+                            0.58f to Color.White.copy(alpha = 0.16f),
+                            0.63f to Color.Transparent,
+                            0.80f to Color.Transparent,
+                            0.86f to Color.White.copy(alpha = 0.22f),
+                            0.92f to Color.Transparent,
+                            1.00f to Color.Transparent,
+                            center = pivot,
+                        )
+                        val discClip = Path().apply { addOval(Rect(pivot, r)) }
                         onDrawBehind {
-                            val shown = needle.coerceIn(0f, 1f)
-                            // Glow rising from the dial's foot, in the sweep's colour.
-                            drawCircle(
-                                Brush.radialGradient(
-                                    listOf(Sweep.copy(alpha = 0.10f), Color.Transparent),
-                                    center = pivot,
-                                    radius = r * 0.9f,
-                                ),
-                                radius = r * 0.9f,
-                                center = pivot,
-                            )
-                            drawPath(mesh, Color.White.copy(alpha = 0.07f), style = meshStroke)
+                            val at = stylus.coerceIn(0f, 1f)
+                            clipPath(discClip) { drawCircle(sheen, radius = r, center = pivot) }
 
                             // ---- The ring of keys: two hairline arcs, a hairline between each key ----
                             if (p >= 0) {
                                 val a0 = PI.toFloat() - reach - p * slot
                                 val a1 = a0 - slot
-                                crown.reset()
-                                crown.arcTo(Rect(pivot, ro), -a0 * 180f / PI.toFloat(), (a0 - a1) * 180f / PI.toFloat(), true)
-                                crown.arcTo(Rect(pivot, ri), -a1 * 180f / PI.toFloat(), -(a0 - a1) * 180f / PI.toFloat(), false)
-                                crown.close()
-                                drawPath(crown, keyGlow.copy(alpha = 0.10f))
+                                crownPath.reset()
+                                crownPath.arcTo(Rect(pivot, ro), -a0 * 180f / PI.toFloat(), (a0 - a1) * 180f / PI.toFloat(), true)
+                                crownPath.arcTo(Rect(pivot, ri), -a1 * 180f / PI.toFloat(), -(a0 - a1) * 180f / PI.toFloat(), false)
+                                crownPath.close()
+                                drawPath(crownPath, crown.copy(alpha = 0.10f))
                                 drawArc(
-                                    keyGlow.copy(alpha = 0.85f),
+                                    crown.copy(alpha = 0.9f),
                                     -a0 * 180f / PI.toFloat(),
                                     (a0 - a1) * 180f / PI.toFloat(),
                                     false,
                                     Offset(pivot.x - ro, pivot.y - ro),
                                     Size(ro * 2, ro * 2),
-                                    style = Stroke(2.dp.toPx()),
+                                    style = Stroke(1.8.dp.toPx()),
                                 )
                             }
-                            drawArc(Color.White.copy(alpha = 0.20f), startDeg, sweepDeg, false, Offset(pivot.x - ro, pivot.y - ro), Size(ro * 2, ro * 2), style = Stroke(1.dp.toPx()))
-                            drawArc(Color.White.copy(alpha = 0.12f), startDeg, sweepDeg, false, Offset(pivot.x - ri, pivot.y - ri), Size(ri * 2, ri * 2), style = Stroke(1.dp.toPx()))
+                            drawArc(Cream.copy(alpha = 0.26f), startDeg, sweepDeg, false, Offset(pivot.x - ro, pivot.y - ro), Size(ro * 2, ro * 2), style = Stroke(1.dp.toPx()))
+                            drawArc(Cream.copy(alpha = 0.14f), startDeg, sweepDeg, false, Offset(pivot.x - ri, pivot.y - ri), Size(ri * 2, ri * 2), style = Stroke(1.dp.toPx()))
                             for (b in 0..keys.size) {
                                 val a = PI.toFloat() - reach - b * slot
                                 val dir = Offset(cos(a), -sin(a))
                                 val end = b == 0 || b == keys.size
                                 val inset = if (end) 0f else 8.dp.toPx()
-                                drawLine(Color.White.copy(alpha = if (end) 0.26f else 0.16f), pivot + dir * (ri + inset), pivot + dir * (ro - inset), strokeWidth = 1.dp.toPx())
+                                drawLine(Cream.copy(alpha = if (end) 0.3f else 0.16f), pivot + dir * (ri + inset), pivot + dir * (ro - inset), strokeWidth = 1.dp.toPx())
                             }
                             keys.forEachIndexed { i, key ->
                                 if (key.on) {
                                     val a = angleOf(i)
-                                    drawCircle(Redline, radius = 2.dp.toPx(), center = pivot + Offset(cos(a), -sin(a)) * (ri + 7.dp.toPx()))
+                                    drawCircle(Brass, radius = 2.dp.toPx(), center = pivot + Offset(cos(a), -sin(a)) * (ri + 7.dp.toPx()))
                                 }
                             }
 
-                            // ---- The scale ----
-                            drawPath(minor, Color.White.copy(alpha = 0.22f), style = minorStroke)
-                            drawPath(major, Color.White.copy(alpha = 0.5f), style = majorStroke)
-                            drawPath(redMarks, Redline.copy(alpha = 0.55f), style = majorStroke)
-                            // The redline's band, just outside its marks.
-                            drawArc(
-                                Redline.copy(alpha = 0.5f),
-                                startAngle = 180f + 180f * RedlineFrom,
-                                sweepAngle = 180f * (1f - RedlineFrom),
-                                useCenter = false,
-                                topLeft = Offset(pivot.x - sweepR, pivot.y - sweepR),
-                                size = Size(sweepR * 2, sweepR * 2),
-                                style = Stroke(4.dp.toPx()),
-                            )
-                            if (shown > 0f) {
-                                // What the needle has passed: the same marks, lit, through a wedge to the needle.
-                                wedge.reset()
-                                wedge.moveTo(pivot.x, pivot.y)
-                                wedge.arcTo(Rect(pivot, ro), 180f, 180f * shown + 0.5f, false)
-                                wedge.close()
-                                clipPath(wedge) {
-                                    drawPath(minor, Color.White.copy(alpha = 0.7f), style = minorStroke)
-                                    drawPath(major, Color.White, style = majorStroke)
-                                    drawPath(redMarks, Redline, style = majorStroke)
-                                }
-                                // The sweep: a soft wide arc under a bright narrow one.
-                                drawArc(
-                                    Sweep.copy(alpha = 0.22f),
-                                    180f,
-                                    180f * shown,
-                                    false,
-                                    Offset(pivot.x - sweepR, pivot.y - sweepR),
-                                    Size(sweepR * 2, sweepR * 2),
-                                    style = Stroke(10.dp.toPx(), cap = StrokeCap.Round),
-                                )
-                                drawArc(
-                                    if (shown >= RedlineFrom) Redline else Sweep,
-                                    180f,
-                                    180f * shown,
-                                    false,
-                                    Offset(pivot.x - sweepR, pivot.y - sweepR),
-                                    Size(sweepR * 2, sweepR * 2),
-                                    style = sweepStroke,
-                                )
+                            // ---- The rim: a fine track all the way round, brass as far as the song has got ----
+                            drawArc(Cream.copy(alpha = 0.16f), 180f, 180f, false, Offset(pivot.x - rimR, pivot.y - rimR), Size(rimR * 2, rimR * 2), style = Stroke(2.dp.toPx(), cap = StrokeCap.Round))
+                            if (at > 0f) {
+                                drawArc(Brass.copy(alpha = 0.25f), 180f, 180f * at, false, Offset(pivot.x - rimR, pivot.y - rimR), Size(rimR * 2, rimR * 2), style = Stroke(8.dp.toPx(), cap = StrokeCap.Round))
+                                drawArc(Brass, 180f, 180f * at, false, Offset(pivot.x - rimR, pivot.y - rimR), Size(rimR * 2, rimR * 2), style = Stroke(3.dp.toPx(), cap = StrokeCap.Round))
                             }
-                            // The numbers, nought to ten, inside their marks.
-                            numbers.forEachIndexed { i, layout ->
-                                val f = i * MarksPerNumber / Marks.toFloat()
-                                val a = PI.toFloat() * (1f - f)
-                                val at = pivot + Offset(cos(a), -sin(a)) * (r - long - 12.dp.toPx())
-                                drawText(
-                                    layout,
-                                    color = when {
-                                        f >= RedlineFrom -> Redline
-                                        f <= shown -> Color.White
-                                        else -> Color.White.copy(alpha = 0.45f)
-                                    },
-                                    topLeft = Offset(at.x - layout.size.width / 2f, at.y - layout.size.height / 2f),
-                                )
-                            }
-                            // The needle: red, from inside the numbers to just past the marks, with a bead at its foot.
-                            val a = PI.toFloat() * (1f - shown)
+                            // ---- The stylus: a cream head riding the groove at the moment being heard ----
+                            val a = PI.toFloat() * (1f - at)
                             val dir = Offset(cos(a), -sin(a))
-                            val base = pivot + dir * (r * 0.5f)
-                            val tip = pivot + dir * (r + 3.dp.toPx())
-                            drawLine(Redline.copy(alpha = 0.3f), base, tip, strokeWidth = 7.dp.toPx(), cap = StrokeCap.Round)
-                            drawLine(Redline, base, tip, strokeWidth = 2.4.dp.toPx(), cap = StrokeCap.Round)
-                            drawCircle(Redline, radius = 3.dp.toPx(), center = base)
+                            val tip = pivot + dir * (r - 20.dp.toPx())
+                            val tail = pivot + dir * (rimR + 3.dp.toPx())
+                            drawLine(Color.Black.copy(alpha = 0.35f), tip + Offset(0f, 2.dp.toPx()), tail + Offset(0f, 2.dp.toPx()), strokeWidth = 6.dp.toPx(), cap = StrokeCap.Round)
+                            drawLine(Cream, tip, tail, strokeWidth = 4.dp.toPx(), cap = StrokeCap.Round)
+                            drawCircle(Brass, radius = 2.4.dp.toPx(), center = tip)
                         }
                     },
             )
@@ -720,10 +744,10 @@ private fun EspressoCluster(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .offset(
-                            x = w / 2 + mid * cos(a) - 23.dp,
-                            y = height - foot - mid * sin(a) - 23.dp,
+                            x = w / 2 + mid * cos(a) - 22.dp,
+                            y = height - mid * sin(a) - 22.dp,
                         )
-                        .size(46.dp)
+                        .size(44.dp)
                         .clip(CircleShape)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
@@ -737,44 +761,140 @@ private fun EspressoCluster(
                         painterResource(key.icon),
                         contentDescription = null,
                         tint = when {
-                            key.primary -> Color.White
-                            key.on -> Redline
-                            else -> Color.White.copy(alpha = 0.8f)
+                            key.primary -> Cream
+                            key.on -> Brass
+                            else -> Cream.copy(alpha = 0.78f)
                         },
                         modifier = Modifier.size(if (key.primary) 26.dp else 20.dp),
                     )
                 }
             }
 
-            // ---- The time, where a gear would be, between the previous and the next song ----
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+            // ---- On the vinyl: the time across it, the previous and the next song either side ----
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = foot + 6.dp),
+                    .padding(bottom = record * (LabelFraction + 0.06f)),
             ) {
-                EspressoDisc(R.drawable.ic_np_previous, 22.dp, enabled = canSkipPrevious, size = 50.dp, onClick = onPrevious)
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                ) {
-                    Text(
-                        text = espressoClock(second * 1000),
-                        style = TextStyle(fontFamily = EspressoDigitFont, fontSize = 40.sp, fontStyle = FontStyle.Italic, letterSpacing = (-1).sp),
-                        color = if (scrub != null) Sweep else Color.White,
-                        textAlign = TextAlign.Center,
-                    )
-                    val left = (duration() - second * 1000).coerceAtLeast(0)
-                    Text(
-                        text = if (duration() > 0) "−" + espressoClock(left) else "",
-                        style = TextStyle(fontFamily = EspressoDigitFont, fontSize = 13.sp, letterSpacing = 1.sp),
-                        color = Color.White.copy(alpha = 0.5f),
-                    )
-                }
-                EspressoDisc(R.drawable.ic_np_next, 22.dp, enabled = canSkipNext, size = 50.dp, onClick = onNext)
+                Text(
+                    text = espressoClock(second * 1000),
+                    style = TextStyle(
+                        fontFamily = RecordDigits,
+                        fontSize = 30.sp,
+                        fontStyle = FontStyle.Italic,
+                        letterSpacing = (-0.5).sp,
+                        shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.55f), Offset(0f, 2f), 10f),
+                    ),
+                    color = if (scrub != null) Brass else Cream,
+                    textAlign = TextAlign.Center,
+                )
+                val left = (duration() - second * 1000).coerceAtLeast(0)
+                Text(
+                    text = if (duration() > 0) "−" + espressoClock(left) else "",
+                    style = TextStyle(
+                        fontFamily = RecordCaps,
+                        fontSize = 11.sp,
+                        letterSpacing = 1.6.sp,
+                        shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.55f), Offset(0f, 1f), 6f),
+                    ),
+                    color = Cream.copy(alpha = 0.7f),
+                )
             }
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(x = -record * 0.66f, y = -record * 0.12f),
+            ) { StampButton(R.drawable.ic_np_previous, 20.dp, enabled = canSkipPrevious, size = 48.dp, onClick = onPrevious) }
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(x = record * 0.66f, y = -record * 0.12f),
+            ) { StampButton(R.drawable.ic_np_next, 20.dp, enabled = canSkipNext, size = 48.dp, onClick = onNext) }
         }
     }
+}
+
+/** How much of the record's width its label takes. */
+private const val LabelFraction = 0.36f
+
+/**
+ * The vinyl: pressed in [vinyl], lighter where the wax marbled, darker in the run-in and run-out,
+ * with its grooves and the gaps between songs. Drawn once; the layer it is on does the turning.
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRecord(vinyl: Color) {
+    val c = center
+    val r = size.minDimension / 2f
+    val deep = lerp(vinyl, Color.Black, 0.5f)
+    val pale = lerp(vinyl, Color.White, 0.28f)
+    drawCircle(
+        Brush.radialGradient(
+            0f to deep,
+            0.36f to deep,
+            0.42f to lerp(vinyl, Color.Black, 0.22f),
+            0.86f to vinyl,
+            0.97f to lerp(vinyl, Color.Black, 0.3f),
+            1f to lerp(vinyl, Color.Black, 0.55f),
+            center = c,
+            radius = r,
+        ),
+        radius = r,
+        center = c,
+    )
+    // Marbling: where two colours of wax met in the press. The same record every time.
+    var seed = 0x5EED1234L
+    fun next(): Float {
+        seed = seed * 6364136223846793005L + 1442695040888963407L
+        return ((seed ushr 40) and 0xFFFF).toFloat() / 65535f
+    }
+    repeat(26) {
+        val radius = r * (0.42f + 0.55f * next())
+        val start = 360f * next()
+        val sweep = 18f + 70f * next()
+        val light = next() > 0.45f
+        drawArc(
+            color = (if (light) pale else deep).copy(alpha = 0.10f + 0.16f * next()),
+            startAngle = start,
+            sweepAngle = sweep,
+            useCenter = false,
+            topLeft = Offset(c.x - radius, c.y - radius),
+            size = Size(radius * 2, radius * 2),
+            style = Stroke(r * (0.03f + 0.07f * next()), cap = StrokeCap.Round),
+        )
+    }
+    // Grooves, and the wider gaps between the songs.
+    var g = 0.40f
+    var n = 0
+    while (g < 0.965f) {
+        val gap = n % 13 == 12
+        drawCircle(
+            Color.Black.copy(alpha = if (gap) 0.30f else 0.10f),
+            radius = r * g,
+            center = c,
+            style = Stroke(if (gap) 1.6.dp.toPx() else 0.7.dp.toPx()),
+        )
+        g += if (gap) 0.022f else 0.011f
+        n++
+    }
+    // The platter's strobe: dots at the edge that make its turning plain.
+    val dots = 72
+    for (i in 0 until dots) {
+        val a = (2 * PI * i / dots).toFloat()
+        drawCircle(Color.White.copy(alpha = 0.26f), radius = 0.9.dp.toPx(), center = c + Offset(cos(a), sin(a)) * (r * 0.982f))
+    }
+}
+
+/** The label's edge, in brass, and the spindle through it. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawLabelRings() {
+    val c = center
+    val r = size.minDimension / 2f
+    val label = r * LabelFraction
+    drawCircle(Color.Black.copy(alpha = 0.22f), radius = label, center = c)
+    drawCircle(Brass, radius = label, center = c, style = Stroke(1.8.dp.toPx()))
+    drawCircle(Brass.copy(alpha = 0.6f), radius = label - 5.dp.toPx(), center = c, style = Stroke(0.8.dp.toPx()))
+    drawCircle(Color.Black.copy(alpha = 0.35f), radius = label + 3.dp.toPx(), center = c, style = Stroke(2.dp.toPx()))
+    drawCircle(Color(0xFF0B0907), radius = 4.5.dp.toPx(), center = c)
+    drawCircle(Brass.copy(alpha = 0.8f), radius = 4.5.dp.toPx(), center = c, style = Stroke(1.dp.toPx()))
 }
 
 private fun espressoClock(ms: Long): String {
