@@ -475,6 +475,7 @@ internal fun EspressoPlayerScreen(
             val buffering = playbackState == Player.STATE_BUFFERING
             EspressoTurntable(
                 artRequest = artRequest,
+                pressing = pressingFor(mediaMetadata),
                 vinyl = vinyl,
                 isPlaying = isPlaying,
                 buffering = buffering,
@@ -595,6 +596,8 @@ private fun Modifier.espressoSwipe(onSwipe: (forward: Boolean) -> Unit): Modifie
 @Composable
 private fun EspressoTurntable(
     artRequest: Any?,
+    /** A photograph of the song's real record, when there is one; null draws one in the cover's colours. */
+    pressing: Int?,
     vinyl: Color,
     isPlaying: Boolean,
     buffering: Boolean,
@@ -739,17 +742,27 @@ private fun EspressoTurntable(
                         transformOrigin = TransformOrigin.Center
                     },
             ) {
-                Canvas(Modifier.fillMaxSize()) { drawRecord(vinyl) }
-                AsyncImage(
-                    model = artRequest,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .fillMaxSize(LabelFraction)
-                        .clip(CircleShape),
-                )
-                Canvas(Modifier.fillMaxSize()) { drawLabelRings() }
+                if (pressing != null) {
+                    // The real record, label and all, turning as it is.
+                    androidx.compose.foundation.Image(
+                        painter = painterResource(pressing),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Canvas(Modifier.fillMaxSize()) { drawRecord(vinyl) }
+                    AsyncImage(
+                        model = artRequest,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .fillMaxSize(LabelFraction)
+                            .clip(CircleShape),
+                    )
+                    Canvas(Modifier.fillMaxSize()) { drawLabelRings() }
+                }
             }
 
             // ---- What does not turn: the light, the rim, the stylus, the ring of keys ----
@@ -962,6 +975,16 @@ private fun EspressoTurntable(
             ) { StampButton(R.drawable.ic_np_next, 20.dp, enabled = canSkipNext, size = 48.dp, onClick = onNext) }
         }
     }
+}
+
+/**
+ * The photograph of a song's actual pressing, where there is one to play instead of a drawn record.
+ * Only Bed Chem for now: its silver 7", "Bed" on the pink label.
+ */
+private fun pressingFor(song: MediaMetadata): Int? {
+    val title = song.title.lowercase(Locale.ROOT)
+    val bySabrina = song.artists.any { it.name.contains("sabrina carpenter", ignoreCase = true) }
+    return if (bySabrina && title.replace(Regex("[^a-z]"), "").startsWith("bedchem")) R.drawable.bed_chem_vinyl else null
 }
 
 /** How much of the record's width its label takes. */
