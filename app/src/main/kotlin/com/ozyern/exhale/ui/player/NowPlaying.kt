@@ -303,7 +303,7 @@ private const val HERO_FADE_FRACTION = 0.5f
  * and ends flat, so the picture lets go gradually and arrives in the blurred cover below without
  * a seam. [floor] is the alpha left at the foot (1 once the banner has landed as a square).
  */
-private fun heroDissolveStops(floor: Float): Array<Pair<Float, Color>> =
+internal fun heroDissolveStops(floor: Float): Array<Pair<Float, Color>> =
     Array(9) { i ->
         val t = i / 8f
         val eased = t * t * t * (t * (t * 6f - 15f) + 10f)
@@ -4010,7 +4010,7 @@ private val DefaultAccent = Color(0xFFF3CE6A)
  * also drifted made the two fight. Nothing here is redrawn per frame; a skip crossfades it.
  */
 @Composable
-private fun LiveArtworkBackdrop(
+internal fun LiveArtworkBackdrop(
     artUrl: String?,
     palette: MeshPalette,
     /** Where the full-bleed cover ends. Given, the ground continues that cover below it. */
