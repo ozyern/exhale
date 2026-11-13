@@ -1220,7 +1220,8 @@ private fun EspressoTurntable(
 /**
  * The photograph of a song's actual pressing, where there is one to play instead of a drawn record.
  * Sabrina Carpenter's: from Short n' Sweet, Bed Chem's silver 7", Please Please Please's cream one,
- * Taste's pink one and Espresso's coffee-splash 12"; and from Man's Best Friend, Manchild's clear 7",
+ * Taste's pink one, Espresso's coffee-splash 12" and the album's kiss-print record for the rest of
+ * it and its deluxe edition; and from Man's Best Friend, Manchild's clear 7",
  * Tears' red 7", House Tour's pink one, and the album's picture disc for every other song on it.
  * Matched on the song, wherever it is playing from.
  */
@@ -1239,11 +1240,34 @@ private fun pressingFor(song: MediaMetadata): Int? {
         title == "tears" -> R.drawable.tears_vinyl
         title == "housetour" -> R.drawable.house_tour_vinyl
         title in MansBestFriend -> R.drawable.mans_best_friend_vinyl
-        song.album?.title?.lowercase(Locale.ROOT)?.replace(Regex("[^a-z]"), "")?.startsWith("mansbestfriend") == true ->
-            R.drawable.mans_best_friend_vinyl
-        else -> null
+        title in ShortNSweet -> R.drawable.short_n_sweet_vinyl
+        else -> {
+            val album = song.album?.title?.lowercase(Locale.ROOT)?.replace(Regex("[^a-z]"), "").orEmpty()
+            when {
+                album.startsWith("mansbestfriend") -> R.drawable.mans_best_friend_vinyl
+                // The deluxe edition too: its title only adds to this.
+                album.startsWith("shortnsweet") -> R.drawable.short_n_sweet_vinyl
+                else -> null
+            }
+        }
     }
 }
+
+/** The rest of Short n' Sweet and its deluxe edition, as [pressingFor] writes a title. */
+private val ShortNSweet = setOf(
+    "goodgraces",
+    "sharpesttool",
+    "coincidence",
+    "dumbpoetic",
+    "dumbandpoetic",
+    "slimpickins",
+    "juno",
+    "lietogirls",
+    "dontsmile",
+    "minutes",
+    "couldntmakeitanyharder",
+    "busywoman",
+)
 
 /** Man's Best Friend's songs, as [pressingFor] writes a title. */
 private val MansBestFriend = setOf(
