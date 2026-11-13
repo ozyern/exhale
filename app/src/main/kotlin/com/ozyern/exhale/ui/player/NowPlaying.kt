@@ -2835,6 +2835,22 @@ private fun stripLyricsOf(raw: String?): StripLyrics = when {
     else -> StripLyrics.Unsynced
 }
 
+/** How the one-line lyric is set: the type, and the ink for what is to come and what is sung. */
+@androidx.compose.runtime.Immutable
+internal data class StripLook(
+    val fontFamily: androidx.compose.ui.text.font.FontFamily? = null,
+    val fontSize: androidx.compose.ui.unit.TextUnit = 17.sp,
+    val fontWeight: FontWeight = FontWeight.SemiBold,
+    val dim: Color = Color.White.copy(alpha = 0.42f),
+    val lit: Color = Color.White,
+    /** Light behind the sung words, or none. */
+    val glow: Color? = null,
+    val chevron: Color = Color.White.copy(alpha = 0.5f),
+)
+
+/** The strip's look where it is drawn: the other player's, unless a player dresses it. */
+internal val LocalStripLook = androidx.compose.runtime.staticCompositionLocalOf { StripLook() }
+
 /**
  * The current lyric, one line, directly above the scrubber — or the line saying why there isn't
  * one. It opens the full lyrics.
@@ -2945,14 +2961,17 @@ private fun rememberSmoothPlayhead(isPlaying: Boolean, active: Boolean): android
             androidx.compose.runtime.withFrameNanos { now ->
                 val frameMs = if (lastNanos < 0L) 0.0 else (now - lastNanos) / 1_000_000.0
                 lastNanos = now
-                val advanced = shownMs + frameMs * player.playbackParameters.speed
-                val error = player.currentPosition - advanced
+                val speed = player.playbackParameters.speed.toDouble()
+                val error = player.currentPosition - shownMs
                 shownMs = if (kotlin.math.abs(error) > PLAYHEAD_SNAP_MS) {
                     player.currentPosition.toDouble()
                 } else {
-                    // A share of the difference each frame, so it is gone in about a quarter of a
-                    // second; held rather than stepped back when the player reports a little behind.
-                    maxOf(shownMs, advanced + error * (frameMs / PLAYHEAD_SLEW_MS).coerceAtMost(1.0))
+                    // Runs at the song's speed, a little faster when behind and a little slower when
+                    // ahead, so a difference is gone in about a quarter of a second. It used to hold
+                    // still whenever the player reported a few milliseconds behind, and the reports
+                    // jitter by that much all the time: the sweep stopped and then jumped on.
+                    val rate = speed * (1.0 + (error / PLAYHEAD_SLEW_MS).coerceIn(-0.5, 0.5))
+                    shownMs + frameMs * rate
                 }
                 clock.longValue = shownMs.toLong()
             }
@@ -3008,11 +3027,13 @@ private fun SyncedStripLine(lines: List<LyricsEntry>, trackKey: String, isPlayin
         ) { (lineIndex, line) ->
             val entry = lines.getOrNull(lineIndex)?.takeIf { it.text.isNotBlank() }
             if (line == "♪" || entry == null) {
+                val look = LocalStripLook.current
                 Text(
                     text = line,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White.copy(alpha = if (line == "♪") 0.55f else 0.7f),
+                    fontSize = look.fontSize,
+                    fontWeight = look.fontWeight,
+                    fontFamily = look.fontFamily,
+                    color = look.lit.copy(alpha = if (line == "♪") 0.55f else 0.7f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -3041,21 +3062,27 @@ private fun SweptStripText(entry: LyricsEntry, lineEndMs: Long?, playhead: andro
     val spans = remember(entry, lineEndMs) { stripWordSpans(entry, lineEndMs) }
     var layout by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
     val feather = with(androidx.compose.ui.platform.LocalDensity.current) { 18.dp.toPx() }
+    val look = LocalStripLook.current
     Box {
         Text(
             text = text,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = Color.White.copy(alpha = 0.42f),
+            fontSize = look.fontSize,
+            fontWeight = look.fontWeight,
+            fontFamily = look.fontFamily,
+            color = look.dim,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             onTextLayout = { layout = it },
         )
         Text(
             text = text,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = Color.White,
+            fontSize = look.fontSize,
+            fontWeight = look.fontWeight,
+            fontFamily = look.fontFamily,
+            color = look.lit,
+            style = androidx.compose.ui.text.TextStyle(
+                shadow = look.glow?.let { androidx.compose.ui.graphics.Shadow(it, Offset.Zero, 22f) },
+            ),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier
@@ -3121,11 +3148,13 @@ private fun stripFillX(
 
 @Composable
 private fun StripText(text: String, alpha: Float) {
+    val look = LocalStripLook.current
     Text(
         text = text,
-        fontSize = 17.sp,
-        fontWeight = FontWeight.SemiBold,
-        color = Color.White.copy(alpha = alpha),
+        fontSize = look.fontSize,
+        fontWeight = look.fontWeight,
+        fontFamily = look.fontFamily,
+        color = look.lit.copy(alpha = alpha),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
     )
@@ -3137,7 +3166,7 @@ private fun StripChevron() {
     Icon(
         painter = painterResource(R.drawable.chevron_right),
         contentDescription = null,
-        tint = Color.White.copy(alpha = 0.5f),
+        tint = LocalStripLook.current.chevron,
         modifier = Modifier.size(16.dp),
     )
 }

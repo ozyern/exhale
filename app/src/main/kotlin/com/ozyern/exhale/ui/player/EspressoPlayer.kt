@@ -61,6 +61,8 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -339,6 +341,14 @@ internal fun EspressoPlayerScreen(
             }
         }
 
+        // ---- The air in the room: grain, a warm leak of light, dust, and the corners in shadow ----
+        EspressoAtmosphere(
+            tint = vinyl,
+            drift = { drift },
+            live = { liveness },
+            beat = { pulse.floatValue },
+        )
+
         Column(
             Modifier
                 .fillMaxSize()
@@ -472,14 +482,29 @@ internal fun EspressoPlayerScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 6.dp)
-                        .height(34.dp),
+                        .height(42.dp),
                 ) {
                     if (panel != EspressoPanel.Lyrics) {
-                        CurrentLyricStrip(
-                            trackKey = mediaMetadata.id,
-                            isPlaying = isPlaying,
-                            onClick = { panel = EspressoPanel.Lyrics },
-                        )
+                        // The line being sung, written as the label writes the title: in script, in
+                        // cream, the sung part lit in the record's own colour.
+                        val stripLook = remember(vinyl) {
+                            StripLook(
+                                fontFamily = RecordScript,
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Normal,
+                                dim = Cream.copy(alpha = 0.34f),
+                                lit = Cream,
+                                glow = vinyl.copy(alpha = 0.9f),
+                                chevron = Brass.copy(alpha = 0.6f),
+                            )
+                        }
+                        androidx.compose.runtime.CompositionLocalProvider(LocalStripLook provides stripLook) {
+                            CurrentLyricStrip(
+                                trackKey = mediaMetadata.id,
+                                isPlaying = isPlaying,
+                                onClick = { panel = EspressoPanel.Lyrics },
+                            )
+                        }
                     }
                 }
             }
@@ -526,6 +551,113 @@ internal fun EspressoPlayerScreen(
             )
         }
     }
+}
+
+/**
+ * What makes the room feel like a room rather than a screen: a fine film grain that shimmers while
+ * the song plays, a warm leak of light in the record's colour drifting across the top and swelling
+ * on the beat, a few motes of dust turning slowly in it, and the corners falling into shadow.
+ * Everything here is made once and only moved or re-tinted as it is drawn.
+ */
+@Composable
+private fun EspressoAtmosphere(tint: Color, drift: () -> Float, live: () -> Float, beat: () -> Float) {
+    val grain = remember { grainTile() }
+    val grainPaint = remember { androidx.compose.ui.graphics.Paint() }
+    val shaderMatrix = remember { android.graphics.Matrix() }
+    val grainShader = remember(grain) {
+        android.graphics.BitmapShader(
+            grain.asAndroidBitmap(),
+            android.graphics.Shader.TileMode.REPEAT,
+            android.graphics.Shader.TileMode.REPEAT,
+        )
+    }
+    Spacer(
+        Modifier
+            .fillMaxSize()
+            .drawWithCache {
+                val vignette = Brush.radialGradient(
+                    0f to Color.Transparent,
+                    0.62f to Color.Transparent,
+                    1f to Color.Black.copy(alpha = 0.55f),
+                    center = Offset(size.width / 2f, size.height * 0.45f),
+                    radius = size.maxDimension * 0.72f,
+                )
+                val leak = Brush.radialGradient(
+                    0f to Color.White.copy(alpha = 0.9f),
+                    0.4f to Color.White.copy(alpha = 0.25f),
+                    1f to Color.Transparent,
+                    center = Offset.Zero,
+                    radius = size.width * 0.75f,
+                )
+                val mote = Brush.radialGradient(
+                    0f to Color.White,
+                    1f to Color.Transparent,
+                    center = Offset.Zero,
+                    radius = 1f,
+                )
+                val tintFilter = androidx.compose.ui.graphics.ColorFilter.tint(tint, androidx.compose.ui.graphics.BlendMode.SrcIn)
+                onDrawBehind {
+                    val t = drift()
+                    val l = live()
+                    val b = beat()
+                    // The leak: from the top right, wandering, brighter on the beat.
+                    val at = Offset(
+                        size.width * (0.82f + 0.10f * sin(t * 0.07f)),
+                        size.height * (0.06f + 0.05f * cos(t * 0.05f)),
+                    )
+                    withTransform({ translate(at.x, at.y) }) {
+                        drawRect(
+                            leak,
+                            topLeft = Offset(-size.width, -size.width),
+                            size = Size(size.width * 2f, size.width * 2f),
+                            alpha = 0.10f + 0.10f * l + 0.10f * b,
+                            colorFilter = tintFilter,
+                            blendMode = androidx.compose.ui.graphics.BlendMode.Plus,
+                        )
+                    }
+                    // Dust, turning slowly in the light.
+                    for (i in 0 until 14) {
+                        val seed = i * 97.31f
+                        val x = ((seed * 13.7f + t * (3f + i % 4)) % size.width + size.width) % size.width
+                        val y = ((seed * 7.3f + t * (1.6f + i % 3) * if (i % 2 == 0) 1f else -1f) % (size.height * 0.7f) + size.height * 0.7f) % (size.height * 0.7f)
+                        val r = (1.2f + (i % 3) * 0.8f) * density
+                        val twinkle = 0.5f + 0.5f * sin(t * 0.9f + i)
+                        withTransform({
+                            translate(x, y)
+                            scale(r * 3f, r * 3f, Offset.Zero)
+                        }) {
+                            drawCircle(mote, radius = 1f, center = Offset.Zero, alpha = (0.05f + 0.10f * twinkle) * (0.4f + 0.6f * l))
+                        }
+                    }
+                    drawRect(vignette)
+                    // Grain over everything, moved a little twelve times a second while it plays,
+                    // as film's does.
+                    val frame = if (l > 0.5f) (t * 12f).toInt() else 0
+                    shaderMatrix.setTranslate(((frame * 37) % 128).toFloat(), ((frame * 71) % 128).toFloat())
+                    grainShader.setLocalMatrix(shaderMatrix)
+                    grainPaint.asFrameworkPaint().apply {
+                        shader = grainShader
+                        alpha = 22
+                        xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.OVERLAY)
+                    }
+                    drawContext.canvas.drawRect(0f, 0f, size.width, size.height, grainPaint)
+                }
+            },
+    )
+}
+
+/** A tile of film grain: grey noise, made once, repeated across the screen. */
+private fun grainTile(): androidx.compose.ui.graphics.ImageBitmap {
+    val n = 128
+    val pixels = IntArray(n * n)
+    var seed = 0x2F6E2B1L
+    for (i in pixels.indices) {
+        seed = seed * 6364136223846793005L + 1442695040888963407L
+        val v = (((seed ushr 33) and 0xFF).toInt() + ((seed ushr 45) and 0xFF).toInt()) / 2
+        pixels[i] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
+    }
+    val bitmap = android.graphics.Bitmap.createBitmap(pixels, n, n, android.graphics.Bitmap.Config.ARGB_8888)
+    return bitmap.asImageBitmap()
 }
 
 /** One key on the ring round the record. */
