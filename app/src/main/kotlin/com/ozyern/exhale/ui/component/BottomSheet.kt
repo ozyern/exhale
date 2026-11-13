@@ -454,8 +454,10 @@ fun BottomSheet(
                             // The other half of the focus pull.
                             renderEffect = null
                         } else if (coverFlight) {
-                            // The bar stays put under the player fading in over it, and gives way
-                            // exactly as the player arrives.
+                            // The bar stays where it is while the player rises over it: it is
+                            // drawn inside the sheet, so it is held back by exactly as far as the
+                            // sheet has moved. It gives way as the player fades in over it.
+                            translationY = (state.value - state.collapsedBound).toPx().coerceAtLeast(0f)
                             alpha = 1f - dockFade(p)
                         } else {
                             alpha = 1f - (p * 4).coerceAtMost(1f)
