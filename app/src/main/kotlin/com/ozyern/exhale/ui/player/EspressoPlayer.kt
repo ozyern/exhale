@@ -670,6 +670,17 @@ private fun EspressoTurntable(
         }
     }
     val crown by animateColorAsState(if (isPlaying || buffering) Brass else Cream, tween(400), label = "espressoCrown")
+    // The two skips are cut into the vinyl itself: a band of the wax either side of the label,
+    // pressed in as a finger lands on it.
+    val previousIcon = painterResource(R.drawable.ic_np_previous)
+    val nextIcon = painterResource(R.drawable.ic_np_next)
+    var pressedSide by remember { mutableStateOf(0) }
+    val previousPress by animateFloatAsState(if (pressedSide < 0) 1f else 0f, spring(dampingRatio = 0.7f, stiffness = 900f), label = "espressoPrev")
+    val nextPress by animateFloatAsState(if (pressedSide > 0) 1f else 0f, spring(dampingRatio = 0.7f, stiffness = 900f), label = "espressoNext")
+    val canPrevious by rememberUpdatedState(canSkipPrevious)
+    val canNext by rememberUpdatedState(canSkipNext)
+    val goPrevious by rememberUpdatedState(onPrevious)
+    val goNext by rememberUpdatedState(onNext)
 
     BoxWithConstraints(modifier) {
         val w = maxWidth
@@ -809,6 +820,25 @@ private fun EspressoTurntable(
                             val pivot = Offset(size.width / 2f, size.height.toFloat())
                             val from = down.position - pivot
                             val dist = from.getDistance()
+                            // On one of the skips cut into the vinyl: a tap.
+                            val side = skipBandAt(from, r)
+                            if (side != 0) {
+                                if ((side < 0 && !canPrevious) || (side > 0 && !canNext)) return@awaitEachGesture
+                                down.consume()
+                                pressedSide = side
+                                var tapped = true
+                                while (true) {
+                                    val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                                    if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop) tapped = false
+                                    if (!change.pressed) break
+                                }
+                                pressedSide = 0
+                                if (tapped) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    if (side < 0) goPrevious() else goNext()
+                                }
+                                return@awaitEachGesture
+                            }
                             // On the record's rim, give or take a fingertip.
                             if (dist < r * 0.74f || dist > r + 12.dp.toPx()) return@awaitEachGesture
                             val a0 = atan2(-from.y, from.x).coerceIn(0f, PI.toFloat())
@@ -903,6 +933,10 @@ private fun EspressoTurntable(
                                 drawContext.canvas.restore()
                             }
                             drawCircle(lip, radius = r - 0.8.dp.toPx(), center = pivot, style = Stroke(1.4.dp.toPx()))
+
+                            // ---- The skips, cut into the wax either side of the label ----
+                            drawSkipBand(pivot, r, -1, previousPress, canSkipPrevious, previousIcon)
+                            drawSkipBand(pivot, r, 1, nextPress, canSkipNext, nextIcon)
 
                             // ---- The ring of keys: two hairline arcs, a hairline between each key ----
                             if (p >= 0) {
@@ -1034,28 +1068,119 @@ private fun EspressoTurntable(
                     color = Cream.copy(alpha = 0.7f),
                 )
             }
-            Box(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .offset(x = -record * 0.66f, y = -record * 0.12f),
-            ) { StampButton(R.drawable.ic_np_previous, 20.dp, enabled = canSkipPrevious, size = 48.dp, onClick = onPrevious) }
-            Box(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .offset(x = record * 0.66f, y = -record * 0.12f),
-            ) { StampButton(R.drawable.ic_np_next, 20.dp, enabled = canSkipNext, size = 48.dp, onClick = onNext) }
         }
     }
 }
 
 /**
  * The photograph of a song's actual pressing, where there is one to play instead of a drawn record.
- * Only Bed Chem for now: its silver 7", "Bed" on the pink label.
+ * Sabrina Carpenter's: Bed Chem's silver 7", and from Man's Best Friend, Manchild's clear 7",
+ * Tears' red 7", House Tour's pink one, and the album's picture disc for every other song on it.
+ * Matched on the song, wherever it is playing from.
  */
 private fun pressingFor(song: MediaMetadata): Int? {
-    val title = song.title.lowercase(Locale.ROOT)
     val bySabrina = song.artists.any { it.name.contains("sabrina carpenter", ignoreCase = true) }
-    return if (bySabrina && title.replace(Regex("[^a-z]"), "").startsWith("bedchem")) R.drawable.bed_chem_vinyl else null
+    if (!bySabrina) return null
+    // The title without what streaming adds to it: "(Official Video)", "- Remastered" and so on.
+    val title = song.title.lowercase(Locale.ROOT).substringBefore(" (").substringBefore(" [").substringBefore(" - ")
+        .replace(Regex("[^a-z]"), "")
+    return when {
+        title.startsWith("bedchem") -> R.drawable.bed_chem_vinyl
+        title == "manchild" -> R.drawable.manchild_vinyl
+        title == "tears" -> R.drawable.tears_vinyl
+        title == "housetour" -> R.drawable.house_tour_vinyl
+        title in MansBestFriend -> R.drawable.mans_best_friend_vinyl
+        song.album?.title?.lowercase(Locale.ROOT)?.replace(Regex("[^a-z]"), "")?.startsWith("mansbestfriend") == true ->
+            R.drawable.mans_best_friend_vinyl
+        else -> null
+    }
+}
+
+/** Man's Best Friend's songs, as [pressingFor] writes a title. */
+private val MansBestFriend = setOf(
+    "mymanonwillpower",
+    "sugartalking",
+    "wealmostbrokeupagainlastnight",
+    "nobodysson",
+    "nevergettinglaid",
+    "whendidyougethot",
+    "amen",
+    "goodbye",
+    "dontworryillmakeyouworry",
+)
+
+/** The bands of the record the skips are cut into: radii as fractions of the record's, and angles. */
+private const val SkipInner = 0.46f
+private const val SkipOuter = 0.72f
+private const val SkipFromDeg = 10f
+private const val SkipToDeg = 44f
+
+/**
+ * Which skip a touch at [from] (relative to the record's centre, y down) lands on: -1 previous,
+ * on the left; 1 next, on the right; 0 neither. A little generous, for a fingertip.
+ */
+private fun skipBandAt(from: Offset, r: Float): Int {
+    val dist = from.getDistance()
+    if (dist < r * (SkipInner - 0.06f) || dist > r * (SkipOuter + 0.04f)) return 0
+    val deg = Math.toDegrees(atan2(-from.y, from.x).toDouble()).toFloat()
+    return when {
+        deg in (SkipFromDeg - 8f)..(SkipToDeg + 8f) -> 1
+        deg in (180f - SkipToDeg - 8f)..(180f - SkipFromDeg + 8f) -> -1
+        else -> 0
+    }
+}
+
+/**
+ * One skip, as a band of the record pressed a little deeper than the wax round it: darker, with
+ * its upper edge in shadow and its lower edge catching the lamp, a few grooves running through it
+ * and the arrow struck in cream. Pressed, it sinks further and the arrow turns brass.
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSkipBand(
+    pivot: Offset,
+    r: Float,
+    side: Int,
+    press: Float,
+    enabled: Boolean,
+    icon: androidx.compose.ui.graphics.painter.Painter,
+) {
+    val ri = r * SkipInner
+    val ro = r * SkipOuter
+    // Compose's arcs run clockwise from 3 o'clock; the band sits above the centre.
+    val start = if (side > 0) -SkipToDeg else -(180f - SkipFromDeg)
+    val sweep = SkipToDeg - SkipFromDeg
+    val band = Path().apply {
+        arcTo(Rect(pivot, ro), start, sweep, true)
+        arcTo(Rect(pivot, ri), start + sweep, -sweep, false)
+        close()
+    }
+    drawPath(band, Color.Black.copy(alpha = 0.30f + 0.18f * press))
+    // Grooves running on through the cut.
+    for (k in 1..3) {
+        val rr = ri + (ro - ri) * k / 4f
+        drawArc(Color.White.copy(alpha = 0.05f), start, sweep, false, Offset(pivot.x - rr, pivot.y - rr), Size(rr * 2, rr * 2), style = Stroke(0.6.dp.toPx()))
+    }
+    // The cut's walls: the far one in shadow, the near one lit.
+    drawArc(Color.Black.copy(alpha = 0.55f), start, sweep, false, Offset(pivot.x - ro, pivot.y - ro), Size(ro * 2, ro * 2), style = Stroke(1.6.dp.toPx(), cap = StrokeCap.Round))
+    drawArc(Cream.copy(alpha = 0.30f - 0.12f * press), start, sweep, false, Offset(pivot.x - ri, pivot.y - ri), Size(ri * 2, ri * 2), style = Stroke(1.dp.toPx(), cap = StrokeCap.Round))
+    for (edge in listOf(start, start + sweep)) {
+        val a = Math.toRadians(edge.toDouble())
+        val dir = Offset(kotlin.math.cos(a).toFloat(), kotlin.math.sin(a).toFloat())
+        drawLine(Color.Black.copy(alpha = 0.45f), pivot + dir * ri, pivot + dir * ro, strokeWidth = 1.dp.toPx())
+    }
+    // The arrow, at the band's middle, sunk a hair when pressed.
+    val mid = Math.toRadians((start + sweep / 2f).toDouble())
+    val at = pivot + Offset(kotlin.math.cos(mid).toFloat(), kotlin.math.sin(mid).toFloat()) * ((ri + ro) / 2f)
+    val iconSize = 20.dp.toPx() * (1f - 0.08f * press)
+    val tint = when {
+        !enabled -> Cream.copy(alpha = 0.28f)
+        else -> androidx.compose.ui.graphics.lerp(Cream, Brass, press)
+    }
+    val sink = 1.dp.toPx() * press
+    withTransform({ translate(at.x - iconSize / 2f, at.y - iconSize / 2f + sink) }) {
+        with(icon) {
+            draw(Size(iconSize, iconSize), colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(tint))
+        }
+    }
 }
 
 /** How much of the record's width its label takes. */
