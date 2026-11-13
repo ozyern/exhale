@@ -3,9 +3,8 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * The idea — the cover itself carried between the mini player and the player — follows
- * the reference design's PlayerDock (github.com/kushagrasinghx/the reference design, GPL-3.0). The path, the lift, the
- * landing and the parallel motion around it are Exhale's.
+ * The cover carried between the mini player and the player, and the path it takes, follow
+ * BitChord's PlayerDock and its player's sleeve (github.com/kushagrasinghx/BitChord, GPL-3.0).
  */
 
 package com.ozyern.exhale.ui.player
@@ -246,45 +245,31 @@ class CoverFlight {
         look.reset()
         fullLook?.invoke(look)
 
-        // The cover leads the sheet a little: it is the thing the eye follows, so it gets there
-        // first and the rest arrives around it.
-        val u = 1f - (1f - p.coerceIn(0f, 1f)).pow(1.3f)
-
-        // Two legs. Up as a square — the cover is a square, and stretching it on the way reads
-        // as a picture being distorted — then, only at the end, out to the player's own shape
-        // (the full-bleed banner) if that is not square.
-        val side = min(to.width, to.height)
-        val square = Rect(Offset(to.center.x - side / 2f, to.top), Size(side, side))
-        val k = (u / SQUARE_LEG).coerceIn(0f, 1f)
-        // A curved path: across a little sooner than up. From the mini player at the bottom
-        // left to the top centre, the cover swings out and rises rather than sliding on a ruler.
-        val kx = 1f - (1f - k) * (1f - k)
-        val left = lerp(from.left, square.left, kx)
-        val top = lerp(from.top, square.top, k)
-        val size = lerp(from.width, square.width, k)
-        var rect = Rect(left, top, left + size, top + size)
-        val m = ((u - SQUARE_LEG) / (1f - SQUARE_LEG)).coerceIn(0f, 1f)
-        val toFull = m * m * (3f - 2f * m)
-        if (toFull > 0f) {
-            rect = Rect(
-                lerp(rect.left, to.left, toFull),
-                lerp(rect.top, to.top, toFull),
-                lerp(rect.right, to.right, toFull),
-                lerp(rect.bottom, to.bottom, toFull),
-            )
-        }
-
-        // Corners grow with the card — a big card with a 10dp corner looks like a cut-out — and
-        // relax to the player's own at the end.
-        val midCorner = MID_CORNER_DP * density
-        val corner = if (m <= 0f) {
-            lerp(miniEnd.corner.value * density, midCorner, min(1f, k * 1.6f))
-        } else {
-            lerp(midCorner, look.cornerDp * density, toFull)
-        }
-        // Toward the viewer on the way, back down on arrival.
-        val lift = sin(PI.toFloat() * k)
-        return Frame(rect, corner, lift, toFull, look)
+        val t = p.coerceIn(0f, 1f)
+        // How far below fully open the player is this frame, and how far it travels in all: the
+        // player is measured where it stands now against where it stands open.
+        val now = space?.takeIf { it.isAttached }?.localToWindow(Offset.Zero)
+        val rest = spaceAtRest
+        val offset = if (now != null && rest != null) (now.y - rest.y).coerceAtLeast(0f) else 0f
+        val travel = if (t < 0.999f && offset > 0f) offset / (1f - t) else 0f
+        // How much of the sheet's own travel the cover rides on its way between the two. Riding
+        // all of it sent the cover past the bar and back on a close; riding none left it standing
+        // still under a finger dragging the player down. This much is the most it can ride and
+        // still land on the cover tangentially, its speed run down to nothing exactly there.
+        val ride = if (travel > 0f) ((from.top - to.top) / travel).coerceIn(0f, 1f) else 0f
+        // Straight between the two, the open end carried that share of the way with the sheet.
+        val open = to.translate(0f, offset * ride)
+        val rect = Rect(
+            lerp(from.left, open.left, t),
+            lerp(from.top, open.top, t),
+            lerp(from.right, open.right, t),
+            lerp(from.bottom, open.bottom, t),
+        )
+        // The mini cover's corner, opening into the player's as it goes.
+        val corner = lerp(miniEnd.corner.value * density, look.cornerDp * density, t)
+        // The player's own look (its zoom, its dissolve) comes in as the cover arrives, and the
+        // cover sits flat on its way: no lift, as the mini player's cover sits flat in its bar.
+        return Frame(rect, corner, 0f, t, look)
     }
 
     internal class Frame(
@@ -344,13 +329,10 @@ fun CoverFlightOverlay(flight: CoverFlight, modifier: Modifier = Modifier) {
                 if (!home) {
                     wasAway = true
                     flight.landing.snapTo(1f)
-                } else if (wasAway && flight.enabled) {
+                } else if (wasAway) {
+                    // Lands without a give: it arrives with its speed run down to nothing.
                     wasAway = false
-                    flight.landing.animateTo(
-                        targetValue = 1f,
-                        animationSpec = spring(dampingRatio = 0.55f, stiffness = 520f),
-                        initialVelocity = -1.3f,
-                    )
+                    flight.landing.snapTo(1f)
                 }
             }
     }

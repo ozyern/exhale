@@ -203,10 +203,8 @@ fun BottomSheet(
                 if (dynamicIslandMorph) return@drawBehind
                 val p = state.progress.coerceIn(0f, 1f)
                 if (coverFlight) {
-                    // The ground fills in over the first half: the page shows through the rising
-                    // sheet at first and is covered by the time the cover is in place.
-                    val g = (p / 0.5f).coerceIn(0f, 1f)
-                    val alpha = backgroundColor.alpha * g * g * (3f - 2f * g)
+                    // The ground is part of the player and fades with it (see dockFade).
+                    val alpha = backgroundColor.alpha * dockFade(p)
                     if (alpha > 0f) drawRect(backgroundColor.copy(alpha = alpha))
                     return@drawBehind
                 }
@@ -318,21 +316,12 @@ fun BottomSheet(
                         .graphicsLayer {
                             val p = state.progress.coerceIn(0f, 1f)
                             if (coverFlight) {
-                                // The player rises into place a beat behind the sheet carrying it,
-                                // and settles from slightly smaller: it follows the cover rather
-                                // than arriving with it.
-                                val r = ((p - 0.1f) / 0.55f).coerceIn(0f, 1f)
-                                val e = r * r * (3f - 2f * r)
-                                // Never quite zero once off the bound: a layer at alpha 0 is not drawn at
-                                // all, so the player's shaders, glass and images were all prepared on the
-                                // first frames of the motion, and those frames took 100 ms and more. At
-                                // 0.2% it is drawn — invisibly — while the sheet waits to move (see expand).
-                                alpha = if (p > 0f) maxOf(e, 0.002f) else 0f
-                                translationY = 56.dp.toPx() * (1f - e)
-                                val s = 0.97f + 0.03f * e
-                                scaleX = s
-                                scaleY = s
-                                transformOrigin = TransformOrigin(0.5f, 0f)
+                                // The player rides the sheet and fades as one, the cover alone
+                                // flying outside the fade. Never quite zero once off the bound:
+                                // a layer at alpha 0 is not drawn at all, and the player's shaders,
+                                // glass and images would then be prepared on the first frames of
+                                // the motion. One step in 255 is nothing to look at.
+                                alpha = if (p > 0f) maxOf(dockFade(p), 1f / 255f) else 0f
                                 return@graphicsLayer
                             }
                             if (!dynamicIslandMorph) {
@@ -465,10 +454,9 @@ fun BottomSheet(
                             // The other half of the focus pull.
                             renderEffect = null
                         } else if (coverFlight) {
-                            // The bar's title and buttons drift up and out as its cover lifts away.
-                            val f = (p / 0.22f).coerceIn(0f, 1f)
-                            alpha = 1f - f
-                            translationY = -10.dp.toPx() * f
+                            // The bar stays put under the player fading in over it, and gives way
+                            // exactly as the player arrives.
+                            alpha = 1f - dockFade(p)
                         } else {
                             alpha = 1f - (p * 4).coerceAtMost(1f)
                         }
@@ -854,3 +842,12 @@ fun Modifier.bottomSheetDraggable(
         )
     }
 }
+
+/**
+ * How much of the player shows at sheet progress [p]: the rest of the player gets out of the way a
+ * little ahead of the cover, fully faded with [DOCK_FADE_LEAD] of the way still to go, so the cover
+ * lands on the bar rather than on a ghost of the player. (BitChord's dockFade.)
+ */
+private fun dockFade(p: Float): Float = ((p - DOCK_FADE_LEAD) / (1f - DOCK_FADE_LEAD)).coerceIn(0f, 1f)
+
+private const val DOCK_FADE_LEAD = 0.15f
