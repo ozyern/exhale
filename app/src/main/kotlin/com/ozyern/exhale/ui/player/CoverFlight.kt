@@ -93,15 +93,14 @@ class CoverLook {
 }
 
 /**
- * Opening the player is one object travelling, not a card changing shape.
+ * Opening the player is one card growing out of the mini player's cover, as BitChord's does.
  *
- * The cover is lifted out of the mini player and carried up into its place in the player — on
- * a gentle curve, coming toward you a little on the way and settling back — while everything else
- * moves *with* it rather than after it: the sheet slides up beneath, the player's controls rise
- * into place a beat behind, the page underneath steps back, and the dock sinks away. Closing runs
- * the same path home, and the mini cover takes the landing with a small give. That is the
- * "parallel" in ColorOS's Parallel Animations: several things moving at once, each on its own
- * curve, all hung off one value.
+ * The whole player — cover, words, controls and its ground — is scaled about its top-left corner
+ * so that its own cover sits exactly on the mini cover when closed ([card]). It grows ahead of the
+ * sheet, so on the way up it is near full size while still low on the screen and slides into
+ * place, and on the way down it slides away first and shrinks into the bar at the end, fading in
+ * and out as it goes. The cover alone is drawn solid the whole way ([CoverFlightOverlay]), its
+ * height closing from the player's banner to the mini cover's square as it lands.
  *
  * The one value is the player sheet's own progress, which is a spring: a drag, a flick or a tap
  * that reverses the player half-way simply changes where that spring is going, and every part of
@@ -232,43 +231,88 @@ class CoverFlight {
         .graphicsLayer { if (inFlight()) alpha = 0f }
 
     /**
+     * Where the player itself stands at [p]: it is carried as one card, cover and all, out of the
+     * mini player's cover and back into it, as BitChord's player is. Scaled about its top-left
+     * corner by [Card.scale] and placed with that corner at ([Card.x], [Card.y]) in the window, so
+     * that its own cover sits exactly on the mini cover at the closed end. False when either end
+     * is not known yet, and the player then simply fades with the sheet.
+     */
+    fun card(p: Float, out: Card): Boolean {
+        val miniEnd = mini() ?: return false
+        val full = fullRect ?: return false
+        if (full.width <= 0f || miniEnd.rect.width <= 0f) return false
+        val base = fullBase ?: Offset.Zero
+        val t = p.coerceIn(0f, 1f)
+        val g = grow(t)
+        val from = miniEnd.rect
+        val s = lerp(from.width / full.width, 1f, g)
+        // The cover's top-left travels with the sheet, straight between the two; the card grows
+        // ahead of it, so on the way up it is near full size while still low on the screen, and on
+        // the way down it slides away first and only shrinks into the bar at the end.
+        val coverX = lerp(from.left, base.x + full.left, t)
+        val coverY = lerp(from.top, base.y + full.top, t)
+        out.scale = s
+        out.x = coverX - full.left * s
+        out.y = coverY - full.top * s
+        out.baseX = base.x
+        out.baseY = base.y
+        out.grow = g
+        out.cornerDp = miniEnd.corner.value
+        return true
+    }
+
+    class Card {
+        var scale = 1f
+        /** Where the player's top-left corner stands in the window. */
+        var x = 0f
+        var y = 0f
+        /** Where it stands at rest, open. */
+        var baseX = 0f
+        var baseY = 0f
+        /** How far the card has grown out of the mini cover, 0..1: also how much of it shows. */
+        var grow = 1f
+        /** The mini cover's corner, in dp. */
+        var cornerDp = 0f
+    }
+
+    private val scratch = Card()
+
+    /**
      * Where the travelling cover is at [p], inside a box whose top-left sits at [origin] in the
      * window and which is [width] wide.
      */
     internal fun frame(p: Float, origin: Offset, width: Float, density: Float): Frame? {
         val miniEnd = mini() ?: return null
-        val from = miniEnd.rect.translate(-origin)
-        val to = fullRect?.translate((fullBase ?: origin) - origin)
-            // Never laid out yet: the player's cover is the full-width square at the top.
-            ?: Rect(0f, 0f, width, width)
-
+        val t = p.coerceIn(0f, 1f)
         look.reset()
         fullLook?.invoke(look)
 
-        val t = p.coerceIn(0f, 1f)
-        // How far below fully open the player is this frame, and how far it travels in all: the
-        // player is measured where it stands now against where it stands open.
-        val now = space?.takeIf { it.isAttached }?.localToWindow(Offset.Zero)
-        val rest = spaceAtRest
-        val offset = if (now != null && rest != null) (now.y - rest.y).coerceAtLeast(0f) else 0f
-        val travel = if (t < 0.999f && offset > 0f) offset / (1f - t) else 0f
-        // How much of the sheet's own travel the cover rides on its way between the two. Riding
-        // all of it sent the cover past the bar and back on a close; riding none left it standing
-        // still under a finger dragging the player down. This much is the most it can ride and
-        // still land on the cover tangentially, its speed run down to nothing exactly there.
-        val ride = if (travel > 0f) ((from.top - to.top) / travel).coerceIn(0f, 1f) else 0f
-        // Straight between the two, the open end carried that share of the way with the sheet.
-        val open = to.translate(0f, offset * ride)
+        val full = fullRect
+        if (full != null && card(t, scratch)) {
+            // The player's cover, carried with the card. It keeps the card's width throughout and
+            // its height closes from the banner's to the mini cover's as the card shrinks into it,
+            // so it lands on exactly the square it left from.
+            val card = scratch
+            val g = card.grow
+            val w = full.width * card.scale
+            val h = lerp(miniEnd.rect.height, full.height * card.scale, g)
+            val left = card.x + full.left * card.scale - origin.x
+            val top = card.y + full.top * card.scale - origin.y
+            val corner = lerp(miniEnd.corner.value * density, look.cornerDp * density, g)
+            return Frame(Rect(left, top, left + w, top + h), corner, 0f, g, look)
+        }
+
+        val from = miniEnd.rect.translate(-origin)
+        val to = full?.translate((fullBase ?: origin) - origin)
+            // Never laid out yet: the player's cover is the full-width square at the top.
+            ?: Rect(0f, 0f, width, width)
         val rect = Rect(
-            lerp(from.left, open.left, t),
-            lerp(from.top, open.top, t),
-            lerp(from.right, open.right, t),
-            lerp(from.bottom, open.bottom, t),
+            lerp(from.left, to.left, t),
+            lerp(from.top, to.top, t),
+            lerp(from.right, to.right, t),
+            lerp(from.bottom, to.bottom, t),
         )
-        // The mini cover's corner, opening into the player's as it goes.
         val corner = lerp(miniEnd.corner.value * density, look.cornerDp * density, t)
-        // The player's own look (its zoom, its dissolve) comes in as the cover arrives, and the
-        // cover sits flat on its way: no lift, as the mini player's cover sits flat in its bar.
         return Frame(rect, corner, 0f, t, look)
     }
 
@@ -294,11 +338,11 @@ class CoverFlight {
         /** Progress within this of an end counts as at rest. */
         const val REST = 0.0005f
 
-        /** How much of the trip is spent as a square before opening out to the banner. */
-        const val SQUARE_LEG = 0.82f
-
-        /** The corner at the widest point of the flight. */
-        const val MID_CORNER_DP = 22f
+        /**
+         * How far the card has grown at sheet progress [t]: ahead of the sheet, so it opens out
+         * almost at once and closes down only as it reaches the bar.
+         */
+        fun grow(t: Float): Float = 1f - (1f - t) * (1f - t)
     }
 }
 

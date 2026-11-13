@@ -139,8 +139,8 @@ fun BottomSheet(
      */
     dynamicIslandMorph: Boolean = false,
     /**
-     * The cover-flight open instead of the morph: the sheet slides, its content rises into place
-     * a beat behind it, and the cover itself is carried by [com.ozyern.exhale.ui.player.CoverFlight].
+     * The cover-flight open instead of the morph: the player grows out of the mini player's cover
+     * as one card and shrinks back into it (see [com.ozyern.exhale.ui.player.CoverFlight.card]).
      */
     coverFlight: Boolean = false,
     /**
@@ -168,6 +168,8 @@ fun BottomSheet(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val collapsedInteractionSource = remember { MutableInteractionSource() }
+    val flight = if (coverFlight) com.ozyern.exhale.ui.player.LocalCoverFlight.current else null
+    val card = remember { com.ozyern.exhale.ui.player.CoverFlight.Card() }
     Box(
         modifier =
         modifier
@@ -192,7 +194,9 @@ fun BottomSheet(
             // in composition used to recompose this whole subtree (the entire player) ~60x/s,
             // which was the single biggest source of micro-stutter during the transition.
             .graphicsLayer {
-                clip = true
+                // Carried as a card out of the mini cover, the player stands well above the sheet's
+                // own top edge for most of the way: clipped to the sheet, it was cut off there.
+                clip = !coverFlight
                 val corner = 16.dp * (1f - state.progress.coerceIn(0f, 1f))
                 shape = RoundedCornerShape(topStart = corner, topEnd = corner)
             }
@@ -202,12 +206,8 @@ fun BottomSheet(
                 // over the page for the length of every close — the "ghost" behind the pill.
                 if (dynamicIslandMorph) return@drawBehind
                 val p = state.progress.coerceIn(0f, 1f)
-                if (coverFlight) {
-                    // The ground is part of the player and fades with it (see dockFade).
-                    val alpha = backgroundColor.alpha * dockFade(p)
-                    if (alpha > 0f) drawRect(backgroundColor.copy(alpha = alpha))
-                    return@drawBehind
-                }
+                // The player paints its own ground, inside the card it travels in (below).
+                if (coverFlight) return@drawBehind
                 // Ramp the scrim in over the first 20% of travel, then hold — the sheet must be
                 // fully opaque well before it reaches the top or the content behind shows through.
                 val fade = p * (p / 0.2f).coerceAtMost(1f)
@@ -316,12 +316,38 @@ fun BottomSheet(
                         .graphicsLayer {
                             val p = state.progress.coerceIn(0f, 1f)
                             if (coverFlight) {
-                                // The player rides the sheet and fades as one, the cover alone
-                                // flying outside the fade. Never quite zero once off the bound:
-                                // a layer at alpha 0 is not drawn at all, and the player's shaders,
-                                // glass and images would then be prepared on the first frames of
-                                // the motion. One step in 255 is nothing to look at.
-                                alpha = if (p > 0f) maxOf(dockFade(p), 1f / 255f) else 0f
+                                // Never quite zero once off the bound: a layer at alpha 0 is not
+                                // drawn at all, and the player's shaders, glass and images would
+                                // then be prepared on the first frames of the motion. One step in
+                                // 255 is nothing to look at.
+                                val floor = if (p > 0f) 1f / 255f else 0f
+                                if (p > 0f && p < 1f && flight != null && flight.card(p, card)) {
+                                    // BitChord's open: the whole player, cover, words, controls and
+                                    // ground, grows out of the mini player's cover as one card and
+                                    // shrinks back into it, fading in and out as it goes. Only the
+                                    // cover is drawn solid all the way (CoverFlightOverlay).
+                                    val s = card.scale
+                                    scaleX = s
+                                    scaleY = s
+                                    transformOrigin = TransformOrigin(0f, 0f)
+                                    // Where the layer stands before this transform: its place
+                                    // open, lowered by as far as the sheet has slid.
+                                    val slid = (state.expandedBound - state.value).roundToPx().coerceAtLeast(0)
+                                    translationX = card.x - card.baseX
+                                    translationY = card.y - card.baseY - slid
+                                    alpha = maxOf(card.grow, floor)
+                                    // The mini cover's corner on screen, opening out to square.
+                                    val corner = card.cornerDp.dp.toPx() * (1f - card.grow) / s
+                                    shape = RoundedCornerShape(corner)
+                                    clip = true
+                                } else {
+                                    scaleX = 1f
+                                    scaleY = 1f
+                                    translationX = 0f
+                                    translationY = 0f
+                                    clip = false
+                                    alpha = if (p > 0f) maxOf(dockFade(p), floor) else 0f
+                                }
                                 return@graphicsLayer
                             }
                             if (!dynamicIslandMorph) {
@@ -408,7 +434,17 @@ fun BottomSheet(
                             // animated backdrop — was a render-effect pass over every pixel of the
                             // screen on every frame of the gesture, which is what made it drop frames.
                             renderEffect = null
-                        },
+                        }
+                        .then(
+                            if (coverFlight) {
+                                // The player's ground, inside its card, so it grows and fades with it.
+                                Modifier.drawBehind {
+                                    if (state.progress > 0f) drawRect(backgroundColor)
+                                }
+                            } else {
+                                Modifier
+                            },
+                        ),
                 ) {
                     androidx.compose.runtime.CompositionLocalProvider(LocalPlayerShown provides shown) {
                         // Composed and measured while pre-built, but only placed once the sheet
@@ -458,7 +494,7 @@ fun BottomSheet(
                             // drawn inside the sheet, so it is held back by exactly as far as the
                             // sheet has moved. It gives way as the player fades in over it.
                             translationY = (state.value - state.collapsedBound).toPx().coerceAtLeast(0f)
-                            alpha = 1f - dockFade(p)
+                            alpha = 1f - (if (flight != null && flight.card(p, card)) card.grow else dockFade(p))
                         } else {
                             alpha = 1f - (p * 4).coerceAtMost(1f)
                         }
