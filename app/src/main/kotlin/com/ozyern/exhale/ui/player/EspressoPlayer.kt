@@ -21,6 +21,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -440,12 +441,24 @@ internal fun EspressoPlayerScreen(
                     maxLines = 1,
                     modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
                 )
+                // The artist opens their page, and the player steps down for it. With several, the
+                // first that has a page.
+                val artistPage = mediaMetadata.artists.firstOrNull { !it.id.isNullOrBlank() }?.id
                 Text(
                     text = mediaMetadata.artists.joinToString { it.name }.uppercase(Locale.getDefault()),
                     style = TextStyle(fontFamily = RecordCaps, fontSize = 12.sp, letterSpacing = 3.sp),
                     color = Cream.copy(alpha = 0.78f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable(enabled = artistPage != null) {
+                            artistPage?.let {
+                                navController.navigate("artist/$it")
+                                playerSheetState.collapseSoft()
+                            }
+                        }
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
                 )
                 Text(
                     text = espressoStream(currentFormat),
