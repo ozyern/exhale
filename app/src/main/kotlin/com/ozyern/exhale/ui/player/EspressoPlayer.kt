@@ -66,7 +66,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -184,38 +183,6 @@ internal fun EspressoPlayerScreen(
     // it is drawn, so the trip is a draw pass per frame and never a recomposition.
     val arrive: () -> Float = { playerSheetState.progress.coerceIn(0f, 1f) }
 
-    val playerShown = com.ozyern.exhale.ui.component.LocalPlayerShown.current
-    // The room moves with the music. The bass, as it is heard (the meter in the audio chain,
-    // read a frame at a time and timed to the speaker): up at once on a beat and down slowly
-    // after it, so the light under the record, its rim and the cover all take the kick together.
-    val pulse = remember { mutableFloatStateOf(0f) }
-    val listening by rememberUpdatedState(isPlaying && playerShown)
-    LaunchedEffect(Unit) {
-        val reader = com.ozyern.exhale.playback.AudioLevels.Reader()
-        val levels = FloatArray(2)
-        var last = 0L
-        while (true) {
-            if (!listening && pulse.floatValue < 0.004f) {
-                pulse.floatValue = 0f
-                androidx.compose.runtime.snapshotFlow { listening }.first { it }
-                last = 0L
-            }
-            withFrameNanos { now ->
-                val dt = if (last == 0L) 0f else ((now - last) / 1e9f).coerceIn(0f, 0.05f)
-                last = now
-                val heard = listening && reader.sample(System.nanoTime(), playerConnection.player.currentPosition, levels)
-                val bass = if (heard) (levels[1] * 0.75f + levels[0] * 0.25f).coerceIn(0f, 1f) else 0f
-                val fallen = pulse.floatValue - dt * 1.9f
-                // Up three quarters of the way in one frame, never a hard step; down on its own time.
-                pulse.floatValue = if (bass > fallen) fallen.coerceAtLeast(0f) + (bass - fallen.coerceAtLeast(0f)) * 0.75f else fallen.coerceAtLeast(0f)
-            }
-        }
-    }
-    // The cover is never quite still while the song plays: a slow breath of zoom and a drift
-    // across the picture, on the shared ambient clock, eased out when the song is paused.
-    val drift by com.ozyern.exhale.ui.component.rememberAmbientSeconds(running = isPlaying && playerShown)
-    val liveness by animateFloatAsState(if (isPlaying) 1f else 0f, tween(900), label = "espressoLive")
-
     val openMenu: () -> Unit = {
         menuState.show {
             PlayerMenu(
@@ -234,75 +201,26 @@ internal fun EspressoPlayerScreen(
             .background(Lounge)
             .then(flight?.run { Modifier.fullSpace() } ?: Modifier),
     ) {
-        // ---- The room: the cover's own colours as a slow field of light, deepening to the dark
-        // the record sits in. Grain over it, so the long gradients never band. ----
-        com.ozyern.exhale.ui.component.FluidArtworkBackground(
-            url = mediaMetadata.thumbnailUrl,
-            brightness = 0.62f,
-            paused = !isPlaying,
-            modifier = Modifier.fillMaxSize(),
-        )
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to Lounge.copy(alpha = 0.30f),
-                        0.5f to Lounge.copy(alpha = 0.55f),
-                        0.78f to Lounge.copy(alpha = 0.80f),
-                        1f to Lounge.copy(alpha = 0.92f),
-                    ),
-                ),
-        )
-
         // ---- The cover, edge to edge, falling away into the room. The dock's cover flies to it. ----
         val coverDim by animateFloatAsState(if (panel == EspressoPanel.Cover) 1f else 0.2f, tween(320), label = "espressoCover")
-        // Never under 1, so the picture's edges are never seen: the breath, the drift it leaves
-        // room for, and a nudge on the beat.
-        val coverScale: () -> Float = { 1f + liveness * (0.045f + 0.03f * sin(drift * 0.21f)) + 0.014f * pulse.floatValue }
-        Box(
-            Modifier
+        AsyncImage(
+            model = artRequest,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.58f)
                 .then(
                     flight?.run {
                         Modifier.reportFull { look ->
-                            // The travelling cover lands as this one is drawn: at its zoom, dissolving at its foot.
-                            look.scale = coverScale()
-                            look.dim = 0.24f * (1f - liveness)
+                            // The travelling cover lands as this one is drawn: dissolving at its foot.
                             look.footFade = 0.5f
                             look.footFloor = 0f
                         }
                     } ?: Modifier,
                 )
-                .graphicsLayer {
-                    alpha = coverDim
-                    clip = true
-                },
-        ) {
-            AsyncImage(
-                model = artRequest,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        val k = coverScale()
-                        scaleX = k
-                        scaleY = k
-                        translationX = liveness * size.width * 0.016f * sin(drift * 0.13f)
-                        translationY = liveness * size.height * 0.012f * cos(drift * 0.17f)
-                    }
-                    .drawWithCache {
-                        onDrawWithContent {
-                            drawContent()
-                            // Paused, the picture steps back a shade.
-                            val dim = 0.24f * (1f - liveness)
-                            if (dim > 0.004f) drawRect(Color.Black.copy(alpha = dim))
-                        }
-                    },
-            )
-        }
+                .graphicsLayer { alpha = coverDim },
+        )
         Box(
             Modifier
                 .fillMaxWidth()
@@ -408,13 +326,7 @@ internal fun EspressoPlayerScreen(
             ) {
                 Text(
                     text = mediaMetadata.title,
-                    style = TextStyle(
-                        fontFamily = RecordScript,
-                        fontSize = 40.sp,
-                        lineHeight = 44.sp,
-                        // The record's own colour, as light behind the signature.
-                        shadow = androidx.compose.ui.graphics.Shadow(vinyl.copy(alpha = 0.75f), Offset.Zero, 28f),
-                    ),
+                    style = TextStyle(fontFamily = RecordScript, fontSize = 40.sp, lineHeight = 44.sp),
                     color = Cream,
                     maxLines = 1,
                     modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
@@ -458,7 +370,6 @@ internal fun EspressoPlayerScreen(
                 isPlaying = isPlaying,
                 buffering = buffering,
                 arrive = arrive,
-                pulse = { pulse.floatValue },
                 durationProvider = durationProvider,
                 positionProvider = { sliderPositionProvider() ?: playerConnection.player.currentPosition },
                 onScrub = onSliderValueChange,
@@ -578,8 +489,6 @@ private fun EspressoTurntable(
     isPlaying: Boolean,
     buffering: Boolean,
     arrive: () -> Float,
-    /** The bass as it is heard, 0 to 1: read only where it is drawn. */
-    pulse: () -> Float,
     durationProvider: () -> Long,
     positionProvider: () -> Long,
     onScrub: (Long) -> Unit,
@@ -669,40 +578,6 @@ private fun EspressoTurntable(
                     alpha = (e * 2f).coerceIn(0f, 1f)
                 },
         ) {
-            // ---- The light the record sits in: its own colour, rising from under it, on the beat ----
-            Spacer(
-                Modifier
-                    .fillMaxSize()
-                    .drawWithCache {
-                        val pivot = Offset(size.width / 2f, size.height)
-                        val reach = record.toPx() * 1.55f
-                        val halo = Brush.radialGradient(
-                            0f to Color.White,
-                            0.55f to Color.White.copy(alpha = 0.55f),
-                            0.78f to Color.White.copy(alpha = 0.16f),
-                            1f to Color.Transparent,
-                            center = pivot,
-                            radius = reach,
-                        )
-                        onDrawBehind {
-                            val beat = pulse()
-                            // One gradient made once, tinted and scaled where it is drawn: the halo
-                            // swells and brightens with the bass without a new brush a frame.
-                            val k = 1f + 0.10f * beat
-                            withTransform({ scale(k, k, pivot) }) {
-                                drawCircle(
-                                    halo,
-                                    radius = reach,
-                                    center = pivot,
-                                    alpha = 0.20f + 0.34f * beat,
-                                    colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(vinyl, androidx.compose.ui.graphics.BlendMode.SrcIn),
-                                    blendMode = androidx.compose.ui.graphics.BlendMode.Plus,
-                                )
-                            }
-                        }
-                    },
-            )
-
             // ---- The record: the whole disc, its lower half under the screen's foot, turning ----
             Box(
                 Modifier
@@ -845,10 +720,8 @@ private fun EspressoTurntable(
 
                             // ---- The rim: a fine track all the way round, brass as far as the song has got ----
                             drawArc(Cream.copy(alpha = 0.16f), 180f, 180f, false, Offset(pivot.x - rimR, pivot.y - rimR), Size(rimR * 2, rimR * 2), style = Stroke(2.dp.toPx(), cap = StrokeCap.Round))
-                            val beat = pulse()
                             if (at > 0f) {
-                                // The brass catches the light on the beat.
-                                drawArc(Brass.copy(alpha = 0.22f + 0.38f * beat), 180f, 180f * at, false, Offset(pivot.x - rimR, pivot.y - rimR), Size(rimR * 2, rimR * 2), style = Stroke((8f + 6f * beat).dp.toPx(), cap = StrokeCap.Round))
+                                drawArc(Brass.copy(alpha = 0.25f), 180f, 180f * at, false, Offset(pivot.x - rimR, pivot.y - rimR), Size(rimR * 2, rimR * 2), style = Stroke(8.dp.toPx(), cap = StrokeCap.Round))
                                 drawArc(Brass, 180f, 180f * at, false, Offset(pivot.x - rimR, pivot.y - rimR), Size(rimR * 2, rimR * 2), style = Stroke(3.dp.toPx(), cap = StrokeCap.Round))
                             }
                             // ---- The stylus: a cream head riding the groove at the moment being heard ----
@@ -858,7 +731,6 @@ private fun EspressoTurntable(
                             val tail = pivot + dir * (rimR + 3.dp.toPx())
                             drawLine(Color.Black.copy(alpha = 0.35f), tip + Offset(0f, 2.dp.toPx()), tail + Offset(0f, 2.dp.toPx()), strokeWidth = 6.dp.toPx(), cap = StrokeCap.Round)
                             drawLine(Cream, tip, tail, strokeWidth = 4.dp.toPx(), cap = StrokeCap.Round)
-                            drawCircle(Brass.copy(alpha = 0.35f * beat), radius = (6f + 8f * beat).dp.toPx(), center = tip)
                             drawCircle(Brass, radius = 2.4.dp.toPx(), center = tip)
                         }
                     },
