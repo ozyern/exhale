@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
@@ -347,6 +348,109 @@ fun ColumnScope.PlayerMenu(
     }
     val nowPlayingSubtitle = remember(mediaMetadata.artists) {
         mediaMetadata.artists.joinToString(separator = " • ") { it.name }
+    }
+
+    // Grown out of the player as a pop-out, the menu is the short one: a share at its head, then
+    // the song's few verbs and places in groups, as BitChord's player menu is laid out. Everything
+    // else is one row away, under "More options".
+    var showEverything by rememberSaveable { mutableStateOf(false) }
+    if (com.ozyern.exhale.ui.component.LocalMenuIsPopOut.current && !showEverything && isQueueTrigger != true) {
+        val sleepTimer = playerConnection.service.sleepTimer
+        val sleepTimerActive = remember(sleepTimer.triggerTime, sleepTimer.songsRemaining) { sleepTimer.isActive }
+        val downloadState = download?.state
+        val liked = librarySong?.song?.liked == true
+        Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(vertical = 10.dp)) {
+            PopMenuShare {
+                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(android.content.Intent.EXTRA_TEXT, "https://music.youtube.com/watch?v=${mediaMetadata.id}")
+                }
+                context.startActivity(android.content.Intent.createChooser(send, null))
+                onDismiss()
+            }
+            com.ozyern.exhale.ui.component.IosMenuSeparator()
+            PopMenuRow(
+                icon = if (liked) R.drawable.favorite else R.drawable.favorite_border,
+                title = stringResource(R.string.like),
+                onClick = { playerConnection.toggleLike() },
+            )
+            PopMenuRow(R.drawable.playlist_add, stringResource(R.string.add_to_playlist)) { showChoosePlaylistDialog = true }
+            com.ozyern.exhale.ui.component.IosMenuSeparator()
+            PopMenuRow(R.drawable.radio, stringResource(R.string.start_radio)) {
+                Toast.makeText(context, context.getString(R.string.starting_radio), Toast.LENGTH_SHORT).show()
+                playerConnection.startRadioSeamlessly()
+                onDismiss()
+            }
+            PopMenuRow(R.drawable.playlist_play, stringResource(R.string.play_next)) {
+                playerConnection.playNext(mediaMetadata.toMediaItem())
+                Toast.makeText(context, R.string.play_next, Toast.LENGTH_SHORT).show()
+                onDismiss()
+            }
+            PopMenuRow(R.drawable.queue_music, stringResource(R.string.add_to_queue)) {
+                playerConnection.addToQueue(mediaMetadata.toMediaItem())
+                Toast.makeText(context, R.string.add_to_queue, Toast.LENGTH_SHORT).show()
+                onDismiss()
+            }
+            PopMenuRow(
+                icon = if (downloadState == Download.STATE_COMPLETED) R.drawable.offline else R.drawable.download,
+                title = stringResource(
+                    when (downloadState) {
+                        Download.STATE_COMPLETED -> R.string.remove_download
+                        Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> R.string.downloading
+                        else -> R.string.action_download
+                    },
+                ),
+                onClick = {
+                    if (downloadState == null) {
+                        database.transaction { insert(mediaMetadata) }
+                        val request = DownloadRequest
+                            .Builder(mediaMetadata.id, mediaMetadata.id.toUri())
+                            .setCustomCacheKey(mediaMetadata.id)
+                            .setData(mediaMetadata.title.toByteArray())
+                            .build()
+                        DownloadService.sendAddDownload(context, ExoDownloadService::class.java, request, false)
+                    } else {
+                        DownloadService.sendRemoveDownload(context, ExoDownloadService::class.java, mediaMetadata.id, false)
+                    }
+                },
+            )
+            com.ozyern.exhale.ui.component.IosMenuSeparator()
+            mediaMetadata.album?.let { album ->
+                PopMenuRow(R.drawable.album, stringResource(R.string.view_album), subtitle = album.title) {
+                    onDismiss()
+                    playerBottomSheetState.snapTo(playerBottomSheetState.collapsedBound)
+                    navController.navigate("album/${album.id}")
+                }
+            }
+            if (splitArtists.isNotEmpty()) {
+                PopMenuRow(R.drawable.artist, stringResource(R.string.view_artist), subtitle = nowPlayingSubtitle.takeIf { it.isNotBlank() }) {
+                    if (splitArtists.size == 1 && splitArtists[0].originalArtist != null) {
+                        onDismiss()
+                        playerBottomSheetState.snapTo(playerBottomSheetState.collapsedBound)
+                        navController.navigate("artist/${splitArtists[0].originalArtist!!.id}")
+                    } else {
+                        showSelectArtistDialog = true
+                    }
+                }
+            }
+            PopMenuRow(R.drawable.info, stringResource(R.string.details)) {
+                onShowDetailsDialog()
+                onDismiss()
+            }
+            com.ozyern.exhale.ui.component.IosMenuSeparator()
+            PopMenuRow(
+                icon = R.drawable.bedtime,
+                title = stringResource(R.string.sleep_timer),
+                subtitle = if (!sleepTimerActive) null else if (sleepTimer.songsRemaining > 0) {
+                    pluralStringResource(R.plurals.n_songs_left, sleepTimer.songsRemaining, sleepTimer.songsRemaining)
+                } else {
+                    makeTimeString(sleepTimerMillisLeft(playerConnection))
+                },
+                onClick = { showSleepTimerDialog = true },
+            )
+            PopMenuRow(R.drawable.more_horiz, "More options") { showEverything = true }
+        }
+        return
     }
 
     val configuration = LocalConfiguration.current
@@ -965,6 +1069,58 @@ private fun PlayerQuickAction(
             overflow = TextOverflow.Ellipsis,
             lineHeight = 13.sp,
         )
+    }
+}
+
+/** The share at the head of the pop-out menu: its glyph over its word, centred. */
+@Composable
+private fun PopMenuShare(onClick: () -> Unit) {
+    val menu = com.ozyern.exhale.ui.component.iosMenuColors()
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 14.dp),
+    ) {
+        Icon(painterResource(R.drawable.share), contentDescription = null, tint = menu.label, modifier = Modifier.size(30.dp))
+        Spacer(Modifier.height(8.dp))
+        Text(stringResource(R.string.share), color = menu.label, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+/**
+ * A row of the pop-out menu: a line glyph in its own column, the word large beside it, and the
+ * place it leads to in a dimmer line under it where there is one.
+ */
+@Composable
+private fun PopMenuRow(
+    @DrawableRes icon: Int,
+    title: String,
+    subtitle: String? = null,
+    onClick: () -> Unit,
+) {
+    val menu = com.ozyern.exhale.ui.component.iosMenuColors()
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .heightIn(min = 54.dp)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+    ) {
+        Box(Modifier.width(32.dp), contentAlignment = Alignment.Center) {
+            Icon(painterResource(icon), contentDescription = null, tint = menu.label, modifier = Modifier.size(25.dp))
+        }
+        Spacer(Modifier.width(18.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = menu.label, fontSize = 19.sp, lineHeight = 23.sp, letterSpacing = (-0.3).sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (subtitle != null) {
+                Text(subtitle, color = menu.secondaryLabel, fontSize = 15.sp, lineHeight = 19.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
     }
 }
 
