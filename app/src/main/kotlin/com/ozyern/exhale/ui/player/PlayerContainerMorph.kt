@@ -173,8 +173,6 @@ fun PlayerContainerMorphOverlay(
                             miniLayer = miniLayer,
                             fullBackgroundLayer = fullBackgroundLayer,
                             fullContentLayer = fullContentLayer,
-                            cornerPx = RISE_CORNER.toPx(),
-                            clipPath = clipPath,
                         )
                         return@onDrawBehind
                     }
@@ -286,30 +284,27 @@ fun PlayerContainerMorphOverlay(
 }
 
 /**
- * Where the rising sheet's top edge is at [fraction]: on the pill's top at 0, the screen's top
- * at 1, linear with the sheet's own progress so a finger on it stays under the finger.
+ * BitChord's dock (PlayerMorph.rise), after its PlayerSheetMotion and NowPlayingScreen
+ * (github.com/kushagrasinghx/BitChord, GPL-3.0).
+ *
+ * Where the sheet's top edge is at [fraction]: the sheet slides the whole height of the screen,
+ * linear with its own progress so a finger on it stays under the finger.
  */
-internal fun riseSheetTop(mini: Rect, fraction: Float): Float =
-    mini.top * (1f - sanitizedProgress(fraction))
+internal fun riseSheetTop(screenHeight: Float, fraction: Float): Float =
+    screenHeight * (1f - sanitizedProgress(fraction))
 
 /**
- * The rising player's opacity: a quarter there as it leaves the bar, so the page shows through
- * it on the way up, and solid by two thirds of the way.
+ * The player's opacity while it docks: the whole of it, ground and all, gets out of the way a
+ * little ahead of the artwork, so the cover lands on the bar rather than on a ghost of the player.
  */
-internal fun riseAlpha(fraction: Float): Float {
-    val r = (sanitizedProgress(fraction) / RISE_SOLID_BY).coerceIn(0f, 1f)
-    return RISE_FLOOR + (1f - RISE_FLOOR) * r * r * (3f - 2f * r)
-}
+internal fun riseAlpha(fraction: Float): Float =
+    ((sanitizedProgress(fraction) - DOCK_FADE_LEAD) / (1f - DOCK_FADE_LEAD)).coerceIn(0f, 1f)
 
-private const val RISE_SOLID_BY = 0.66f
-private const val RISE_FLOOR = 0.25f
-private const val RISE_MINI_GONE_BY = 0.2f
-private val RISE_CORNER = 36.dp
+private const val DOCK_FADE_LEAD = 0.15f
 
 /**
- * The rise: the mini pill stays where it is and gives way at once, and the whole player, its
- * ground and its content at their own size, comes up over it from the pill's top edge with
- * rounded top corners. The cover travels on its own above this ([PlayerArtworkMorphOverlay]).
+ * The dock: the mini player stays where it is, whole, under the sheet; the player slides up over it
+ * at its own size, fading in; the artwork travels on its own above both ([PlayerArtworkMorphOverlay]).
  */
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRise(
     fraction: Float,
@@ -317,37 +312,29 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRise(
     miniLayer: androidx.compose.ui.graphics.layer.GraphicsLayer,
     fullBackgroundLayer: androidx.compose.ui.graphics.layer.GraphicsLayer,
     fullContentLayer: androidx.compose.ui.graphics.layer.GraphicsLayer,
-    cornerPx: Float,
-    clipPath: Path,
 ) {
-    if (miniLayer.size.width > 0 && fraction < RISE_MINI_GONE_BY) {
-        miniLayer.alpha = 1f - easeOutCubic(fraction / RISE_MINI_GONE_BY)
-        miniLayer.renderEffect = null
-        translate(left = mini.left, top = mini.top) { drawLayer(miniLayer) }
-    }
-    val top = riseSheetTop(mini, fraction)
-    val radius = cornerPx * (1f - fraction)
-    val alpha = riseAlpha(fraction)
-    clipPath.reset()
-    clipPath.addRoundRect(
-        RoundRect(
-            left = 0f,
-            top = top,
-            right = size.width,
-            bottom = top + size.height,
-            topLeftCornerRadius = CornerRadius(radius, radius),
-            topRightCornerRadius = CornerRadius(radius, radius),
-        ),
-    )
-    clipPath(clipPath) {
-        translate(top = top) {
-            fullBackgroundLayer.alpha = alpha
-            fullBackgroundLayer.renderEffect = null
-            drawLayer(fullBackgroundLayer)
-            fullContentLayer.alpha = alpha
-            fullContentLayer.renderEffect = null
-            drawLayer(fullContentLayer)
+    // The bar, as it is: its glass and its words. Its cover stands aside for the travelling one.
+    translate(left = mini.left, top = mini.top) {
+        val surface = PlayerMorph.miniSurfaceLayer
+        if (surface != null && surface.size.width > 0 && surface.size.height > 0) {
+            surface.alpha = 1f
+            drawLayer(surface)
         }
+        if (miniLayer.size.width > 0) {
+            miniLayer.alpha = 1f
+            miniLayer.renderEffect = null
+            drawLayer(miniLayer)
+        }
+    }
+    val alpha = riseAlpha(fraction)
+    if (alpha <= 0f) return
+    translate(top = riseSheetTop(size.height, fraction)) {
+        fullBackgroundLayer.alpha = alpha
+        fullBackgroundLayer.renderEffect = null
+        drawLayer(fullBackgroundLayer)
+        fullContentLayer.alpha = alpha
+        fullContentLayer.renderEffect = null
+        drawLayer(fullContentLayer)
     }
 }
 

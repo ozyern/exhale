@@ -243,13 +243,13 @@ fun PlayerArtworkMorphOverlay(
                     return@graphicsLayer
                 }
                 val rise = PlayerMorph.rise
-                // Rising, the cover is aimed at where its target is now -- carried up with the
-                // sheet -- and grows ahead of the sheet, so it is large while the sheet is low and
-                // the two meet as the sheet arrives.
-                val grow = if (rise) riseArtworkGrow(fraction) else fraction
+                // BitChord's dock: one straight blend between the mini cover and the cover's
+                // place, that place carried part of the way with the sheet -- as far as it can
+                // ride and still never pass the mini cover, so the artwork follows the finger
+                // most of the way and lands on the cover with its speed run down to nothing.
+                val grow = fraction
                 val aim = if (rise) {
-                    val pill = miniPlayerContainerRect
-                    if (pill != null) target.translate(0f, riseSheetTop(pill, fraction)) else target
+                    target.translate(0f, (1f - fraction) * (mini.rect.top - target.top).coerceAtLeast(0f))
                 } else {
                     target
                 }
@@ -273,14 +273,7 @@ fun PlayerArtworkMorphOverlay(
                 scaleY = scale
                 translationX = window.center.x - target.center.x
                 translationY = window.center.y - target.center.y
-                val radius = if (rise) {
-                    // A card's corners on the way; the target's own only on the last stretch.
-                    val card = maxOf(mini.radiusPx, RISE_ART_CORNER.toPx())
-                    if (grow < 0.2f) lerp(mini.radiusPx, card, grow / 0.2f)
-                    else lerp(card, full.radiusPx * shrink, riseArtworkLanding(grow))
-                } else {
-                    lerp(mini.radiusPx, full.radiusPx * shrink, fraction)
-                }
+                val radius = lerp(mini.radiusPx, full.radiusPx * shrink, fraction)
                 shape = CenteredWindowShape(
                     windowWidth = window.width / scale,
                     windowHeight = window.height / scale,
@@ -295,9 +288,8 @@ fun PlayerArtworkMorphOverlay(
                     Modifier.drawWithContent {
                         drawContent()
                         val fraction = progress().coerceIn(0f, 1f)
-                        // Rising, the foot dissolves in only as the cover lands, so it reads as a
-                        // cover in flight first and the hero itself last.
-                        val maskIn = if (PlayerMorph.rise) riseArtworkLanding(riseArtworkGrow(fraction)) else fraction
+                        // The hero's dissolve, firmed up into the cover's hard edge as it docks.
+                        val maskIn = fraction
                         // Target rect inside this square, in local px (pre-scale).
                         val top = (size.height - target.height) / 2f
                         drawRect(
@@ -344,19 +336,6 @@ fun PlayerArtworkMorphOverlay(
         }
     }
 }
-
-/** The rising cover's growth: well ahead of the sheet, so it opens out almost at once. */
-internal fun riseArtworkGrow(progress: Float): Float {
-    val inverse = 1f - sanitizedProgress(progress)
-    return 1f - inverse * inverse * inverse
-}
-
-/** How far into its last stretch the rising cover is, where it takes on the target's look. */
-internal fun riseArtworkLanding(grow: Float): Float =
-    ((grow - RISE_ART_LOOK_FROM) / (1f - RISE_ART_LOOK_FROM)).coerceIn(0f, 1f)
-
-private const val RISE_ART_LOOK_FROM = 0.72f
-private val RISE_ART_CORNER = 12.dp
 
 /**
  * Still -> video dissolve across the back half of the flight, smoothstepped so neither end

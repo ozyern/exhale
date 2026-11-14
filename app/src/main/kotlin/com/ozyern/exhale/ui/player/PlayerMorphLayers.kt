@@ -38,11 +38,11 @@ object PlayerMorph {
     @JvmField var stayInPlace: Boolean = false
 
     /**
-     * Exhale's rise (Apple Music v2): instead of a card growing out of the pill with the player
-     * scaled inside it, the player rises out of the dock at its own size -- see-through at first,
-     * solid before it arrives -- and only the cover travels, out of the mini player's thumbnail
-     * into the player's cover as it comes up to meet it. No pill landing on close: the cover
-     * lands on the thumbnail instead. Read in the draw phase only.
+     * BitChord's dock (Apple Music v2 full bleed, Espresso): instead of a card growing out of the
+     * pill with the player scaled inside it, the sheet slides up out of the dock at its own size,
+     * fading in a little behind, over a mini player that stays where it is -- and the artwork
+     * travels on its own between the mini player's cover and the player's. No pill landing on
+     * close: the cover lands on the mini cover instead. Read in the draw phase only.
      */
     @JvmField var rise: Boolean = false
     /** The pill's own drop-shadow elevation (px). The card casts it while it is still the

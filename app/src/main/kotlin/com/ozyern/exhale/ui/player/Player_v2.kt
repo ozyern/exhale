@@ -517,11 +517,12 @@ private fun PlayerV2Content(
     val selectedLook by rememberEnumPreference(key = PlayerLookKey, defaultValue = PlayerLook.SQUARED)
     val playerLook = if (auxiliaryPageState != null) PlayerLook.SQUARED else selectedLook
     val isHeroLook = playerLook == PlayerLook.HERO
-    androidx.compose.runtime.DisposableEffect(Unit) {
+    androidx.compose.runtime.DisposableEffect(isHeroLook) {
         PlayerMorph.stayInPlace = false
-        // Apple Music v2 opens with Exhale's rise: the player comes up out of the dock at its
-        // own size and only the cover flies (see PlayerMorph.rise).
-        PlayerMorph.rise = true
+        // Full bleed docks as BitChord's player does: the sheet slides up out of the dock fading in,
+        // and the mini player's cover flies into the hero (see PlayerMorph.rise). Square artwork
+        // keeps Convx's card.
+        PlayerMorph.rise = isHeroLook
         onDispose {
             PlayerMorph.stayInPlace = false
             PlayerMorph.rise = false

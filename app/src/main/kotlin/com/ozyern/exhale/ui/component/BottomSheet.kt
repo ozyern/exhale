@@ -87,6 +87,16 @@ internal const val PLAYER_GLASS_UNFREEZE_PROGRESS = 0.75f
 /** Spring stiffness for opening and closing the player sheet. */
 private const val PlayerSheetStiffness = MotionTokens.PlayerSheetStiffness
 
+/**
+ * BitChord's dock (PlayerMorph.rise) slides on its own spring: critically damped with about 0.45 s
+ * of response, the way Apple Music's player sheet moves. It leaves briskly and spends most of its
+ * time settling, which is where the eye is following the artwork home.
+ */
+private fun playerSheetStiffness(): Float =
+    if (com.ozyern.exhale.ui.player.PlayerMorph.rise) BITCHORD_DOCK_STIFFNESS else PlayerSheetStiffness
+
+private const val BITCHORD_DOCK_STIFFNESS = 195f
+
 private const val BackdropFreezeSafetyNs = 900_000_000L
 
 /** Close spring damping when the sheet lands into the mini pill with speed. */
@@ -434,8 +444,8 @@ class BottomSheetState(
     /** Critically damped normally; a touch underdamped when a landing handler wants the
      *  arrival speed (only reachable because the collapsed bound stops the overshoot). */
     private fun collapseSpring() = spring<Dp>(
-        dampingRatio = if (onCollapseLanded != null) COLLAPSE_LANDING_DAMPING else Spring.DampingRatioNoBouncy,
-        stiffness = PlayerSheetStiffness,
+        dampingRatio = if (onCollapseLanded != null && !com.ozyern.exhale.ui.player.PlayerMorph.rise) COLLAPSE_LANDING_DAMPING else Spring.DampingRatioNoBouncy,
+        stiffness = playerSheetStiffness(),
     )
 
     fun expand(animationSpec: AnimationSpec<Dp>, initialVelocity: Dp = 0.dp) {
@@ -455,7 +465,7 @@ class BottomSheetState(
         expand(
             spring(
                 dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = PlayerSheetStiffness,
+                stiffness = playerSheetStiffness(),
             ),
             initialVelocity = with(density) { velocityPxPerSec.toDp() },
         )
@@ -473,7 +483,7 @@ class BottomSheetState(
         expand(
             spring(
                 dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = PlayerSheetStiffness,
+                stiffness = playerSheetStiffness(),
             ),
         )
     }
