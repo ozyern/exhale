@@ -95,7 +95,13 @@ import com.ozyern.exhale.viewmodels.HomeViewModel
 /** Root rows that open a page directly rather than a category. */
 private val historyLink = SettingsLink("History", R.drawable.music_history, { systemCyan }, SettingsAction.Route("history"))
 private val statsLink = SettingsLink("Stats", R.drawable.stats, { systemYellow }, SettingsAction.Route("stats"))
-private val listenTogetherLink = SettingsLink("Listen Together", R.drawable.group, { systemCyan }, SettingsAction.Route("listen_together_from_topbar"))
+private val listenTogetherLink = SettingsLink(
+    "Listen Together",
+    R.drawable.settings_listen_together,
+    { systemCyan },
+    SettingsAction.Route("listen_together_from_topbar"),
+    artwork = true,
+)
 private val updateLink = SettingsLink(
     "Software Update",
     R.drawable.settings_software_update,

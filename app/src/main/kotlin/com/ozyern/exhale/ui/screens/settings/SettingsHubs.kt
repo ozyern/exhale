@@ -85,7 +85,7 @@ private fun route(r: String) = SettingsAction.Route(r)
 /** The settings tree: root categories, the pages they open, and every destination under them. */
 object SettingsHubs {
     val player = SettingsHub(
-        "player", "Player & Lyrics", R.drawable.play, { systemPink },
+        "player", "Player & Lyrics", R.drawable.settings_player_lyrics, { systemPink },
         listOf(
             SettingsLinkGroup(
                 "Player",
@@ -120,10 +120,11 @@ object SettingsHubs {
                 ),
             ),
         ),
+        artwork = true,
     )
 
     val playback = SettingsHub(
-        "playback", "Playback & Audio", R.drawable.equalizer, { systemRed },
+        "playback", "Playback & Audio", R.drawable.settings_playback_audio, { systemRed },
         listOf(
             SettingsLinkGroup(
                 "Sound",
@@ -155,10 +156,11 @@ object SettingsHubs {
                 ),
             ),
         ),
+        artwork = true,
     )
 
     val appearance = SettingsHub(
-        "appearance", "Appearance", R.drawable.palette, { systemPurple },
+        "appearance", "Appearance", R.drawable.settings_appearance, { systemPurple },
         listOf(
             SettingsLinkGroup(
                 "Theme & colors",
@@ -187,6 +189,7 @@ object SettingsHubs {
                 ),
             ),
         ),
+        artwork = true,
     )
 
     val library = SettingsHub(
@@ -217,7 +220,7 @@ object SettingsHubs {
     )
 
     val accounts = SettingsHub(
-        "accounts", "Accounts & Services", R.drawable.account, { systemGreen },
+        "accounts", "Accounts & Services", R.drawable.settings_accounts_services, { systemGreen },
         listOf(
             SettingsLinkGroup(
                 "Accounts",
@@ -236,6 +239,7 @@ object SettingsHubs {
                 ),
             ),
         ),
+        artwork = true,
     )
 
     val privacy = SettingsHub(
