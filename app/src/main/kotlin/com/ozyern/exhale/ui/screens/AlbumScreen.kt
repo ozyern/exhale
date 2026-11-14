@@ -542,7 +542,11 @@ fun AlbumScreen(
         val artHeight = (maxWidth / com.ozyern.exhale.ui.component.ReleaseSleeveRatio)
             .coerceAtMost(maxHeight * 0.6f)
         val artworkUrl = albumWithSongs?.album?.thumbnailUrl
-        if (albumWithSongs?.songs?.isNotEmpty() == true) {
+        if (albumWithSongs?.songs?.isNotEmpty() == true && !bleedPane) {
+            // Upright, the page is the sleeve on a flat ground of its own colour. Recorded for the
+            // page's glass, which bends whatever is behind it.
+            Box(Modifier.matchParentSize().layerBackdrop(albumBackdrop).background(palette.background))
+        } else if (albumWithSongs?.songs?.isNotEmpty() == true) {
             com.ozyern.exhale.ui.component.ReleaseBackground(
                 artworkUrl = artworkUrl,
                 palette = palette,
@@ -599,6 +603,53 @@ fun AlbumScreen(
                     } else {
                         "Lossless"
                     }
+                    if (!bleedPane) {
+                        val total = albumWithSongs.songs.sumOf { it.song.duration }
+                        AlbumSleeveHeader(
+                            artworkUrl = albumWithSongs.album.thumbnailUrl,
+                            artist = albumWithSongs.artists.joinToString(", ") { it.name },
+                            title = albumWithSongs.album.title,
+                            meta = buildList {
+                                albumWithSongs.album.year?.let { add(it.toString()) }
+                                add(pluralStringResource(R.plurals.n_song, wrappedSongs.size, wrappedSongs.size))
+                                if (total > 0) add(makeTimeString(total * 1000L))
+                            }.joinToString(" \u00B7 "),
+                            palette = palette,
+                            downloaded = downloadState == Download.STATE_COMPLETED,
+                            onArtist = albumWithSongs.artists.firstOrNull()?.let { artist ->
+                                { navController.navigate("artist/${artist.id}") }
+                            },
+                            onPlay = {
+                                playerConnection.service.getAutomix(playlistId)
+                                playerConnection.playQueue(LocalAlbumRadio(albumWithSongs))
+                            },
+                            onShuffle = {
+                                playerConnection.service.getAutomix(playlistId)
+                                playerConnection.playQueue(
+                                    LocalAlbumRadio(albumWithSongs.copy(songs = albumWithSongs.songs.shuffled()), shuffled = true),
+                                )
+                            },
+                            onDownload = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                albumWithSongs.songs.forEach { song ->
+                                    if (downloadState == Download.STATE_COMPLETED) {
+                                        androidx.media3.exoplayer.offline.DownloadService.sendRemoveDownload(
+                                            context, com.ozyern.exhale.playback.ExoDownloadService::class.java, song.id, false,
+                                        )
+                                    } else {
+                                        val request = androidx.media3.exoplayer.offline.DownloadRequest
+                                            .Builder(song.id, android.net.Uri.parse(song.id))
+                                            .setCustomCacheKey(song.id)
+                                            .setData(song.song.title.toByteArray())
+                                            .build()
+                                        androidx.media3.exoplayer.offline.DownloadService.sendAddDownload(
+                                            context, com.ozyern.exhale.playback.ExoDownloadService::class.java, request, false,
+                                        )
+                                    }
+                                }
+                            },
+                        )
+                    } else
                     com.ozyern.exhale.ui.component.ReleaseHeader(
                         title = albumWithSongs.album.title,
                         credit = albumWithSongs.artists.joinToString(", ") { it.name },
@@ -727,10 +778,18 @@ fun AlbumScreen(
                         title = song.song.title,
                         // Only a credit that differs from the album's, as Apple Music sets a track list:
                         // "Megan Moroney & Ed Sheeran" under a duet, nothing under the rest.
-                        subtitle = song.artists.joinToString(", ") { it.name }
-                            .takeIf { credit -> credit != albumWithSongs.artists.joinToString(", ") { it.name } }
-                            .orEmpty(),
-                        duration = song.song.duration.takeIf { it > 0 }?.let { makeTimeString(it * 1000L) },
+                        subtitle = if (!bleedPane) {
+                            // Upright: the credit and the running time together under the title.
+                            buildList {
+                                add(song.artists.joinToString(", ") { it.name })
+                                song.song.duration.takeIf { it > 0 }?.let { add(makeTimeString(it * 1000L)) }
+                            }.joinToString(" \u2022 ")
+                        } else {
+                            song.artists.joinToString(", ") { it.name }
+                                .takeIf { credit -> credit != albumWithSongs.artists.joinToString(", ") { it.name } }
+                                .orEmpty()
+                        },
+                        duration = if (!bleedPane) null else song.song.duration.takeIf { it > 0 }?.let { makeTimeString(it * 1000L) },
                         explicit = song.song.explicit,
                         palette = palette,
                         isCurrent = isCurrent,
@@ -1140,6 +1199,101 @@ fun AlbumScreen(
                         }
                     }
                 }
+            )
+        }
+    }
+}
+
+/**
+ * The album as its sleeve: the cover square and centred on a flat ground of its own colour, the
+ * artist large under it, then the album's name, its year, length and running time, and three
+ * controls in a row: shuffle, Play, download.
+ */
+@Composable
+private fun AlbumSleeveHeader(
+    artworkUrl: String?,
+    artist: String,
+    title: String,
+    meta: String,
+    palette: com.ozyern.exhale.ui.component.ArtworkPalette,
+    downloaded: Boolean,
+    onArtist: (() -> Unit)?,
+    onPlay: () -> Unit,
+    onShuffle: () -> Unit,
+    onDownload: () -> Unit,
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .padding(top = 76.dp, bottom = 18.dp),
+    ) {
+        AsyncImage(
+            model = artworkUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxWidth(0.68f)
+                .aspectRatio(1f)
+                .shadow(24.dp, RoundedCornerShape(14.dp), ambientColor = Color.Black, spotColor = Color.Black)
+                .clip(RoundedCornerShape(14.dp)),
+        )
+        Spacer(Modifier.height(34.dp))
+        Text(
+            text = artist,
+            color = palette.onBackground,
+            fontSize = 32.sp,
+            lineHeight = 36.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .padding(horizontal = 24.dp)
+                .then(if (onArtist != null) Modifier.clickable(onClick = onArtist) else Modifier),
+        )
+        Spacer(Modifier.height(14.dp))
+        Text(
+            text = title,
+            color = palette.onBackground.copy(alpha = 0.92f),
+            fontSize = 20.sp,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 28.dp),
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(text = meta, color = palette.onBackgroundVariant, fontSize = 15.sp, maxLines = 1)
+        Spacer(Modifier.height(22.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            com.ozyern.exhale.ui.component.ReleaseCircle(
+                icon = R.drawable.shuffle,
+                contentDescription = stringResource(R.string.shuffle),
+                palette = palette,
+                size = 54.dp,
+                onClick = onShuffle,
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier
+                    .height(54.dp)
+                    .width(150.dp)
+                    .clip(RoundedCornerShape(27.dp))
+                    .background(Color.White.copy(alpha = 0.88f))
+                    .clickable(onClick = onPlay),
+            ) {
+                Icon(painterResource(R.drawable.play), contentDescription = null, tint = Color.Black, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.play), color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            }
+            com.ozyern.exhale.ui.component.ReleaseCircle(
+                icon = if (downloaded) R.drawable.offline else R.drawable.download,
+                contentDescription = null,
+                palette = palette,
+                size = 54.dp,
+                onClick = onDownload,
             )
         }
     }
