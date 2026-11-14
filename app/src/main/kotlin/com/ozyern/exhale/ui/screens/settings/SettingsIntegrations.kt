@@ -112,7 +112,7 @@ private fun IntegrationRow(
                 Icon(
                     painter = action.icon,
                     contentDescription = null,
-                    tint = action.accentColor,
+                    tint = if (action.coloredIcon) androidx.compose.ui.graphics.Color.Unspecified else action.accentColor,
                     modifier = Modifier.size(SettingsDimensions.RowIconInnerSize),
                 )
             }

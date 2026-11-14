@@ -126,7 +126,7 @@ private fun QuickActionTile(
             Icon(
                 painter = action.icon,
                 contentDescription = action.label,
-                tint = action.accentColor,
+                tint = if (action.coloredIcon) androidx.compose.ui.graphics.Color.Unspecified else action.accentColor,
                 modifier = Modifier.size(SettingsDimensions.QuickActionIconInnerSize),
             )
         }
@@ -186,7 +186,7 @@ private fun QuickActionRow(
                 Icon(
                     painter = action.icon,
                     contentDescription = action.label,
-                    tint = action.accentColor,
+                    tint = if (action.coloredIcon) androidx.compose.ui.graphics.Color.Unspecified else action.accentColor,
                     modifier = Modifier.size(SettingsDimensions.RowIconInnerSize),
                 )
             }

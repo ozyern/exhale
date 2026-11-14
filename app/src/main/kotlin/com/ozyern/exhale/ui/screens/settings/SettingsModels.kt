@@ -14,6 +14,8 @@ data class SettingsQuickAction(
     val label: String,
     val onClick: () -> Unit,
     val accentColor: Color,
+    /** The glyph carries its own colours: drawn untinted. */
+    val coloredIcon: Boolean = false,
 )
 
 data class SettingsGroup(
@@ -39,4 +41,6 @@ data class SettingsIntegrationAction(
     val label: String,
     val onClick: () -> Unit,
     val accentColor: Color,
+    /** The glyph carries its own colours: drawn untinted. */
+    val coloredIcon: Boolean = false,
 )
