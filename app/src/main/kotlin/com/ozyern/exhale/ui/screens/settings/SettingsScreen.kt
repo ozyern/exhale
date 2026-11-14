@@ -165,7 +165,8 @@ fun SettingsScreen(
     val contentState = SettingsContentState(
         quickActions = if (queryText.isBlank()) quickActions else filteredQuickActions,
         integrations = if (queryText.isBlank()) integrationActions else filteredIntegrations,
-        groups = if (queryText.isBlank()) settingsGroups else filteredGroups,
+        // At rest, the short front page of sections; searching, every page by name.
+        groups = if (queryText.isBlank()) buildSettingsIndex(navController, hasUpdate, resetSearch) else filteredGroups,
         internalGroup = if (queryText.isNotBlank()) internalGroup else null,
         showPermissionBanner = shouldShowPermissionHint,
         showUpdateBanner = hasUpdate,

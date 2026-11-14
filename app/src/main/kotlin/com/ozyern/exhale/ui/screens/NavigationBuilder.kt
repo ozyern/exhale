@@ -385,6 +385,11 @@ fun NavGraphBuilder.navigationBuilder(
             }
         }
     }
+    for (section in listOf("player_lyrics", "playback_audio", "appearance", "library_content", "accounts", "privacy_storage", "help_about")) {
+        settingsComposable("settings/section/$section") {
+            com.ozyern.exhale.ui.screens.settings.SettingsSectionScreen(navController, section)
+        }
+    }
     settingsComposable("settings/appearance") {
         AppearanceSettings(navController, scrollBehavior)
     }
