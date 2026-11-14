@@ -148,6 +148,12 @@ fun NowPlayingBackground(
     modifier: Modifier = Modifier,
     transitionMillis: Int = 800,
     videoLook: CanvasVideoLook? = null,
+    /**
+     * Whether Exhale's bled artwork may show. The player passes "fully open and not morphing", so
+     * the open and close animations play over Convx's own ground, untouched, and the bleed fades
+     * in only once the player has settled.
+     */
+    bleedVisible: () -> Boolean = { true },
 ) {
     val gradient by rememberNowPlayingGradient(artworkUrl, hero, videoLook)
     val top by animateColorAsState(
@@ -166,17 +172,25 @@ fun NowPlayingBackground(
             .drawBehind {
                 drawRect(if (hero) Brush.verticalGradient(0f to top, 0.62f to top, 1f to bottom)
                     else Brush.verticalGradient(0f to top, 0.606f to top, 1f to bottom))
-            }
-            // Exhale's grain: the ground reads as a photograph, not a gradient on glass, and a slow
-            // dark fade no longer bands into steps.
-            .filmGrain(0.07f),
+            },
     ) {
-        if (videoLook == null) {
+        val showBleed by remember { androidx.compose.runtime.derivedStateOf(bleedVisible) }
+        val bleedAlpha by androidx.compose.animation.core.animateFloatAsState(
+            targetValue = if (showBleed) 1f else 0f,
+            animationSpec = tween(if (showBleed) 650 else 180),
+            label = "nowPlayingBleedIn",
+        )
+        if (videoLook == null && bleedAlpha > 0f) {
             androidx.compose.animation.Crossfade(
                 targetState = artworkUrl,
                 animationSpec = tween(transitionMillis),
                 label = "nowPlayingBleed",
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = bleedAlpha }
+                    // Exhale's grain, with the bleed: the ground reads as a photograph, and a slow
+                    // dark fade no longer bands into steps.
+                    .filmGrain(0.07f),
             ) { url ->
                 // The square look has no full-width cover: the whole cover, blurred, is its ground.
                 if (url != null) BleedingArtwork(url, heroFraction = if (hero) HERO_FRACTION else 1f)

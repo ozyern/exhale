@@ -980,6 +980,7 @@ fun BottomSheetPlayer(
                         hero = v2Look == com.ozyern.exhale.constants.PlayerLook.HERO,
                         videoLook = CanvasVideoLooks.forMedia(ambientMetadata?.id),
                         transitionMillis = maxOf(bgFadeMs, 800),
+                        bleedVisible = { state.isExpanded && !PlayerMorph.active },
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer { alpha = backgroundAlpha() }
@@ -1256,6 +1257,7 @@ fun BottomSheetPlayer(
                                         hero = true,
                                         videoLook = videoLook,
                                         transitionMillis = maxOf(bgFadeMs, 800),
+                                        bleedVisible = { state.isExpanded && !PlayerMorph.active },
                                         modifier = Modifier.fillMaxSize(),
                                     )
 
