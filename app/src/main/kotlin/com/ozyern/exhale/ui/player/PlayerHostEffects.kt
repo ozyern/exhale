@@ -88,7 +88,8 @@ fun PlayerMorphHostEffects(state: BottomSheetState, isPreviewOnly: Boolean) {
         // Armed from the start of every close, so the card is still drawn on the frame the
         // sheet reaches its bound; disarmed if the close never lands.
         state.onCollapseArmed = { armed ->
-            if (armed && PlayerMorph.sharedLayersReady) {
+            // The rise closes onto the thumbnail, not with a card landing on the pill.
+            if (armed && PlayerMorph.sharedLayersReady && !PlayerMorph.rise) {
                 landingGeneration++
                 PlayerMorph.landingActive = true
             } else if (!armed) {

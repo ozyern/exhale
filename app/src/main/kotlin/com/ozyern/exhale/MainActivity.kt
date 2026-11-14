@@ -55,6 +55,12 @@ import org.koin.android.ext.android.inject
 class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_PLAY_INTRO = "com.ozyern.exhale.extra.PLAY_INTRO"
+
+        /**
+         * The intro belongs to the process, not the activity: leaving the app ends the activity
+         * while the music keeps the process running, and coming back to it is not a cold start.
+         */
+        @Volatile private var introPlayedThisProcess = false
         internal const val ACTION_SEARCH = "com.ozyern.exhale.action.SEARCH"
         internal const val ACTION_LIBRARY = "com.ozyern.exhale.action.LIBRARY"
     }
@@ -172,8 +178,17 @@ class MainActivity : ComponentActivity() {
 
         // Cold launch from the launcher only (WelcomeActivity hands off with this extra);
         // notification/deep-link opens go straight to the app.
-        // The system splash carries the logo now, so the intro animation stays off.
-        val playIntro = false && savedInstanceState == null && intent.getBooleanExtra(EXTRA_PLAY_INTRO, false)
+        // Exhale master's intros, drawn over the already-composed app: the neon mark (the retro
+        // one, the default) or the liquid lens film. Off leaves the system splash alone.
+        val introStyle = runCatching {
+            com.ozyern.exhale.constants.IntroStyle.valueOf(
+                dataStore[com.ozyern.exhale.constants.IntroStyleKey] ?: com.ozyern.exhale.constants.IntroStyle.NEON.name,
+            )
+        }.getOrDefault(com.ozyern.exhale.constants.IntroStyle.NEON)
+        val playIntro = savedInstanceState == null &&
+            !introPlayedThisProcess &&
+            introStyle != com.ozyern.exhale.constants.IntroStyle.OFF &&
+            intent.getBooleanExtra(EXTRA_PLAY_INTRO, false)
         setContent {
             var showIntro by rememberSaveable { mutableStateOf(playIntro) }
             Box(Modifier.fillMaxSize()) {
@@ -188,7 +203,17 @@ class MainActivity : ComponentActivity() {
                     listenHistorySettingsRepository = ValueProvider { listenHistorySettingsRepository },
                     observePlaylists = observePlaylists,
                 )
-                if (showIntro) com.ozyern.exhale.ui.component.ExhaleIntro(onFinished = { showIntro = false })
+                if (showIntro) {
+                    val introDone = {
+                        introPlayedThisProcess = true
+                        showIntro = false
+                    }
+                    when (introStyle) {
+                        com.ozyern.exhale.constants.IntroStyle.LENS ->
+                            com.ozyern.exhale.ui.component.lensboot.LensBootSplash(onFinished = introDone)
+                        else -> com.ozyern.exhale.ui.component.BootSplash(onFinished = introDone)
+                    }
+                }
             }
         }
         window.decorView.doOnPreDraw {

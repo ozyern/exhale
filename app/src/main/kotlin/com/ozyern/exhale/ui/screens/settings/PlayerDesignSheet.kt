@@ -119,6 +119,7 @@ fun ColumnScope.PlayerDesignSheetContent(onMoreOptions: () -> Unit) {
     val (shadow, setShadow) = rememberPreference(ShowPlayerThumbnailShadowKey, false)
     val (showUpNext, setShowUpNext) = rememberPreference(ShowUpNextKey, false)
     val (hideVolumeBar, setHideVolumeBar) = rememberPreference(HideVolumeBarKey, false)
+    val (espresso, setEspresso) = rememberPreference(com.ozyern.exhale.constants.EspressoPlayerKey, false)
 
     val design = when {
         useV2 -> PlayerDesign.APPLE_MUSIC_V2
@@ -144,6 +145,8 @@ fun ColumnScope.PlayerDesignSheetContent(onMoreOptions: () -> Unit) {
     )
 
     fun apply(d: PlayerDesign) {
+        // Picking one of these designs leaves Espresso, which stands in for all of them.
+        setEspresso(false)
         val leaveAppleBackground = background == PlayerBackgroundStyle.APPLE_MUSIC
         when (d) {
             PlayerDesign.CARD, PlayerDesign.VINYL, PlayerDesign.CLOVER -> {
@@ -204,6 +207,11 @@ fun ColumnScope.PlayerDesignSheetContent(onMoreOptions: () -> Unit) {
             upNext = upNext,
             onSelect = ::apply,
         )
+
+        // Exhale master's Espresso player, in place of whichever design is picked above.
+        OptionSection(null) {
+            SwitchRow("Espresso player", espresso, setEspresso)
+        }
 
         AnimatedContent(
             targetState = design,

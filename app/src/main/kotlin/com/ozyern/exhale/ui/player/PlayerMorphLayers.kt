@@ -36,6 +36,15 @@ object PlayerMorph {
     @JvmField var fullContentLayer: GraphicsLayer? = null
     /** Keeps the expanded player in place during a hero transition when explicitly enabled. */
     @JvmField var stayInPlace: Boolean = false
+
+    /**
+     * Exhale's rise (Apple Music v2): instead of a card growing out of the pill with the player
+     * scaled inside it, the player rises out of the dock at its own size -- see-through at first,
+     * solid before it arrives -- and only the cover travels, out of the mini player's thumbnail
+     * into the player's cover as it comes up to meet it. No pill landing on close: the cover
+     * lands on the thumbnail instead. Read in the draw phase only.
+     */
+    @JvmField var rise: Boolean = false
     /** The pill's own drop-shadow elevation (px). The card casts it while it is still the
      *  pill, so the shadow is there all the way down instead of popping in on landing. */
     @JvmField var miniShadowElevationPx: Float = 0f

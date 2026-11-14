@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
@@ -241,18 +242,45 @@ fun PlayerArtworkMorphOverlay(
                     shadowElevation = 0f
                     return@graphicsLayer
                 }
-                alpha = if (full.fadeEndpoints) flyingArtworkEndpointAlpha(fraction) else 1f
-                val window = sharedArtworkWindow(mini.rect, target, fraction)
+                val rise = PlayerMorph.rise
+                // Rising, the cover is aimed at where its target is now -- carried up with the
+                // sheet -- and grows ahead of the sheet, so it is large while the sheet is low and
+                // the two meet as the sheet arrives.
+                val grow = if (rise) riseArtworkGrow(fraction) else fraction
+                val aim = if (rise) {
+                    val pill = miniPlayerContainerRect
+                    if (pill != null) target.translate(0f, riseSheetTop(pill, fraction)) else target
+                } else {
+                    target
+                }
+                alpha = if (full.fadeEndpoints && !rise) flyingArtworkEndpointAlpha(fraction) else 1f
+                val window = if (rise) {
+                    Rect(
+                        lerp(mini.rect.left, aim.left, grow),
+                        lerp(mini.rect.top, aim.top, grow),
+                        lerp(mini.rect.right, aim.right, grow),
+                        lerp(mini.rect.bottom, aim.bottom, grow),
+                    )
+                } else {
+                    sharedArtworkWindow(mini.rect, target, fraction)
+                }
                 // Image square side at this instant: covers the window at every fraction
                 // (lerp of the max >= max of the lerps), full image at 0, Crop at 1.
-                val imageSide = lerp(maxOf(mini.rect.width, mini.rect.height), side, fraction)
+                val imageSide = lerp(maxOf(mini.rect.width, mini.rect.height), side, grow)
                 val scale = imageSide / side
                 transformOrigin = TransformOrigin.Center
                 scaleX = scale
                 scaleY = scale
                 translationX = window.center.x - target.center.x
                 translationY = window.center.y - target.center.y
-                val radius = lerp(mini.radiusPx, full.radiusPx * shrink, fraction)
+                val radius = if (rise) {
+                    // A card's corners on the way; the target's own only on the last stretch.
+                    val card = maxOf(mini.radiusPx, RISE_ART_CORNER.toPx())
+                    if (grow < 0.2f) lerp(mini.radiusPx, card, grow / 0.2f)
+                    else lerp(card, full.radiusPx * shrink, riseArtworkLanding(grow))
+                } else {
+                    lerp(mini.radiusPx, full.radiusPx * shrink, fraction)
+                }
                 shape = CenteredWindowShape(
                     windowWidth = window.width / scale,
                     windowHeight = window.height / scale,
@@ -267,6 +295,9 @@ fun PlayerArtworkMorphOverlay(
                     Modifier.drawWithContent {
                         drawContent()
                         val fraction = progress().coerceIn(0f, 1f)
+                        // Rising, the foot dissolves in only as the cover lands, so it reads as a
+                        // cover in flight first and the hero itself last.
+                        val maskIn = if (PlayerMorph.rise) riseArtworkLanding(riseArtworkGrow(fraction)) else fraction
                         // Target rect inside this square, in local px (pre-scale).
                         val top = (size.height - target.height) / 2f
                         drawRect(
@@ -275,7 +306,7 @@ fun PlayerArtworkMorphOverlay(
                                 startY = top,
                                 endY = top + target.height,
                             ),
-                            alpha = fraction,
+                            alpha = maskIn,
                             blendMode = BlendMode.DstOut,
                         )
                     }
@@ -313,6 +344,19 @@ fun PlayerArtworkMorphOverlay(
         }
     }
 }
+
+/** The rising cover's growth: well ahead of the sheet, so it opens out almost at once. */
+internal fun riseArtworkGrow(progress: Float): Float {
+    val inverse = 1f - sanitizedProgress(progress)
+    return 1f - inverse * inverse * inverse
+}
+
+/** How far into its last stretch the rising cover is, where it takes on the target's look. */
+internal fun riseArtworkLanding(grow: Float): Float =
+    ((grow - RISE_ART_LOOK_FROM) / (1f - RISE_ART_LOOK_FROM)).coerceIn(0f, 1f)
+
+private const val RISE_ART_LOOK_FROM = 0.72f
+private val RISE_ART_CORNER = 12.dp
 
 /**
  * Still -> video dissolve across the back half of the flight, smoothstepped so neither end

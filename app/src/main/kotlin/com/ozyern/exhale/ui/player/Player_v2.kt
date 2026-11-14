@@ -519,7 +519,13 @@ private fun PlayerV2Content(
     val isHeroLook = playerLook == PlayerLook.HERO
     androidx.compose.runtime.DisposableEffect(Unit) {
         PlayerMorph.stayInPlace = false
-        onDispose { PlayerMorph.stayInPlace = false }
+        // Apple Music v2 opens with Exhale's rise: the player comes up out of the dock at its
+        // own size and only the cover flies (see PlayerMorph.rise).
+        PlayerMorph.rise = true
+        onDispose {
+            PlayerMorph.stayInPlace = false
+            PlayerMorph.rise = false
+        }
     }
     val heroVideoFrame = remember(canvasVideo) { mutableIntStateOf(0) }
     val selectedBackground by rememberEnumPreference(PlayerBackgroundStyleKey, PlayerBackgroundStyle.GRADIENT)
@@ -1056,10 +1062,13 @@ private fun PlayerV2Content(
                                                 },
                                                 pauseShrinks = true,
                                             ) else Modifier.fullArtworkMorphTarget(
+                                                // Rising, the mini cover flies up into the
+                                                // edge-to-edge hero and dissolves at its foot
+                                                // as it lands, as master's player does.
                                                 cornerRadiusPx = 0f,
-                                                travels = false,
+                                                travels = true,
+                                                heroMask = true,
                                                 pauseShrinks = false,
-                                                fadeOnly = true,
                                             ))
                                             // Keep this as a stable morph anchor; the animated child draws and scales the card.
                                             .then(

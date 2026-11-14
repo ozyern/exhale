@@ -806,6 +806,9 @@ enum class LyricsAnimationStyle {
 
     /** Lines on a tilted plane that recedes into a starfield, like an opening crawl. */
     STAR_CRAWL,
+
+    /** Exhale master's Melody: every word a note on one curving line, a point of light running along it. */
+    MELODY,
 }
 
 val LyricsTextSizeKey = floatPreferencesKey("lyricsTextSize")
@@ -1135,3 +1138,11 @@ val EnableLockScreenLyricsKey = booleanPreferencesKey("enableLockScreenLyrics")
 val LockScreenLyricsOverlayKey = booleanPreferencesKey("lockScreenLyricsOverlay")
 /** The line being sung written into the lock-screen media card in place of the artist. */
 val LyricsOnMediaCardKey = booleanPreferencesKey("lyricsOnMediaCard")
+
+/** The cold-start intro, from Exhale master: the neon (retro) mark, the liquid lens, or none. */
+val IntroStyleKey = stringPreferencesKey("introStyle")
+
+/** Exhale master's Espresso player: the song as a record, half a vinyl turning at the foot. */
+val EspressoPlayerKey = booleanPreferencesKey("espressoPlayer")
+
+enum class IntroStyle { NEON, LENS, OFF }

@@ -362,6 +362,7 @@ fun BottomSheetPlayer(
 
     // Both player styles use the same sheet and drag gestures.
     val (useAppleMusicPlayer) = rememberPreference(UseAppleMusicPlayerKey, defaultValue = true)
+    val (espressoPlayer) = rememberPreference(com.ozyern.exhale.constants.EspressoPlayerKey, defaultValue = false)
     val v2Look by rememberEnumPreference(com.ozyern.exhale.constants.PlayerLookKey, com.ozyern.exhale.constants.PlayerLook.SQUARED)
 
     // Shared between the background slot (BackgroundVideoView polls into it) and the
@@ -980,7 +981,7 @@ fun BottomSheetPlayer(
                         hero = v2Look == com.ozyern.exhale.constants.PlayerLook.HERO,
                         videoLook = CanvasVideoLooks.forMedia(ambientMetadata?.id),
                         transitionMillis = maxOf(bgFadeMs, 800),
-                        bleedVisible = { state.isExpanded && !PlayerMorph.active },
+                        bleedVisible = { PlayerMorph.rise || (state.isExpanded && !PlayerMorph.active) },
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer { alpha = backgroundAlpha() }
@@ -1257,7 +1258,7 @@ fun BottomSheetPlayer(
                                         hero = true,
                                         videoLook = videoLook,
                                         transitionMillis = maxOf(bgFadeMs, 800),
-                                        bleedVisible = { state.isExpanded && !PlayerMorph.active },
+                                        bleedVisible = { PlayerMorph.rise || (state.isExpanded && !PlayerMorph.active) },
                                         modifier = Modifier.fillMaxSize(),
                                     )
 
@@ -1588,6 +1589,35 @@ fun BottomSheetPlayer(
             }
         },
     ) {
+        val espressoMetadata = mediaMetadata
+        if (espressoPlayer && !isPreviewOnly && espressoMetadata != null) {
+            // Exhale master's Espresso player. It opens with the rise too: the dock's cover flies
+            // up into its full-bleed cover as the player comes up (see PlayerMorph.rise).
+            androidx.compose.runtime.DisposableEffect(Unit) {
+                PlayerMorph.rise = true
+                onDispose { PlayerMorph.rise = false }
+            }
+            EspressoPlayerScreen(
+                playerSheetState = state,
+                navController = navController,
+                mediaMetadata = espressoMetadata,
+                playbackState = playbackState,
+                isPlaying = isPlaying,
+                canSkipPrevious = canSkipPrevious,
+                canSkipNext = canSkipNext,
+                currentFormat = currentFormat,
+                positionProvider = { playerConnection.player.currentPosition },
+                durationProvider = { playerConnection.player.duration.coerceAtLeast(0L) },
+                sliderPositionProvider = { sliderPosition },
+                onSliderValueChange = { if (!isListenTogetherGuest) sliderPosition = it },
+                onSliderValueChangeFinished = {
+                    sliderPosition?.let { playerConnection.player.seekTo(it) }
+                    sliderPosition = null
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+            return@BottomSheet
+        }
         if (useAppleMusicPlayer) {
             // Menus/popovers inside the player sample the player's own backdrop, not the
             // app root under the sheet (that showed the Home screen through the glass).

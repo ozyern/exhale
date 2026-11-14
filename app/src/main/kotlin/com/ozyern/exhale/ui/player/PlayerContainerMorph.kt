@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 import com.ozyern.exhale.ui.component.PLAYER_CONTENT_APPEAR_END
 import com.ozyern.exhale.ui.component.PLAYER_CONTENT_APPEAR_START
@@ -165,6 +166,18 @@ fun PlayerContainerMorphOverlay(
                     // overlay's own size. Nothing to register at that end, nothing to go
                     // stale.
                     val full = Rect(0f, 0f, size.width, size.height)
+                    if (PlayerMorph.rise && !landing) {
+                        drawRise(
+                            fraction = fraction,
+                            mini = mini,
+                            miniLayer = miniLayer,
+                            fullBackgroundLayer = fullBackgroundLayer,
+                            fullContentLayer = fullContentLayer,
+                            cornerPx = RISE_CORNER.toPx(),
+                            clipPath = clipPath,
+                        )
+                        return@onDrawBehind
+                    }
                     val rect = if (landing) landingCardRect(mini) else sharedContainerRect(mini, full, fraction)
                     val radius = if (landing) rect.height / 2f else sharedContainerCornerRadii(
                         // The nav bar draws the pill as a 50%-rounded capsule, so its radius
@@ -270,6 +283,72 @@ fun PlayerContainerMorphOverlay(
                 }
             },
     )
+}
+
+/**
+ * Where the rising sheet's top edge is at [fraction]: on the pill's top at 0, the screen's top
+ * at 1, linear with the sheet's own progress so a finger on it stays under the finger.
+ */
+internal fun riseSheetTop(mini: Rect, fraction: Float): Float =
+    mini.top * (1f - sanitizedProgress(fraction))
+
+/**
+ * The rising player's opacity: a quarter there as it leaves the bar, so the page shows through
+ * it on the way up, and solid by two thirds of the way.
+ */
+internal fun riseAlpha(fraction: Float): Float {
+    val r = (sanitizedProgress(fraction) / RISE_SOLID_BY).coerceIn(0f, 1f)
+    return RISE_FLOOR + (1f - RISE_FLOOR) * r * r * (3f - 2f * r)
+}
+
+private const val RISE_SOLID_BY = 0.66f
+private const val RISE_FLOOR = 0.25f
+private const val RISE_MINI_GONE_BY = 0.2f
+private val RISE_CORNER = 36.dp
+
+/**
+ * The rise: the mini pill stays where it is and gives way at once, and the whole player, its
+ * ground and its content at their own size, comes up over it from the pill's top edge with
+ * rounded top corners. The cover travels on its own above this ([PlayerArtworkMorphOverlay]).
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRise(
+    fraction: Float,
+    mini: Rect,
+    miniLayer: androidx.compose.ui.graphics.layer.GraphicsLayer,
+    fullBackgroundLayer: androidx.compose.ui.graphics.layer.GraphicsLayer,
+    fullContentLayer: androidx.compose.ui.graphics.layer.GraphicsLayer,
+    cornerPx: Float,
+    clipPath: Path,
+) {
+    if (miniLayer.size.width > 0 && fraction < RISE_MINI_GONE_BY) {
+        miniLayer.alpha = 1f - easeOutCubic(fraction / RISE_MINI_GONE_BY)
+        miniLayer.renderEffect = null
+        translate(left = mini.left, top = mini.top) { drawLayer(miniLayer) }
+    }
+    val top = riseSheetTop(mini, fraction)
+    val radius = cornerPx * (1f - fraction)
+    val alpha = riseAlpha(fraction)
+    clipPath.reset()
+    clipPath.addRoundRect(
+        RoundRect(
+            left = 0f,
+            top = top,
+            right = size.width,
+            bottom = top + size.height,
+            topLeftCornerRadius = CornerRadius(radius, radius),
+            topRightCornerRadius = CornerRadius(radius, radius),
+        ),
+    )
+    clipPath(clipPath) {
+        translate(top = top) {
+            fullBackgroundLayer.alpha = alpha
+            fullBackgroundLayer.renderEffect = null
+            drawLayer(fullBackgroundLayer)
+            fullContentLayer.alpha = alpha
+            fullContentLayer.renderEffect = null
+            drawLayer(fullContentLayer)
+        }
+    }
 }
 
 /** How much the landing pill flattens at the bottom of its dip, and widens with it. */

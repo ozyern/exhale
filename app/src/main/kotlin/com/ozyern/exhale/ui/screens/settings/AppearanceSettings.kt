@@ -298,6 +298,33 @@ fun AppearanceSettings(
         }
     }
 
+    // The cold-start intro, from Exhale master.
+    val (introStyle, onIntroStyleChange) = rememberEnumPreference(
+        com.ozyern.exhale.constants.IntroStyleKey,
+        defaultValue = com.ozyern.exhale.constants.IntroStyle.NEON,
+    )
+    val introStyleText: (com.ozyern.exhale.constants.IntroStyle) -> String = {
+        when (it) {
+            com.ozyern.exhale.constants.IntroStyle.NEON -> "Neon (retro)"
+            com.ozyern.exhale.constants.IntroStyle.LENS -> "Liquid lens"
+            com.ozyern.exhale.constants.IntroStyle.OFF -> "Off"
+        }
+    }
+    var showIntroStyleDialog by rememberSaveable { mutableStateOf(false) }
+    if (showIntroStyleDialog) {
+        EnumDialog(
+            onDismiss = { showIntroStyleDialog = false },
+            onSelect = {
+                onIntroStyleChange(it)
+                showIntroStyleDialog = false
+            },
+            title = "Intro",
+            current = introStyle,
+            values = com.ozyern.exhale.constants.IntroStyle.entries,
+            valueText = { introStyleText(it) },
+        )
+    }
+
     var showDefaultOpenTabDialog by rememberSaveable { mutableStateOf(false) }
     if (showDefaultOpenTabDialog) {
         EnumDialog(
@@ -589,6 +616,12 @@ fun AppearanceSettings(
         IosSettingsGroup(
             title = "More",
             items = listOf(
+                IosSettingsItem(
+                    icon = painterResource(R.drawable.image),
+                    title = { Text("Intro") },
+                    description = { Text(introStyleText(introStyle)) },
+                    onClick = { showIntroStyleDialog = true }
+                ),
                 IosSettingsItem(
                     icon = painterResource(R.drawable.nav_bar),
                     title = { Text(stringResource(R.string.default_open_tab)) },

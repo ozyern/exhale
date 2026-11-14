@@ -688,11 +688,18 @@ fun Lyrics(
     val usesArchiveTuneRenderer = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
         lyricsAnimationStyle == LyricsAnimationStyle.ARCHIVE_TUNE &&
         lines.hasKaraokeTimings()
+    // Exhale master's Melody, and BitChord's own lyrics view: both need timed lines, and fall back
+    // to the Flamingo renderer for lyrics without them.
+    val usesMelodyRenderer = lyricsAnimationStyle == LyricsAnimationStyle.MELODY && isSynced && lines.isNotEmpty()
+    val usesBitChordRenderer = lyricsAnimationStyle == LyricsAnimationStyle.BITCHORD && isSynced && lines.isNotEmpty()
     val usesFlamingoRenderer = (lyricsAnimationStyle == LyricsAnimationStyle.FLAMINGO ||
             lyricsAnimationStyle == LyricsAnimationStyle.EXHALE_1 ||
-            lyricsAnimationStyle == LyricsAnimationStyle.BITCHORD) && lines.isNotEmpty()
+            lyricsAnimationStyle == LyricsAnimationStyle.BITCHORD ||
+            lyricsAnimationStyle == LyricsAnimationStyle.MELODY) && lines.isNotEmpty() &&
+        !usesMelodyRenderer && !usesBitChordRenderer
     val usesCrawlRenderer = lyricsAnimationStyle == LyricsAnimationStyle.STAR_CRAWL && lines.isNotEmpty()
-    val hasProviderRow = isLyricsProviderShown && !usesArchiveTuneRenderer && !usesFlamingoRenderer && !usesCrawlRenderer
+    val usesFlowRenderer = usesMelodyRenderer || usesBitChordRenderer
+    val hasProviderRow = isLyricsProviderShown && !usesArchiveTuneRenderer && !usesFlamingoRenderer && !usesCrawlRenderer && !usesFlowRenderer
 
     val lazyListState = rememberLazyListState()
     val rubber = rememberLyricRubber(lazyListState)
@@ -795,7 +802,7 @@ fun Lyrics(
         initialScrollDone = false
     }
     LaunchedEffect(currentLineIndex, lastPreviewTime, initialScrollDone, isAutoScrollEnabled, scrollLyrics, isSeeking, hasProviderRow, lines, lazyListState.layoutInfo.totalItemsCount) {
-        if (!isSynced || usesFlamingoRenderer || usesCrawlRenderer || usesArchiveTuneRenderer || !scrollLyrics) return@LaunchedEffect
+        if (!isSynced || usesFlamingoRenderer || usesCrawlRenderer || usesArchiveTuneRenderer || usesFlowRenderer || !scrollLyrics) return@LaunchedEffect
         // The playhead-to-line lookup starts asynchronously. Don't interpret its
         // initial -1 as line zero and briefly jump to the start of the lyrics.
         if (currentLineIndex < 0) return@LaunchedEffect
@@ -841,6 +848,36 @@ fun Lyrics(
 
         if (lyrics == LYRICS_NOT_FOUND || (lyrics != null && lines.all { it.text.isBlank() })) {
             LyricsEmptyNote(fontFamily = lyricsFontFamily, color = AppTheme.colorScheme.secondary)
+        } else if (usesMelodyRenderer) {
+            val lyricsOffset = currentSong?.song?.lyricsOffset?.toLong() ?: 0L
+            LaunchedEffect(lyricsOffset) {
+                com.ozyern.exhale.ui.lyricsflow.PlayerSettings.lyricsOffsetMs.value = -lyricsOffset.toInt()
+            }
+            com.ozyern.exhale.ui.lyricsflow.ExhaleMelodyLyrics(
+                sliderPositionProvider = sliderPositionProvider,
+                textScale = (lyricsTextSize / 30f).coerceIn(0.7f, 1.5f),
+                glowColor = Color(flamingoGlowColor),
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else if (usesBitChordRenderer) {
+            val lyricsOffset = currentSong?.song?.lyricsOffset?.toLong() ?: 0L
+            // The song's own lyric offset, on the clock the style runs off.
+            LaunchedEffect(lyricsOffset) {
+                com.ozyern.exhale.ui.lyricsflow.PlayerSettings.lyricsOffsetMs.value = -lyricsOffset.toInt()
+            }
+            com.ozyern.exhale.ui.lyricsflow.ExhaleBitChordLyrics(
+                sliderPositionProvider = sliderPositionProvider,
+                // The chosen lyrics font, or BitChord's own bold sans.
+                fontFamily = lyricsFontFamily.takeIf { lyricsFontSelection != "default" },
+                textSize = lyricsTextSize,
+                lineSpacing = lyricsLineSpacing.coerceIn(1.05f, 1.6f),
+                onSeek = if (changeLyrics && !isGuest) {
+                    { playerConnection.player.seekTo((it - lyricsOffset).coerceAtLeast(0)) }
+                } else {
+                    null
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
         } else if (usesCrawlRenderer) {
             val lyricsOffset = currentSong?.song?.lyricsOffset?.toLong() ?: 0L
             StarCrawlLyrics(
