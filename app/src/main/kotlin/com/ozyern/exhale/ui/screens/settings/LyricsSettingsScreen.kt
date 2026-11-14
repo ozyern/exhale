@@ -132,6 +132,49 @@ fun LyricsSettingsScreen(navController: NavController) {
                 ),
             ))
         }
+        val (onMediaCard, setOnMediaCard) = rememberPreference(com.ozyern.exhale.constants.LyricsOnMediaCardKey, defaultValue = true)
+        val (liveSpace, setLiveSpace) = rememberPreference(com.ozyern.exhale.constants.EnableLockScreenLyricsKey, defaultValue = true)
+        val (overlay, setOverlay) = rememberPreference(com.ozyern.exhale.constants.LockScreenLyricsOverlayKey, defaultValue = true)
+        val lockContext = androidx.compose.ui.platform.LocalContext.current
+        IosSettingsGroup(title = "Lyrics outside the app", items = listOf(
+            IosSettingsItem(
+                icon = painterResource(R.drawable.lyrics),
+                title = { Text("Lyrics on the lock-screen music card") },
+                description = { Text("The line being sung shows on the media card in place of the artist") },
+                trailingContent = { Switch(checked = onMediaCard, onCheckedChange = setOnMediaCard) },
+                onClick = { setOnMediaCard(!onMediaCard) },
+            ),
+            IosSettingsItem(
+                icon = painterResource(R.drawable.lyrics),
+                title = { Text("Live Space lyrics (ColorOS / OxygenOS)") },
+                description = { Text("Publishes the whole song's timed lyrics for the lock-screen lyric page and the Live Alert capsule") },
+                trailingContent = { Switch(checked = liveSpace, onCheckedChange = setLiveSpace) },
+                onClick = { setLiveSpace(!liveSpace) },
+            ),
+            IosSettingsItem(
+                icon = painterResource(R.drawable.lyrics),
+                title = { Text("Lyrics screen over the lock screen") },
+                description = { Text(if (com.ozyern.exhale.playback.LockScreenLyrics.canShow(lockContext)) "Shown when the screen turns off while music plays" else "Needs \"Display over other apps\" — tap to allow") },
+                trailingContent = { Switch(checked = overlay, onCheckedChange = setOverlay) },
+                onClick = {
+                    if (!com.ozyern.exhale.playback.LockScreenLyrics.canShow(lockContext)) {
+                        runCatching {
+                            lockContext.startActivity(
+                                android.content.Intent(
+                                    android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    android.net.Uri.parse("package:" + lockContext.packageName),
+                                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        }
+                    } else setOverlay(!overlay)
+                },
+            ),
+            IosSettingsItem(
+                icon = painterResource(R.drawable.lyrics),
+                title = { Text("Preview the lock-screen lyrics") },
+                onClick = { com.ozyern.exhale.playback.LockScreenLyrics.preview(lockContext) },
+            ),
+        ))
         IosSettingsGroup(title = "Lyrics sources", items = listOf(
             IosSettingsItem(
                 icon = painterResource(R.drawable.lyrics),

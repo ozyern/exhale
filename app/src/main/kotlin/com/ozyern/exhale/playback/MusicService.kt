@@ -512,6 +512,7 @@ class MusicService :
     private var duckVolumeRestoreJob: Job? = null
 
     private lateinit var mediaSession: MediaLibrarySession
+    private var liveLyricsPublisher: LiveLyricsPublisher? = null
 
     private val playerInitialized = MutableStateFlow(false)
     val isPlayerReady: kotlinx.coroutines.flow.StateFlow<Boolean> = playerInitialized.asStateFlow()
@@ -1378,6 +1379,17 @@ class MusicService :
                 ).setBitmapLoader(CoilBitmapLoader(this, scope))
                 .build()
         player.repeatMode = dataStore.get(RepeatModeKey, REPEAT_MODE_OFF)
+
+        // Lyrics on the lock screen, the media card and ColorOS's Live Space.
+        liveLyricsPublisher = LiveLyricsPublisher(
+            context = this,
+            scope = scope,
+            player = { player },
+            session = { if (::mediaSession.isInitialized) mediaSession else null },
+            current = currentMediaMetadata,
+            lyricsFor = { id -> database.lyrics(id).map { it?.lyrics } },
+            preferences = dataStore.data,
+        ).also { it.start() }
 
         if (dataStore.get(RememberShuffleAndRepeatKey, true)) {
             player.shuffleModeEnabled = dataStore.get(ShuffleModeKey, false)
@@ -4011,6 +4023,7 @@ class MusicService :
 
     override fun onDestroy() {
         isRunning = false
+        liveLyricsPublisher?.stop()
 
         try {
             unregisterReceiver(screenStateReceiver)

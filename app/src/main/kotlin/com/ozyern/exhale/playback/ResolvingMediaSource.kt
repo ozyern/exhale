@@ -7,6 +7,7 @@ import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.source.CompositeMediaSource
+import androidx.media3.exoplayer.source.ForwardingTimeline
 import androidx.media3.exoplayer.source.MediaPeriod
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MediaSource.MediaPeriodId
@@ -24,7 +25,7 @@ import java.io.IOException
 /** Selects the container after URL resolution, on the playback thread, without blocking it. */
 @UnstableApi
 internal class ResolvingMediaSource(
-    private val item: MediaItem,
+    private var item: MediaItem,
     private val resolve: suspend () -> MediaSource,
 ) : CompositeMediaSource<Unit>() {
     private var child: MediaSource? = null
@@ -35,7 +36,19 @@ internal class ResolvingMediaSource(
 
     override fun getMediaItem(): MediaItem = item
 
-    override fun canUpdateMediaItem(mediaItem: MediaItem): Boolean = false
+    /** The child's last timeline, re-published with [item] whenever the item's metadata changes. */
+    private var childTimeline: Timeline? = null
+
+    // A metadata-only edit (a lyric line on the lock-screen card, the Live Space lyric document)
+    // keeps the same song and address, so it is taken in place. Refusing it made the player tear
+    // the source down and rebuffer the song on every lyric line.
+    override fun canUpdateMediaItem(mediaItem: MediaItem): Boolean =
+        mediaItem.mediaId == item.mediaId && mediaItem.localConfiguration == item.localConfiguration
+
+    override fun updateMediaItem(mediaItem: MediaItem) {
+        item = mediaItem
+        childTimeline?.let { refreshSourceInfo(ItemTimeline(it, mediaItem)) }
+    }
 
     override fun prepareSourceInternal(mediaTransferListener: TransferListener?) {
         super.prepareSourceInternal(mediaTransferListener)
@@ -66,7 +79,17 @@ internal class ResolvingMediaSource(
     }
 
     override fun onChildSourceInfoRefreshed(id: Unit, mediaSource: MediaSource, newTimeline: Timeline) {
-        refreshSourceInfo(newTimeline)
+        childTimeline = newTimeline
+        refreshSourceInfo(ItemTimeline(newTimeline, item))
+    }
+
+    /** The child's timeline, naming this source's (possibly edited) item as its window's item. */
+    private class ItemTimeline(timeline: Timeline, private val mediaItem: MediaItem) : ForwardingTimeline(timeline) {
+        override fun getWindow(windowIndex: Int, window: Window, defaultPositionProjectionUs: Long): Window {
+            super.getWindow(windowIndex, window, defaultPositionProjectionUs)
+            window.mediaItem = mediaItem
+            return window
+        }
     }
 
     override fun maybeThrowSourceInfoRefreshError() {
@@ -87,6 +110,7 @@ internal class ResolvingMediaSource(
         handler = null
         super.releaseSourceInternal()
         child = null
+        childTimeline = null
         error = null
     }
 }

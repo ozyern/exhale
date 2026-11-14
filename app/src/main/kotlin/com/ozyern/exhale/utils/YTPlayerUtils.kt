@@ -358,7 +358,7 @@ object YTPlayerUtils {
     /** videoId -> the FLAC address found for it, or "" for a recent miss, with when it was decided. */
     private val archiveFlacFound = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
     private const val ARCHIVE_FLAC_MISS_MS = 6 * 60 * 60 * 1000L
-    private const val ARCHIVE_FLAC_DEADLINE_MS = 7_000L
+    private const val ARCHIVE_FLAC_DEADLINE_MS = 10_000L
 
     /**
      * Looks for this song as a FLAC on the Internet Archive (then the other free catalogues

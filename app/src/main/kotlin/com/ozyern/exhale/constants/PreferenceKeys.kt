@@ -1127,3 +1127,11 @@ val SuggestionRegionSlugToName =
         "ae" to "United Arab Emirates",
         "il" to "Israel"
     )
+
+// Lyrics outside the app (see playback/LiveLyricsPublisher).
+/** The ColorOS / OxygenOS Live Space lyric document on the media session. */
+val EnableLockScreenLyricsKey = booleanPreferencesKey("enableLockScreenLyrics")
+/** Exhale's own lyrics screen over the keyguard while music plays. */
+val LockScreenLyricsOverlayKey = booleanPreferencesKey("lockScreenLyricsOverlay")
+/** The line being sung written into the lock-screen media card in place of the artist. */
+val LyricsOnMediaCardKey = booleanPreferencesKey("lyricsOnMediaCard")
