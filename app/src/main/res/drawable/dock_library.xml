@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The dock's Library: a stack of two thin records over a rounded square, a note cut out of it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FF000000"
+        android:pathData="M7.6,1.9L16.4,1.9A0.65,0.65 0,0 1,16.4 3.2L7.6,3.2A0.65,0.65 0,0 1,7.6 1.9Z
+        M6.1,4.3L17.9,4.3A0.7,0.7 0,0 1,17.9 5.7L6.1,5.7A0.7,0.7 0,0 1,6.1 4.3Z" />
+    <path android:fillColor="#FF000000" android:fillType="evenOdd"
+        android:pathData="M7.2,6.9L16.8,6.9A3,3 0,0 1,19.8 9.9L19.8,19.2A3,3 0,0 1,16.8 22.2L7.2,22.2A3,3 0,0 1,4.2 19.2L4.2,9.9A3,3 0,0 1,7.2 6.9Z
+        M11.4,10.3L15.9,11.35L15.9,13.15L12.6,12.4L12.6,17.6A2.15,1.8 0 1,1 11.4,15.9Z" />
+</vector>
