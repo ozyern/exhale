@@ -165,8 +165,11 @@ abstract class InternalDatabase : RoomDatabase() {
             context: Context,
             databaseName: String = DB_NAME,
             allowDestructiveMigrationOnDowngrade: Boolean = true,
-        ): MusicDatabase =
-            MusicDatabase(
+        ): MusicDatabase {
+            // A library left by Exhale master is brought into this build's schema first, so this
+            // build's own upgrades run on it (see ForeignSchemaRepair).
+            ForeignSchemaRepair.repairIfNeeded(context, databaseName)
+            return MusicDatabase(
                 delegate =
                 Room
                     .databaseBuilder(context, InternalDatabase::class.java, databaseName)
@@ -205,6 +208,7 @@ abstract class InternalDatabase : RoomDatabase() {
                     })
                     .build(),
             )
+        }
     }
 }
 
