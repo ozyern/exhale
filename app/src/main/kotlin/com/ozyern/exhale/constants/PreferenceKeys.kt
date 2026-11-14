@@ -1142,7 +1142,5 @@ val LyricsOnMediaCardKey = booleanPreferencesKey("lyricsOnMediaCard")
 /** The cold-start intro, from Exhale master: the neon (retro) mark, the liquid lens, or none. */
 val IntroStyleKey = stringPreferencesKey("introStyle")
 
-/** Exhale master's Espresso player: the song as a record, half a vinyl turning at the foot. */
-val EspressoPlayerKey = booleanPreferencesKey("espressoPlayer")
 
 enum class IntroStyle { NEON, LENS, OFF }

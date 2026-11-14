@@ -471,8 +471,22 @@ internal fun EspressoPlayerScreen(
                         }
                         .padding(horizontal = 6.dp, vertical = 4.dp),
                 )
+                // What is decoding now, read as the Apple Music player's badge reads it: the live
+                // format, with the stored row only where it agrees with it. The row alone went
+                // stale -- a download or another source rewrites it -- and this said AAC 320 kbps
+                // while the other player, rightly, said Lossless.
+                val liveFormat = rememberLiveAudioFormat(playerConnection)
+                val storedFormat = currentFormat?.takeIf { it.agreesWith(liveFormat) }
                 Text(
-                    text = espressoStream(currentFormat),
+                    text = espressoStream(
+                        mime = storedFormat?.mimeType ?: liveFormat?.sampleMimeType,
+                        codecs = storedFormat?.codecs ?: liveFormat?.codecs,
+                        bitrate = storedFormat?.bitrate?.takeIf { it > 0 }
+                            ?: liveFormat?.averageBitrate?.takeIf { it > 0 }
+                            ?: liveFormat?.bitrate?.takeIf { it > 0 },
+                        sampleRate = storedFormat?.sampleRate?.takeIf { it > 0 }
+                            ?: liveFormat?.sampleRate?.takeIf { it > 0 },
+                    ),
                     style = TextStyle(fontFamily = RecordCaps, fontSize = 10.sp, letterSpacing = 2.4.sp),
                     color = Brass.copy(alpha = 0.85f),
                     modifier = Modifier.padding(top = 8.dp),
@@ -665,17 +679,27 @@ private fun grainTile(): androidx.compose.ui.graphics.ImageBitmap {
 private class EspressoKey(val icon: Int, val on: Boolean = false, val primary: Boolean = false, val onClick: () -> Unit)
 
 /** "FLAC  ·  44.1 KHZ  ·  1411 KBPS": the pressing, in the label's small capitals. */
-private fun espressoStream(format: FormatEntity?): String {
-    if (format == null) return "STREAMING"
-    val codec = when {
-        format.codecs.contains("opus", ignoreCase = true) -> "OPUS"
-        format.codecs.contains("flac", ignoreCase = true) || format.mimeType.contains("flac", ignoreCase = true) -> "FLAC"
-        format.codecs.startsWith("mp4a", ignoreCase = true) -> "AAC"
-        else -> format.mimeType.substringAfter('/').uppercase(Locale.ROOT)
+private fun espressoStream(mime: String?, codecs: String?, bitrate: Int?, sampleRate: Int?): String {
+    if (mime == null && codecs == null) return "STREAMING"
+    val quality = audioQualityLabel(mime = mime, codecs = codecs, bitrate = bitrate, sampleRate = sampleRate)
+    val codec = when (codecFamily(mime, codecs)) {
+        "flac" -> "FLAC"
+        "alac" -> "ALAC"
+        "opus" -> "OPUS"
+        "eac3" -> "DOLBY ATMOS"
+        "aac" -> "AAC"
+        "mp3" -> "MP3"
+        else -> mime?.substringAfter('/')?.uppercase(Locale.ROOT) ?: "STREAMING"
     }
-    val rate = format.sampleRate?.takeIf { it > 0 }?.let { "  ·  ${"%.1f".format(Locale.ROOT, it / 1000f).removeSuffix(".0")} KHZ" }.orEmpty()
-    val bits = if (format.bitrate > 0) "  ·  ${format.bitrate / 1000} KBPS" else ""
-    return codec + rate + bits
+    val rate = sampleRate?.takeIf { it > 0 }
+        ?.let { "  ·  ${"%.1f".format(Locale.ROOT, it / 1000f).removeSuffix(".0")} KHZ" }.orEmpty()
+    // Lossless says so, as the other player does; lossy gives its bitrate.
+    val tail = when {
+        quality?.lossless == true -> "  ·  ${quality.label.uppercase(Locale.ROOT)}"
+        bitrate != null && bitrate > 0 -> "  ·  ${bitrate / 1000} KBPS"
+        else -> ""
+    }
+    return codec + rate + tail
 }
 
 /**

@@ -119,7 +119,6 @@ fun ColumnScope.PlayerDesignSheetContent(onMoreOptions: () -> Unit) {
     val (shadow, setShadow) = rememberPreference(ShowPlayerThumbnailShadowKey, false)
     val (showUpNext, setShowUpNext) = rememberPreference(ShowUpNextKey, false)
     val (hideVolumeBar, setHideVolumeBar) = rememberPreference(HideVolumeBarKey, false)
-    val (espresso, setEspresso) = rememberPreference(com.ozyern.exhale.constants.EspressoPlayerKey, false)
 
     val design = when {
         useV2 -> PlayerDesign.APPLE_MUSIC_V2
@@ -145,8 +144,6 @@ fun ColumnScope.PlayerDesignSheetContent(onMoreOptions: () -> Unit) {
     )
 
     fun apply(d: PlayerDesign) {
-        // Picking one of these designs leaves Espresso, which stands in for all of them.
-        setEspresso(false)
         val leaveAppleBackground = background == PlayerBackgroundStyle.APPLE_MUSIC
         when (d) {
             PlayerDesign.CARD, PlayerDesign.VINYL, PlayerDesign.CLOVER -> {
@@ -208,11 +205,6 @@ fun ColumnScope.PlayerDesignSheetContent(onMoreOptions: () -> Unit) {
             onSelect = ::apply,
         )
 
-        // Exhale master's Espresso player, in place of whichever design is picked above.
-        OptionSection(null) {
-            SwitchRow("Espresso player", espresso, setEspresso)
-        }
-
         AnimatedContent(
             targetState = design,
             transitionSpec = {
@@ -246,7 +238,8 @@ fun ColumnScope.PlayerDesignSheetContent(onMoreOptions: () -> Unit) {
                         }
                     }
                 }
-                val classic = shown == PlayerDesign.CARD || shown == PlayerDesign.VINYL || shown == PlayerDesign.CLOVER
+                // Espresso (in Vinyl's place) dresses itself: no background or seek bar to pick.
+                val classic = shown == PlayerDesign.CARD || shown == PlayerDesign.CLOVER
                 // Classic designs and V2's square layout take a background; full bleed and Apple Music paint their own.
                 if (classic || (shown == PlayerDesign.APPLE_MUSIC_V2 && look == PlayerLook.SQUARED)) {
                     OptionSection("Background") {
@@ -561,7 +554,7 @@ private fun Divider() = HorizontalDivider(
 
 private fun designName(d: PlayerDesign) = when (d) {
     PlayerDesign.CARD -> "Card"
-    PlayerDesign.VINYL -> "Vinyl"
+    PlayerDesign.VINYL -> "Espresso"
     PlayerDesign.CLOVER -> "Clover"
     PlayerDesign.APPLE_MUSIC -> "Apple Music"
     PlayerDesign.APPLE_MUSIC_V2 -> "Apple Music v2"

@@ -264,7 +264,7 @@
     <string name="player_theme_desc">Artwork shape and player background</string>
     <string name="player_theme_artwork">Artwork</string>
     <string name="player_theme_card">Card</string>
-    <string name="player_theme_vinyl">Vinyl</string>
+    <string name="player_theme_vinyl">Espresso</string>
     <string name="player_theme_clover">Clover</string>
     <string name="player_theme_static">Static color</string>
     <string name="player_theme_custom_gradient">Custom gradient</string>

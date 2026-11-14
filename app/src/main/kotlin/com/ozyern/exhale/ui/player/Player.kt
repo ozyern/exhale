@@ -362,7 +362,13 @@ fun BottomSheetPlayer(
 
     // Both player styles use the same sheet and drag gestures.
     val (useAppleMusicPlayer) = rememberPreference(UseAppleMusicPlayerKey, defaultValue = true)
-    val (espressoPlayer) = rememberPreference(com.ozyern.exhale.constants.EspressoPlayerKey, defaultValue = false)
+    // Espresso is a player style of its own, in the Vinyl design's place: picked as the Vinyl
+    // artwork style on the classic player.
+    val (espressoArtworkStyle) = com.ozyern.exhale.utils.rememberEnumPreference(
+        com.ozyern.exhale.constants.PlayerArtworkStyleKey,
+        defaultValue = com.ozyern.exhale.constants.PlayerArtworkStyle.CARD,
+    )
+    val espressoPlayer = !useAppleMusicPlayer && espressoArtworkStyle == com.ozyern.exhale.constants.PlayerArtworkStyle.VINYL
     val v2Look by rememberEnumPreference(com.ozyern.exhale.constants.PlayerLookKey, com.ozyern.exhale.constants.PlayerLook.SQUARED)
 
     // Shared between the background slot (BackgroundVideoView polls into it) and the

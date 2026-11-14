@@ -213,6 +213,10 @@ private fun PlayerScreen(
     isPlaying: Boolean,
     upNext: String?,
 ) {
+    if (spec.design == PlayerDesign.VINYL) {
+        EspressoPreview(track, isPlaying)
+        return
+    }
     val v2 = spec.design == PlayerDesign.APPLE_MUSIC_V2
     val hero = spec.design == PlayerDesign.APPLE_MUSIC || (v2 && spec.look == PlayerLook.HERO)
     // The V2 player paints its own artwork-edge gradient for these two, exactly as Player.kt does.
@@ -228,7 +232,7 @@ private fun PlayerScreen(
             .background(if (background == PlayerBackgroundStyle.DEFAULT && !v2) AppTheme.colorScheme.surface else Color.Black),
     ) {
         if (v2OwnBackground) {
-            NowPlayingBackground(track?.artworkUrl, hero = hero, modifier = Modifier.fillMaxSize())
+            NowPlayingBackground(track?.artworkUrl, hero = hero, modifier = Modifier.fillMaxSize(), live = false)
         } else {
             PlayerBackdropPreview(background, track?.artworkUrl, isPlaying, spec, heroArtwork = !v2, modifier = Modifier.fillMaxSize())
         }
@@ -573,7 +577,7 @@ fun PlayerBackdropPreview(
                 GlowBackground(colors, isPlaying)
             }
             PlayerBackgroundStyle.APPLE_MUSIC -> if (artworkUrl != null) {
-                NowPlayingBackground(artworkUrl, hero = true, modifier = Modifier.fillMaxSize())
+                NowPlayingBackground(artworkUrl, hero = true, modifier = Modifier.fillMaxSize(), live = false)
                 if (heroArtwork) HeroArtwork(artworkUrl)
             }
             PlayerBackgroundStyle.LIVE_MESH -> if (artworkUrl != null) LiveMeshBackground(artworkUrl, isPlaying)
@@ -695,4 +699,91 @@ fun rememberPreviewPosition(read: () -> Long, isPlaying: Boolean): () -> Long {
         }
     }
     return { position }
+}
+
+/**
+ * Espresso, drawn small: the cover edge to edge at the top dissolving into the room, the song in
+ * script in cream, and half a record turning at the foot with the cover as its label.
+ */
+@Composable
+private fun EspressoPreview(track: PreviewTrack?, isPlaying: Boolean) {
+    val lounge = Color(0xFF0D0A08)
+    val cream = Color(0xFFF3E7CF)
+    val brass = Color(0xFFD2AA5E)
+    val script = remember { androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font(R.font.pinyon_script)) }
+    val turn = androidx.compose.animation.core.rememberInfiniteTransition(label = "espressoPreview")
+    val spin by turn.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            androidx.compose.animation.core.tween(6_000, easing = androidx.compose.animation.core.LinearEasing),
+        ),
+        label = "espressoPreviewSpin",
+    )
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().background(lounge)) {
+        val w = maxWidth
+        AsyncImage(
+            model = track?.artworkUrl,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(w * 1.05f)
+                .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        Brush.verticalGradient(0.5f to Color.Black, 1f to Color.Transparent),
+                        blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                    )
+                },
+        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxWidth().padding(top = w * 0.92f),
+        ) {
+            Text(
+                track?.title ?: "Espresso",
+                color = cream,
+                fontFamily = script,
+                fontSize = 40.sp,
+                maxLines = 1,
+            )
+            Text(
+                (track?.artist ?: "Sabrina Carpenter").uppercase(),
+                color = brass,
+                fontSize = 11.sp,
+                letterSpacing = 2.sp,
+                maxLines = 1,
+            )
+        }
+        // Half a record at the foot.
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .offset(y = w * 0.42f)
+                .size(w * 0.9f)
+                .graphicsLayer { rotationZ = if (isPlaying) spin else 0f }
+                .clip(CircleShape)
+                .background(Color(0xFF151110))
+                .drawWithContent {
+                    drawContent()
+                    val r = size.minDimension / 2f
+                    for (i in 1..14) {
+                        drawCircle(Color.White.copy(alpha = 0.035f), radius = r * (0.4f + i * 0.042f),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1f))
+                    }
+                    drawCircle(brass.copy(alpha = 0.7f), radius = r - 2f,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f))
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            AsyncImage(
+                model = track?.artworkUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(w * 0.34f).clip(CircleShape),
+            )
+        }
+    }
 }

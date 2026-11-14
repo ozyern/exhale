@@ -39,6 +39,8 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.util.lerp
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
@@ -228,13 +230,20 @@ fun PlayerArtworkMorphOverlay(
 
     Box(
         modifier = Modifier
-            .offset {
-                IntOffset(
-                    (target.center.x - side / 2f).roundToInt(),
-                    (target.center.y - side / 2f).roundToInt(),
-                )
+            // Laid out at its full square whatever the screen's width. A full-bleed hero is taller
+            // than it is wide, so the square around it is wider than the screen: given as a size,
+            // it was clamped to the screen's width while still placed as the whole square, and the
+            // cover flew narrower than the hero and off to the left, the player showing beside it.
+            .layout { measurable, _ ->
+                val sidePx = side.roundToInt().coerceAtLeast(1)
+                val placeable = measurable.measure(Constraints.fixed(sidePx, sidePx))
+                layout(0, 0) {
+                    placeable.place(
+                        (target.center.x - side / 2f).roundToInt(),
+                        (target.center.y - side / 2f).roundToInt(),
+                    )
+                }
             }
-            .size(sideDp)
             .graphicsLayer {
                 val fraction = progress().coerceIn(0f, 1f)
                 if (fraction <= 0f || fraction >= 1f || !PlayerMorph.active) {

@@ -7,6 +7,7 @@ package com.ozyern.exhale.ui.player
 
 import com.ozyern.exhale.ui.component.filmGrain
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
@@ -154,6 +155,11 @@ fun NowPlayingBackground(
      * in only once the player has settled.
      */
     bleedVisible: () -> Boolean = { true },
+    /**
+     * Exhale's live background under the bleed: the cover as a slowly moving field of its own
+     * colours, drifting while the song plays (see FluidArtworkBackground). Off for the previews.
+     */
+    live: Boolean = true,
 ) {
     val gradient by rememberNowPlayingGradient(artworkUrl, hero, videoLook)
     val top by animateColorAsState(
@@ -174,6 +180,17 @@ fun NowPlayingBackground(
                     else Brush.verticalGradient(0f to top, 0.606f to top, 1f to bottom))
             },
     ) {
+        if (live && videoLook == null) {
+            val playing = com.ozyern.exhale.LocalPlayerConnection.current?.isPlaying
+                ?.collectAsState()?.value ?: false
+            // The little movement that shows through the bleed, as on Exhale master's player.
+            com.ozyern.exhale.ui.component.FluidArtworkBackground(
+                url = artworkUrl,
+                brightness = 0.7f,
+                paused = !playing,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         val showBleed by remember { androidx.compose.runtime.derivedStateOf(bleedVisible) }
         val bleedAlpha by androidx.compose.animation.core.animateFloatAsState(
             targetValue = if (showBleed) 1f else 0f,

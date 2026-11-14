@@ -182,7 +182,7 @@ fun AppearanceSettings(
     )
     val (lyricsAnimationStyle, onLyricsAnimationStyleChange) = rememberEnumPreference(
         LyricsAnimationStyleKey,
-        defaultValue = LyricsAnimationStyle.FLAMINGO
+        defaultValue = LyricsAnimationStyle.APPLE_V2
     )
     val (lyricsTextSize, onLyricsTextSizeChange) = rememberPreference(LyricsTextSizeKey, defaultValue = 30f)
     val (lyricsLineSpacing, onLyricsLineSpacingChange) = rememberPreference(LyricsLineSpacingKey, defaultValue = 1.3f)
@@ -826,7 +826,7 @@ enum class PlayerTextAlignment {
 
 @Composable
 fun ColumnScope.LyricsAnimationSheetContent() {
-    val (selected, onSelect) = rememberEnumPreference(LyricsAnimationStyleKey, defaultValue = LyricsAnimationStyle.FLAMINGO)
+    val (selected, onSelect) = rememberEnumPreference(LyricsAnimationStyleKey, defaultValue = LyricsAnimationStyle.APPLE_V2)
     val (position, onPositionChange) = rememberEnumPreference(LyricsTextPositionKey, defaultValue = LyricsPosition.LEFT)
     val (autoScroll, onAutoScrollChange) = rememberPreference(LyricsScrollKey, defaultValue = true)
     val (swipeToChange, onSwipeToChangeChange) = rememberPreference(SwipeLyricsKey, defaultValue = false)

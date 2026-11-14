@@ -458,7 +458,7 @@ fun Lyrics(
     val flamingoBrightSingingWords by rememberPreference(FlamingoBrightSingingWordsKey, true)
     val flamingoWordSwell by rememberPreference(FlamingoWordSwellKey, true)
     val flamingoGlowColor by rememberPreference(FlamingoGlowColorKey, 0xFFFFFFFF.toInt())
-    val lyricsAnimationStyle by rememberEnumPreference(LyricsAnimationStyleKey, LyricsAnimationStyle.FLAMINGO)
+    val lyricsAnimationStyle by rememberEnumPreference(LyricsAnimationStyleKey, LyricsAnimationStyle.APPLE_V2)
     val lyricsFontSelection by rememberPreference(com.ozyern.exhale.constants.LyricsFontKey, "default")
     val lyricsFontFamily = com.ozyern.exhale.lyrics.rememberLyricsFont(lyricsFontSelection)
     val storedLyricsTextSize by rememberPreference(LyricsTextSizeKey, 30f)

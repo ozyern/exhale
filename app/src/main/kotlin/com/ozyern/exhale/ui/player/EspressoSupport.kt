@@ -135,6 +135,15 @@ private fun paletteOf(bitmap: Bitmap): EspressoPalette {
 @Composable
 internal fun LiveArtworkBackdrop(artUrl: String?, palette: EspressoPalette, heroHeight: Dp? = null) {
     Box(Modifier.fillMaxSize().background(palette.colors.firstOrNull()?.copy(alpha = 1f) ?: Color.Black)) {
+        // Exhale's live background: a slow field of the cover's colours, for the little movement
+        // that shows through the bleed.
+        val playing = LocalPlayerConnection.current?.isPlaying?.collectAsState()?.value ?: false
+        com.ozyern.exhale.ui.component.FluidArtworkBackground(
+            url = artUrl,
+            brightness = 0.7f,
+            paused = !playing,
+            modifier = Modifier.fillMaxSize(),
+        )
         if (artUrl != null && heroHeight != null && heroHeight > 0.dp) EspressoBleed(artUrl, heroHeight)
         Box(
             Modifier
