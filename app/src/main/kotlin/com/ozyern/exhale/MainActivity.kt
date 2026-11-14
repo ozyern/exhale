@@ -1091,6 +1091,7 @@ class MainActivity : ComponentActivity() {
                             Screens.Home.route,
                             Screens.Search.route,
                             Screens.MoodAndGenres.route,
+                            Screens.Radio.route,
                             Screens.Library.route,
                             "settings",
                         )

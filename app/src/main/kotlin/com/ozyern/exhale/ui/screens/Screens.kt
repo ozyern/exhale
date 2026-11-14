@@ -61,13 +61,22 @@ sealed class Screens(
 
     object MoodAndGenres : Screens(
         titleId = R.string.mood_and_genres,
+        dockTitleId = R.string.explore,
         // Convx 2.0.4's Explore glyph, square.grid.2x2.fill: one solid glyph in both states.
         iconIdInactive = R.drawable.sf_square_grid_2x2_fill,
         iconIdActive = R.drawable.sf_square_grid_2x2_fill,
         route = "mood_and_genres"
     )
 
+    object Radio : Screens(
+        titleId = R.string.radio,
+        iconIdInactive = R.drawable.dock_radio,
+        iconIdActive = R.drawable.dock_radio,
+        route = "radio"
+    )
+
     companion object {
-        val MainScreens = listOf(Home, Search, MoodAndGenres, Library)
+        // In the dock's order: Home, Radio, Library, Explore, and Search at the end.
+        val MainScreens = listOf(Home, Radio, Library, MoodAndGenres, Search)
     }
 }

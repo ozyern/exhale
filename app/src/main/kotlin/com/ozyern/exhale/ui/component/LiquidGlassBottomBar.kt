@@ -1895,6 +1895,7 @@ internal fun Screens.dockGlyph(): Int? = when (this) {
     Screens.MoodAndGenres -> R.drawable.dock_grid
     Screens.Library -> R.drawable.dock_library
     Screens.Search -> R.drawable.dock_search
+    Screens.Radio -> R.drawable.dock_radio
     else -> null
 }
 

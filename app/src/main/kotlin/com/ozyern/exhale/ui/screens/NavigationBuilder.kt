@@ -155,6 +155,9 @@ fun NavGraphBuilder.navigationBuilder(
     composable(Screens.MoodAndGenres.route) {
         MoodAndGenresScreen(navController)
     }
+    composable(Screens.Radio.route) {
+        RadioScreen(navController)
+    }
     composable("account") {
         AccountScreen(navController, scrollBehavior)
     }
