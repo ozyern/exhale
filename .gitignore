@@ -189,3 +189,4 @@ renovate.json
 !docs/KMP_DESKTOP_PROGRESS.md
 
 __pycache__/
+apk-out/

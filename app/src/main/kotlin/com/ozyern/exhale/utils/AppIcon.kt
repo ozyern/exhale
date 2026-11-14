@@ -23,7 +23,7 @@ enum class AppIcon(
     @DrawableRes val previewRes: Int,
     @StringRes val labelRes: Int,
 ) {
-    WHITE("white", ".LauncherWhite", R.drawable.ic_launcher_white_fg, R.string.app_icon_white),
+    WHITE("white", ".LauncherWhite", R.drawable.ic_launcher_exhale_preview, R.string.app_icon_white),
     AZURE("azure", ".LauncherAzure", R.drawable.ic_launcher_azure_fg, R.string.app_icon_azure),
     SKY("sky", ".LauncherSky", R.drawable.ic_launcher_sky_fg, R.string.app_icon_sky),
     TEAL("teal", ".LauncherTeal", R.drawable.ic_launcher_teal_fg, R.string.app_icon_teal),
