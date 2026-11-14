@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for Exhale's own About and Software update pages. -->
+<resources>
+    <string name="exhale_about_status_up_to_date">Exhale is up to date.</string>
+    <string name="exhale_about_status_checking">Checking for updates…</string>
+    <string name="exhale_about_status_available">Exhale %1$s is available.</string>
+    <string name="exhale_about_status_failed">Couldn\'t check for updates.</string>
+    <string name="exhale_about_status_unmanaged">Updates for this build come from GitHub.</string>
+    <string name="exhale_about_installed">Installed</string>
+    <string name="exhale_about_view_changelog">View changelog</string>
+    <string name="exhale_about_architecture">Architecture</string>
+    <string name="exhale_about_package">Package</string>
+    <string name="exhale_about_android">Android</string>
+    <string name="exhale_about_device">Device</string>
+    <string name="exhale_about_installed_on">Installed on</string>
+    <string name="exhale_about_copy_build_info">Copy build info</string>
+    <string name="exhale_about_build_info_copied">Build info copied</string>
+    <string name="exhale_about_developer">Developer</string>
+    <string name="exhale_about_lead_developer">Lead developer</string>
+    <string name="exhale_about_source">Source code</string>
+    <string name="exhale_about_source_desc">github.com/ozyern/exhale</string>
+    <string name="exhale_about_built_on">Built on Convx</string>
+    <string name="exhale_about_built_on_desc">By CosmicTaser and the Convx contributors</string>
+    <string name="exhale_about_license">License</string>
+    <string name="exhale_about_license_desc">GPL-3.0 · free and open source</string>
+
+    <string name="exhale_update_title">Software update</string>
+    <string name="exhale_update_up_to_date">Version up to date</string>
+    <string name="exhale_update_checking">Checking for updates</string>
+    <string name="exhale_update_failed">Couldn\'t check for updates</string>
+    <string name="exhale_update_unmanaged">Updates aren\'t checked in this build</string>
+    <string name="exhale_update_available">Exhale %1$s</string>
+    <string name="exhale_update_size_date">%1$s MB · %2$s</string>
+    <string name="exhale_update_highlights">Highlights</string>
+    <string name="exhale_update_notes">View update notes</string>
+    <string name="exhale_update_hide_notes">Hide update notes</string>
+    <string name="exhale_update_download">Download and install</string>
+    <string name="exhale_update_install">Install now</string>
+    <string name="exhale_update_try_again">Try again</string>
+</resources>

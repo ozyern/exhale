@@ -156,6 +156,16 @@ android {
             isDebuggable = true
             signingConfig = signingConfigs.getByName("debug")
         }
+        // A release build in every way that matters for speed (R8, resource shrinking, not
+        // debuggable), installed beside the real Exhale under its own id and signed with the
+        // local persistent key, so it can be tried without the release keystore and without
+        // replacing anyone's library.
+        create("preview") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".preview"
+            signingConfig = signingConfigs.getByName("persistentDebug")
+            matchingFallbacks += listOf("release")
+        }
     }
 
     compileOptions {

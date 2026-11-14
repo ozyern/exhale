@@ -3,6 +3,18 @@
 package com.ozyern.exhale.core.updater
 
 import android.content.Intent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import com.ozyern.exhale.ui.ios.compat.LocalContentColor
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.sp
+import com.ozyern.exhale.ui.component.ExhaleGlow
+import com.ozyern.exhale.ui.component.ExhaleLightRibbons
+import com.ozyern.exhale.ui.component.ExhaleVersionLockup
+import com.ozyern.exhale.ui.screens.settings.exhaleBuildFlavor
+import com.ozyern.exhale.ui.utils.bounceClick
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -43,41 +55,122 @@ import zone.ien.hig.CupertinoButtonDefaults
 @Composable
 fun UpdateScreen(navController: NavHostController, viewModel: UpdateViewModel = koinViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     LaunchedEffect(Unit) { viewModel.check(manual = true) }
-    Column(Modifier.fillMaxSize().background(AppTheme.colorScheme.background).windowInsetsPadding(WindowInsets.safeDrawing)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            CupertinoButton(onClick = { navController.navigateUp() }, colors = CupertinoButtonDefaults.plainButtonColors()) {
-                SymbolIcon(symbol = sf("chevron.left"), contentDescription = stringResource(R.string.back_content_desc), size = 20.dp)
-            }
-            Text(stringResource(R.string.app_updates_title), fontWeight = FontWeight.Bold, style = AppTheme.typography.titleLarge)
-        }
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-            val release = state.release
-            if (release != null && maxWidth >= 840.dp) {
-                Row(Modifier.fillMaxSize().padding(horizontal = 32.dp), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
-                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 16.dp)) { UpdateSummary(release); ReleaseLink(release) }
-                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 16.dp)) { UpdateChangelog(release) }
+    var showNotes by rememberSaveable { mutableStateOf(false) }
+    val release = state.release
+
+    Box(Modifier.fillMaxSize().background(ExhaleGlow.Ground)) {
+        ExhaleLightRibbons(Modifier.matchParentSize())
+        Column(
+            Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Box(
+                    Modifier.size(52.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f))
+                        .border(1.dp, Color.White.copy(alpha = 0.16f), CircleShape)
+                        .bounceClick { navController.navigateUp() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    SymbolIcon(symbol = sf("chevron.left"), contentDescription = stringResource(R.string.back_content_desc), size = 20.dp, tint = Color.White)
                 }
-            } else {
-                Column(Modifier.widthIn(max = 680.dp).fillMaxWidth().align(Alignment.TopCenter).verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                    if (release != null) { UpdateSummary(release); UpdateChangelog(release); ReleaseLink(release) }
-                    else {
-                        SymbolIcon(symbol = sf("arrow.down.circle"), contentDescription = null, size = 48.dp)
-                        Text(stringResource(if (!state.enabled) R.string.updater_channel_disabled else if (state.phase == UpdatePhase.CHECKING) R.string.checking_for_updates else if (state.error != null) R.string.cant_check_updates else R.string.on_latest_version), style = AppTheme.typography.headlineSmall)
-                        Text(stringResource(R.string.current_version_v, BuildConfig.VERSION_NAME), color = AppTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.exhale_update_title), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 26.sp,
+                    modifier = Modifier.semantics { heading() })
+            }
+
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                ExhaleVersionLockup(version = BuildConfig.VERSION_NAME, fontSize = 72.sp)
+            }
+
+            val cardShape = ContinuousRoundedRectangle(36.dp)
+            Column(
+                Modifier.widthIn(max = 560.dp).fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp)
+                    .clip(cardShape)
+                    .background(Color(0xFF16110C).copy(alpha = 0.72f))
+                    .border(1.dp, Color.White.copy(alpha = 0.12f), cardShape)
+                    .padding(24.dp)
+                    .animateContentSize(),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                val title = when {
+                    !state.enabled -> stringResource(R.string.exhale_update_unmanaged)
+                    release != null -> stringResource(R.string.exhale_update_available, release.version)
+                    state.phase == UpdatePhase.CHECKING -> stringResource(R.string.exhale_update_checking)
+                    state.error != null -> stringResource(R.string.exhale_update_failed)
+                    else -> stringResource(R.string.exhale_update_up_to_date)
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 32.sp)
+                    val subtitle = if (release != null) {
+                        stringResource(R.string.exhale_update_size_date, "%.1f".format(release.asset.size / 1048576.0), release.publishedAt.take(10))
+                    } else "Exhale_${BuildConfig.VERSION_NAME}_${BuildConfig.ARCHITECTURE}($exhaleBuildFlavor)"
+                    Text(subtitle, color = Color.White.copy(alpha = 0.6f), fontSize = 16.sp)
+                }
+
+                if (release != null) {
+                    androidx.compose.animation.AnimatedVisibility(showNotes) {
+                        Column(Modifier.heightIn(max = 300.dp).verticalScroll(rememberScrollState())) {
+                            CompositionLocalProvider(LocalContentColor provides Color.White) {
+                                if (release.description.isNotBlank()) Text(release.description, color = Color.White.copy(alpha = 0.85f), fontSize = 15.sp)
+                                UpdateChangelog(release)
+                            }
+                        }
+                    }
+                    if (state.phase != UpdatePhase.AVAILABLE && state.phase != UpdatePhase.IDLE) {
+                        CompositionLocalProvider(LocalContentColor provides Color.White) { UpdateStatus(state) }
+                    } else state.error?.let { UpdateStatus(state) }
+                }
+
+                val busy = UpdatePolicy.isTransfer(state.phase)
+                when {
+                    release != null -> {
+                        UpdatePill(
+                            text = stringResource(if (state.phase == UpdatePhase.READY) R.string.exhale_update_install else R.string.exhale_update_download),
+                            primary = true,
+                            enabled = state.enabled && !busy && state.phase != UpdatePhase.CHECKING && state.phase != UpdatePhase.INSTALLED,
+                        ) {
+                            if (state.phase == UpdatePhase.READY) context.startActivity(Intent(context, UpdateInstallActivity::class.java)) else viewModel.download()
+                        }
+                        if (state.phase in setOf(UpdatePhase.QUEUED, UpdatePhase.DOWNLOADING, UpdatePhase.VERIFYING)) {
+                            UpdatePill(stringResource(R.string.cancel), primary = false, onClick = viewModel::cancel)
+                        } else {
+                            UpdatePill(stringResource(if (showNotes) R.string.exhale_update_hide_notes else R.string.exhale_update_notes), primary = false) { showNotes = !showNotes }
+                        }
+                    }
+                    state.error != null && state.enabled -> {
+                        UpdatePill(stringResource(R.string.exhale_update_try_again), primary = true, enabled = state.phase != UpdatePhase.CHECKING) { viewModel.check(manual = true) }
+                        UpdatePill(stringResource(R.string.exhale_update_highlights), primary = false) { navController.navigate("settings/changelog") }
+                    }
+                    else -> {
+                        UpdatePill(stringResource(R.string.exhale_update_highlights), primary = true) { navController.navigate("settings/changelog") }
+                        UpdatePill(stringResource(R.string.exhale_update_notes), primary = false) {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/ozyern/exhale/releases")))
+                        }
                     }
                 }
             }
         }
-        Column(Modifier.widthIn(max = 680.dp).fillMaxWidth().align(Alignment.CenterHorizontally).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            UpdateStatus(state)
-            if (state.release != null) {
-                UpdateActions(state, onDownload = viewModel::download, onCancel = viewModel::cancel)
-                Text(stringResource(R.string.updater_install_notice), style = AppTheme.typography.bodySmall, color = AppTheme.colorScheme.onSurfaceVariant)
-            } else CupertinoButton(onClick = { viewModel.check(manual = true) }, enabled = state.enabled && state.phase != UpdatePhase.CHECKING, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.check_for_update))
-            }
-        }
+    }
+}
+
+/** The two buttons on the Software update card: a light primary pill and a dark glass one. */
+@Composable
+private fun UpdatePill(text: String, primary: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
+    val shape = ContinuousRoundedRectangle(32.dp)
+    Box(
+        Modifier.fillMaxWidth().height(64.dp).clip(shape)
+            .background(if (primary) Color(0xFFF1ECE4) else Color.White.copy(alpha = 0.10f))
+            .then(if (primary) Modifier else Modifier.border(1.dp, Color.White.copy(alpha = 0.10f), shape))
+            .bounceClick(enabled = enabled, onClick = onClick)
+            .graphicsLayer { alpha = if (enabled) 1f else 0.45f },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, color = if (primary) Color(0xFF1A1714) else Color.White, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
