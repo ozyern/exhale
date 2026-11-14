@@ -29,6 +29,8 @@ import com.music.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.music.innertube.models.response.PlayerResponse
 import com.ozyern.exhale.constants.AudioQuality
 import com.ozyern.exhale.constants.EnableSaavnStreamingKey
+import com.ozyern.exhale.constants.PreferArchiveFlacKey
+import com.ozyern.exhale.openflac.OpenFlac
 import com.ozyern.exhale.constants.ForceSelectedQualityKey
 import com.ozyern.exhale.constants.SaavnFallbackToYouTubeKey
 import com.ozyern.exhale.constants.EnableTidalStreamingKey
@@ -336,6 +338,8 @@ object YTPlayerUtils {
         val streamExpiresInSeconds: Int,
         val isSaavnStream: Boolean = false,
         val isTidalStream: Boolean = false,
+        /** A FLAC copy of the song on the Internet Archive (or another free catalogue). */
+        val isArchiveFlacStream: Boolean = false,
         val isSpineStream: Boolean = false,
         val isDashStream: Boolean = false,
         val isHlsStream: Boolean = false,
@@ -349,6 +353,78 @@ object YTPlayerUtils {
         }
         val metadataDeferred = async { playerResponseForMetadata(videoId, playlistId).getOrNull() }
         nextDeferred.await() to metadataDeferred.await()
+    }
+
+    /** videoId -> the FLAC address found for it, or "" for a recent miss, with when it was decided. */
+    private val archiveFlacFound = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
+    private const val ARCHIVE_FLAC_MISS_MS = 6 * 60 * 60 * 1000L
+    private const val ARCHIVE_FLAC_DEADLINE_MS = 7_000L
+
+    /**
+     * Looks for this song as a FLAC on the Internet Archive (then the other free catalogues
+     * [OpenFlac.findCopy] reads), matched by title, artist and length. A song with no copy is
+     * remembered for a few hours so it is not searched again on every seek.
+     */
+    private suspend fun archiveFlacPlayback(videoId: String, playlistId: String?): PlaybackData? {
+        val known = archiveFlacFound[videoId]
+        if (known != null && known.first.isEmpty() && System.currentTimeMillis() - known.second < ARCHIVE_FLAC_MISS_MS) return null
+        return runCatching {
+            val (currentSong, meta) = withTimeoutOrNull(5_000L) { resolvePlaybackMetadata(videoId, playlistId) } ?: return null
+            val url = known?.first?.takeIf { it.isNotEmpty() } ?: run {
+                val title = currentSong?.title ?: meta?.videoDetails?.title.orEmpty()
+                val artists = resolveArtists(currentSong?.artists?.map { it.name }, meta?.videoDetails?.author.orEmpty())
+                val duration = currentSong?.duration ?: meta?.videoDetails?.lengthSeconds?.toIntOrNull() ?: 0
+                if (title.isBlank() || artists.isEmpty() || duration <= 0) return null
+                val track = withTimeoutOrNull(ARCHIVE_FLAC_DEADLINE_MS) {
+                    OpenFlac.findCopy(
+                        title = cleanYouTubeTitle(title, artists),
+                        artist = artists.first(),
+                        durationSeconds = duration,
+                        album = currentSong?.album?.name,
+                    )
+                }
+                archiveFlacFound[videoId] = (track?.url ?: "") to System.currentTimeMillis()
+                track?.url ?: return null
+            }
+            val streamUrl = OpenFlac.fastUrl(url)
+            Timber.tag(TAG).i("Archive FLAC: playing $url for videoId=$videoId")
+            PlaybackData(
+                audioConfig = meta?.playerConfig?.audioConfig,
+                videoDetails = meta?.videoDetails,
+                playbackTracking = meta?.playbackTracking,
+                format = PlayerResponse.StreamingData.Format(
+                    itag = 9998,
+                    url = streamUrl,
+                    mimeType = "audio/flac; codecs=\"flac\"",
+                    bitrate = 1_411_000,
+                    width = null,
+                    height = null,
+                    contentLength = null,
+                    quality = "LOSSLESS",
+                    fps = null,
+                    qualityLabel = null,
+                    averageBitrate = null,
+                    audioQuality = "LOSSLESS",
+                    approxDurationMs = null,
+                    audioSampleRate = 44100,
+                    audioChannels = 2,
+                    loudnessDb = null,
+                    lastModified = null,
+                    signatureCipher = null,
+                    cipher = null,
+                    audioTrack = null,
+                ),
+                streamUrl = streamUrl,
+                streamExpiresInSeconds = 6 * 3600,
+                isArchiveFlacStream = true,
+            )
+        }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }.getOrNull()
+    }
+
+    /** That FLAC copy wouldn't play: forget it, so the song falls back to the next source. */
+    fun forgetArchiveFlac(videoId: String) {
+        archiveFlacFound[videoId]?.first?.takeIf { it.isNotEmpty() }?.let(OpenFlac::forgetServerFor)
+        archiveFlacFound[videoId] = "" to System.currentTimeMillis()
     }
 
     /**
@@ -372,8 +448,15 @@ object YTPlayerUtils {
     ): Result<PlaybackData> {
         if (context != null) {
             // Honor selected quality only when Saavn is enabled.
-            val forceSelectedQuality = context.dataStore.get(EnableSaavnStreamingKey, false) &&
+            val forceSelectedQuality = context.dataStore.get(EnableSaavnStreamingKey, true) &&
                 context.dataStore.get(ForceSelectedQualityKey, false)
+
+            // A FLAC copy on the Internet Archive beats every other source.
+            if (!forceStandardAudio && !requireYouTube && !preferAac && allowLossless &&
+                context.dataStore.get(PreferArchiveFlacKey, true)
+            ) {
+                archiveFlacPlayback(videoId, playlistId)?.let { return Result.success(it) }
+            }
 
             if (!forceStandardAudio && !requireYouTube) {
                 Timber.tag(TAG).d("═══ SPINE INTERCEPT START ═══ videoId=$videoId")
@@ -536,7 +619,7 @@ object YTPlayerUtils {
                 Timber.tag(TAG).d("TIDAL intercept failed or returned null — trying next source")
             }
 
-            val saavnEnabled = !requireYouTube && context.dataStore.get(EnableSaavnStreamingKey, false)
+            val saavnEnabled = !requireYouTube && context.dataStore.get(EnableSaavnStreamingKey, true)
             if (saavnEnabled && !preferAac) {
                 Timber.tag(TAG).d("JioSaavn streaming enabled — trying Saavn for videoId=$videoId")
                 val saavnResult = runCatching {

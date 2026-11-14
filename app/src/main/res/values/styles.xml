@@ -15,7 +15,7 @@
     <!-- Launch theme: a plain black system splash that ExhaleIntro picks up from seamlessly. -->
     <style name="Theme.Exhale.Starting" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">#000000</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_blank</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_exhale</item>
         <item name="postSplashScreenTheme">@style/Theme.Exhale</item>
     </style>
 

@@ -318,7 +318,7 @@ class DownloadUtil(
 
     private fun downloadStreamUrl(playbackData: YTPlayerUtils.PlaybackData): String = when {
         playbackData.isHlsStream || playbackData.isDashStream -> HlsJoinDataSource.uriFor(playbackData.streamUrl).toString()
-        playbackData.isSaavnStream || playbackData.isTidalStream || playbackData.isSpineStream -> playbackData.streamUrl
+        playbackData.isSaavnStream || playbackData.isTidalStream || playbackData.isSpineStream || playbackData.isArchiveFlacStream -> playbackData.streamUrl
         else -> "${playbackData.streamUrl}&range=0-${playbackData.format.contentLength ?: 10_000_000}"
     }
 

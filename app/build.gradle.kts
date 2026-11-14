@@ -63,6 +63,13 @@ android {
         val jamendoClientId = localProperties.getProperty("JAMENDO_CLIENT_ID") ?: System.getenv("JAMENDO_CLIENT_ID") ?: ""
         buildConfigField("String", "JAMENDO_CLIENT_ID", "\"$jamendoClientId\"")
 
+        // The short commit the build came from, shown on the Software update card.
+        val gitCommit = runCatching {
+            providers.exec { commandLine("git", "rev-parse", "--short=8", "HEAD") }
+                .standardOutput.asText.get().trim()
+        }.getOrDefault("").ifBlank { "unknown" }
+        buildConfigField("String", "GIT_COMMIT", "\"$gitCommit\"")
+
         val isNightly = project.hasProperty("nightly") && project.property("nightly") == "true"
         buildConfigField("Boolean", "IS_NIGHTLY", isNightly.toString())
         // CI stamps the workflow run number so a nightly build knows which one it is.

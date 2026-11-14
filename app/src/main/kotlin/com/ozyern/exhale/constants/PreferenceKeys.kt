@@ -204,6 +204,9 @@ val VocalSuppressionKey = floatPreferencesKey("vocalSuppression")
 
 // JioSaavn streaming
 val EnableSaavnStreamingKey = booleanPreferencesKey("enableSaavnStreaming")
+/** On (default): a song plays from a FLAC copy on the Internet Archive when there is one,
+ *  before JioSaavn, Tidal, modules or YouTube are asked. */
+val PreferArchiveFlacKey = booleanPreferencesKey("preferArchiveFlac")
 val SaavnAudioQualityKey    = stringPreferencesKey("saavnAudioQuality")
 /** On (default): a JioSaavn miss (no match, no stream URL) falls through to a normal
  *  YouTube fetch, so playback never just fails. Off: a miss fails the playback attempt

@@ -3093,6 +3093,8 @@ class MusicService :
         }
     }
 
+    private val flacServerRetried = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     override fun onPlayerError(error: PlaybackException) {
         super.onPlayerError(error)
 
@@ -3109,6 +3111,18 @@ class MusicService :
 
         if (roomPlaybackBridge.jamActive.value) {
             recoverJamAudio(error, mediaId)
+            return
+        }
+
+        // A FLAC page song whose direct archive server failed: once, go back through archive.org,
+        // which redirects to wherever the file is now.
+        if (mediaId != null && FlacSongs.isFlacId(mediaId) && flacServerRetried.add(mediaId)) {
+            FlacSongs.forgetServer(mediaId)
+            val index = player.currentMediaItemIndex
+            val position = player.currentPosition
+            player.currentMediaItem?.let { player.replaceMediaItem(index, it) }
+            player.seekTo(index, position)
+            player.prepare()
             return
         }
 
@@ -3469,7 +3483,8 @@ class MusicService :
         prefs[EnabledModulesKey] ?: "[]",
         prefs[ModuleSourcesKey] ?: "[]",
         prefs[ModuleSettingsKey] ?: "{}",
-        (prefs[EnableSaavnStreamingKey] ?: false).toString(),
+        (prefs[EnableSaavnStreamingKey] ?: true).toString(),
+        (prefs[com.ozyern.exhale.constants.PreferArchiveFlacKey] ?: true).toString(),
         prefs[SaavnAudioQualityKey].orEmpty(),
         (prefs[SaavnFallbackToYouTubeKey] ?: true).toString(),
         (prefs[EnableTidalStreamingKey] ?: false).toString(),
@@ -3498,7 +3513,8 @@ class MusicService :
             val fallbackSuffix = if (forceAacAudioMediaIds.contains(mediaId)) "#aac" else ""
             val videoMode = mediaId in videoModeMediaIds
             val forceStandard = mediaId in forceStandardAudioMediaIds
-            if (!hasModules && prefs[EnableTidalStreamingKey] != true && prefs[EnableSaavnStreamingKey] != true &&
+            if (!hasModules && prefs[EnableTidalStreamingKey] != true && prefs[EnableSaavnStreamingKey] == false &&
+                prefs[com.ozyern.exhale.constants.PreferArchiveFlacKey] == false &&
                 !videoMode && !forceStandard
             ) return "$mediaId$fallbackSuffix"
             val fingerprint = (streamSourcePreferences(prefs) + listOf(
@@ -3595,7 +3611,7 @@ class MusicService :
             if (playbackData.isHlsStream) hlsStreamKeys.add(effKey) else hlsStreamKeys.remove(effKey)
             Timber.tag("SpineDebug").d("DataSourceResolver: resolved mediaId=$mediaId isSpineStream=${playbackData.isSpineStream} isTidalStream=${playbackData.isTidalStream} hls=${playbackData.isHlsStream}")
 
-            if (playbackData.isTidalStream || playbackData.isSpineStream) {
+            if (playbackData.isTidalStream || playbackData.isSpineStream || playbackData.isArchiveFlacStream) {
                 losslessStreamMediaIds.add(mediaId)
             } else {
                 losslessStreamMediaIds.remove(mediaId)
@@ -3606,7 +3622,7 @@ class MusicService :
 
             return ResolvedStream(
                 uri = streamUrl.toUri(),
-                directFile = playbackData.isTidalStream || playbackData.isSpineStream,
+                directFile = playbackData.isTidalStream || playbackData.isSpineStream || playbackData.isArchiveFlacStream,
                 hls = playbackData.isHlsStream,
             )
         }

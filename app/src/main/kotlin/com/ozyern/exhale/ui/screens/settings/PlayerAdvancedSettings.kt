@@ -110,7 +110,7 @@ fun PlayerAdvancedSettings(
         SeekExtraSeconds,
         defaultValue = false
     )
-    val (saavnEnabled, _) = rememberPreference(EnableSaavnStreamingKey, defaultValue = false)
+    val (saavnEnabled, _) = rememberPreference(EnableSaavnStreamingKey, defaultValue = true)
     val (saavnQuality, _) = rememberEnumPreference(
         SaavnAudioQualityKey,
         defaultValue = SaavnAudioQuality.QUALITY_320

@@ -3,6 +3,16 @@
 package com.ozyern.exhale.core.updater
 
 import android.content.Intent
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.ozyern.exhale.ui.component.ColorOsVersionText
+import com.ozyern.exhale.ui.component.ExhaleGlowWordmark
+import com.ozyern.exhale.ui.component.GlassCircleButton
+import com.ozyern.exhale.ui.component.OppoSans
+import com.ozyern.exhale.ui.component.UpdateArtwork
+import com.ozyern.exhale.ui.component.frostedGlass
+import androidx.compose.foundation.shape.RoundedCornerShape
+import zone.ien.hig.CupertinoActivityIndicator
+import zone.ien.hig.CupertinoButtonSize
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
@@ -10,11 +20,7 @@ import com.ozyern.exhale.ui.ios.compat.LocalContentColor
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.sp
-import com.ozyern.exhale.ui.component.ExhaleGlow
-import com.ozyern.exhale.ui.component.ExhaleLightRibbons
-import com.ozyern.exhale.ui.component.ExhaleVersionLockup
 import com.ozyern.exhale.ui.screens.settings.exhaleBuildFlavor
-import com.ozyern.exhale.ui.utils.bounceClick
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -59,118 +65,143 @@ fun UpdateScreen(navController: NavHostController, viewModel: UpdateViewModel = 
     LaunchedEffect(Unit) { viewModel.check(manual = true) }
     var showNotes by rememberSaveable { mutableStateOf(false) }
     val release = state.release
+    val artwork = rememberLayerBackdrop()
 
-    Box(Modifier.fillMaxSize().background(ExhaleGlow.Ground)) {
-        ExhaleLightRibbons(Modifier.matchParentSize())
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        UpdateArtwork(artwork)
         Column(
             Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                Modifier.fillMaxWidth().padding(start = 8.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Box(
-                    Modifier.size(52.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f))
-                        .border(1.dp, Color.White.copy(alpha = 0.16f), CircleShape)
-                        .bounceClick { navController.navigateUp() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    SymbolIcon(symbol = sf("chevron.left"), contentDescription = stringResource(R.string.back_content_desc), size = 20.dp, tint = Color.White)
+                GlassCircleButton(onClick = { navController.navigateUp() }, size = 44.dp) {
+                    SymbolIcon(symbol = sf("chevron.left"), contentDescription = stringResource(R.string.back_content_desc))
                 }
-                Text(stringResource(R.string.exhale_update_title), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 26.sp,
-                    modifier = Modifier.semantics { heading() })
+                Text(
+                    stringResource(R.string.exhale_update_title),
+                    color = Color.White,
+                    fontFamily = OppoSans,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 24.sp,
+                    modifier = Modifier.semantics { heading() },
+                )
             }
 
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                ExhaleVersionLockup(version = BuildConfig.VERSION_NAME, fontSize = 72.sp)
-            }
-
-            val cardShape = ContinuousRoundedRectangle(36.dp)
+            val checking = state.enabled && state.phase == UpdatePhase.CHECKING && release == null
             Column(
-                Modifier.widthIn(max = 560.dp).fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp)
-                    .clip(cardShape)
-                    .background(Color(0xFF16110C).copy(alpha = 0.72f))
-                    .border(1.dp, Color.White.copy(alpha = 0.12f), cardShape)
-                    .padding(24.dp)
-                    .animateContentSize(),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                val title = when {
-                    !state.enabled -> stringResource(R.string.exhale_update_unmanaged)
-                    release != null -> stringResource(R.string.exhale_update_available, release.version)
-                    state.phase == UpdatePhase.CHECKING -> stringResource(R.string.exhale_update_checking)
-                    state.error != null -> stringResource(R.string.exhale_update_failed)
-                    else -> stringResource(R.string.exhale_update_up_to_date)
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 32.sp)
-                    val subtitle = if (release != null) {
-                        stringResource(R.string.exhale_update_size_date, "%.1f".format(release.asset.size / 1048576.0), release.publishedAt.take(10))
-                    } else "Exhale_${BuildConfig.VERSION_NAME}_${BuildConfig.ARCHITECTURE}($exhaleBuildFlavor)"
-                    Text(subtitle, color = Color.White.copy(alpha = 0.6f), fontSize = 16.sp)
-                }
+                Spacer(Modifier.weight(if (checking) 1.1f else 0.35f))
+                ExhaleGlowWordmark(fontSize = 66.sp)
+                ColorOsVersionText(BuildConfig.VERSION_NAME, fontSize = 22.sp, modifier = Modifier.padding(top = 12.dp))
+                Spacer(Modifier.weight(1f))
 
-                if (release != null) {
-                    androidx.compose.animation.AnimatedVisibility(showNotes) {
-                        Column(Modifier.heightIn(max = 300.dp).verticalScroll(rememberScrollState())) {
-                            CompositionLocalProvider(LocalContentColor provides Color.White) {
-                                if (release.description.isNotBlank()) Text(release.description, color = Color.White.copy(alpha = 0.85f), fontSize = 15.sp)
-                                UpdateChangelog(release)
+                if (checking) {
+                    Row(
+                        Modifier.widthIn(max = 560.dp).fillMaxWidth().height(56.dp)
+                            .frostedGlass(artwork, RoundedCornerShape(28.dp))
+                            .padding(start = 22.dp, end = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(stringResource(R.string.exhale_update_checking), fontFamily = OppoSans, fontSize = 16.sp,
+                            color = Color.White.copy(alpha = 0.92f), modifier = Modifier.weight(1f))
+                        CupertinoActivityIndicator(color = Color.White.copy(alpha = 0.85f))
+                    }
+                } else {
+                    Column(
+                        Modifier.widthIn(max = 560.dp).fillMaxWidth()
+                            .frostedGlass(artwork, RoundedCornerShape(32.dp))
+                            .padding(horizontal = 22.dp, vertical = 24.dp)
+                            .animateContentSize(),
+                    ) {
+                        val title = when {
+                            release != null -> stringResource(R.string.exhale_update_available, release.version)
+                            state.error != null -> stringResource(R.string.exhale_update_failed)
+                            else -> stringResource(R.string.exhale_update_up_to_date)
+                        }
+                        Text(title, fontFamily = OppoSans, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Spacer(Modifier.height(6.dp))
+                        val subtitle = if (release != null) {
+                            stringResource(R.string.exhale_update_size_date, "%.1f".format(release.asset.size / 1048576.0), release.publishedAt.take(10))
+                        } else "Exhale_${BuildConfig.VERSION_NAME}_${BuildConfig.ARCHITECTURE}(${BuildConfig.GIT_COMMIT})"
+                        Text(subtitle, fontFamily = OppoSans, fontSize = 15.sp, color = Color.White.copy(alpha = 0.7f))
+
+                        if (release != null) {
+                            androidx.compose.animation.AnimatedVisibility(showNotes) {
+                                Column(Modifier.padding(top = 14.dp).heightIn(max = 260.dp).verticalScroll(rememberScrollState())) {
+                                    CompositionLocalProvider(LocalContentColor provides Color.White) {
+                                        if (release.description.isNotBlank()) Text(release.description, fontFamily = OppoSans, color = Color.White.copy(alpha = 0.85f), fontSize = 15.sp)
+                                        UpdateChangelog(release)
+                                    }
+                                }
+                            }
+                            if (state.phase != UpdatePhase.AVAILABLE && state.phase != UpdatePhase.IDLE || state.error != null) {
+                                Spacer(Modifier.height(10.dp))
+                                CompositionLocalProvider(LocalContentColor provides Color.White) { UpdateStatus(state) }
+                            }
+                        } else state.error?.let {
+                            Spacer(Modifier.height(4.dp))
+                            CompositionLocalProvider(LocalContentColor provides Color.White.copy(alpha = 0.55f)) { UpdateStatus(state) }
+                        }
+
+                        Spacer(Modifier.height(20.dp))
+                        val busy = UpdatePolicy.isTransfer(state.phase)
+                        when {
+                            release != null -> {
+                                UpdateCardButton(
+                                    stringResource(if (state.phase == UpdatePhase.READY) R.string.exhale_update_install else R.string.exhale_update_download),
+                                    primary = true,
+                                    enabled = state.enabled && !busy && state.phase != UpdatePhase.CHECKING && state.phase != UpdatePhase.INSTALLED,
+                                ) {
+                                    if (state.phase == UpdatePhase.READY) context.startActivity(Intent(context, UpdateInstallActivity::class.java)) else viewModel.download()
+                                }
+                                Spacer(Modifier.height(12.dp))
+                                if (state.phase in setOf(UpdatePhase.QUEUED, UpdatePhase.DOWNLOADING, UpdatePhase.VERIFYING)) {
+                                    UpdateCardButton(stringResource(R.string.cancel), primary = false, onClick = viewModel::cancel)
+                                } else {
+                                    UpdateCardButton(stringResource(if (showNotes) R.string.exhale_update_hide_notes else R.string.exhale_update_notes), primary = false) { showNotes = !showNotes }
+                                }
+                            }
+                            else -> {
+                                if (state.error != null && state.enabled) {
+                                    UpdateCardButton(stringResource(R.string.exhale_update_try_again), primary = true) { viewModel.check(manual = true) }
+                                } else {
+                                    UpdateCardButton(stringResource(R.string.exhale_update_highlights), primary = true) { navController.navigate("settings/changelog") }
+                                }
+                                Spacer(Modifier.height(12.dp))
+                                UpdateCardButton(stringResource(R.string.exhale_update_notes), primary = false) {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/ozyern/exhale/releases")))
+                                }
                             }
                         }
                     }
-                    if (state.phase != UpdatePhase.AVAILABLE && state.phase != UpdatePhase.IDLE) {
-                        CompositionLocalProvider(LocalContentColor provides Color.White) { UpdateStatus(state) }
-                    } else state.error?.let { UpdateStatus(state) }
                 }
-
-                val busy = UpdatePolicy.isTransfer(state.phase)
-                when {
-                    release != null -> {
-                        UpdatePill(
-                            text = stringResource(if (state.phase == UpdatePhase.READY) R.string.exhale_update_install else R.string.exhale_update_download),
-                            primary = true,
-                            enabled = state.enabled && !busy && state.phase != UpdatePhase.CHECKING && state.phase != UpdatePhase.INSTALLED,
-                        ) {
-                            if (state.phase == UpdatePhase.READY) context.startActivity(Intent(context, UpdateInstallActivity::class.java)) else viewModel.download()
-                        }
-                        if (state.phase in setOf(UpdatePhase.QUEUED, UpdatePhase.DOWNLOADING, UpdatePhase.VERIFYING)) {
-                            UpdatePill(stringResource(R.string.cancel), primary = false, onClick = viewModel::cancel)
-                        } else {
-                            UpdatePill(stringResource(if (showNotes) R.string.exhale_update_hide_notes else R.string.exhale_update_notes), primary = false) { showNotes = !showNotes }
-                        }
-                    }
-                    state.error != null && state.enabled -> {
-                        UpdatePill(stringResource(R.string.exhale_update_try_again), primary = true, enabled = state.phase != UpdatePhase.CHECKING) { viewModel.check(manual = true) }
-                        UpdatePill(stringResource(R.string.exhale_update_highlights), primary = false) { navController.navigate("settings/changelog") }
-                    }
-                    else -> {
-                        UpdatePill(stringResource(R.string.exhale_update_highlights), primary = true) { navController.navigate("settings/changelog") }
-                        UpdatePill(stringResource(R.string.exhale_update_notes), primary = false) {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/ozyern/exhale/releases")))
-                        }
-                    }
-                }
+                Spacer(Modifier.height(16.dp))
             }
         }
     }
 }
 
-/** The two buttons on the Software update card: a light primary pill and a dark glass one. */
+/** The two buttons on the update card, as Convx draws its large buttons: a light one and a glass one. */
 @Composable
-private fun UpdatePill(text: String, primary: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
-    val shape = ContinuousRoundedRectangle(32.dp)
-    Box(
-        Modifier.fillMaxWidth().height(64.dp).clip(shape)
-            .background(if (primary) Color(0xFFF1ECE4) else Color.White.copy(alpha = 0.10f))
-            .then(if (primary) Modifier else Modifier.border(1.dp, Color.White.copy(alpha = 0.10f), shape))
-            .bounceClick(enabled = enabled, onClick = onClick)
-            .graphicsLayer { alpha = if (enabled) 1f else 0.45f },
-        contentAlignment = Alignment.Center,
+private fun UpdateCardButton(text: String, primary: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
+    CupertinoButton(
+        onClick = onClick,
+        enabled = enabled,
+        size = CupertinoButtonSize.Large,
+        colors = CupertinoButtonDefaults.filledButtonColors(
+            contentColor = if (primary) Color(0xFF141414) else Color.White,
+            containerColor = if (primary) Color(0xFFF1ECE4) else Color.White.copy(alpha = 0.14f),
+        ),
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        Text(text, color = if (primary) Color(0xFF1A1714) else Color.White, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
+        Text(text, fontFamily = OppoSans, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
+            color = if (primary) Color(0xFF141414) else Color.White)
     }
 }
 

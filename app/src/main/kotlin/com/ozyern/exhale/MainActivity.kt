@@ -172,7 +172,8 @@ class MainActivity : ComponentActivity() {
 
         // Cold launch from the launcher only (WelcomeActivity hands off with this extra);
         // notification/deep-link opens go straight to the app.
-        val playIntro = savedInstanceState == null && intent.getBooleanExtra(EXTRA_PLAY_INTRO, false)
+        // The system splash carries the logo now, so the intro animation stays off.
+        val playIntro = false && savedInstanceState == null && intent.getBooleanExtra(EXTRA_PLAY_INTRO, false)
         setContent {
             var showIntro by rememberSaveable { mutableStateOf(playIntro) }
             Box(Modifier.fillMaxSize()) {

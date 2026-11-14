@@ -61,7 +61,7 @@ fun JioSettings(
 ) {
     val (saavnEnabled, onSaavnEnabledChange) = rememberPreference(
         EnableSaavnStreamingKey,
-        defaultValue = false
+        defaultValue = true
     )
     val (saavnQuality, onSaavnQualityChange) = rememberEnumPreference(
         SaavnAudioQualityKey,
@@ -69,6 +69,10 @@ fun JioSettings(
     )
     val (fallbackToYouTube, onFallbackToYouTubeChange) = rememberPreference(
         SaavnFallbackToYouTubeKey,
+        defaultValue = true
+    )
+    val (preferArchiveFlac, onPreferArchiveFlacChange) = rememberPreference(
+        com.ozyern.exhale.constants.PreferArchiveFlacKey,
         defaultValue = true
     )
     val (forceSelectedQuality, onForceSelectedQualityChange) = rememberPreference(
@@ -129,6 +133,20 @@ fun JioSettings(
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        IosSettingsGroup(
+            title = "Lossless",
+            items = listOf(
+                IosSettingsItem(
+                    title = { Text("Prefer FLAC from the Internet Archive") },
+                    description = { Text("When a song has a FLAC copy on the Internet Archive, play that first, before JioSaavn or YouTube.") },
+                    trailingContent = { ModernSwitch(checked = preferArchiveFlac, onCheckedChange = onPreferArchiveFlacChange) },
+                    onClick = { onPreferArchiveFlacChange(!preferArchiveFlac) },
+                ),
+            ),
+        )
 
         Spacer(modifier = Modifier.height(24.dp))
 
