@@ -1669,7 +1669,7 @@ private fun JellyFoldingDock(
             // Convx 2.0.4's sizes: glyphs that fill their whole viewbox are drawn smaller so every tab reads the same.
             // Apple Music's tab bar glyphs, drawn to match it; the symbol library's own house,
             // stack and magnifier are different shapes.
-            glyphSize = if (screen.dockGlyph() != null) 31.dp else if (screen == searchScreen) 28.dp else 32.dp,
+            glyphSize = if (screen.dockGlyph() != null) 38.dp else if (screen == searchScreen) 28.dp else 32.dp,
             symbol = if (screen.dockGlyph() != null) null else screen.dockSymbol(),
             onClick = {
                 when {
