@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- The dock's Home: a filled house, its roof straight down to the walls, its door open at the foot. -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#FF000000"
-        android:pathData="M10.75,2.15Q12,1.25 13.25,2.15L21.25,8.05Q22,8.6 22,9.5L22,20.5Q22,22.3 20.2,22.3L15,22.3L15,16.1Q15,14.5 13.4,14.5L10.6,14.5Q9,14.5 9,16.1L9,22.3L3.8,22.3Q2,22.3 2,20.5L2,9.5Q2,8.6 2.75,8.05Z" />
-</vector>

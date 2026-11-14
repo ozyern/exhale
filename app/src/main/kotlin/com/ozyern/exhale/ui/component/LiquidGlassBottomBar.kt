@@ -1665,12 +1665,11 @@ private fun JellyFoldingDock(
         com.ozyern.exhale.ui.component.foldingdock.FoldingDockTab(
             key = screen.route,
             title = titles[i],
-            icon = screen.dockGlyph() ?: if (here) screen.iconIdActive else screen.iconIdInactive,
+            icon = if (here) screen.iconIdActive else screen.iconIdInactive,
             // Convx 2.0.4's sizes: glyphs that fill their whole viewbox are drawn smaller so every tab reads the same.
-            // Apple Music's tab bar glyphs, drawn to match it; the symbol library's own house,
-            // stack and magnifier are different shapes.
-            glyphSize = if (screen.dockGlyph() != null) 38.dp else if (screen == searchScreen) 28.dp else 32.dp,
-            symbol = if (screen.dockGlyph() != null) null else screen.dockSymbol(),
+            // Glyphs that fill their whole viewbox are drawn smaller so every tab reads the same.
+            glyphSize = if (screen == searchScreen || screen == Screens.MoodAndGenres) 28.dp else if (screen == Screens.Radio) 30.dp else 32.dp,
+            symbol = screen.dockSymbol(),
             onClick = {
                 when {
                     screen == searchScreen && search != null -> search.onTapBar()
@@ -1889,20 +1888,11 @@ internal val DockAccentRed = Color(0xFFFA2D48)
 val LocalConvxChrome = androidx.compose.runtime.staticCompositionLocalOf { true }
 
 /** The SF Symbol each tab wears in the dock, bold, as the reference draws its tab bar. */
-/** The dock's own glyphs, drawn after Apple Music's tab bar. */
-internal fun Screens.dockGlyph(): Int? = when (this) {
-    Screens.Home -> R.drawable.dock_home
-    Screens.MoodAndGenres -> R.drawable.dock_grid
-    Screens.Library -> R.drawable.dock_library
-    Screens.Search -> R.drawable.dock_search
-    Screens.Radio -> R.drawable.dock_radio
-    else -> null
-}
-
 internal fun Screens.dockSymbol(): String? = when (this) {
     Screens.Home -> "house.fill"
     Screens.MoodAndGenres -> "square.grid.2x2.fill"
     Screens.Library -> "music.note.square.stack.fill"
     Screens.Search -> "magnifyingglass"
+    Screens.Radio -> "dot.radiowaves.left.and.right"
     else -> null
 }
