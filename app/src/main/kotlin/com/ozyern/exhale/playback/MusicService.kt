@@ -1380,6 +1380,12 @@ class MusicService :
                 .build()
         player.repeatMode = dataStore.get(RepeatModeKey, REPEAT_MODE_OFF)
 
+        ArchiveFlac.init(this)
+        dataStore.data
+            .map { it[com.ozyern.exhale.constants.PreferArchiveFlacKey] ?: true }
+            .distinctUntilChanged()
+            .collectLatest(scope) { ArchiveFlac.enabled = it }
+
         // Lyrics on the lock screen, the media card and ColorOS's Live Space.
         liveLyricsPublisher = LiveLyricsPublisher(
             context = this,
@@ -3138,6 +3144,20 @@ class MusicService :
             return
         }
 
+        // The song's Archive FLAC copy would not play: drop it and start the song again from its
+        // ordinary sources.
+        if (mediaId != null && ArchiveFlac.known(mediaId) != null) {
+            Timber.tag(TAG).w("Archive FLAC copy failed for $mediaId, falling back")
+            ArchiveFlac.reject(mediaId)
+            losslessStreamMediaIds.remove(mediaId)
+            val index = player.currentMediaItemIndex
+            val position = player.currentPosition
+            player.currentMediaItem?.let { player.replaceMediaItem(index, it.buildUpon().build()) }
+            player.seekTo(index, position)
+            player.prepare()
+            return
+        }
+
         if (recoverCodecFailure(error, mediaId)) return
 
         if (mediaId != null && errorRecovery.hasExceededRetryLimit(mediaId)) {
@@ -3427,6 +3447,7 @@ class MusicService :
         fun triggerLosslessFallback(mediaId: String) {
             Timber.tag(TAG).w("Falling back to standard audio for $mediaId after repeated lossless failures")
 
+            ArchiveFlac.reject(mediaId)
             forceStandardAudioMediaIds.add(mediaId)
             bypassCacheForQualityChange.add(mediaId)
             // Remove cached lossless bytes so the standard decoder receives the new format.
@@ -3744,6 +3765,14 @@ class MusicService :
                     return@Factory dataSpec
                 }
 
+                // The song's FLAC copy, under its own cache key so its bytes never mix with a lossy
+                // stream cached for the same song.
+                if (archiveFlacAllowed(mediaId)) {
+                    ArchiveFlac.streamUrl(mediaId)?.let { url ->
+                        return@Factory dataSpec.buildUpon().setUri(url.toUri()).setKey(ArchiveFlac.cacheKey(mediaId)).build()
+                    }
+                }
+
                 // Downloads stay under mediaId. Answer them before effectiveCacheKey, which blocks on a
                 // DataStore read: every seek reopens this resolver, so that read made seeks lag.
                 // A finished quality upgrade is stored under its own key and wins over the older copy.
@@ -3799,6 +3828,38 @@ class MusicService :
             }
         }
 
+        /** Whether [mediaId] may play from its Archive FLAC copy right now. */
+        private fun archiveFlacAllowed(mediaId: String): Boolean =
+            ArchiveFlac.enabled && !roomPlaybackBridge.requiresJamYouTube &&
+                mediaId !in forceStandardAudioMediaIds && mediaId !in videoModeMediaIds &&
+                !forceAacAudioMediaIds.contains(mediaId) &&
+                !downloadCache.isCached(downloadKey(mediaId), 0, 1)
+
+        /** Records the copy's format so the player's quality badge says what is really playing. */
+        private fun noteArchiveFlacPlaying(mediaId: String, copy: ArchiveFlac.Copy) {
+            losslessStreamMediaIds.add(mediaId)
+            val rate = copy.sampleRate ?: 44_100
+            val depth = copy.bitDepth ?: 16
+            runCatching {
+                database.query {
+                    upsert(
+                        FormatEntity(
+                            id = mediaId,
+                            itag = 9998,
+                            mimeType = "audio/flac",
+                            codecs = "flac",
+                            bitrate = rate * depth * 2,
+                            sampleRate = rate,
+                            contentLength = 0L,
+                            loudnessDb = null,
+                            perceptualLoudnessDb = null,
+                            playbackUrl = null,
+                        )
+                    )
+                }
+            }
+        }
+
         fun createMediaSourceFactory(): androidx.media3.exoplayer.source.MediaSource.Factory {
             val progressive = DefaultMediaSourceFactory(
                 createDataSourceFactory(),
@@ -3816,6 +3877,15 @@ class MusicService :
                     ResolvingMediaSource(mediaItem) {
                         val mediaId = mediaItem.mediaId
                         if (isDirectMediaSource(mediaId)) return@ResolvingMediaSource progressive.createMediaSource(mediaItem)
+                        // A FLAC copy from the Internet Archive comes before everything, cached
+                        // streams included: searched from the song's own details, as master does.
+                        if (archiveFlacAllowed(mediaId)) {
+                            val copy = ArchiveFlac.known(mediaId) ?: mediaItem.metadata?.let { ArchiveFlac.find(it) }
+                            if (copy != null) {
+                                noteArchiveFlacPlaying(mediaId, copy)
+                                return@ResolvingMediaSource progressive.createMediaSource(mediaItem)
+                            }
+                        }
                         val key = effectiveCacheKey(mediaId)
                         if (!bypassCacheForQualityChange.contains(mediaId) &&
                             ((!roomPlaybackBridge.requiresJamYouTube && downloadCache.isCached(downloadKey(mediaId), 0, 1)) || playerCache.isCached(key, 0, CHUNK_LENGTH))) {

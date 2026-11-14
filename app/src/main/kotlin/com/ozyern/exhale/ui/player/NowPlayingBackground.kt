@@ -171,19 +171,23 @@ fun NowPlayingBackground(
             // dark fade no longer bands into steps.
             .filmGrain(0.07f),
     ) {
-        if (hero && videoLook == null) {
+        if (videoLook == null) {
             androidx.compose.animation.Crossfade(
                 targetState = artworkUrl,
                 animationSpec = tween(transitionMillis),
                 label = "nowPlayingBleed",
                 modifier = Modifier.fillMaxSize(),
             ) { url ->
-                if (url != null) BleedingArtwork(url, heroFraction = HERO_FRACTION)
+                // The square look has no full-width cover: the whole cover, blurred, is its ground.
+                if (url != null) BleedingArtwork(url, heroFraction = if (hero) HERO_FRACTION else 1f)
             }
         }
     }
 }
 
+
+/** Decoded covers for the bleed, so reopening the player never waits on a decode. */
+private val bleedCache = android.util.LruCache<String, Pair<androidx.compose.ui.graphics.ImageBitmap, Color>>(8)
 
 /** How far down the screen the hero cover reaches before it dissolves into the ground. */
 private const val HERO_FRACTION = 0.65f
@@ -198,18 +202,21 @@ private const val HERO_FRACTION = 0.65f
 @Composable
 private fun BleedingArtwork(url: String, heroFraction: Float) {
     val context = LocalContext.current
-    val decoded by produceState<Pair<androidx.compose.ui.graphics.ImageBitmap, Color>?>(null, url) {
+    val decoded by produceState(bleedCache.get(url), url) {
+        if (value != null) return@produceState
         value = withContext(Dispatchers.IO) {
             val request = coil3.request.ImageRequest.Builder(context)
-                .data(url.resize(544, 544))
-                // Small on purpose: it is about to be blurred past any detail a large one has.
-                .size(384, 384)
+                .data(url.resize(120, 120))
+                // Tiny on purpose: softened once here and stretched smoothly when drawn, so the
+                // ground costs one plain image. A live blur layer under the dock-to-player morph
+                // would be re-rendered on every frame of it.
+                .size(BLEED_SIZE, BLEED_SIZE)
                 .allowHardware(false)
                 .build()
             runCatching {
                 (coil3.SingletonImageLoader.get(context).execute(request) as? coil3.request.SuccessResult)
-                    ?.image?.toBitmap()?.let { it.asImageBitmap() to footColour(it) }
-            }.getOrNull()
+                    ?.image?.toBitmap()?.let { softened(it).asImageBitmap() to footColour(it) }
+            }.getOrNull()?.also { bleedCache.put(url, it) }
         }
     }
     val (image, foot) = decoded ?: return
@@ -218,19 +225,15 @@ private fun BleedingArtwork(url: String, heroFraction: Float) {
             androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(1.35f) },
         )
     }
-    val appear = remember(url) { androidx.compose.animation.core.Animatable(0f) }
+    // Already decoded (the player reopened, the same song): there at once, so the open
+    // animation carries the finished ground instead of fading it in behind itself.
+    val appear = remember(url) { androidx.compose.animation.core.Animatable(if (bleedCache.get(url) != null) 1f else 0f) }
     LaunchedEffect(url) { appear.animateTo(1f, tween(500)) }
     androidx.compose.foundation.Canvas(
         Modifier
             .fillMaxSize()
             .graphicsLayer {
                 alpha = appear.value * 0.92f
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                    val radius = 56.dp.toPx()
-                    renderEffect = androidx.compose.ui.graphics.BlurEffect(
-                        radius, radius, androidx.compose.ui.graphics.TileMode.Clamp,
-                    )
-                }
                 clip = true
             },
     ) {
@@ -247,6 +250,7 @@ private fun BleedingArtwork(url: String, heroFraction: Float) {
             dstOffset = IntOffset.Zero,
             dstSize = IntSize(size.width.roundToInt(), bannerH.roundToInt()),
             colorFilter = saturate,
+            filterQuality = androidx.compose.ui.graphics.FilterQuality.Low,
         )
         // Edge extension: the bottom 6% of the picture, stretched down to the foot of the screen.
         val stripH = (srcH * 0.06f).roundToInt().coerceAtLeast(1)
@@ -259,6 +263,7 @@ private fun BleedingArtwork(url: String, heroFraction: Float) {
                 dstOffset = IntOffset(0, bannerH.roundToInt()),
                 dstSize = IntSize(size.width.roundToInt(), rest),
                 colorFilter = saturate,
+                filterQuality = androidx.compose.ui.graphics.FilterQuality.Low,
             )
             // The stretched columns run together on the way down into the colour the cover's foot
             // averages to, so the ground under the transport is calm and still this cover's.
@@ -284,6 +289,30 @@ private fun BleedingArtwork(url: String, heroFraction: Float) {
             ),
         )
     }
+}
+
+private const val BLEED_SIZE = 40
+
+/** [bitmap] box-blurred a few times: with the smooth stretch at draw time, a heavy blur for free. */
+private fun softened(bitmap: android.graphics.Bitmap): android.graphics.Bitmap {
+    val w = bitmap.width
+    val h = bitmap.height
+    if (w < 3 || h < 3) return bitmap
+    var src = IntArray(w * h)
+    bitmap.getPixels(src, 0, w, 0, 0, w, h)
+    var dst = IntArray(w * h)
+    repeat(3) {
+        for (y in 0 until h) for (x in 0 until w) {
+            var r = 0; var g = 0; var b = 0; var n = 0
+            for (dy in -1..1) for (dx in -1..1) {
+                val c = src[(y + dy).coerceIn(0, h - 1) * w + (x + dx).coerceIn(0, w - 1)]
+                r += (c shr 16) and 0xFF; g += (c shr 8) and 0xFF; b += c and 0xFF; n++
+            }
+            dst[y * w + x] = (0xFF shl 24) or ((r / n) shl 16) or ((g / n) shl 8) or (b / n)
+        }
+        val t = src; src = dst; dst = t
+    }
+    return android.graphics.Bitmap.createBitmap(src, w, h, android.graphics.Bitmap.Config.ARGB_8888)
 }
 
 /** The colour the last rows of [bitmap] average to, a little richer: what the ground settles into. */

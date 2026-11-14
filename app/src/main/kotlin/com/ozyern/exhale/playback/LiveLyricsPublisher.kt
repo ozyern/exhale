@@ -164,7 +164,7 @@ class LiveLyricsPublisher(
                     lineIndex = index
                     // A blank entry is a breath between lines: keep the line just sung rather
                     // than flicking the card back to the artist for a moment.
-                    lines[index].text.takeIf { it.isNotBlank() }?.let { text ->
+                    lines[index].text.replace(OplusLiveLyrics.AnyTimeTagRegex, "").replace(Regex("\\s+"), " ").trim().takeIf { it.isNotBlank() }?.let { text ->
                         publishCurrentLine(text, lines[index].time)
                         publishCardLine(text)
                     }

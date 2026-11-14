@@ -61,6 +61,9 @@ internal object AppRoutePolicy {
         "switch_channel",
         "listen_together_from_topbar",
         Screens.ListenTogether.route,
+        // Full-bleed artwork pages with their own header: a blur strip over it only smears it.
+        "update",
+        "flac",
     )
 
     fun isTabRoot(route: String?) = route != null && route in tabRootRoutes
@@ -84,5 +87,6 @@ internal object AppRoutePolicy {
         !route.startsWith("cache_playlist/") &&
         !route.startsWith("top_playlist/") &&
         !route.startsWith("browse/") &&
-        !route.startsWith("search/")
+        !route.startsWith("search/") &&
+        !route.startsWith("flac/")
 }

@@ -149,6 +149,9 @@ object OplusLiveLyrics {
     private val LineTimeRegex = Regex("""\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?]""")
 
     /** A word-level timestamp inside an enhanced-LRC line: `<mm:ss.xx>`. */
+    /** Any inline timing tag, including the `<start|end>` form word-synced sources use. */
+    internal val AnyTimeTagRegex = Regex("""<[\d:.|]+>""")
+
     private val WordTimeRegex = Regex("""<\d{1,3}:\d{2}(?:[.:]\d{1,3})?>""")
 
     /**
@@ -191,7 +194,7 @@ object OplusLiveLyrics {
                 tags += next.value
                 rest = rest.substring(next.range.last + 1)
             }
-            val text = rest.replace(WordTimeRegex, "").replace(Regex("\\s+"), " ").trim()
+            val text = rest.replace(AnyTimeTagRegex, "").replace(Regex("\\s+"), " ").trim()
             if (text.isEmpty() || tag.value.isEmpty()) null else tags.map { it + text }
         }.flatten().toList()
         return rows.takeIf { it.isNotEmpty() }?.joinToString("\n", postfix = "\n")
