@@ -5,6 +5,18 @@
 
 package com.ozyern.exhale.ui.player
 
+import com.ozyern.exhale.ui.component.filmGrain
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
@@ -149,8 +161,156 @@ fun NowPlayingBackground(
         label = "nowPlayingBottom",
     )
     // Colours read in the draw phase: a track change redraws, never recomposes.
-    Box(modifier.drawBehind {
-        drawRect(if (hero) Brush.verticalGradient(0f to top, 0.62f to top, 1f to bottom)
-            else Brush.verticalGradient(0f to top, 0.606f to top, 1f to bottom))
-    })
+    Box(
+        modifier
+            .drawBehind {
+                drawRect(if (hero) Brush.verticalGradient(0f to top, 0.62f to top, 1f to bottom)
+                    else Brush.verticalGradient(0f to top, 0.606f to top, 1f to bottom))
+            }
+            // Exhale's grain: the ground reads as a photograph, not a gradient on glass, and a slow
+            // dark fade no longer bands into steps.
+            .filmGrain(0.07f),
+    ) {
+        if (hero && videoLook == null) {
+            androidx.compose.animation.Crossfade(
+                targetState = artworkUrl,
+                animationSpec = tween(transitionMillis),
+                label = "nowPlayingBleed",
+                modifier = Modifier.fillMaxSize(),
+            ) { url ->
+                if (url != null) BleedingArtwork(url, heroFraction = HERO_FRACTION)
+            }
+        }
+    }
+}
+
+
+/** How far down the screen the hero cover reaches before it dissolves into the ground. */
+private const val HERO_FRACTION = 0.65f
+
+/**
+ * The cover, bled down the screen the way the lock screen does it (Exhale's player ground): drawn
+ * where the hero cover sits, its last rows stretched to the foot, the whole blurred hard and its
+ * colours lifted, settling into the one colour its foot averages to. Under the hero's own fade
+ * this is the same picture softened, so the cover never ends: it melts into itself instead of
+ * into a flat colour sampled from it.
+ */
+@Composable
+private fun BleedingArtwork(url: String, heroFraction: Float) {
+    val context = LocalContext.current
+    val decoded by produceState<Pair<androidx.compose.ui.graphics.ImageBitmap, Color>?>(null, url) {
+        value = withContext(Dispatchers.IO) {
+            val request = coil3.request.ImageRequest.Builder(context)
+                .data(url.resize(544, 544))
+                // Small on purpose: it is about to be blurred past any detail a large one has.
+                .size(384, 384)
+                .allowHardware(false)
+                .build()
+            runCatching {
+                (coil3.SingletonImageLoader.get(context).execute(request) as? coil3.request.SuccessResult)
+                    ?.image?.toBitmap()?.let { it.asImageBitmap() to footColour(it) }
+            }.getOrNull()
+        }
+    }
+    val (image, foot) = decoded ?: return
+    val saturate = remember {
+        androidx.compose.ui.graphics.ColorFilter.colorMatrix(
+            androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(1.35f) },
+        )
+    }
+    val appear = remember(url) { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(url) { appear.animateTo(1f, tween(500)) }
+    androidx.compose.foundation.Canvas(
+        Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                alpha = appear.value * 0.92f
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    val radius = 56.dp.toPx()
+                    renderEffect = androidx.compose.ui.graphics.BlurEffect(
+                        radius, radius, androidx.compose.ui.graphics.TileMode.Clamp,
+                    )
+                }
+                clip = true
+            },
+    ) {
+        val bannerH = size.height * heroFraction
+        val scale = maxOf(size.width / image.width, bannerH / image.height)
+        val srcW = (size.width / scale).coerceAtMost(image.width.toFloat())
+        val srcH = (bannerH / scale).coerceAtMost(image.height.toFloat())
+        val srcX = ((image.width - srcW) / 2f).roundToInt()
+        val srcY = ((image.height - srcH) / 2f).roundToInt()
+        drawImage(
+            image = image,
+            srcOffset = IntOffset(srcX, srcY),
+            srcSize = IntSize(srcW.roundToInt(), srcH.roundToInt()),
+            dstOffset = IntOffset.Zero,
+            dstSize = IntSize(size.width.roundToInt(), bannerH.roundToInt()),
+            colorFilter = saturate,
+        )
+        // Edge extension: the bottom 6% of the picture, stretched down to the foot of the screen.
+        val stripH = (srcH * 0.06f).roundToInt().coerceAtLeast(1)
+        val rest = (size.height - bannerH).roundToInt()
+        if (rest > 0) {
+            drawImage(
+                image = image,
+                srcOffset = IntOffset(srcX, srcY + srcH.roundToInt() - stripH),
+                srcSize = IntSize(srcW.roundToInt(), stripH),
+                dstOffset = IntOffset(0, bannerH.roundToInt()),
+                dstSize = IntSize(size.width.roundToInt(), rest),
+                colorFilter = saturate,
+            )
+            // The stretched columns run together on the way down into the colour the cover's foot
+            // averages to, so the ground under the transport is calm and still this cover's.
+            drawRect(
+                brush = Brush.verticalGradient(
+                    0f to foot.copy(alpha = 0f),
+                    0.55f to foot.copy(alpha = 0.62f),
+                    1f to foot.copy(alpha = 0.86f),
+                    startY = bannerH,
+                    endY = size.height,
+                ),
+                topLeft = Offset(0f, bannerH),
+                size = Size(size.width, size.height - bannerH),
+            )
+        }
+        // Only as dark as the controls need: clear under the cover, deepening towards the transport.
+        drawRect(
+            Brush.verticalGradient(
+                0f to Color.Black.copy(alpha = 0.06f),
+                0.45f to Color.Black.copy(alpha = 0.16f),
+                0.75f to Color.Black.copy(alpha = 0.30f),
+                1f to Color.Black.copy(alpha = 0.46f),
+            ),
+        )
+    }
+}
+
+/** The colour the last rows of [bitmap] average to, a little richer: what the ground settles into. */
+private fun footColour(bitmap: android.graphics.Bitmap): Color {
+    val w = bitmap.width
+    val h = bitmap.height
+    if (w <= 0 || h <= 0) return Color.Black
+    val rows = (h * 0.08f).toInt().coerceAtLeast(1)
+    val pixels = IntArray(w * rows)
+    bitmap.getPixels(pixels, 0, w, 0, h - rows, w, rows)
+    var r = 0L
+    var g = 0L
+    var b = 0L
+    for (pixel in pixels) {
+        r += (pixel shr 16) and 0xFF
+        g += (pixel shr 8) and 0xFF
+        b += pixel and 0xFF
+    }
+    val n = pixels.size.toFloat() * 255f
+    val hsv = FloatArray(3)
+    android.graphics.Color.RGBToHSV(
+        (r / n * 255f).toInt().coerceIn(0, 255),
+        (g / n * 255f).toInt().coerceIn(0, 255),
+        (b / n * 255f).toInt().coerceIn(0, 255),
+        hsv,
+    )
+    hsv[1] = (hsv[1] * 1.35f).coerceAtMost(0.85f)
+    hsv[2] = hsv[2].coerceIn(0.16f, 0.55f)
+    return Color(android.graphics.Color.HSVToColor(hsv))
 }
