@@ -204,6 +204,7 @@ import com.ozyern.exhale.ui.component.PlaylistListItem
 import com.ozyern.exhale.ui.component.ArtistGridItem
 import com.ozyern.exhale.ui.component.HideOnScrollFAB
 import com.ozyern.exhale.ui.component.HomeHeroCard
+import com.ozyern.exhale.ui.component.HomeAmbientArtwork
 import com.ozyern.exhale.ui.component.HomeImageBackground
 import com.ozyern.exhale.ui.component.hasCustomHomeBackground
 import com.ozyern.exhale.ui.component.LocalBottomSheetPageState
@@ -524,6 +525,14 @@ fun HomeScreen(
                 )
                 HomeImageBackground(contentLoaded = homePage != null)
                 if (!hasCustomHomeBackground()) {
+                    // What's playing, moving slowly behind the feed (Exhale master's live background).
+                    HomeAmbientArtwork(
+                        pageBackground = pageBackground,
+                        scrolledPx = {
+                            val atTop = lazylistState.firstVisibleItemIndex == 0 && lazylistState.firstVisibleItemScrollOffset == 0
+                            if (atTop) 0f else feedScroll.floatValue
+                        },
+                    )
                     HomeChipBackdrop(
                         url = homePage?.background?.takeIf { selectedChip != null && pendingChip == null },
                         fadeTo = pageBackground,

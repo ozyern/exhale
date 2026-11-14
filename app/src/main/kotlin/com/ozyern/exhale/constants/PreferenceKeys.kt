@@ -740,6 +740,12 @@ val HomeGridColumnsOverrideKey = intPreferencesKey("homeGridColumnsOverride")
 val ForceTabletLayoutKey = booleanPreferencesKey("forceTabletLayout")
 
 val HomeBackgroundEnabledKey = booleanPreferencesKey("homeBackgroundEnabled")
+
+/** Exhale master's live background behind Home: the playing song's artwork, moving slowly. */
+val HomeLiveArtworkKey = booleanPreferencesKey("homeLiveArtwork")
+
+/** The same live background under the Apple Music v2 and Espresso players. */
+val PlayerLiveArtworkKey = booleanPreferencesKey("playerLiveArtwork")
 val HomeBackgroundPathKey = stringPreferencesKey("homeBackgroundPath")
 
 /** JSON object of audio output device name to the SF symbol the user picked for it. */

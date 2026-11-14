@@ -180,7 +180,8 @@ fun NowPlayingBackground(
                     else Brush.verticalGradient(0f to top, 0.606f to top, 1f to bottom))
             },
     ) {
-        if (live && videoLook == null) {
+        val (liveSetting) = com.ozyern.exhale.utils.rememberPreference(com.ozyern.exhale.constants.PlayerLiveArtworkKey, true)
+        if (live && liveSetting && videoLook == null) {
             val playing = com.ozyern.exhale.LocalPlayerConnection.current?.isPlaying
                 ?.collectAsState()?.value ?: false
             // The little movement that shows through the bleed, as on Exhale master's player.

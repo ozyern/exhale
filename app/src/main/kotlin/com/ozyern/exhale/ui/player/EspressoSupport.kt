@@ -138,12 +138,15 @@ internal fun LiveArtworkBackdrop(artUrl: String?, palette: EspressoPalette, hero
         // Exhale's live background: a slow field of the cover's colours, for the little movement
         // that shows through the bleed.
         val playing = LocalPlayerConnection.current?.isPlaying?.collectAsState()?.value ?: false
-        com.ozyern.exhale.ui.component.FluidArtworkBackground(
-            url = artUrl,
-            brightness = 0.7f,
-            paused = !playing,
-            modifier = Modifier.fillMaxSize(),
-        )
+        val (liveSetting) = com.ozyern.exhale.utils.rememberPreference(com.ozyern.exhale.constants.PlayerLiveArtworkKey, true)
+        if (liveSetting) {
+            com.ozyern.exhale.ui.component.FluidArtworkBackground(
+                url = artUrl,
+                brightness = 0.7f,
+                paused = !playing,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         if (artUrl != null && heroHeight != null && heroHeight > 0.dp) EspressoBleed(artUrl, heroHeight)
         Box(
             Modifier

@@ -86,6 +86,8 @@ fun getAllSearchableSettings(): List<SearchableSetting> {
         SearchableSetting(stringResource(R.string.lyrics_text_position), "Align lyrics left, center, or right", "Lyrics", "settings/appearance", opensLyricsSheet = true),
         SearchableSetting(stringResource(R.string.lyrics_auto_scroll), "Keep the current lyric in view", "Lyrics", "settings/appearance", opensLyricsSheet = true),
         SearchableSetting(stringResource(R.string.lyrics_swipe_to_change_song), null, "Lyrics", "settings/appearance", opensLyricsSheet = true),
+        SearchableSetting("Moving album art", "What's playing, drifting slowly behind Home (live background)", "Appearance", "settings/appearance/theme"),
+        SearchableSetting("Moving album art in the player", "Live artwork background under the Apple Music v2 and Espresso players", "Player", "settings/appearance/theme"),
         SearchableSetting("Player design", "Choose Card, Vinyl, Clover, Apple Music or Apple Music v2 with live previews", "Player", "settings/appearance/playertheme"),
         SearchableSetting("Seek bar style", "Progress slider look in the player", "Player", "settings/appearance/playertheme"),
         SearchableSetting("Show next track", "Show Up Next in the player", "Player", "settings/appearance/playertheme"),

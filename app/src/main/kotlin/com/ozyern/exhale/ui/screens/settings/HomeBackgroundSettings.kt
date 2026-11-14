@@ -266,6 +266,39 @@ fun HomeBackgroundControls() {
             }
         }
 
+        // Exhale master's live background: shown when no picture of your own is set.
+        val (liveArtwork, onLiveArtworkChange) = rememberPreference(com.ozyern.exhale.constants.HomeLiveArtworkKey, true)
+        val (playerLiveArtwork, onPlayerLiveArtworkChange) = rememberPreference(com.ozyern.exhale.constants.PlayerLiveArtworkKey, true)
+        IosSettingsGroup(
+            title = "Live artwork",
+            items = listOf(
+                IosSettingsItem(
+                    icon = painterResource(R.drawable.image),
+                    title = { Text("Moving album art") },
+                    description = { Text("What's playing, drifting slowly behind Home. Your own picture takes its place when one is set.") },
+                    trailingContent = {
+                        Switch(
+                            checked = liveArtwork,
+                            onCheckedChange = onLiveArtworkChange,
+                        )
+                    },
+                    onClick = { onLiveArtworkChange(!liveArtwork) },
+                ),
+                IosSettingsItem(
+                    icon = painterResource(R.drawable.image),
+                    title = { Text("Moving album art in the player") },
+                    description = { Text("The same drifting artwork under the Apple Music v2 and Espresso players.") },
+                    trailingContent = {
+                        Switch(
+                            checked = playerLiveArtwork,
+                            onCheckedChange = onPlayerLiveArtworkChange,
+                        )
+                    },
+                    onClick = { onPlayerLiveArtworkChange(!playerLiveArtwork) },
+                ),
+            ),
+        )
+
         IosSettingsGroup(
             title = stringResource(R.string.home_background),
             items = listOf(
