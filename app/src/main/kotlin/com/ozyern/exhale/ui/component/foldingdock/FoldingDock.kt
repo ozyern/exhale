@@ -481,18 +481,20 @@ fun FoldingDock(
         Box(Modifier.size(tab.glyphSize), contentAlignment = Alignment.Center) {
             val name = tab.symbol
             val sf = remember(name) { name?.let { com.composables.sfsymbols.SfSymbol.named(it) } }
+            // A bounce when the tab is chosen, and across the row as the bar folds or opens: the
+            // symbol library's own for its symbols, the same motion by hand for drawn glyphs.
+            var taps by remember { mutableIntStateOf(0) }
+            var seenSelected by remember { mutableStateOf(isSelected) }
+            LaunchedEffect(isSelected) {
+                if (isSelected && !seenSelected) taps++
+                seenSelected = isSelected
+            }
+            var seenFold by remember { mutableStateOf(foldKey) }
+            LaunchedEffect(foldKey) {
+                if (foldKey != seenFold) taps++
+                seenFold = foldKey
+            }
             if (sf != null) {
-                var taps by remember { mutableIntStateOf(0) }
-                var seenSelected by remember { mutableStateOf(isSelected) }
-                LaunchedEffect(isSelected) {
-                    if (isSelected && !seenSelected) taps++
-                    seenSelected = isSelected
-                }
-                var seenFold by remember { mutableStateOf(foldKey) }
-                LaunchedEffect(foldKey) {
-                    if (foldKey != seenFold) taps++
-                    seenFold = foldKey
-                }
                 com.composables.sfsymbols.SfSymbolIcon(
                     symbol = sf,
                     size = tab.glyphSize * 0.8f,
@@ -505,11 +507,26 @@ fun FoldingDock(
                     contentDescription = tab.title,
                 )
             } else {
+                val bounce = remember { androidx.compose.animation.core.Animatable(1f) }
+                LaunchedEffect(taps) {
+                    if (taps == 0) return@LaunchedEffect
+                    // Pressed in, then sprung back up past where it rests and settling: the
+                    // symbol bounce.
+                    bounce.animateTo(0.80f, tween(90, easing = androidx.compose.animation.core.FastOutLinearInEasing))
+                    bounce.animateTo(1f, spring(dampingRatio = 0.42f, stiffness = 520f))
+                }
                 Icon(
                     painter = painterResource(tab.icon),
                     contentDescription = tab.title,
                     tint = if (isSelected) accentColor else inactiveInk,
-                    modifier = Modifier.size(tab.glyphSize * 0.8f),
+                    modifier = Modifier
+                        .size(tab.glyphSize * 0.8f)
+                        .graphicsLayer {
+                            val k = bounce.value
+                            scaleX = k
+                            scaleY = k
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.75f)
+                        },
                 )
             }
         }
