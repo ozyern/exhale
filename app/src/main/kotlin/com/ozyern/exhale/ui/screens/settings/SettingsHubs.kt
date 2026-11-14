@@ -60,6 +60,8 @@ data class SettingsLink(
     val subtitle: String? = null,
     /** Extra words people search with that are not in the title. */
     val keywords: String = "",
+    /** [icon] is a finished picture in its own colours, drawn as it is in place of the tinted tile. */
+    val artwork: Boolean = false,
 )
 
 data class SettingsLinkGroup(val title: String?, val links: List<SettingsLink>)
@@ -71,9 +73,11 @@ data class SettingsHub(
     val icon: Int,
     val tint: IosColors.() -> Color,
     val groups: List<SettingsLinkGroup>,
+    /** See [SettingsLink.artwork]. */
+    val artwork: Boolean = false,
 ) {
     val route get() = "settings/hub/$id"
-    fun asLink() = SettingsLink(title, icon, tint, SettingsAction.Route(route))
+    fun asLink() = SettingsLink(title, icon, tint, SettingsAction.Route(route), artwork = artwork)
 }
 
 private fun route(r: String) = SettingsAction.Route(r)
@@ -235,7 +239,7 @@ object SettingsHubs {
     )
 
     val privacy = SettingsHub(
-        "privacy", "Privacy & Storage", R.drawable.security, { systemBlue },
+        "privacy", "Privacy & Storage", R.drawable.settings_privacy_storage, { systemBlue },
         listOf(
             SettingsLinkGroup(
                 null,
@@ -246,10 +250,11 @@ object SettingsHubs {
                 ),
             ),
         ),
+        artwork = true,
     )
 
     val help = SettingsHub(
-        "help", "Help & About", R.drawable.info, { systemGray },
+        "help", "Help & About", R.drawable.settings_help_about, { systemGray },
         listOf(
             SettingsLinkGroup(
                 null,
@@ -261,6 +266,7 @@ object SettingsHubs {
                 ),
             ),
         ),
+        artwork = true,
     )
 
     val all = listOf(player, playback, appearance, library, accounts, privacy, help)
@@ -364,7 +370,14 @@ fun SettingsLinkRow(link: SettingsLink, trailing: String?, selected: Boolean, on
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
+        if (link.artwork) {
+            // A finished picture in its own colours: drawn as it is, the size of the tile.
+            androidx.compose.foundation.Image(
+                painter = painterResource(link.icon),
+                contentDescription = null,
+                modifier = Modifier.size(30.dp),
+            )
+        } else Box(
             Modifier
                 .size(30.dp)
                 .clip(ContinuousRoundedRectangle(7.dp))

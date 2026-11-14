@@ -96,7 +96,13 @@ import com.ozyern.exhale.viewmodels.HomeViewModel
 private val historyLink = SettingsLink("History", R.drawable.music_history, { systemCyan }, SettingsAction.Route("history"))
 private val statsLink = SettingsLink("Stats", R.drawable.stats, { systemYellow }, SettingsAction.Route("stats"))
 private val listenTogetherLink = SettingsLink("Listen Together", R.drawable.group, { systemCyan }, SettingsAction.Route("listen_together_from_topbar"))
-private val updateLink = SettingsLink("Software Update", R.drawable.network_update, { systemGray }, SettingsAction.Route("settings/update"))
+private val updateLink = SettingsLink(
+    "Software Update",
+    R.drawable.settings_software_update,
+    { systemGray },
+    SettingsAction.Route("settings/update"),
+    artwork = true,
+)
 
 /** The root, grouped the way the categories are read: what you hear, what you see, your stuff, help. */
 private val rootGroups = listOf(
