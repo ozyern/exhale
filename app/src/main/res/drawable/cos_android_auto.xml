@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android Auto: a car. In its own colours, as ColorOS draws its Settings glyphs. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FF2F7BF6" android:pathData="M5.2,10.2L6.9,5.6C7.2,4.8 8,4.2 8.9,4.2L15.1,4.2C16,4.2 16.8,4.8 17.1,5.6L18.8,10.2C20.1,10.6 21,11.8 21,13.2L21,17.4C21,18 20.6,18.4 20,18.4L19.2,18.4L19.2,19.6C19.2,20.3 18.7,20.8 18,20.8L17,20.8C16.3,20.8 15.8,20.3 15.8,19.6L15.8,18.4L8.2,18.4L8.2,19.6C8.2,20.3 7.7,20.8 7,20.8L6,20.8C5.3,20.8 4.8,20.3 4.8,19.6L4.8,18.4L4,18.4C3.4,18.4 3,18 3,17.4L3,13.2C3,11.8 3.9,10.6 5.2,10.2Z" />
+    <path android:fillColor="#FFBFD6FF" android:pathData="M7.1,10L8.4,6.4C8.5,6.1 8.8,5.9 9.1,5.9L14.9,5.9C15.2,5.9 15.5,6.1 15.6,6.4L16.9,10Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M7,14.3m-1.4,0a1.4,1.4 0,1 1,2.8,0a1.4,1.4 0,1 1,-2.8,0ZM17,14.3m-1.4,0a1.4,1.4 0,1 1,2.8,0a1.4,1.4 0,1 1,-2.8,0Z" />
+</vector>

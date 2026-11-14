@@ -87,6 +87,7 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material3.ProvideTextStyle
@@ -837,12 +838,12 @@ fun SettingsRow(
                         },
                     ) {
                         com.ozyern.exhale.ui.component.ColorOsIconDisc(effectiveAccent) {
-                            Icon(painter = item.icon, contentDescription = null, modifier = Modifier.size(24.dp))
+                            Icon(painter = item.icon, contentDescription = null, tint = if (item.coloredIcon) Color.Unspecified else LocalContentColor.current, modifier = Modifier.size(24.dp))
                         }
                     }
                 } else {
                     com.ozyern.exhale.ui.component.ColorOsIconDisc(effectiveAccent) {
-                        Icon(painter = item.icon, contentDescription = null, modifier = Modifier.size(24.dp))
+                        Icon(painter = item.icon, contentDescription = null, tint = if (item.coloredIcon) Color.Unspecified else LocalContentColor.current, modifier = Modifier.size(24.dp))
                     }
                 }
             }

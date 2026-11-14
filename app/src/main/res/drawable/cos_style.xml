@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Player style: a record. In its own colours, as ColorOS draws its Settings glyphs. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FF8E5CF7" android:pathData="M12,12m-10,0a10,10 0,1 1,20,0a10,10 0,1 1,-20,0Z" />
+    <path android:fillColor="#FFC7B0FF" android:fillType="evenOdd" android:pathData="M12,12m-6.2,0a6.2,6.2 0,1 1,12.4,0a6.2,6.2 0,1 1,-12.4,0ZM12,12m-2.1,0a2.1,2.1 0,1 1,4.2,0a2.1,2.1 0,1 1,-4.2,0Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M12,12m-1,0a1,1 0,1 1,2,0a1,1 0,1 1,-2,0Z" />
+</vector>

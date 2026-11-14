@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Haptics: a phone, shaking. In its own colours, as ColorOS draws its Settings glyphs. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FF2DBE5A" android:pathData="M10.4,3L13.6,3A2.4,2.4 0,0 1,16,5.4L16,18.6A2.4,2.4 0,0 1,13.6,21L10.4,21A2.4,2.4 0,0 1,8,18.6L8,5.4A2.4,2.4 0,0 1,10.4,3Z" />
+    <path android:fillColor="#00000000" android:strokeColor="#8C2DBE5A" android:strokeWidth="1.7" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M4.2,8L4.2,16M1.8,10L1.8,14M19.8,8L19.8,16M22.2,10L22.2,14" />
+</vector>

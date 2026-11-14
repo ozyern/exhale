@@ -29,6 +29,8 @@ data class SettingsItem(
     val showUpdateIndicator: Boolean = false,
     val accentColor: Color = Color.Unspecified,
     val keywords: List<String> = emptyList(),
+    /** The glyph carries its own colours, as ColorOS draws its Settings: drawn untinted. */
+    val coloredIcon: Boolean = false,
     val onClick: () -> Unit,
 )
 

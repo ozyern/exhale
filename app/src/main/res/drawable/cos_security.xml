@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Privacy: a shield. In its own colours, as ColorOS draws its Settings glyphs. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FF2F7BF6" android:pathData="M12,1.8L20.4,5.1L20.4,11.2C20.4,16.4 16.9,20.6 12,22.2C7.1,20.6 3.6,16.4 3.6,11.2L3.6,5.1Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M12,10.4m-2.2,0a2.2,2.2 0,1 1,4.4,0a2.2,2.2 0,1 1,-4.4,0Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M12.0,11.4L12.0,11.4A0.9,0.9 0,0 1,12.9,12.3L12.9,15.1A0.9,0.9 0,0 1,12.0,16L12.0,16A0.9,0.9 0,0 1,11.1,15.1L11.1,12.3A0.9,0.9 0,0 1,12.0,11.4Z" />
+</vector>

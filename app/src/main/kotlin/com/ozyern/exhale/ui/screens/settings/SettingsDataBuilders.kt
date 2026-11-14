@@ -30,25 +30,29 @@ fun buildQuickActions(
 ): List<SettingsQuickAction> =
     listOf(
         SettingsQuickAction(
-            icon = painterResource(R.drawable.palette),
+            icon = painterResource(R.drawable.cos_palette),
+                        coloredIcon = true,
             label = stringResource(R.string.appearance),
             onClick = { resetSearch(); navController.navigate("settings/appearance") },
             accentColor = MaterialTheme.colorScheme.primary,
         ),
         SettingsQuickAction(
-            icon = painterResource(R.drawable.play),
+            icon = painterResource(R.drawable.cos_play),
+                        coloredIcon = true,
             label = stringResource(R.string.player_and_audio),
             onClick = { resetSearch(); navController.navigate("settings/player") },
             accentColor = MaterialTheme.colorScheme.tertiary,
         ),
         SettingsQuickAction(
-            icon = painterResource(R.drawable.storage),
+            icon = painterResource(R.drawable.cos_storage),
+                        coloredIcon = true,
             label = stringResource(R.string.storage),
             onClick = { resetSearch(); navController.navigate("settings/storage") },
             accentColor = MaterialTheme.colorScheme.secondary,
         ),
         SettingsQuickAction(
-            icon = painterResource(R.drawable.security),
+            icon = painterResource(R.drawable.cos_security),
+                        coloredIcon = true,
             label = stringResource(R.string.privacy),
             onClick = { resetSearch(); navController.navigate("settings/privacy") },
             accentColor = MaterialTheme.colorScheme.error,
@@ -62,25 +66,29 @@ fun buildIntegrationActions(
 ): List<SettingsIntegrationAction> =
     listOf(
         SettingsIntegrationAction(
-            icon = painterResource(R.drawable.bedtime),
+            icon = painterResource(R.drawable.cos_bedtime),
+                        coloredIcon = true,
             label = stringResource(R.string.AOD),
             onClick = { resetSearch(); navController.navigate("settings/appearance/always_on_display") },
             accentColor = Color(0xFFE3F2FD),
         ),
         SettingsIntegrationAction(
-            icon = painterResource(R.drawable.discord),
+            icon = painterResource(R.drawable.cos_discord),
+                        coloredIcon = true,
             label = stringResource(R.string.discord),
             onClick = { resetSearch(); navController.navigate("settings/discord") },
             accentColor = Color(0xFF5865F2),
         ),
         SettingsIntegrationAction(
-            icon = painterResource(R.drawable.integration),
+            icon = painterResource(R.drawable.cos_integration),
+                        coloredIcon = true,
             label = stringResource(R.string.integration),
             onClick = { resetSearch(); navController.navigate("settings/integration") },
             accentColor = MaterialTheme.colorScheme.secondary,
         ),
         SettingsIntegrationAction(
-            icon = painterResource(R.drawable.fire),
+            icon = painterResource(R.drawable.cos_fire),
+                        coloredIcon = true,
             label = stringResource(R.string.music_together),
             onClick = { resetSearch(); navController.navigate("settings/music_together") },
             accentColor = MaterialTheme.colorScheme.tertiary,
@@ -115,7 +123,8 @@ fun buildSettingsGroups(
                 title = stringResource(R.string.settings_section_ui),
                 items = listOf(
                     SettingsItem(
-                        icon = painterResource(R.drawable.palette),
+                        icon = painterResource(R.drawable.cos_palette),
+                        coloredIcon = true,
                         title = stringResource(R.string.appearance),
                         subtitle = stringResource(R.string.dark_theme),
                         accentColor = MaterialTheme.colorScheme.primary,
@@ -123,7 +132,8 @@ fun buildSettingsGroups(
                         onClick = { resetSearch(); navController.navigate("settings/appearance") },
                     ),
                     SettingsItem(
-                        icon = painterResource(R.drawable.style),
+                        icon = painterResource(R.drawable.cos_style),
+                        coloredIcon = true,
                         title = "Player style",
                         subtitle = "${playerStyle.label} · ${playerStyle.detail}",
                         accentColor = MaterialTheme.colorScheme.secondary,
@@ -131,7 +141,8 @@ fun buildSettingsGroups(
                         onClick = { resetSearch(); navController.navigate("settings/appearance/player_style") },
                     ),
                     SettingsItem(
-                        icon = painterResource(R.drawable.haptic),
+                        icon = painterResource(R.drawable.cos_haptic),
+                        coloredIcon = true,
                         title = "Haptics",
                         subtitle = if (haptics) "On · intensity and how touches feel" else "Off · every vibration is silenced",
                         badge = if (haptics) "On" else "Off",
@@ -148,7 +159,8 @@ fun buildSettingsGroups(
                 title = stringResource(R.string.settings_section_player_content),
                 items = listOf(
                     SettingsItem(
-                        icon = painterResource(R.drawable.play),
+                        icon = painterResource(R.drawable.cos_play),
+                        coloredIcon = true,
                         title = stringResource(R.string.player_and_audio),
                         subtitle = stringResource(R.string.audio_quality),
                         accentColor = MaterialTheme.colorScheme.tertiary,
@@ -156,7 +168,8 @@ fun buildSettingsGroups(
                         onClick = { resetSearch(); navController.navigate("settings/player") },
                     ),
                     SettingsItem(
-                        icon = painterResource(R.drawable.language),
+                        icon = painterResource(R.drawable.cos_language),
+                        coloredIcon = true,
                         title = stringResource(R.string.content),
                         subtitle = stringResource(R.string.content_language),
                         accentColor = MaterialTheme.colorScheme.secondary,
@@ -164,7 +177,8 @@ fun buildSettingsGroups(
                         onClick = { resetSearch(); navController.navigate("settings/content") },
                     ),
                     SettingsItem(
-                        icon = painterResource(R.drawable.token),
+                        icon = painterResource(R.drawable.cos_token),
+                        coloredIcon = true,
                         title = stringResource(R.string.po_token_generation),
                         subtitle = stringResource(R.string.po_token_generation_subtitle),
                         accentColor = MaterialTheme.colorScheme.tertiary,
@@ -180,7 +194,8 @@ fun buildSettingsGroups(
                 title = stringResource(R.string.settings_section_privacy),
                 items = listOf(
                     SettingsItem(
-                        icon = painterResource(R.drawable.security),
+                        icon = painterResource(R.drawable.cos_security),
+                        coloredIcon = true,
                         title = stringResource(R.string.privacy),
                         subtitle = stringResource(R.string.pause_listen_history),
                         accentColor = MaterialTheme.colorScheme.error,
@@ -196,7 +211,8 @@ fun buildSettingsGroups(
                 title = stringResource(R.string.settings_section_storage),
                 items = listOf(
                     SettingsItem(
-                        icon = painterResource(R.drawable.storage),
+                        icon = painterResource(R.drawable.cos_storage),
+                        coloredIcon = true,
                         title = stringResource(R.string.storage),
                         subtitle = stringResource(R.string.cache),
                         accentColor = MaterialTheme.colorScheme.secondary,
@@ -204,7 +220,8 @@ fun buildSettingsGroups(
                         onClick = { resetSearch(); navController.navigate("settings/storage") },
                     ),
                     SettingsItem(
-                        icon = painterResource(R.drawable.restore),
+                        icon = painterResource(R.drawable.cos_restore),
+                        coloredIcon = true,
                         title = stringResource(R.string.backup_restore),
                         subtitle = stringResource(R.string.action_backup),
                         accentColor = MaterialTheme.colorScheme.tertiary,
@@ -220,7 +237,8 @@ fun buildSettingsGroups(
                 title = stringResource(R.string.integrations),
                 items = listOf(
                     SettingsItem(
-                        icon = painterResource(R.drawable.android_auto),
+                        icon = painterResource(R.drawable.cos_android_auto),
+                        coloredIcon = true,
                         title = stringResource(R.string.android_auto),
                         subtitle = stringResource(R.string.android_auto_enable_desc),
                         accentColor = MaterialTheme.colorScheme.primary,
@@ -242,7 +260,8 @@ fun buildSettingsGroups(
                 title = stringResource(R.string.aod_screen_title),
                 items = listOf(
                     SettingsItem(
-                        icon = painterResource(R.drawable.bedtime),
+                        icon = painterResource(R.drawable.cos_bedtime),
+                        coloredIcon = true,
                         title = stringResource(R.string.aod_screen_title),
                         subtitle = stringResource(R.string.aod_screen_title),
                         accentColor = MaterialTheme.colorScheme.primary,
@@ -260,7 +279,8 @@ fun buildSettingsGroups(
                     if (isAndroid12OrLater) {
                         add(
                             SettingsItem(
-                                icon = painterResource(R.drawable.link),
+                                icon = painterResource(R.drawable.cos_link),
+                        coloredIcon = true,
                                 title = stringResource(R.string.default_links),
                                 subtitle = stringResource(R.string.open_supported_links),
                                 accentColor = MaterialTheme.colorScheme.primary,
@@ -300,7 +320,8 @@ fun buildSettingsGroups(
                     }
                     add(
                         SettingsItem(
-                            icon = painterResource(R.drawable.experiment),
+                            icon = painterResource(R.drawable.cos_experiment),
+                        coloredIcon = true,
                             title = stringResource(R.string.experiment_settings),
                             subtitle = stringResource(R.string.misc),
                             accentColor = MaterialTheme.colorScheme.tertiary,
@@ -310,7 +331,8 @@ fun buildSettingsGroups(
                     )
                     add(
                         SettingsItem(
-                            icon = painterResource(R.drawable.update),
+                            icon = painterResource(R.drawable.cos_update),
+                        coloredIcon = true,
                             title = stringResource(R.string.updates),
                             subtitle = if (hasUpdate) {
                                 stringResource(R.string.new_version_available)
@@ -329,7 +351,8 @@ fun buildSettingsGroups(
                     )
                     add(
                         SettingsItem(
-                            icon = painterResource(R.drawable.info),
+                            icon = painterResource(R.drawable.cos_info),
+                        coloredIcon = true,
                             title = stringResource(R.string.about),
                             subtitle = "Exhale",
                             accentColor = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -350,7 +373,8 @@ fun buildInternalItems(
 ): List<SettingsItem> =
     buildIndexItems(navController, resetSearch) + listOf(
         SettingsItem(
-            icon = painterResource(R.drawable.palette),
+            icon = painterResource(R.drawable.cos_palette),
+                        coloredIcon = true,
             title = stringResource(R.string.theme_creator_title),
             subtitle = stringResource(R.string.theme_creator_subtitle),
             accentColor = MaterialTheme.colorScheme.primary,
@@ -358,7 +382,8 @@ fun buildInternalItems(
             onClick = { resetSearch(); navController.navigate("settings/appearance/theme_creator") },
         ),
         SettingsItem(
-            icon = painterResource(R.drawable.palette),
+            icon = painterResource(R.drawable.cos_palette),
+                        coloredIcon = true,
             title = stringResource(R.string.customize_colors),
             subtitle = stringResource(R.string.appearance),
             accentColor = MaterialTheme.colorScheme.primary,
@@ -366,7 +391,8 @@ fun buildInternalItems(
             onClick = { resetSearch(); navController.navigate("settings/appearance/palette_picker") },
         ),
         SettingsItem(
-            icon = painterResource(R.drawable.image),
+            icon = painterResource(R.drawable.cos_image),
+                        coloredIcon = true,
             title = stringResource(R.string.customize_background_title),
             subtitle = stringResource(R.string.appearance),
             accentColor = MaterialTheme.colorScheme.secondary,
@@ -374,7 +400,8 @@ fun buildInternalItems(
             onClick = { resetSearch(); navController.navigate("customize_background") },
         ),
         SettingsItem(
-            icon = painterResource(R.drawable.discord),
+            icon = painterResource(R.drawable.cos_discord),
+                        coloredIcon = true,
             title = stringResource(R.string.discord_integration),
             subtitle = stringResource(R.string.integration),
             accentColor = Color(0xFF5865F2),
@@ -382,7 +409,8 @@ fun buildInternalItems(
             onClick = { resetSearch(); navController.navigate("settings/discord") },
         ),
         SettingsItem(
-            icon = painterResource(R.drawable.security),
+            icon = painterResource(R.drawable.cos_security),
+                        coloredIcon = true,
             title = stringResource(R.string.advanced_login),
             subtitle = stringResource(R.string.discord),
             accentColor = Color(0xFF5865F2),
@@ -390,7 +418,8 @@ fun buildInternalItems(
             onClick = { resetSearch(); navController.navigate("settings/discord/login") },
         ),
         SettingsItem(
-            icon = painterResource(R.drawable.experiment),
+            icon = painterResource(R.drawable.cos_experiment),
+                        coloredIcon = true,
             title = stringResource(R.string.experimental_features),
             subtitle = stringResource(R.string.experimental_features_description),
             accentColor = MaterialTheme.colorScheme.tertiary,
@@ -398,7 +427,8 @@ fun buildInternalItems(
             onClick = { resetSearch(); navController.navigate("settings/discord/experimental") },
         ),
         SettingsItem(
-            icon = painterResource(R.drawable.integration),
+            icon = painterResource(R.drawable.cos_integration),
+                        coloredIcon = true,
             title = stringResource(R.string.lastfm_integration),
             subtitle = stringResource(R.string.integration),
             accentColor = MaterialTheme.colorScheme.secondary,
@@ -406,7 +436,8 @@ fun buildInternalItems(
             onClick = { resetSearch(); navController.navigate("settings/lastfm") },
         ),
         SettingsItem(
-            icon = painterResource(R.drawable.fire),
+            icon = painterResource(R.drawable.cos_fire),
+                        coloredIcon = true,
             title = stringResource(R.string.music_together),
             subtitle = stringResource(R.string.integration),
             accentColor = MaterialTheme.colorScheme.tertiary,

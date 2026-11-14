@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Integrations: a puzzle piece. In its own colours, as ColorOS draws its Settings glyphs. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FF8E5CF7" android:pathData="M4,7.2C4,6.5 4.5,6 5.2,6L9,6C8.8,5.6 8.7,5.2 8.7,4.8C8.7,3.4 9.8,2.3 11.2,2.3C12.6,2.3 13.7,3.4 13.7,4.8C13.7,5.2 13.6,5.6 13.4,6L17.2,6C17.9,6 18.4,6.5 18.4,7.2L18.4,11C18.8,10.8 19.2,10.7 19.6,10.7C21,10.7 22.1,11.8 22.1,13.2C22.1,14.6 21,15.7 19.6,15.7C19.2,15.7 18.8,15.6 18.4,15.4L18.4,20.4C18.4,21.1 17.9,21.6 17.2,21.6L5.2,21.6C4.5,21.6 4,21.1 4,20.4Z" />
+</vector>

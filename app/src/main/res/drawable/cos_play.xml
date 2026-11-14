@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Player and audio: a speaker and its sound. In its own colours, as ColorOS draws its Settings glyphs. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FF2DBE5A" android:pathData="M3,9.2L6.6,9.2L11.2,5.1C11.8,4.6 12.7,5 12.7,5.8L12.7,18.2C12.7,19 11.8,19.4 11.2,18.9L6.6,14.8L3,14.8C2.4,14.8 2,14.4 2,13.8L2,10.2C2,9.6 2.4,9.2 3,9.2Z" />
+    <path android:fillColor="#00000000" android:strokeColor="#FF2DBE5A" android:strokeWidth="1.9" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M15.6,9.2A3.8,3.8 0,0 1,15.6 14.8M18.4,6.6A7.6,7.6 0,0 1,18.4 17.4" />
+</vector>

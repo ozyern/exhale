@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Appearance: a phone face and its wallpaper. In its own colours, as ColorOS draws its Settings glyphs. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFF7A1A" android:pathData="M8.2,2L15.8,2A3.2,3.2 0,0 1,19,5.2L19,18.8A3.2,3.2 0,0 1,15.8,22L8.2,22A3.2,3.2 0,0 1,5,18.8L5,5.2A3.2,3.2 0,0 1,8.2,2Z" />
+    <path android:fillColor="#FFFFC48A" android:pathData="M8.8,5L9.2,5A1.4,1.4 0,0 1,10.6,6.4L10.6,17.6A1.4,1.4 0,0 1,9.2,19L8.8,19A1.4,1.4 0,0 1,7.4,17.6L7.4,6.4A1.4,1.4 0,0 1,8.8,5Z" />
+    <path android:fillColor="#FFFFC48A" android:pathData="M14.8,5L15.200000000000001,5A1.4,1.4 0,0 1,16.6,6.4L16.6,17.6A1.4,1.4 0,0 1,15.200000000000001,19L14.8,19A1.4,1.4 0,0 1,13.4,17.6L13.4,6.4A1.4,1.4 0,0 1,14.8,5Z" />
+</vector>
