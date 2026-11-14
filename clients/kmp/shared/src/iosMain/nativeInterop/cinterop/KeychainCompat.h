@@ -3,10 +3,10 @@
 #import <Security/Security.h>
 #include <string.h>
 
-static inline CFMutableDictionaryRef convx_keychain_query(const char *account) {
+static inline CFMutableDictionaryRef exhale_keychain_query(const char *account) {
     if (account == NULL) return NULL;
     CFStringRef serviceString = CFStringCreateWithCString(
-        kCFAllocatorDefault, "com.convx.music.youtube", kCFStringEncodingUTF8
+        kCFAllocatorDefault, "com.ozyern.exhale.youtube", kCFStringEncodingUTF8
     );
     CFStringRef accountString = CFStringCreateWithCString(
         kCFAllocatorDefault, account, kCFStringEncodingUTF8
@@ -31,13 +31,13 @@ static inline CFMutableDictionaryRef convx_keychain_query(const char *account) {
     return query;
 }
 
-static inline int convx_keychain_read(
+static inline int exhale_keychain_read(
     const char *account,
     char *buffer,
     size_t capacity
 ) {
     if (buffer == NULL || capacity == 0) return (int)errSecParam;
-    CFMutableDictionaryRef query = convx_keychain_query(account);
+    CFMutableDictionaryRef query = exhale_keychain_query(account);
     if (query == NULL) return (int)errSecAllocate;
     CFDictionarySetValue(query, kSecReturnData, kCFBooleanTrue);
     CFDictionarySetValue(query, kSecMatchLimit, kSecMatchLimitOne);
@@ -62,13 +62,13 @@ static inline int convx_keychain_read(
     return (int)dataLength;
 }
 
-static inline int convx_keychain_write(
+static inline int exhale_keychain_write(
     const char *account,
     const char *bytes,
     size_t length
 ) {
     if (bytes == NULL || length == 0) return (int)errSecParam;
-    CFMutableDictionaryRef query = convx_keychain_query(account);
+    CFMutableDictionaryRef query = exhale_keychain_query(account);
     if (query == NULL) return (int)errSecAllocate;
     CFDataRef value = CFDataCreate(kCFAllocatorDefault, (const UInt8 *)bytes, (CFIndex)length);
     if (value == NULL) {
@@ -101,8 +101,8 @@ static inline int convx_keychain_write(
     return (int)status;
 }
 
-static inline int convx_keychain_clear(const char *account) {
-    CFMutableDictionaryRef query = convx_keychain_query(account);
+static inline int exhale_keychain_clear(const char *account) {
+    CFMutableDictionaryRef query = exhale_keychain_query(account);
     if (query == NULL) return (int)errSecAllocate;
     OSStatus status = SecItemDelete(query);
     CFRelease(query);

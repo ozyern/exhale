@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "com.convx.artwork"
+    namespace = "com.ozyern.artwork"
     compileSdk = 37
     defaultConfig { minSdk = 26 }
     compileOptions {

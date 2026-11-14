@@ -19,7 +19,7 @@ same text sitting behind the sharp one.
 
 ## Acceptance criteria
 
-- Repro confirmed on-device: the Home screen's "CONVX" wordmark header,
+- Repro confirmed on-device: the Home screen's "EXHALE" wordmark header,
   the Settings screen title, and the History screen title all show this
   (4 user screenshots confirm the same pattern across 3+ screens — this is
   a shared-component bug, not per-screen).
@@ -36,7 +36,7 @@ same text sitting behind the sharp one.
 
 Reference screenshots (repo-relative): `ui glicthes/image0.png` is
 unrelated; the actual repros are `ui glicthes/Screenshot_20260831-093609.png`
-(Home "CONVX" ghosting), `ui glicthes/Screenshot_20260831-123909.png`
+(Home "EXHALE" ghosting), `ui glicthes/Screenshot_20260831-123909.png`
 (Settings title), `ui glicthes/Screenshot_20260831-123949.png` (History
 title), `ui glicthes/Screenshot_20260831-124744.png` (close-up crop of the
-CONVX ghosting, clearest repro).
+EXHALE ghosting, clearest repro).

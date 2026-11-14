@@ -20,7 +20,7 @@
     <string name="installing_system_update">Installation de la mise à jour\nsystème…</string>
     <string name="making_update_ready">Préparation de la mise à jour, cela peut prendre un moment</string>
     <string name="your_app_getting_better">Votre application s\'améliore encore…</string>
-    <string name="update_includes_features">Cette mise à jour inclut de nouvelles fonctionnalités et les dernières nouveautés de Convx %1$s, rendant votre application encore plus utile. En savoir plus sur %2$s.</string>
+    <string name="update_includes_features">Cette mise à jour inclut de nouvelles fonctionnalités et les dernières nouveautés de Exhale %1$s, rendant votre application encore plus utile. En savoir plus sur %2$s.</string>
     <string name="whats_new">Quoi de neuf ?</string>
     <string name="update_available">Mettre à jour</string>
     <string name="checking_for_updates">Recherche de mises à jour…</string>
@@ -35,7 +35,7 @@
     <string name="mobile_network_warning">Le téléchargement de mises à jour via un réseau mobile ou en itinérance peut entraîner des frais supplémentaires.</string>
     <string name="update_size">Taille de la mise à jour : %1$s Mo</string>
     <string name="check_internet_connection">Vérifiez votre connexion Internet et réessayez.</string>
-    <string name="convx_version">Version de CONVX : %1$s</string>
+    <string name="exhale_version">Version de EXHALE : %1$s</string>
     <string name="last_checked">Dernière vérification : %1$s</string>
     <string name="install">Installer</string>
     <string name="check_for_update">Rechercher une mise à jour</string>
@@ -53,12 +53,12 @@
     <string name="later">Plus tard</string>
 
 
-    <string name="convx_title">CONVX</string>
+    <string name="exhale_title">EXHALE</string>
     <string name="developer_section">DÉVELOPPEUR</string>
     <string name="collaborator_section">COLLABORATEUR</string>
     <string name="app_info_section">INFORMATIONS DE L\'APPLICATION</string>
     <string name="community_section">COMMUNAUTÉ</string>
-    <string name="developer_name">Aryan (CosmicTaser)</string>
+    <string name="developer_name">ozyern</string>
     <string name="app_developer">Développeur principal</string>
     <string name="website">Site web</string>
     <string name="collaborator_tboyke">T-Boyke</string>

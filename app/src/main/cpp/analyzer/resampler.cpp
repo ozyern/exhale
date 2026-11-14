@@ -24,7 +24,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace convx::smart {
+namespace exhale::smart {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
@@ -122,4 +122,4 @@ std::vector<float> Resample(
   return output;
 }
 
-}  // namespace convx::smart
+}  // namespace exhale::smart

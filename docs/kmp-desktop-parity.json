@@ -13,7 +13,7 @@
   "routes": [
     {
       "route": "cache_playlist/{playlist}?thumb={thumb}",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 421,
       "priority": 1,
       "desktop_status": "pending",
@@ -21,35 +21,35 @@
     },
     {
       "route": "explore",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/Screens.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/Screens.kt",
       "priority": 1,
       "desktop_status": "implemented",
       "runtime_verified": false
     },
     {
       "route": "home",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/Screens.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/Screens.kt",
       "priority": 1,
       "desktop_status": "implemented",
       "runtime_verified": false
     },
     {
       "route": "library",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/Screens.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/Screens.kt",
       "priority": 1,
       "desktop_status": "implemented",
       "runtime_verified": false
     },
     {
       "route": "listen_together",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/Screens.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/Screens.kt",
       "priority": 1,
       "desktop_status": "pending",
       "runtime_verified": false
     },
     {
       "route": "local_folder/{path}",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 390,
       "priority": 1,
       "desktop_status": "pending",
@@ -57,7 +57,7 @@
     },
     {
       "route": "local_folders",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 400,
       "priority": 1,
       "desktop_status": "pending",
@@ -65,7 +65,7 @@
     },
     {
       "route": "local_music",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 384,
       "priority": 1,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -73,7 +73,7 @@
     },
     {
       "route": "local_playlist/{playlistId}?thumb={thumb}",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 368,
       "priority": 1,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -81,28 +81,28 @@
     },
     {
       "route": "radio",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/Screens.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/Screens.kt",
       "priority": 1,
       "desktop_status": "pending",
       "runtime_verified": false
     },
     {
       "route": "search_input",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/Screens.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/Screens.kt",
       "priority": 1,
       "desktop_status": "implemented",
       "runtime_verified": false
     },
     {
       "route": "settings",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/Screens.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/Screens.kt",
       "priority": 1,
       "desktop_status": "implemented",
       "runtime_verified": false
     },
     {
       "route": "settings/appearance",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 471,
       "priority": 1,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -110,7 +110,7 @@
     },
     {
       "route": "settings/appearance/advanced",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 475,
       "priority": 1,
       "desktop_status": "pending",
@@ -118,7 +118,7 @@
     },
     {
       "route": "settings/appearance/appicon",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 491,
       "priority": 1,
       "desktop_status": "pending",
@@ -126,7 +126,7 @@
     },
     {
       "route": "settings/appearance/canvas",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 507,
       "priority": 1,
       "desktop_status": "pending",
@@ -134,7 +134,7 @@
     },
     {
       "route": "settings/appearance/diy",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 503,
       "priority": 1,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -142,7 +142,7 @@
     },
     {
       "route": "settings/appearance/font",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 487,
       "priority": 1,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -150,7 +150,7 @@
     },
     {
       "route": "settings/appearance/liquidglass",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 519,
       "priority": 1,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -158,7 +158,7 @@
     },
     {
       "route": "settings/appearance/liquidglass/advanced",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 523,
       "priority": 1,
       "desktop_status": "pending",
@@ -166,7 +166,7 @@
     },
     {
       "route": "settings/appearance/playericons",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 499,
       "priority": 1,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -174,7 +174,7 @@
     },
     {
       "route": "settings/appearance/playertheme",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 515,
       "priority": 1,
       "desktop_status": "pending",
@@ -182,7 +182,7 @@
     },
     {
       "route": "settings/appearance/presets",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 495,
       "priority": 1,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -190,7 +190,7 @@
     },
     {
       "route": "settings/appearance/theme",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 483,
       "priority": 1,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -198,7 +198,7 @@
     },
     {
       "route": "settings/player/local_folders",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 577,
       "priority": 1,
       "desktop_status": "pending",
@@ -206,14 +206,14 @@
     },
     {
       "route": "songs",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/Screens.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/Screens.kt",
       "priority": 1,
       "desktop_status": "implemented",
       "runtime_verified": false
     },
     {
       "route": "album/{albumId}?thumb={thumb}&morphId={morphId}",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 269,
       "priority": 2,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -221,7 +221,7 @@
     },
     {
       "route": "artist/{artistId}/albums",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 317,
       "priority": 2,
       "desktop_status": "pending",
@@ -229,7 +229,7 @@
     },
     {
       "route": "artist/{artistId}/items?browseId={browseId}&params={params}",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 328,
       "priority": 2,
       "desktop_status": "pending",
@@ -237,7 +237,7 @@
     },
     {
       "route": "artist/{artistId}/songs",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 306,
       "priority": 2,
       "desktop_status": "pending",
@@ -245,7 +245,7 @@
     },
     {
       "route": "artist/{artistId}?thumb={thumb}",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 290,
       "priority": 2,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -253,7 +253,7 @@
     },
     {
       "route": "auto_playlist/{playlist}?thumb={thumb}",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 405,
       "priority": 2,
       "desktop_status": "pending",
@@ -261,7 +261,7 @@
     },
     {
       "route": "history",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 198,
       "priority": 2,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -269,7 +269,7 @@
     },
     {
       "route": "online_playlist/{playlistId}?title={title}&thumbnail={thumbnail}",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 347,
       "priority": 2,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -277,7 +277,7 @@
     },
     {
       "route": "radio_station/{seedId}?title={title}&artist={artist}&thumbnail={thumbnail}",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 167,
       "priority": 2,
       "desktop_status": "pending",
@@ -285,7 +285,7 @@
     },
     {
       "route": "recognition_history",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 721,
       "priority": 2,
       "desktop_status": "pending",
@@ -293,7 +293,7 @@
     },
     {
       "route": "search/{query}",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 238,
       "priority": 2,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -301,7 +301,7 @@
     },
     {
       "route": "settings/backup_restore",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 614,
       "priority": 2,
       "desktop_status": "pending",
@@ -309,7 +309,7 @@
     },
     {
       "route": "stats",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 202,
       "priority": 2,
       "desktop_status": "pending",
@@ -317,7 +317,7 @@
     },
     {
       "route": "top_playlist/{top}",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 437,
       "priority": 2,
       "desktop_status": "pending",
@@ -325,7 +325,7 @@
     },
     {
       "route": "account",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 210,
       "priority": 3,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -333,7 +333,7 @@
     },
     {
       "route": "ai_dj_set?seedSongId={seedSongId}&concert={concert}",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 627,
       "priority": 3,
       "desktop_status": "pending",
@@ -341,7 +341,7 @@
     },
     {
       "route": "ambient_mode",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 709,
       "priority": 3,
       "desktop_status": "pending",
@@ -349,7 +349,7 @@
     },
     {
       "route": "browse/{browseId}",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 223,
       "priority": 3,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -357,7 +357,7 @@
     },
     {
       "route": "channel_picker",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 697,
       "priority": 3,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -365,7 +365,7 @@
     },
     {
       "route": "charts_screen",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 218,
       "priority": 3,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -373,7 +373,7 @@
     },
     {
       "route": "listen_together/chat",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 194,
       "priority": 3,
       "desktop_status": "pending",
@@ -381,7 +381,7 @@
     },
     {
       "route": "listen_together/party",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 581,
       "priority": 3,
       "desktop_status": "pending",
@@ -389,7 +389,7 @@
     },
     {
       "route": "listen_together_from_topbar",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 189,
       "priority": 3,
       "desktop_status": "pending",
@@ -397,7 +397,7 @@
     },
     {
       "route": "login",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 693,
       "priority": 3,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -405,7 +405,7 @@
     },
     {
       "route": "mood_and_genres",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 206,
       "priority": 3,
       "desktop_status": "pending",
@@ -413,7 +413,7 @@
     },
     {
       "route": "network_browse/{serverId}",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 586,
       "priority": 3,
       "desktop_status": "pending",
@@ -421,7 +421,7 @@
     },
     {
       "route": "new_release",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 214,
       "priority": 3,
       "desktop_status": "pending",
@@ -429,7 +429,7 @@
     },
     {
       "route": "recognition",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 717,
       "priority": 3,
       "desktop_status": "pending",
@@ -437,7 +437,7 @@
     },
     {
       "route": "settings/about",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 685,
       "priority": 3,
       "desktop_status": "pending",
@@ -445,7 +445,7 @@
     },
     {
       "route": "settings/account",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 467,
       "priority": 3,
       "desktop_status": "pending",
@@ -453,7 +453,7 @@
     },
     {
       "route": "settings/ai",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 553,
       "priority": 3,
       "desktop_status": "pending",
@@ -461,7 +461,7 @@
     },
     {
       "route": "settings/ambient",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 511,
       "priority": 3,
       "desktop_status": "pending",
@@ -469,7 +469,7 @@
     },
     {
       "route": "settings/changelog",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 724,
       "priority": 3,
       "desktop_status": "pending",
@@ -477,7 +477,7 @@
     },
     {
       "route": "settings/commits",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 727,
       "priority": 3,
       "desktop_status": "pending",
@@ -485,7 +485,7 @@
     },
     {
       "route": "settings/content",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 527,
       "priority": 3,
       "desktop_status": "pending",
@@ -493,7 +493,7 @@
     },
     {
       "route": "settings/content/advanced",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 531,
       "priority": 3,
       "desktop_status": "pending",
@@ -501,7 +501,7 @@
     },
     {
       "route": "settings/content/romanization",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 549,
       "priority": 3,
       "desktop_status": "pending",
@@ -509,7 +509,7 @@
     },
     {
       "route": "settings/discord/login",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 681,
       "priority": 3,
       "desktop_status": "pending",
@@ -517,7 +517,7 @@
     },
     {
       "route": "settings/equalizer",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 600,
       "priority": 3,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -525,7 +525,7 @@
     },
     {
       "route": "settings/help/crash_logs",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 618,
       "priority": 3,
       "desktop_status": "pending",
@@ -533,7 +533,7 @@
     },
     {
       "route": "settings/home_feed_order",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 479,
       "priority": 3,
       "desktop_status": "pending",
@@ -541,7 +541,7 @@
     },
     {
       "route": "settings/integrations",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 650,
       "priority": 3,
       "desktop_status": "pending",
@@ -549,7 +549,7 @@
     },
     {
       "route": "settings/integrations/discord",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 669,
       "priority": 3,
       "desktop_status": "pending",
@@ -557,7 +557,7 @@
     },
     {
       "route": "settings/integrations/lastfm",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 673,
       "priority": 3,
       "desktop_status": "pending",
@@ -565,7 +565,7 @@
     },
     {
       "route": "settings/integrations/listen_together",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 677,
       "priority": 3,
       "desktop_status": "pending",
@@ -573,7 +573,7 @@
     },
     {
       "route": "settings/lyrics",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 535,
       "priority": 3,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -581,7 +581,7 @@
     },
     {
       "route": "settings/modules",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 654,
       "priority": 3,
       "desktop_status": "pending",
@@ -589,7 +589,7 @@
     },
     {
       "route": "settings/modules/{moduleId}",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 659,
       "priority": 3,
       "desktop_status": "pending",
@@ -597,7 +597,7 @@
     },
     {
       "route": "settings/network",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 545,
       "priority": 3,
       "desktop_status": "pending",
@@ -605,7 +605,7 @@
     },
     {
       "route": "settings/network_storage",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 592,
       "priority": 3,
       "desktop_status": "pending",
@@ -613,7 +613,7 @@
     },
     {
       "route": "settings/player",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 557,
       "priority": 3,
       "desktop_status": "pending",
@@ -621,7 +621,7 @@
     },
     {
       "route": "settings/player/advanced",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 561,
       "priority": 3,
       "desktop_status": "pending",
@@ -629,7 +629,7 @@
     },
     {
       "route": "settings/player/jio",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 565,
       "priority": 3,
       "desktop_status": "pending",
@@ -637,7 +637,7 @@
     },
     {
       "route": "settings/privacy",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 610,
       "priority": 3,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -645,7 +645,7 @@
     },
     {
       "route": "settings/scan_music",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 569,
       "priority": 3,
       "desktop_status": "pending",
@@ -653,7 +653,7 @@
     },
     {
       "route": "settings/song_transitions",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 573,
       "priority": 3,
       "desktop_status": "pending",
@@ -661,7 +661,7 @@
     },
     {
       "route": "settings/spotify",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 622,
       "priority": 3,
       "desktop_status": "pending",
@@ -669,7 +669,7 @@
     },
     {
       "route": "settings/storage",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 596,
       "priority": 3,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -677,7 +677,7 @@
     },
     {
       "route": "settings/update",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 463,
       "priority": 3,
       "desktop_status": "pending",
@@ -685,7 +685,7 @@
     },
     {
       "route": "song_insight/{songId}",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 604,
       "priority": 3,
       "desktop_status": "pending",
@@ -693,7 +693,7 @@
     },
     {
       "route": "switch_channel",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 701,
       "priority": 3,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -701,7 +701,7 @@
     },
     {
       "route": "update",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 689,
       "priority": 3,
       "desktop_status": "pending",
@@ -709,7 +709,7 @@
     },
     {
       "route": "wrapped",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 705,
       "priority": 3,
       "desktop_status": "pending",
@@ -717,7 +717,7 @@
     },
     {
       "route": "youtube_browse/{browseId}?params={params}",
-      "android_source": "app/src/main/kotlin/com/convx/music/ui/screens/NavigationBuilder.kt",
+      "android_source": "app/src/main/kotlin/com/ozyern/exhale/ui/screens/NavigationBuilder.kt",
       "android_line": 448,
       "priority": 3,
       "desktop_status": "implemented-awaiting-visual-check",
@@ -753,6 +753,6 @@
     "user_session_window_visible": false,
     "full_player_runtime_verified": false,
     "packaged_release_verified": false,
-    "local_launcher": "Launch Convx Desktop.cmd in outer workspace"
+    "local_launcher": "Launch Exhale Desktop.cmd in outer workspace"
   }
 }

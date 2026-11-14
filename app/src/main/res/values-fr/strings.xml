@@ -3,7 +3,7 @@
 <!-- Upstream the reference app strings -->
 <!-- Do not add new features here -->
 <!-- Try to re-use strings here, but be careful on its usage e.g. verb vs noun -->
-<!-- "the reference app" is replaced with "Convx" -->
+<!-- "the reference app" is replaced with "Exhale" -->
 <!-- Translators: Do not modify this file for translations, use the reference app's Weblate instead. -->
 
 <resources>
@@ -567,7 +567,7 @@
     <string name="restore_failed">Échec de la restauration de la sauvegarde</string>
 
     <string name="discord_integration">Intégration Discord</string>
-    <string name="discord_information">Convx utilise la bibliothèque KizzyRPC pour définir le statut de votre compte Discord. Cela implique l\'utilisation d\'une connexion à la passerelle Discord, ce qui peut être considéré comme une violation des conditions d\'utilisation de Discord. Cependant, aucun cas de suspension de compte utilisateur n\'est connu pour cette raison. Utilisez à vos risques et périls.\n\nConvx extrait uniquement votre jeton, tout le reste est stocké localement.</string>
+    <string name="discord_information">Exhale utilise la bibliothèque KizzyRPC pour définir le statut de votre compte Discord. Cela implique l\'utilisation d\'une connexion à la passerelle Discord, ce qui peut être considéré comme une violation des conditions d\'utilisation de Discord. Cependant, aucun cas de suspension de compte utilisateur n\'est connu pour cette raison. Utilisez à vos risques et périls.\n\nExhale extrait uniquement votre jeton, tout le reste est stocké localement.</string>
     <string name="dismiss">Ignorer</string>
     <string name="options">Options</string>
     <string name="preview">Aperçu</string>
@@ -634,7 +634,7 @@
 
     <!-- App icon -->
     <string name="app_icon">Icône de l\'application</string>
-    <string name="app_icon_desc">Choisir l\'icône affichée par Convx sur votre écran d\'accueil</string>
+    <string name="app_icon_desc">Choisir l\'icône affichée par Exhale sur votre écran d\'accueil</string>
     <string name="app_icon_change_warning">La mise à jour de l\'icône peut prendre quelques secondes, et certains lanceurs suppriment le raccourci de l\'écran d\'accueil jusqu\'à ce que vous le rajoutiez.</string>
     <string name="app_icon_white">Blanc</string>
     <string name="app_icon_azure">Azur</string>
@@ -665,7 +665,7 @@
     <string name="preset_imported">Préréglage importé</string>
     <string name="preset_import_failed">Ce fichier n\'est pas un préréglage valide.</string>
     <string name="preset_import_too_large">Ce préréglage est trop volumineux pour être importé.</string>
-    <string name="preset_import_newer_version">Ce préréglage a été créé avec une version plus récente de Convx.</string>
+    <string name="preset_import_newer_version">Ce préréglage a été créé avec une version plus récente de Exhale.</string>
     <string name="preset_category_colors">Couleurs</string>
     <string name="preset_category_layout">Mise en page et dimensions</string>
     <string name="preset_category_font">Polices</string>
@@ -716,7 +716,7 @@
 
     <string name="media_import_too_large">Ce fichier est trop volumineux.</string>
     <string name="media_import_unsupported">Seules les images PNG, JPEG, WebP et SVG sont prises en charge.</string>
-    <string name="media_import_unsafe_svg">Ce SVG utilise des fonctionnalités que Convx ne peut pas rendre.</string>
+    <string name="media_import_unsafe_svg">Ce SVG utilise des fonctionnalités que Exhale ne peut pas rendre.</string>
     <string name="media_import_corrupt">Impossible de lire cette image.</string>
     <string name="media_import_too_many_pixels">Cette image est trop grande pour être décodée en toute sécurité.</string>
     <string name="media_import_io">Impossible de lire ce fichier.</string>
@@ -728,8 +728,8 @@
     <string name="diy_rotation">Rotation</string>
     <string name="diy_size">Taille</string>
     <string name="local_permission_title">Autoriser l\'accès à votre musique</string>
-    <string name="local_permission_body">Convx a besoin d\'une autorisation pour lire les fichiers audio sur cet appareil afin de constituer votre bibliothèque locale. Rien ne quitte votre téléphone.</string>
-    <string name="local_permission_blocked_body">L\'accès a été désactivé pour Convx. Ouvrez les Paramètres, puis autorisez Musique et audio pour voir la musique sur cet appareil.</string>
+    <string name="local_permission_body">Exhale a besoin d\'une autorisation pour lire les fichiers audio sur cet appareil afin de constituer votre bibliothèque locale. Rien ne quitte votre téléphone.</string>
+    <string name="local_permission_blocked_body">L\'accès a été désactivé pour Exhale. Ouvrez les Paramètres, puis autorisez Musique et audio pour voir la musique sur cet appareil.</string>
     <string name="local_permission_allow">Autoriser l\'accès</string>
     <string name="local_permission_open_settings">Ouvrir les Paramètres</string>
     <string name="local_empty_title">Aucune musique trouvée</string>

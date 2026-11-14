@@ -2,8 +2,8 @@
 
 ## Root cause
 
-`LoadingIndicator` (`app/src/main/kotlin/com/convx/music/ui/ios/compat/IosCompatTail.kt:371`)
-and `ContainedLoadingIndicator` (`app/src/main/kotlin/com/convx/music/ui/ios/compat/IosCompatBars.kt:302`)
+`LoadingIndicator` (`app/src/main/kotlin/com/ozyern/exhale/ui/ios/compat/IosCompatTail.kt:371`)
+and `ContainedLoadingIndicator` (`app/src/main/kotlin/com/ozyern/exhale/ui/ios/compat/IosCompatBars.kt:302`)
 are the shared "loading" wrappers used across the app's screens. Both forward
 their `color: Color = Color.Unspecified` parameter straight into Material3's
 real `CircularProgressIndicator(color = color)` with no fallback:
@@ -31,7 +31,7 @@ scrim.
 
 ## Fix — ported the reference app's shimmer skeleton look
 
-New file: `app/src/main/kotlin/com/convx/music/ui/component/Skeletons.kt`,
+New file: `app/src/main/kotlin/com/ozyern/exhale/ui/component/Skeletons.kt`,
 ported from `the reference app/app/src/main/java/com/music/reference/ui/components/Skeletons.kt`
 (`ShimmerBox`, ported `SongRowSkeleton`, plus a small `ShimmerLine`/`TextBlockSkeleton`
 pair for paragraph-shaped loading spots that don't exist in the reference app). Colors
@@ -51,7 +51,7 @@ placeholder sized to what it's standing in for:
 - `ui/screens/search/suggestions/TabNewsSuggestion.kt:312,360,411` — three `SubcomposeAsyncImage`
   `loading = { ... }` slots (trending track/artist/album art) → `ShimmerBox` shaped to match
   each target (rounded rect / circle / rounded rect).
-- `convx/updater/convxupdater.kt:384` — "checking for update" state → `ShimmerBox`.
+- `exhale/updater/exhaleupdater.kt:384` — "checking for update" state → `ShimmerBox`.
 - `ui/menu/LoadingScreen.kt` (backup/restore/CSV import progress dialog) — restyled to a
   themed `AppTheme.colorScheme.surface` card with a `ShimmerLine` accent and
   `AppTheme.colorScheme.onSurface` text, replacing the raw black-scrim `Dialog`.

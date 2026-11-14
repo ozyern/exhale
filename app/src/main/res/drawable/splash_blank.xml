@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Empty splash icon: the system splash is plain black and ConvxIntro draws the brand. -->
+<!-- Empty splash icon: the system splash is plain black and ExhaleIntro draws the brand. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     <solid android:color="@android:color/transparent" />
 </shape>

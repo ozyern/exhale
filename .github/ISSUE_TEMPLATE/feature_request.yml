@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for the idea. For open-ended questions, use [Discussions](https://github.com/cosmictaserdev-creator/Convx/discussions) instead.
+        Thanks for the idea. For open-ended questions, use [Discussions](https://github.com/ozyern/exhale/discussions) instead.
 
   - type: checkboxes
     id: checklist

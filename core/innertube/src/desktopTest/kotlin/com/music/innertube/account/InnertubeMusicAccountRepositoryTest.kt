@@ -1,11 +1,11 @@
 package com.music.innertube.account
 
-import com.convx.music.account.MusicAccount
-import com.convx.music.account.MusicAccountError
-import com.convx.music.account.MusicAccountResult
-import com.convx.music.account.MusicAccountState
-import com.convx.music.account.MusicSignInResult
-import com.convx.music.account.SecureSessionStore
+import com.ozyern.exhale.account.MusicAccount
+import com.ozyern.exhale.account.MusicAccountError
+import com.ozyern.exhale.account.MusicAccountResult
+import com.ozyern.exhale.account.MusicAccountState
+import com.ozyern.exhale.account.MusicSignInResult
+import com.ozyern.exhale.account.SecureSessionStore
 import com.music.innertube.InnertubeRepository
 import com.music.innertube.YouTubeRepository
 import com.music.innertube.models.AccountInfo
@@ -19,7 +19,7 @@ class InnertubeMusicAccountRepositoryTest {
     fun anUnavailableChannelSwitcherDoesNotRejectAValidatedAccount() = runBlocking {
         val innertube = FakeInnertubeRepository(accountChannelsResult = Result.failure(IllegalStateException("Switcher unavailable")))
         val repository = InnertubeMusicAccountRepository(innertube, FakeSecureSessionStore(null))
-        assertEquals(MusicAccountResult.Success(MusicSignInResult.Authenticated(MusicAccount("", "Convx", "user@example.com"))),
+        assertEquals(MusicAccountResult.Success(MusicSignInResult.Authenticated(MusicAccount("", "Exhale", "user@example.com"))),
             repository.completeWebSignIn("SID=session-cookie", "visitor-data", null))
     }
 
@@ -31,7 +31,7 @@ class InnertubeMusicAccountRepositoryTest {
 
         val result = repository.completeWebSignIn("__Secure-3PAPISID=session-cookie", "visitor-data", null)
 
-        val account = MusicAccount("", "Convx", "user@example.com")
+        val account = MusicAccount("", "Exhale", "user@example.com")
         assertEquals(MusicAccountResult.Success(MusicSignInResult.Authenticated(account)), result)
         assertEquals(MusicAccountState.SignedIn(account), repository.state.value)
         val restored = InnertubeMusicAccountRepository(innertube, store)
@@ -65,7 +65,7 @@ class InnertubeMusicAccountRepositoryTest {
         assertEquals("visitor-data", innertube.visitorData)
         assertEquals("channel-1", innertube.dataSyncId)
         assertEquals(
-            MusicAccountState.SignedIn(MusicAccount("channel-1", "Convx", "user@example.com")),
+            MusicAccountState.SignedIn(MusicAccount("channel-1", "Exhale", "user@example.com")),
             repository.state.value,
         )
         assertEquals(VALID_STORED_SESSION, store.value)
@@ -136,7 +136,7 @@ class InnertubeMusicAccountRepositoryTest {
     private class FakeInnertubeRepository(
         private val delegate: InnertubeRepository = YouTubeRepository(),
         private val accountInfoResult: Result<AccountInfo> = Result.success(
-            AccountInfo("Convx", "user@example.com", null, null),
+            AccountInfo("Exhale", "user@example.com", null, null),
         ),
         private val accountChannelsResult: Result<List<AccountInfo>> = Result.success(emptyList()),
     ) : InnertubeRepository by delegate {
@@ -164,7 +164,7 @@ class InnertubeMusicAccountRepositoryTest {
 
     private companion object {
         const val VALID_STORED_SESSION = """
-            {"cookie":"SID=session-cookie","visitorData":"visitor-data","dataSyncId":"channel-1","accountName":"Convx","accountEmail":"user@example.com","channelHandle":null,"thumbnailUrl":null}
+            {"cookie":"SID=session-cookie","visitorData":"visitor-data","dataSyncId":"channel-1","accountName":"Exhale","accountEmail":"user@example.com","channelHandle":null,"thumbnailUrl":null}
         """
     }
 }

@@ -33,5 +33,5 @@ today it reportedly keeps only one (or very few) out of many.
 
 Repro as described by the user: create playlist → add many songs → most
 disappear, one or a few remain. Related files:
-`app/src/main/kotlin/com/convx/music/ui/component/CreatePlaylistDialog.kt`,
+`app/src/main/kotlin/com/ozyern/exhale/ui/component/CreatePlaylistDialog.kt`,
 `PlaylistSongMap` insert logic in `MusicDatabase`/`DatabaseDao`.

@@ -4,11 +4,11 @@ plugins {
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.kotlin.compose)
 }
-group = "com.convx.shared.presentation"
+group = "com.ozyern.shared.presentation"
 version = "0.1.0"
 kotlin {
     android {
-        namespace = "com.convx.music.modules.presentation"
+        namespace = "com.ozyern.exhale.modules.presentation"
         compileSdk = 37
         minSdk = 26
     }

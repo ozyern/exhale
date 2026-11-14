@@ -125,16 +125,16 @@ per this task's explicit dependency note. Both changed the plan:
   UX simplification, not a bug fix" 001 called for.
 
 ## Files changed
-- `app/src/main/kotlin/com/convx/music/ui/screens/settings/ThemeScreen.kt`
-- `app/src/main/kotlin/com/convx/music/ui/screens/settings/AppearanceSettings.kt`
-- `app/src/main/kotlin/com/convx/music/ui/screens/settings/AppearanceAdvancedSettings.kt`
-- `app/src/main/kotlin/com/convx/music/ui/screens/settings/ContentSettings.kt`
-- `app/src/main/kotlin/com/convx/music/ui/screens/settings/ContentAdvancedSettings.kt`
-- `app/src/main/kotlin/com/convx/music/ui/screens/settings/PlayerAdvancedSettings.kt`
-- `app/src/main/kotlin/com/convx/music/ui/screens/settings/SearchableSettings.kt`
-- `app/src/main/kotlin/com/convx/music/ui/component/DraggableLyricsProviderList.kt`
+- `app/src/main/kotlin/com/ozyern/exhale/ui/screens/settings/ThemeScreen.kt`
+- `app/src/main/kotlin/com/ozyern/exhale/ui/screens/settings/AppearanceSettings.kt`
+- `app/src/main/kotlin/com/ozyern/exhale/ui/screens/settings/AppearanceAdvancedSettings.kt`
+- `app/src/main/kotlin/com/ozyern/exhale/ui/screens/settings/ContentSettings.kt`
+- `app/src/main/kotlin/com/ozyern/exhale/ui/screens/settings/ContentAdvancedSettings.kt`
+- `app/src/main/kotlin/com/ozyern/exhale/ui/screens/settings/PlayerAdvancedSettings.kt`
+- `app/src/main/kotlin/com/ozyern/exhale/ui/screens/settings/SearchableSettings.kt`
+- `app/src/main/kotlin/com/ozyern/exhale/ui/component/DraggableLyricsProviderList.kt`
 - `app/src/main/res/values/strings.xml` (new: `pure_black`, `pure_black_desc`)
-- `app/src/main/res/values/convx_strings.xml` (new: `liquid_glass_simple_desc`)
+- `app/src/main/res/values/exhale_strings.xml` (new: `liquid_glass_simple_desc`)
 
 ## Not touched (explicit instruction)
 - `SettingsScreen.kt` (root screen) — layout and search bar untouched, per

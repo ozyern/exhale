@@ -1,22 +1,22 @@
 package com.music.innertube.catalog
 
-import com.convx.music.catalog.CatalogAlbumPage
-import com.convx.music.catalog.CatalogArtist
-import com.convx.music.catalog.CatalogArtistPage
-import com.convx.music.catalog.CatalogEntry
-import com.convx.music.catalog.CatalogError
-import com.convx.music.catalog.CatalogHomePage
-import com.convx.music.catalog.CatalogId
-import com.convx.music.catalog.CatalogLibraryCollection
-import com.convx.music.catalog.CatalogLibraryPage
-import com.convx.music.catalog.CatalogPlaylistPage
-import com.convx.music.catalog.CatalogResult
-import com.convx.music.catalog.CatalogSection
-import com.convx.music.catalog.CatalogSearchFilter
-import com.convx.music.catalog.CatalogSearchPage
-import com.convx.music.catalog.CatalogTrackPage
-import com.convx.music.catalog.MusicCatalogRepository
-import com.convx.music.catalog.YOUTUBE_MUSIC_PROVIDER
+import com.ozyern.exhale.catalog.CatalogAlbumPage
+import com.ozyern.exhale.catalog.CatalogArtist
+import com.ozyern.exhale.catalog.CatalogArtistPage
+import com.ozyern.exhale.catalog.CatalogEntry
+import com.ozyern.exhale.catalog.CatalogError
+import com.ozyern.exhale.catalog.CatalogHomePage
+import com.ozyern.exhale.catalog.CatalogId
+import com.ozyern.exhale.catalog.CatalogLibraryCollection
+import com.ozyern.exhale.catalog.CatalogLibraryPage
+import com.ozyern.exhale.catalog.CatalogPlaylistPage
+import com.ozyern.exhale.catalog.CatalogResult
+import com.ozyern.exhale.catalog.CatalogSection
+import com.ozyern.exhale.catalog.CatalogSearchFilter
+import com.ozyern.exhale.catalog.CatalogSearchPage
+import com.ozyern.exhale.catalog.CatalogTrackPage
+import com.ozyern.exhale.catalog.MusicCatalogRepository
+import com.ozyern.exhale.catalog.YOUTUBE_MUSIC_PROVIDER
 import com.music.innertube.InnertubeRepository
 import com.music.innertube.SearchFilter
 import com.music.innertube.models.AlbumItem
@@ -41,7 +41,7 @@ class InnertubeMusicCatalogRepository(
     private val innertube: InnertubeRepository,
 ) : MusicCatalogRepository {
     override suspend fun searchSuggestions(query: String) = innertube.searchSuggestions(query).toCatalogResult {
-        com.convx.music.catalog.CatalogSearchSuggestions(
+        com.ozyern.exhale.catalog.CatalogSearchSuggestions(
             queries = it.queries.distinct(),
             entries = it.recommendedItems.mapNotNull { entry -> entry.toCatalogEntry() },
         )
@@ -299,7 +299,7 @@ private fun YTItem.toCatalogEntry(): CatalogEntry? = when (this) {
         artworkUrls = listOf(thumbnail),
         artists = artists.map(InnertubeArtist::toCatalogArtist),
         album = album?.let {
-            com.convx.music.catalog.CatalogAlbumReference(
+            com.ozyern.exhale.catalog.CatalogAlbumReference(
                 id = CatalogId(YOUTUBE_MUSIC_PROVIDER, it.id),
                 title = it.name,
             )

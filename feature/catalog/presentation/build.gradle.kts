@@ -5,12 +5,12 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-group = "com.convx.shared.presentation"
+group = "com.ozyern.shared.presentation"
 version = "0.1.0"
 
 kotlin {
     android {
-        namespace = "com.convx.music.shared.catalog.presentation"
+        namespace = "com.ozyern.exhale.shared.catalog.presentation"
         compileSdk = 37
         minSdk = 26
     }

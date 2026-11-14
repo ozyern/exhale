@@ -17,8 +17,8 @@
     --ink-2: #3a4754;
     --muted: #63707d;
     --rule: #dde3e8;
-    --convx: #17708f;
-    --convx-soft: #e4f1f6;
+    --exhale: #17708f;
+    --exhale-soft: #e4f1f6;
     --jam: #a65c0e;
     --jam-soft: #f8ecdf;
     --node: #f1f7fa;
@@ -38,7 +38,7 @@
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #0d1216; --panel: #141b21; --panel-2: #10161b; --ink: #e4eaef; --ink-2: #c3ccd4; --muted: #8e9ba7; --rule: #253039;
-      --convx: #5cb6d6; --convx-soft: #11303b; --jam: #e7a95f; --jam-soft: #3a2812;
+      --exhale: #5cb6d6; --exhale-soft: #11303b; --jam: #e7a95f; --jam-soft: #3a2812;
       --node: #172630; --node-line: #3f6576; --node-2: #1b3442; --edge: #7a8b98; --note: #2c2614; --note-line: #7a6431;
       --jam-node: #2a2014; --jam-node-line: #8a6537;
       --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
@@ -64,7 +64,7 @@
   .rail a:hover, .rail a:focus-visible { background: var(--panel); color: var(--ink); outline: none; box-shadow: var(--shadow); }
   .rail a.on { background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
   .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--muted); }
-  .dot.convx { background: var(--convx); }
+  .dot.exhale { background: var(--exhale); }
   .dot.jam { background: var(--jam); }
 
   main { min-width: 0; padding-top: 36px; display: grid; gap: 28px; }
@@ -75,7 +75,7 @@
   .lede { margin: 0; max-width: 70ch; color: var(--ink-2); font-size: 16px; }
   .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 4px; }
   .stat { background: var(--panel); border-radius: 10px; padding: 14px 16px; box-shadow: var(--shadow); display: grid; gap: 2px; border-top: 3px solid var(--muted); }
-  .stat.convx { border-top-color: var(--convx); }
+  .stat.exhale { border-top-color: var(--exhale); }
   .stat.jam { border-top-color: var(--jam); }
   .stat b { font: 700 24px/1.1 var(--font-display); font-variant-numeric: tabular-nums; }
   .stat span { font-size: 13px; color: var(--muted); }
@@ -84,7 +84,7 @@
   section { display: grid; gap: 14px; scroll-margin-top: 20px; }
   .sec-head { display: grid; gap: 6px; }
   .eyebrow { font: 600 11px/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; display: flex; gap: 8px; align-items: center; }
-  .eyebrow.convx { color: var(--convx); }
+  .eyebrow.exhale { color: var(--exhale); }
   .eyebrow.jam { color: var(--jam); }
   .eyebrow.both { color: var(--muted); }
   .eyebrow code { font-size: 11px; color: var(--muted); text-transform: none; letter-spacing: 0; }
@@ -98,7 +98,7 @@
   .diagram h3 small { display: block; font-weight: 400; color: var(--muted); font-size: 12.5px; }
   .btn { appearance: none; border: 1px solid var(--rule); background: var(--panel-2); color: var(--ink-2); font: 500 12.5px/1 var(--font-body); padding: 7px 11px; border-radius: 7px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
   .btn:hover { color: var(--ink); border-color: var(--edge); }
-  .btn:focus-visible { outline: 2px solid var(--convx); outline-offset: 2px; }
+  .btn:focus-visible { outline: 2px solid var(--exhale); outline-offset: 2px; }
   .canvas { padding: 18px; overflow-x: auto; display: flex; justify-content: center; }
   .canvas pre.mermaid { margin: 0; font: 12px/1.45 var(--font-mono); color: var(--muted); white-space: pre; width: 100%; }
   .canvas pre.mermaid[data-processed] { white-space: normal; display: flex; justify-content: center; }
@@ -123,7 +123,7 @@
   .grp h4 { margin: 0; font: 600 11px/1.2 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
   .chips { display: flex; flex-wrap: wrap; gap: 5px; }
   .chip { font: 12px/1 var(--font-mono); padding: 5px 7px; border-radius: 5px; background: var(--panel-2); border: 1px solid var(--rule); color: var(--ink-2); }
-  .chip.pub { background: var(--convx-soft); border-color: transparent; color: var(--ink); }
+  .chip.pub { background: var(--exhale-soft); border-color: transparent; color: var(--ink); }
   .jam-scope .chip.pub { background: var(--jam-soft); }
   .key { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); align-items: center; }
   .key .chip { font-size: 11px; }
@@ -138,7 +138,7 @@
   td code { white-space: nowrap; }
   td.side { white-space: nowrap; }
   .pill { font: 600 10.5px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; padding: 4px 6px; border-radius: 4px; }
-  .pill.convx { background: var(--convx-soft); color: var(--convx); }
+  .pill.exhale { background: var(--exhale-soft); color: var(--exhale); }
   .pill.jam { background: var(--jam-soft); color: var(--jam); }
   .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; }
   .two > * { min-width: 0; }
@@ -167,13 +167,13 @@
 <div class="shell">
 
 <aside class="rail">
-  <div class="brand">Convx · Listen Together</div>
+  <div class="brand">Exhale · Listen Together</div>
   <nav aria-label="Sections">
     <a href="#overview"><i class="dot"></i>Overview</a>
-    <div class="group">Convx Sync</div>
-    <a href="#convx-client"><i class="dot convx"></i>Client</a>
-    <a href="#convx-server"><i class="dot convx"></i>Server</a>
-    <a href="#convx-protocol"><i class="dot convx"></i>Protocol</a>
+    <div class="group">Exhale Sync</div>
+    <a href="#exhale-client"><i class="dot exhale"></i>Client</a>
+    <a href="#exhale-server"><i class="dot exhale"></i>Server</a>
+    <a href="#exhale-protocol"><i class="dot exhale"></i>Protocol</a>
     <div class="group">Jam</div>
     <a href="#jam-client"><i class="dot jam"></i>Client</a>
     <a href="#jam-server"><i class="dot jam"></i>BitChord server</a>
@@ -187,10 +187,10 @@
 
 <header class="hero" id="top">
   <h1>Listen Together UML</h1>
-  <p class="lede">Convx has two group-listening paths that share one player. <strong>Convx Sync</strong> rooms run on a Cloudflare Worker in <code>listen-together-server/</code>. <strong>Jam</strong> parties run on BitChord's Go server. This page maps the classes, functions and flows on both sides.</p>
+  <p class="lede">Exhale has two group-listening paths that share one player. <strong>Exhale Sync</strong> rooms run on a Cloudflare Worker in <code>listen-together-server/</code>. <strong>Jam</strong> parties run on BitChord's Go server. This page maps the classes, functions and flows on both sides.</p>
   <div class="stats">
-    <div class="stat convx"><b>4,716</b><span>lines · Convx client, 9 files</span></div>
-    <div class="stat convx"><b>1,099</b><span>lines · Convx server, 4 files</span></div>
+    <div class="stat exhale"><b>4,716</b><span>lines · Exhale client, 9 files</span></div>
+    <div class="stat exhale"><b>1,099</b><span>lines · Exhale server, 4 files</span></div>
     <div class="stat jam"><b>1,289</b><span>lines · Jam client, 4 files</span></div>
     <div class="stat jam"><b>2,534</b><span>lines · BitChord server, 5 files</span></div>
   </div>
@@ -201,7 +201,7 @@
   <div class="sec-head">
     <div class="eyebrow both">Architecture</div>
     <h2>How the pieces connect</h2>
-    <p>Each path has a manager that drives the shared <code>PlayerConnection</code> through <code>ListenTogetherPlayerConnectionBridge</code>. Only one path runs at a time: joining a Jam first leaves any Convx room.</p>
+    <p>Each path has a manager that drives the shared <code>PlayerConnection</code> through <code>ListenTogetherPlayerConnectionBridge</code>. Only one path runs at a time: joining a Jam first leaves any Exhale room.</p>
   </div>
   <div class="card diagram">
     <header><h3>Components<small>UI → view models → managers → clients → servers</small></h3><button class="btn" data-expand>Expand</button></header>
@@ -219,7 +219,7 @@ flowchart TB
     LTVM["ListenTogetherViewModel"]
     JVM["JamViewModel"]
   end
-  subgraph CONVX["Convx Sync client"]
+  subgraph EXHALE["Exhale Sync client"]
     direction LR
     LTM["ListenTogetherManager"]
     LTC["ListenTogetherClient"]
@@ -238,7 +238,7 @@ flowchart TB
     PC["PlayerConnection"]
     EXO["ExoPlayer · MusicService"]
   end
-  subgraph CF["Cloudflare · convx-sync"]
+  subgraph CF["Cloudflare · exhale-sync"]
     direction LR
     W["Worker"]
     R["Room DO"]
@@ -269,18 +269,18 @@ flowchart TB
   JC ==> WS
   API --> P
   WS --> P
-  classDef convx fill:var(--convx-soft),stroke:var(--convx),color:var(--ink)
+  classDef exhale fill:var(--exhale-soft),stroke:var(--exhale),color:var(--ink)
   classDef jam fill:var(--jam-soft),stroke:var(--jam),color:var(--ink)
-  class LTM,LTC,MC,SC,W,R,G,LTVM,LTS,OV convx
+  class LTM,LTC,MC,SC,W,R,G,LTVM,LTS,OV exhale
   class JM,JC,JCL,API,WS,P,JVM,JS jam
 </pre></div>
   </div>
 </section>
 
-<!-- ============================================================ CONVX CLIENT -->
-<section id="convx-client">
+<!-- ============================================================ EXHALE CLIENT -->
+<section id="exhale-client">
   <div class="sec-head">
-    <div class="eyebrow convx">Convx Sync · client <code>app/…/listentogether</code></div>
+    <div class="eyebrow exhale">Exhale Sync · client <code>app/…/listentogether</code></div>
     <h2>Room client</h2>
     <p>The client owns the socket and keeps a copy of the room state. The manager turns room events into player actions, and local player events back into room actions. The boxes show state and public API; every private function is listed in the function maps below.</p>
   </div>
@@ -464,10 +464,10 @@ classDiagram
   </details>
 </section>
 
-<!-- ============================================================ CONVX SERVER -->
-<section id="convx-server">
+<!-- ============================================================ EXHALE SERVER -->
+<section id="exhale-server">
   <div class="sec-head">
-    <div class="eyebrow convx">Convx Sync · server <code>listen-together-server/src</code></div>
+    <div class="eyebrow exhale">Exhale Sync · server <code>listen-together-server/src</code></div>
     <h2>Cloudflare room server</h2>
     <p>One <code>Room</code> Durable Object per room code. It handles one message at a time, so its state is the only version of the room. <code>Guard</code> rate-limits room creation per IP.</p>
   </div>
@@ -562,9 +562,9 @@ classDiagram
 </section>
 
 <!-- ============================================================ PROTOCOL -->
-<section id="convx-protocol">
+<section id="exhale-protocol">
   <div class="sec-head">
-    <div class="eyebrow convx">Convx Sync · wire</div>
+    <div class="eyebrow exhale">Exhale Sync · wire</div>
     <h2>Room messages</h2>
   </div>
   <div class="two">
@@ -872,7 +872,7 @@ classDiagram
   </div>
 
   <div class="card diagram">
-    <header><h3>Host picks a new song<small>Convx Sync · everyone starts together</small></h3><button class="btn" data-expand>Expand</button></header>
+    <header><h3>Host picks a new song<small>Exhale Sync · everyone starts together</small></h3><button class="btn" data-expand>Expand</button></header>
     <div class="canvas"><pre class="mermaid">
 sequenceDiagram
   autonumber
@@ -900,7 +900,7 @@ sequenceDiagram
 
   <div class="two">
     <div class="card diagram">
-      <header><h3>Guest joins mid-song<small>Convx Sync</small></h3><button class="btn" data-expand>Expand</button></header>
+      <header><h3>Guest joins mid-song<small>Exhale Sync</small></h3><button class="btn" data-expand>Expand</button></header>
       <div class="canvas"><pre class="mermaid">
 sequenceDiagram
   participant G as Guest
@@ -920,7 +920,7 @@ sequenceDiagram
 </pre></div>
     </div>
     <div class="card diagram">
-      <header><h3>Guest pauses alone<small>Convx Sync</small></h3><button class="btn" data-expand>Expand</button></header>
+      <header><h3>Guest pauses alone<small>Exhale Sync</small></h3><button class="btn" data-expand>Expand</button></header>
       <div class="canvas"><pre class="mermaid">
 sequenceDiagram
   participant U as Guest
@@ -976,19 +976,19 @@ sequenceDiagram
     <table>
       <thead><tr><th>File</th><th>Side</th><th>Lines</th><th>Role</th></tr></thead>
       <tbody>
-        <tr><td><code>ListenTogetherManager.kt</code></td><td class="side"><span class="pill convx">client</span></td><td class="n">1,917</td><td>Room events to player and back; hold, local pause, drift, queue</td></tr>
-        <tr><td><code>ListenTogetherClient.kt</code></td><td class="side"><span class="pill convx">client</span></td><td class="n">1,672</td><td>Socket, reconnect, session, room-state copy, notifications</td></tr>
-        <tr><td><code>MessageCodec.kt</code></td><td class="side"><span class="pill convx">client</span></td><td class="n">453</td><td>JSON and protobuf envelopes, gzip</td></tr>
-        <tr><td><code>Protocol.kt</code></td><td class="side"><span class="pill convx">client</span></td><td class="n">409</td><td>Message types, actions, payloads</td></tr>
-        <tr><td><code>RoomPermissions.kt</code></td><td class="side"><span class="pill convx">client</span></td><td class="n">76</td><td>Who may control, skip or remove</td></tr>
-        <tr><td><code>ServerClock.kt</code></td><td class="side"><span class="pill convx">client</span></td><td class="n">59</td><td>Clock offset from server stamps</td></tr>
-        <tr><td><code>ListenTogetherServers.kt</code></td><td class="side"><span class="pill convx">client</span></td><td class="n">53</td><td>Built-in server list</td></tr>
-        <tr><td><code>ListenTogetherActionReceiver.kt</code></td><td class="side"><span class="pill convx">client</span></td><td class="n">46</td><td>Approve or reject from notifications</td></tr>
-        <tr><td><code>ListenTogetherPlayerConnectionBridge.kt</code></td><td class="side"><span class="pill convx">shared</span></td><td class="n">31</td><td>Player handle and party lock, used by both paths</td></tr>
-        <tr><td><code>room.ts</code></td><td class="side"><span class="pill convx">server</span></td><td class="n">783</td><td>Room Durable Object</td></tr>
-        <tr><td><code>index.ts</code></td><td class="side"><span class="pill convx">server</span></td><td class="n">141</td><td>Worker entry, room allocation</td></tr>
-        <tr><td><code>protocol.ts</code></td><td class="side"><span class="pill convx">server</span></td><td class="n">122</td><td>Message names and types</td></tr>
-        <tr><td><code>guard.ts</code></td><td class="side"><span class="pill convx">server</span></td><td class="n">53</td><td>Per-IP rate limit</td></tr>
+        <tr><td><code>ListenTogetherManager.kt</code></td><td class="side"><span class="pill exhale">client</span></td><td class="n">1,917</td><td>Room events to player and back; hold, local pause, drift, queue</td></tr>
+        <tr><td><code>ListenTogetherClient.kt</code></td><td class="side"><span class="pill exhale">client</span></td><td class="n">1,672</td><td>Socket, reconnect, session, room-state copy, notifications</td></tr>
+        <tr><td><code>MessageCodec.kt</code></td><td class="side"><span class="pill exhale">client</span></td><td class="n">453</td><td>JSON and protobuf envelopes, gzip</td></tr>
+        <tr><td><code>Protocol.kt</code></td><td class="side"><span class="pill exhale">client</span></td><td class="n">409</td><td>Message types, actions, payloads</td></tr>
+        <tr><td><code>RoomPermissions.kt</code></td><td class="side"><span class="pill exhale">client</span></td><td class="n">76</td><td>Who may control, skip or remove</td></tr>
+        <tr><td><code>ServerClock.kt</code></td><td class="side"><span class="pill exhale">client</span></td><td class="n">59</td><td>Clock offset from server stamps</td></tr>
+        <tr><td><code>ListenTogetherServers.kt</code></td><td class="side"><span class="pill exhale">client</span></td><td class="n">53</td><td>Built-in server list</td></tr>
+        <tr><td><code>ListenTogetherActionReceiver.kt</code></td><td class="side"><span class="pill exhale">client</span></td><td class="n">46</td><td>Approve or reject from notifications</td></tr>
+        <tr><td><code>ListenTogetherPlayerConnectionBridge.kt</code></td><td class="side"><span class="pill exhale">shared</span></td><td class="n">31</td><td>Player handle and party lock, used by both paths</td></tr>
+        <tr><td><code>room.ts</code></td><td class="side"><span class="pill exhale">server</span></td><td class="n">783</td><td>Room Durable Object</td></tr>
+        <tr><td><code>index.ts</code></td><td class="side"><span class="pill exhale">server</span></td><td class="n">141</td><td>Worker entry, room allocation</td></tr>
+        <tr><td><code>protocol.ts</code></td><td class="side"><span class="pill exhale">server</span></td><td class="n">122</td><td>Message names and types</td></tr>
+        <tr><td><code>guard.ts</code></td><td class="side"><span class="pill exhale">server</span></td><td class="n">53</td><td>Per-IP rate limit</td></tr>
         <tr><td><code>JamManager.kt</code></td><td class="side"><span class="pill jam">client</span></td><td class="n">851</td><td>Party lifecycle, socket, reconcile, deferred play, queue</td></tr>
         <tr><td><code>JamModels.kt</code></td><td class="side"><span class="pill jam">client</span></td><td class="n">201</td><td>Party wire models</td></tr>
         <tr><td><code>JamClient.kt</code></td><td class="side"><span class="pill jam">client</span></td><td class="n">126</td><td>REST calls, socket open</td></tr>

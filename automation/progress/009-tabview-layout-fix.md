@@ -13,7 +13,7 @@ image, and none have before/after screenshots.
 
 - `automation/tasks/009-tabview-layout-fix.md`, `automation/loop-structure.md`
 - Project memory `tabview-progress-2026-08-10`
-- Grepped `app/src/main/kotlin/com/convx/music/ui/` for `TabView`,
+- Grepped `app/src/main/kotlin/com/ozyern/exhale/ui/` for `TabView`,
   `SidePanel`, drag-puck-related code
 - Read `FloatingSideBar.kt` in full (the tab-view side bar + its puck)
 - Read `ArtistScreen.kt`'s tab-view/non-tab-view header branch in full

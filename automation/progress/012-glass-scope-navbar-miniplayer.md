@@ -40,18 +40,18 @@ real preference, since only `.style` is being pinned).
 
 Files repointed to `withFixedStyle()`:
 
-- `app/src/main/kotlin/com/convx/music/ui/component/AppNavigation.kt` (top rail)
-- `app/src/main/kotlin/com/convx/music/ui/component/GlassCircleButton.kt`
-- `app/src/main/kotlin/com/convx/music/ui/player/customize/DiyPlayerMockup.kt` (DIY editor preview)
-- `app/src/main/kotlin/com/convx/music/ui/player/Player.kt` (full-screen player background)
-- `app/src/main/kotlin/com/convx/music/ui/screens/artist/ArtistScreen.kt`
-- `app/src/main/kotlin/com/convx/music/ui/screens/AlbumScreen.kt` (two call sites, one `glassConfig` declaration)
-- `app/src/main/kotlin/com/convx/music/ui/screens/search/LocalSearchScreen.kt`
-- `app/src/main/kotlin/com/convx/music/ui/screens/playlist/TopPlaylistScreen.kt` (two call sites, two separate composables, both fixed)
-- `app/src/main/kotlin/com/convx/music/ui/screens/playlist/OnlinePlaylistScreen.kt` (two call sites, two separate composables, both fixed)
-- `app/src/main/kotlin/com/convx/music/ui/screens/playlist/LocalPlaylistScreen.kt` (two call sites, one declaration)
-- `app/src/main/kotlin/com/convx/music/ui/screens/playlist/CachePlaylistScreen.kt`
-- `app/src/main/kotlin/com/convx/music/ui/screens/playlist/AutoPlaylistScreen.kt`
+- `app/src/main/kotlin/com/ozyern/exhale/ui/component/AppNavigation.kt` (top rail)
+- `app/src/main/kotlin/com/ozyern/exhale/ui/component/GlassCircleButton.kt`
+- `app/src/main/kotlin/com/ozyern/exhale/ui/player/customize/DiyPlayerMockup.kt` (DIY editor preview)
+- `app/src/main/kotlin/com/ozyern/exhale/ui/player/Player.kt` (full-screen player background)
+- `app/src/main/kotlin/com/ozyern/exhale/ui/screens/artist/ArtistScreen.kt`
+- `app/src/main/kotlin/com/ozyern/exhale/ui/screens/AlbumScreen.kt` (two call sites, one `glassConfig` declaration)
+- `app/src/main/kotlin/com/ozyern/exhale/ui/screens/search/LocalSearchScreen.kt`
+- `app/src/main/kotlin/com/ozyern/exhale/ui/screens/playlist/TopPlaylistScreen.kt` (two call sites, two separate composables, both fixed)
+- `app/src/main/kotlin/com/ozyern/exhale/ui/screens/playlist/OnlinePlaylistScreen.kt` (two call sites, two separate composables, both fixed)
+- `app/src/main/kotlin/com/ozyern/exhale/ui/screens/playlist/LocalPlaylistScreen.kt` (two call sites, one declaration)
+- `app/src/main/kotlin/com/ozyern/exhale/ui/screens/playlist/CachePlaylistScreen.kt`
+- `app/src/main/kotlin/com/ozyern/exhale/ui/screens/playlist/AutoPlaylistScreen.kt`
 
 None of these lost glass rendering — `withFixedStyle()` only swaps the enum,
 `shouldUseTranslucentGlassFallback`/the backdrop-capture path is unaffected
@@ -59,20 +59,20 @@ unless the fixed value is later set to `TRANSPARENT`.
 
 ## Files deliberately left untouched (still read the real preference)
 
-- `app/src/main/kotlin/com/convx/music/ui/component/FloatingNavBar.kt` (both
+- `app/src/main/kotlin/com/ozyern/exhale/ui/component/FloatingNavBar.kt` (both
   call sites — the phone nav bar)
-- `app/src/main/kotlin/com/convx/music/ui/component/FloatingSideBar.kt` (all
+- `app/src/main/kotlin/com/ozyern/exhale/ui/component/FloatingSideBar.kt` (all
   three `LocalGlassEffectConfig.current` reads, including
   `AppFloatingNowPlayingPill` — the tablet's docked mini-player-equivalent
   pill lives in this file and the dev's own comment there says it
   deliberately mirrors "the global glass settings directly, same as the
   phone's docked accessory," so it stays tied to the real preference)
-- `app/src/main/kotlin/com/convx/music/ui/component/floatingtabbar/FloatingTabBar.kt`
+- `app/src/main/kotlin/com/ozyern/exhale/ui/component/floatingtabbar/FloatingTabBar.kt`
   (nav bar puck; doesn't call `liquidGlass` directly, only reads
   `puckColor`/`puckOpacity`, so `.style` was never in play there)
-- `app/src/main/kotlin/com/convx/music/ui/player/MiniPlayer.kt` (`MiniPlayer`
+- `app/src/main/kotlin/com/ozyern/exhale/ui/player/MiniPlayer.kt` (`MiniPlayer`
   and `NewMiniPlayer` are both defined in this one file)
-- `app/src/main/kotlin/com/convx/music/ui/player/AppleMiniPlayer.kt` — checked,
+- `app/src/main/kotlin/com/ozyern/exhale/ui/player/AppleMiniPlayer.kt` — checked,
   does not reference `LocalGlassEffectConfig`/glass at all, nothing to do
 
 ## Files that read `LocalGlassEffectConfig` but never call `liquidGlass`
@@ -114,7 +114,7 @@ needs a real device pass.
 
 **Note on `BottomSheetMenu`/`BottomSheetPage` named in the acceptance
 criteria:** grepped for `LocalGlassEffectConfig` and `liquidGlass` in both
-files (`app/src/main/kotlin/com/convx/music/ui/component/BottomSheetMenu.kt`,
+files (`app/src/main/kotlin/com/ozyern/exhale/ui/component/BottomSheetMenu.kt`,
 `.../BottomSheetPage.kt`) as part of the consumer sweep and found neither —
 they don't currently read the glass config at all, so there was nothing to
 repoint. If they pick it up in the future, route them through

@@ -29,7 +29,7 @@ interface NativeEvents {
 object NativeBridge {
 
     init {
-        System.loadLibrary("convx_spotify")
+        System.loadLibrary("exhale_spotify")
     }
 
     /**

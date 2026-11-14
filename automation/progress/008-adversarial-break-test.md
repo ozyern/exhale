@@ -43,7 +43,7 @@ listed at the end.
 
 ### C1 — Zip Slip in backup restore chains into Java deserialization of attacker-controlled objects
 
-**`app/src/main/kotlin/com/convx/music/viewmodels/BackupRestoreViewModel.kt:132-138`**
+**`app/src/main/kotlin/com/ozyern/exhale/viewmodels/BackupRestoreViewModel.kt:132-138`**
 
 ```kotlin
 else -> if (entry.name.startsWith("$HOME_BACKGROUND_ZIP_DIR/")) {
@@ -69,11 +69,11 @@ count/size caps. The backup importer has none of it.
 files out of `filesDir` with a raw `ObjectInputStream` and no
 `setObjectInputFilter`:
 
-- `app/src/main/kotlin/com/convx/music/playback/MusicService.kt:1048-1051`
+- `app/src/main/kotlin/com/ozyern/exhale/playback/MusicService.kt:1048-1051`
   (`persistent_queue.data`)
-- `app/src/main/kotlin/com/convx/music/playback/MusicService.kt:1080-1083`
+- `app/src/main/kotlin/com/ozyern/exhale/playback/MusicService.kt:1080-1083`
   (`persistent_automix.data`)
-- `app/src/main/kotlin/com/convx/music/playback/MusicService.kt:1102-1105`
+- `app/src/main/kotlin/com/ozyern/exhale/playback/MusicService.kt:1102-1105`
   (`persistent_player_state.data`)
 
 ```kotlin
@@ -141,7 +141,7 @@ correctly scoped and should stay as-is.
 
 ### H2 — Update APK is downloaded without scheme or signature verification, and extracted without bounds
 
-**`app/src/main/kotlin/com/convx/music/convx/updater/downloadmanager/UpdateDownloadWorker.kt:28`**
+**`app/src/main/kotlin/com/ozyern/exhale/exhale/updater/downloadmanager/UpdateDownloadWorker.kt:28`**
 
 ```kotlin
 val url = URL(apkUrl)
@@ -194,9 +194,9 @@ rule files, or set `allowBackup="false"`, or move the credentials to
 
 ## MEDIUM
 
-### M1 — `convx://listen` deep link joins a Listen Together room with no confirmation
+### M1 — `exhale://listen` deep link joins a Listen Together room with no confirmation
 
-**`app/src/main/kotlin/com/convx/music/MainActivity.kt:2346-2354`**, filter at
+**`app/src/main/kotlin/com/ozyern/exhale/MainActivity.kt:2346-2354`**, filter at
 **`app/src/main/AndroidManifest.xml:117-125`**
 
 ```kotlin
@@ -212,10 +212,10 @@ if (!listenCode.isNullOrBlank() && isListenLink) {
 }
 ```
 
-The `convx://` scheme is `BROWSABLE` with no App Links verification (the
+The `exhale://` scheme is `BROWSABLE` with no App Links verification (the
 `https` filter above it has `autoVerify="true"`; this one cannot). Any web
 page, QR code, or installed app can fire
-`convx://listen/<attacker-code>` and the user is silently joined to an
+`exhale://listen/<attacker-code>` and the user is silently joined to an
 attacker-controlled room — no prompt, no confirmation — after which their
 username and every track they play are broadcast to that room's host.
 
@@ -223,7 +223,7 @@ Fix direction: show a confirmation sheet naming the room before `joinRoom`.
 
 ### M2 — Deep-link route interpolation can crash the app from any web page
 
-**`app/src/main/kotlin/com/convx/music/MainActivity.kt:2373-2379`**
+**`app/src/main/kotlin/com/ozyern/exhale/MainActivity.kt:2373-2379`**
 
 ```kotlin
 "browse" -> uri.lastPathSegment?.let { browseId ->
@@ -251,7 +251,7 @@ does, and wrap `handleDeepLinkIntent`'s navigation in a `runCatching`.
 
 ### M3 — `Intent.EXTRA_TEXT` bypasses the manifest's host restrictions on deep links
 
-**`app/src/main/kotlin/com/convx/music/MainActivity.kt:2341`**
+**`app/src/main/kotlin/com/ozyern/exhale/MainActivity.kt:2341`**
 
 ```kotlin
 val uri = intent.data ?: intent.extras?.getString(Intent.EXTRA_TEXT)?.toUri() ?: return
@@ -270,8 +270,8 @@ declares before dispatching, regardless of which field the URI came from.
 
 ### M4 — Preset player-icon file names reach the filesystem without the traversal guard the DIY path has
 
-**`app/src/main/kotlin/com/convx/music/ui/player/customize/PlayerIcons.kt:114`**
-and **`app/src/main/kotlin/com/convx/music/utils/preset/PresetStore.kt:257-259, 269-271`**
+**`app/src/main/kotlin/com/ozyern/exhale/ui/player/customize/PlayerIcons.kt:114`**
+and **`app/src/main/kotlin/com/ozyern/exhale/utils/preset/PresetStore.kt:257-259, 269-271`**
 
 `PlayerIconSet.fromJson` takes the `"file"` string verbatim:
 
@@ -312,7 +312,7 @@ effect of the same missing validation.
 
 ### M5 — Restore wipes the saved queue and force-kills the app even when the archive contained nothing
 
-**`app/src/main/kotlin/com/convx/music/viewmodels/BackupRestoreViewModel.kt:145-156`**
+**`app/src/main/kotlin/com/ozyern/exhale/viewmodels/BackupRestoreViewModel.kt:145-156`**
 
 ```kotlin
 if (!foundAny) {
@@ -328,14 +328,14 @@ exitProcess(0)
 ```
 
 `foundAny` is computed and then never branched on. Picking the wrong file —
-any zip, a renamed `.convxpreset`, a corrupt download — stops playback,
+any zip, a renamed `.exhalepreset`, a corrupt download — stops playback,
 deletes the persistent queue, and `exitProcess(0)`s the app, with no error
 shown and nothing restored. Fix direction: `if (!foundAny)` → toast and
 return before the teardown.
 
 ### M6 — `AddToPlaylistDialogOnline` still dismisses itself before its own work runs, and still increments shared state from N concurrent coroutines
 
-**`app/src/main/kotlin/com/convx/music/ui/menu/AddToPlaylistDialogOnline.kt:239-302`**
+**`app/src/main/kotlin/com/ozyern/exhale/ui/menu/AddToPlaylistDialogOnline.kt:239-302`**
 (and the identical block at **`:310-370`**)
 
 Commit `bb1049c5` fixed the `viewStateMap` clobbering in this file. Two
@@ -363,7 +363,7 @@ sibling instances of the same bug class survived it:
 
 ### M7 — Debug builds write full poTokens and the account cookie into a user-shareable log file
 
-**`app/src/main/kotlin/com/convx/music/utils/potoken/PoTokenWebView.kt:239`
+**`app/src/main/kotlin/com/ozyern/exhale/utils/potoken/PoTokenWebView.kt:239`
 and `:247`**
 
 ```kotlin
@@ -371,7 +371,7 @@ Timber.tag(TAG).d("Generated poToken (before decoding): identifier=$identifier p
 Timber.tag(TAG).d("Generated poToken: identifier=$identifier poToken=$poToken")
 ```
 
-**`app/src/main/kotlin/com/convx/music/App.kt:421` and `:425`**
+**`app/src/main/kotlin/com/ozyern/exhale/App.kt:421` and `:425`**
 
 ```kotlin
 Timber.d("forgetAccount: Before - cookie=${YouTube.cookie?.take(50)}, visitorData=…")
@@ -398,7 +398,7 @@ Fix direction: redact in the log call sites rather than relying on build type
 
 ### L1 — `println` survives into release logcat, including a private-upload stream URL
 
-**`app/src/main/kotlin/com/convx/music/utils/YTPlayerUtils.kt:1322`**
+**`app/src/main/kotlin/com/ozyern/exhale/utils/YTPlayerUtils.kt:1322`**
 
 ```kotlin
 println("[PLAYBACK_DEBUG] SUCCESS: Got playback data for uploaded track - format=${format.mimeType}, streamUrl=${streamUrl?.take(100)}...")
@@ -416,9 +416,9 @@ Fix direction: convert to `Timber.tag(...).d(...)` so the debug gate applies.
 
 ### L2 — Remote YouTube player JS runs in a WebView with file-URL read access and a Java bridge
 
-**`app/src/main/kotlin/com/convx/music/utils/cipher/CipherWebView.kt:39-45`
+**`app/src/main/kotlin/com/ozyern/exhale/utils/cipher/CipherWebView.kt:39-45`
 and `:186-195`**; same shape at
-**`app/src/main/kotlin/com/convx/music/utils/sabr/EjsNTransformSolver.kt:118-124`**
+**`app/src/main/kotlin/com/ozyern/exhale/utils/sabr/EjsNTransformSolver.kt:118-124`**
 
 ```kotlin
 settings.javaScriptEnabled = true
@@ -447,7 +447,7 @@ already in memory) and set `allowFileAccess = false` /
 
 ### L3 — Discord login WebView accepts a token from any origin that fires a JS alert
 
-**`app/src/main/kotlin/com/convx/music/ui/screens/settings/DiscordLoginScreen.kt:87-119`**
+**`app/src/main/kotlin/com/ozyern/exhale/ui/screens/settings/DiscordLoginScreen.kt:87-119`**
 
 ```kotlin
 override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
@@ -473,7 +473,7 @@ Fix direction: `if (!url.startsWith("https://discord.com/")) { result.confirm();
 
 ### L4 — Playlist/CSV/M3U import reads the whole file into memory with no size cap
 
-**`app/src/main/kotlin/com/convx/music/viewmodels/BackupRestoreViewModel.kt:169, 199, 301`**
+**`app/src/main/kotlin/com/ozyern/exhale/viewmodels/BackupRestoreViewModel.kt:169, 199, 301`**
 
 ```kotlin
 val lines = stream.bufferedReader().readLines()
@@ -493,7 +493,7 @@ instead of materialising the list.
 
 ### L5 — Preset-bundled fonts skip revalidation
 
-**`app/src/main/kotlin/com/convx/music/utils/preset/PresetStore.kt:510`**
+**`app/src/main/kotlin/com/ozyern/exhale/utils/preset/PresetStore.kt:510`**
 
 ```kotlin
 "ttf", "otf" -> Unit // Fonts are handed to the platform loader, not decoded here.
@@ -523,7 +523,7 @@ presets in `cacheDir`, update APKs in the external files dir) require.
 
 ### L7 — Unbounded coroutine fan-out during composition in the lyrics romanizer
 
-**`app/src/main/kotlin/com/convx/music/ui/component/Lyrics.kt:280-355`**
+**`app/src/main/kotlin/com/ozyern/exhale/ui/component/Lyrics.kt:280-355`**
 (and the plain-text branch at **`:368-390`**)
 
 Inside `remember(lyrics, scope) { … }`, one `scope.launch` is started per
@@ -580,7 +580,7 @@ Recording these so a later round does not re-derive them:
   Saavn has no module under `app/` on this branch — the only hits are in a
   detached worktree (`.claude/worktrees/functional-beaming-matsumoto/jiosaavn/`)
   and Gradle cache artifacts, so there is nothing on this branch to probe.
-- The Discord *bot* (Hermes/ConvxBot) integration — only the in-app Discord
+- The Discord *bot* (Hermes/ExhaleBot) integration — only the in-app Discord
   RPC token path was reviewed.
 - `utils/potoken/PoTokenWebView.kt`'s JS bridge was read for logging only, not
   audited as an attack surface the way `CipherWebView` was.
@@ -598,7 +598,7 @@ looped worker/verifier independently. None of these were fixed here.
 | `automation/tasks/010-fix-cleartext-traffic-config.md` | Scope `cleartextTrafficPermitted` to localhost/private ranges instead of `base-config`, and reject `ws://` Listen Together URLs (or warn) at `ListenTogetherClient.getServerUrl`. |
 | `automation/tasks/011-fix-updater-apk-verification.md` | Require `https`, pin the release host, verify the downloaded APK's signing certificate before the install prompt, cap zip extraction, and close the output stream in `use {}`. |
 | `automation/tasks/012-fix-credential-backup-exposure.md` | Exclude `filesDir/datastore` and the Room DB from `backup_rules.xml` / `data_extraction_rules.xml`, or move the Discord token and innertube cookie into Keystore-backed storage. |
-| `automation/tasks/013-fix-deep-link-hardening.md` | Confirm before `joinRoom` on a `convx://listen` link, URL-encode the `browse`/`channel` route segments, wrap `handleDeepLinkIntent` navigation in `runCatching`, and host-validate URIs that arrive via `EXTRA_TEXT`. |
+| `automation/tasks/013-fix-deep-link-hardening.md` | Confirm before `joinRoom` on a `exhale://listen` link, URL-encode the `browse`/`channel` route segments, wrap `handleDeepLinkIntent` navigation in `runCatching`, and host-validate URIs that arrive via `EXTRA_TEXT`. |
 | `automation/tasks/014-fix-preset-icon-filename-validation.md` | Apply `isSafeFileName` to `PlayerIconSet.fromJson`'s `"file"` field, matching the guard `DiySticker.fromJson` already has. Tighten only — relax no existing preset limit. |
 | `automation/tasks/015-fix-restore-no-valid-entries.md` | Branch on `foundAny` before stopping the service, deleting the persistent queue, and calling `exitProcess(0)`. |
 | `automation/tasks/016-fix-addtoplaylist-online-race.md` | Await the per-song coroutines (`async`/`awaitAll`) before dismissing, move `onDismiss()` to after completion, and replace the shared `songsIdx` counter — both blocks in `AddToPlaylistDialogOnline.kt`. |

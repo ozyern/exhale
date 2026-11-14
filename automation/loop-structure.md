@@ -156,7 +156,7 @@ so the device doesn't stay wake-locked all day after the loop finishes.
 
 1. `./gradlew assembleUniversalRelease` (or the flavor under test) from the
    automation branch's current tip.
-2. Sign with `convx-release.keystore` / alias `Convx` — password already in
+2. Sign with `exhale-release.keystore` / alias `Exhale` — password already in
    `gradle.properties`, no prompt needed.
 3. `adb install -r` to the connected device.
 4. Drive the actual behavior under test (UI interaction, settings toggle,

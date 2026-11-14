@@ -122,7 +122,7 @@ that's the case this fix targets and previously failed outright.
 
 ## Files changed
 
-- `app/src/main/kotlin/com/convx/music/ui/player/Queue.kt`
+- `app/src/main/kotlin/com/ozyern/exhale/ui/player/Queue.kt`
 
 ## Status: fix applied, not committed (per instructions), device verification not possible this run.
 Iteration cap: unlimited (objective task).

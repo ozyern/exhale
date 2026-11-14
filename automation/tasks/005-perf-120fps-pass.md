@@ -36,6 +36,6 @@ Prior perf work already landed: backdrop double-record fix, RenderNode
 zero-valued-effect fixes (36.8ms→24.4ms p50 measured), navbar backdrop
 freeze during scroll. See project memory `120fps-push-shipped`,
 `perf-session-2026-08-09`, `glass-renderthread-bottleneck`,
-`convx-perf-findings-2026-08-10` for what's already been tried and measured
+`exhale-perf-findings-2026-08-10` for what's already been tried and measured
 — don't re-propose already-ruled-out fixes; re-derive current numbers fresh
 rather than trusting old readings.

@@ -17,7 +17,7 @@ ET.register_namespace("d", DAV)
 
 def create_audio(folder):
     folder.mkdir(parents=True, exist_ok=True)
-    target = folder / "Convx - Seek test.wav"
+    target = folder / "Exhale - Seek test.wav"
     if target.exists():
         return
     rate = 8000
@@ -30,7 +30,7 @@ def create_audio(folder):
                                        for t in range(rate)))
 
 
-def make_server(root, host="127.0.0.1", port=8766, username="convx", password="test"):
+def make_server(root, host="127.0.0.1", port=8766, username="exhale", password="test"):
     root = Path(root).resolve()
     authorization = "Basic " + base64.b64encode(f"{username}:{password}".encode()).decode()
 
@@ -38,7 +38,7 @@ def make_server(root, host="127.0.0.1", port=8766, username="convx", password="t
         def target(self):
             if self.headers.get("Authorization") != authorization:
                 self.send_response(401)
-                self.send_header("WWW-Authenticate", 'Basic realm="Convx test"')
+                self.send_header("WWW-Authenticate", 'Basic realm="Exhale test"')
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return None
@@ -163,7 +163,7 @@ if __name__ == "__main__":
     if not folder.is_dir():
         parser.error("--folder must be an existing directory")
     print(f"WebDAV test server: http://{args.host}:{args.port}/music/", flush=True)
-    print("Username: convx | Password: test | Redirect test base: /redirect/", flush=True)
+    print("Username: exhale | Password: test | Redirect test base: /redirect/", flush=True)
     with make_server(folder, args.host, args.port) as server:
         try:
             server.serve_forever()

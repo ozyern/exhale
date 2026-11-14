@@ -100,7 +100,7 @@ popping in with the same spring.
 
 **Sub-task worth writing:** "Glass selection pill: spring overshoot on
 scale + edge refraction of underlying content" against the existing
-FloatingTabBar. Convx's `ChipsRow` already uses
+FloatingTabBar. Exhale's `ChipsRow` already uses
 `Spring.DampingRatioMediumBouncy` on corner radius and `animateContentSize`
 (`ui/component/ChipsRow.kt:91-129`), so the spring half of this is a
 precedent already in the codebase; the refraction half is the new work.
@@ -199,13 +199,13 @@ progress." The rotating-card push/pop overlaps heavily with video C's morph
 
 ## E — `screen-20260831-125605-1788198961779.mp4~2.mp4` — REAL BUG, root cause found
 
-**Not inconclusive.** This is a cropped Convx screen recording (dark theme,
-top ~quarter of the screen only) showing the Home screen: the `CONVX`
+**Not inconclusive.** This is a cropped Exhale screen recording (dark theme,
+top ~quarter of the screen only) showing the Home screen: the `EXHALE`
 wordmark, the mood chip row `✓ All / Podcasts / Energize / Feel good /
 Relax`, and `Recently Played` below it.
 
 **What happens:** at t≈1.3–1.8 s the **entire mood chip row fades out and
-disappears**, leaving the layout with the `CONVX` title and `Recently
+disappears**, leaving the layout with the `EXHALE` title and `Recently
 Played` unmoved and a dead vertical gap where the chips were. Nothing was
 scrolled — the wordmark and the cards below hold their exact y across every
 frame. The `Recently Played` local-library cards survive; the YouTube-backed
@@ -213,7 +213,7 @@ content does not appear. (The overlay that pops in at t≈3.2 with
 `✕ / ⚙ / ■ Stop` is the system screen-recorder control, not app UI.)
 
 **Root cause — `HomeViewModel.toggleChip`,
-`app/src/main/kotlin/com/convx/music/viewmodels/HomeViewModel.kt:714-720`:**
+`app/src/main/kotlin/com/ozyern/exhale/viewmodels/HomeViewModel.kt:714-720`:**
 
 ```kotlin
 fun toggleChip(chip: HomePage.Chip?) {
@@ -274,7 +274,7 @@ disappearance itself is directly visible and unambiguous.
 
 ## F — `screen-20260831-130113-1788199260633.mp4` — NOT a bug repro; it is a look reference
 
-**This is YouTube Music itself, not Convx.** Full YT Music chrome: the red
+**This is YouTube Music itself, not Exhale.** Full YT Music chrome: the red
 Music logo, notification bell, account avatar, and the Home / Samples /
 Search / Library bottom bar with a `Nothing is playing` mini player. The
 system screen-recorder timer is running in the status bar.
@@ -296,7 +296,7 @@ What it demonstrates, over 13 s of tapping through the chips
   apps" promo card above `Quick picks`.
 
 So F is the **intended behaviour reference for exactly the feature that
-breaks in E**. Convx already ships the chip row with the same chip set
+breaks in E**. Exhale already ships the chip row with the same chip set
 (`All / Podcasts / Energize / Feel good / Relax`, sourced from
 `homePage.chips`), so the gaps versus this reference are: the pinned/sticky
 chip row, and the per-chip full-bleed header backdrop.

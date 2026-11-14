@@ -26,7 +26,7 @@
 #include <complex>
 #include <vector>
 
-namespace convx::smart {
+namespace exhale::smart {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
@@ -134,4 +134,4 @@ VocalSpectrogram ComputeVocalSpectrogram(
   return result;
 }
 
-}  // namespace convx::smart
+}  // namespace exhale::smart

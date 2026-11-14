@@ -5,7 +5,7 @@
 *.aab
 
 # Standalone web portal repo
-convx-web/
+exhale-web/
 
 # Files for the ART/Dalvik VM
 *.dex
@@ -157,7 +157,7 @@ merge_strings.py
 # Local design reference/prototype, not app source
 stitch_lucid_glass_music/
 app/arm64Gms
-Convx_GitHub_Analytics.xlsx
+Exhale_GitHub_Analytics.xlsx
 
 # Workspace-local native toolchains and Cargo outputs.
 .tools/
@@ -181,8 +181,8 @@ sh.exe.stackdump
 !.github/release-notes/*.md
 
 # Local data and tooling files
-/Convx*.csv
-/Convx*Analytics.xlsx
+/Exhale*.csv
+/Exhale*Analytics.xlsx
 skills-lock.json
 renovate.json
 

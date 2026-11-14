@@ -22,7 +22,7 @@ crashes when changed.
   Content Advanced, Theme, Glass Effect, EQ, DIY, etc.) reachable from the
   Settings root.
 - For each toggle/slider/picker: read its label + description string
-  (`convx_strings.xml`), flip it, and confirm the described behavior actually
+  (`exhale_strings.xml`), flip it, and confirm the described behavior actually
   changes on-device (not just that the preference value changed in
   DataStore — the *visible/audible effect* it promises must occur).
   Reference the [[user memory]] on this preference if one names known-stale
@@ -35,7 +35,7 @@ crashes when changed.
 
 ## Context
 
-Settings screens live under `app/src/main/kotlin/com/convx/music/ui/screens/settings/`.
+Settings screens live under `app/src/main/kotlin/com/ozyern/exhale/ui/screens/settings/`.
 Preference keys in `constants/PreferenceKeys.kt`. This is the user's stated
 #1 priority — "everything should work from settings, and its intended
 behaviour."

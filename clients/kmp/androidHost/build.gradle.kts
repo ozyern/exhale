@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.convx.music.client.androidhost"
+    namespace = "com.ozyern.exhale.client.androidhost"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.convx.music.client.androidhost"
+        applicationId = "com.ozyern.exhale.client.androidhost"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

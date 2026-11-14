@@ -44,7 +44,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace convx::smart {
+namespace exhale::smart {
 
 // The model's input rate. Audio at any other rate is refused rather than
 // resampled here, because resampling belongs upstream where the decoded
@@ -76,4 +76,4 @@ BeatSpectrogram ComputeBeatSpectrogram(
   double sample_rate
 );
 
-}  // namespace convx::smart
+}  // namespace exhale::smart

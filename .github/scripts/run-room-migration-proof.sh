@@ -47,10 +47,10 @@ run_instrumentation() {
 for ((start_version = 1; start_version < 40; start_version++)); do
     end_version=$((start_version + 1))
     run_instrumentation \
-        com.convx.music.db.RoomSchemaMigrationMatrixTest \
+        com.ozyern.exhale.db.RoomSchemaMigrationMatrixTest \
         -e schemaStartVersion "$start_version" \
         -e schemaEndVersion "$end_version"
 done
 
-run_instrumentation com.convx.music.db.RoomSchemaMigrationTest
-run_instrumentation com.convx.music.db.BackupArchiveStagedSettingsValidatorTest
+run_instrumentation com.ozyern.exhale.db.RoomSchemaMigrationTest
+run_instrumentation com.ozyern.exhale.db.BackupArchiveStagedSettingsValidatorTest

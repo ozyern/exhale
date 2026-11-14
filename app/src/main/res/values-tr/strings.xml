@@ -3,7 +3,7 @@
 <!-- Upstream the reference app strings -->
 <!-- Do not add new features here -->
 <!-- Try to re-use strings here, but be careful on its usage e.g. verb vs noun -->
-<!-- "the reference app" is replaced with "Convx" -->
+<!-- "the reference app" is replaced with "Exhale" -->
 <!-- Translators: Do not modify this file for translations, use the reference app's Weblate instead. -->
 
 <resources>
@@ -350,7 +350,7 @@
     <string name="restore_failed">Yedekleme geri yüklenemedi</string>
 
     <string name="discord_integration">Discord Entegrasyonu</string>
-    Convx, Discord hesabınızın durumunu ayarlamak için KizzyRPC kütüphanesini kullanır. Bu, Discord\'un Hizmet Şartları\'nın ihlali olarak kabul edilebilecek Discord Geçit bağlantısının kullanılmasını gerektirir. Fakat kullanıcı hesaplarının bu nedenle askıya alındığı bilinen bir örnek yoktur. Riski size ait olmak üzere kullanın. \n \nConvx yalnızca belirtecinizi çıkarır ve diğer her şey yerel olarak saklanır.
+    Exhale, Discord hesabınızın durumunu ayarlamak için KizzyRPC kütüphanesini kullanır. Bu, Discord\'un Hizmet Şartları\'nın ihlali olarak kabul edilebilecek Discord Geçit bağlantısının kullanılmasını gerektirir. Fakat kullanıcı hesaplarının bu nedenle askıya alındığı bilinen bir örnek yoktur. Riski size ait olmak üzere kullanın. \n \nExhale yalnızca belirtecinizi çıkarır ve diğer her şey yerel olarak saklanır.
     <string name="dismiss">İptal</string>
     <string name="options">Seçenekler</string>
     <string name="preview">Ön izleme</string>

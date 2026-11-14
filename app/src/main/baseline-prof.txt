@@ -1,13 +1,13 @@
 # App-code baseline profile.
 #
-# The APK shipped only the libraries' profiles, so every Convx method ran interpreted and
+# The APK shipped only the libraries' profiles, so every Exhale method ran interpreted and
 # JIT-compiled through launch and the first scrolls (traced on SM-M346B: status=verify,
 # JIT thread busy 4.3s of the first 4s). Sideloaded installs have no Play cloud profile,
 # so profileinstaller (bundled via Compose) installs this one and dexopt compiles it.
 #
 # ponytail: wildcards mark the whole app hot; replace with a Macrobenchmark-generated
 # profile (launch + Home scroll + open player) if odex size or install-time dexopt matters.
-HSPLcom/convx/music/**->**(**)**
-Lcom/convx/music/**;
+HSPLcom/ozyern/exhale/**->**(**)**
+Lcom/ozyern/exhale/**;
 HSPLcom/music/innertube/**->**(**)**
 Lcom/music/innertube/**;

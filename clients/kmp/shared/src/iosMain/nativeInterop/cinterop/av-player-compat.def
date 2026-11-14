@@ -1,4 +1,4 @@
-package = com.convx.music.client.ios.avplayercompat
+package = com.ozyern.exhale.client.ios.avplayercompat
 language = Objective-C
 headers = AVPlayerCompat.h
 compilerOpts = -framework AVFoundation -framework CoreMedia

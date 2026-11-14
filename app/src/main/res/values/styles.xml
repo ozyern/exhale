@@ -1,6 +1,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
 
-    <style name="Theme.Convx" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.Exhale" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowContentOverlay">@null</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
         <item name="android:windowMinWidthMinor">100%</item>
@@ -12,15 +12,15 @@
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 
-    <!-- Launch theme: a plain black system splash that ConvxIntro picks up from seamlessly. -->
-    <style name="Theme.Convx.Starting" parent="Theme.SplashScreen">
+    <!-- Launch theme: a plain black system splash that ExhaleIntro picks up from seamlessly. -->
+    <style name="Theme.Exhale.Starting" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">#000000</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/splash_blank</item>
-        <item name="postSplashScreenTheme">@style/Theme.Convx</item>
+        <item name="postSplashScreenTheme">@style/Theme.Exhale</item>
     </style>
 
     <!-- Widget Theme with Material 3 colors fallback for API < 31 -->
-    <style name="Theme.Widget.Convx" parent="@android:style/Theme.DeviceDefault.DayNight">
+    <style name="Theme.Widget.Exhale" parent="@android:style/Theme.DeviceDefault.DayNight">
         <item name="android:colorBackground">#E6E1E5</item>
     </style>
 </resources>

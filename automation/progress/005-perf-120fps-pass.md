@@ -35,7 +35,7 @@ measured result.
 
 ### F1 — Every hero screen recomposes on every scrolled pixel for the first 300px
 
-`app/src/main/kotlin/com/convx/music/ui/component/HeroArtwork.kt:292-308`
+`app/src/main/kotlin/com/ozyern/exhale/ui/component/HeroArtwork.kt:292-308`
 
 ```kotlin
 @Composable
@@ -103,7 +103,7 @@ derived state (flips twice per scroll, not per frame).
 
 ### F2 — O(n) list allocation per recomposition feeding `rememberHeroSource`
 
-`app/src/main/kotlin/com/convx/music/ui/component/HeroArtwork.kt:336-356`
+`app/src/main/kotlin/com/ozyern/exhale/ui/component/HeroArtwork.kt:336-356`
 
 `rememberHeroSource(staticArt, animatedArt, songs)` keys its `remember` on
 `songs`. Every call site builds that list **inline, unmemoized**:
@@ -136,15 +136,15 @@ first song. Twelve call sites; mechanical.
 
 ### F3 — Full transition plan recomputed on the main thread at 4 Hz, with unconditional string formatting
 
-`app/src/main/kotlin/com/convx/music/playback/MusicService.kt:318`
+`app/src/main/kotlin/com/ozyern/exhale/playback/MusicService.kt:318`
 ```kotlin
 private var scope = CoroutineScope(Dispatchers.Main) + SupervisorJob()
 ```
-`app/src/main/kotlin/com/convx/music/playback/MusicService.kt:604-611` passes
+`app/src/main/kotlin/com/ozyern/exhale/playback/MusicService.kt:604-611` passes
 that scope to `CrossfadeController`, and calls `crossfade?.start()`
 unconditionally.
 
-`app/src/main/kotlin/com/convx/music/playback/CrossfadeController.kt:358-373` —
+`app/src/main/kotlin/com/ozyern/exhale/playback/CrossfadeController.kt:358-373` —
 the ticker is `scope.launch { while (isActive) { tick(); delay(step) } }`, so
 **`tick()` runs on the main thread**, at (line 1590-1599):
 
@@ -190,7 +190,7 @@ build `verdict` only when a log would actually be emitted; skip
 
 ### F4 — `graphicsLayer { alpha = 1f }` on the unavailable-song badge
 
-`app/src/main/kotlin/com/convx/music/ui/component/Items.kt:202`
+`app/src/main/kotlin/com/ozyern/exhale/ui/component/Items.kt:202`
 
 ```kotlin
 Icon(
@@ -249,7 +249,7 @@ Verified against current code, not assumed from memory:
 
 - **`bounceClick` / `combinedBounceClick`** (`ui/utils/ModifierExt.kt:101-128`)
   are plain `clickable`/`combinedClickable`. The `composed {}` regression
-  described in [[convx-perf-findings-2026-08-10]] has not come back, and the
+  described in [[exhale-perf-findings-2026-08-10]] has not come back, and the
   comment block at lines 84-98 documents why. The only remaining `composed {}`
   in app code are `pressWobble` (`ModifierExt.kt:68`, one call site,
   `AppNavigation.kt:169`), `heroPullZoom` (`MotionModifiers.kt:119`, one per

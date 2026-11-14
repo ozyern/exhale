@@ -3,12 +3,12 @@ plugins {
     alias(libs.plugins.android.kmp.library)
 }
 
-group = "com.convx.shared"
+group = "com.ozyern.shared"
 version = "0.1.0"
 
 kotlin {
     android {
-        namespace = "com.convx.shared.search"
+        namespace = "com.ozyern.shared.search"
         compileSdk = 37
         minSdk = 26
     }
@@ -19,7 +19,7 @@ kotlin {
 
     targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget>().configureEach {
         binaries.framework {
-            baseName = "ConvxSearch"
+            baseName = "ExhaleSearch"
             isStatic = true
         }
     }

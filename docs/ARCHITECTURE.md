@@ -1,6 +1,6 @@
-# Convx architecture
+# Exhale architecture
 
-Convx is one repository with one Android app and three KMP clients (iOS, desktop, watchOS) that share Kotlin Multiplatform modules.
+Exhale is one repository with one Android app and three KMP clients (iOS, desktop, watchOS) that share Kotlin Multiplatform modules.
 
 ```text
 app/                    Production Android app (Media3, Room schema 40, Koin)
@@ -13,7 +13,7 @@ clients/kmp/            Separate Gradle build for the KMP hosts
 core/                   Shared by every feature
   innertube/            YouTube Music requests and response mapping (:innertube)
   design-system/        Tokens, fonts (:design-system)
-  hig/                  Convx controls, symbols, glass components (:hig)
+  hig/                  Exhale controls, symbols, glass components (:hig)
 
 feature/<name>/         One folder per feature, split by layer
   domain/               Models and contracts, pure commonMain (:<name>-core)

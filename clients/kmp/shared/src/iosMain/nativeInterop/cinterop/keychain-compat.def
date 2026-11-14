@@ -1,4 +1,4 @@
-package = com.convx.music.client.ios.keychaincompat
+package = com.ozyern.exhale.client.ios.keychaincompat
 language = Objective-C
 headers = KeychainCompat.h
 compilerOpts = -framework CoreFoundation -framework Foundation -framework Security

@@ -185,7 +185,7 @@ private class IosPlayerScriptWebView private constructor(
         val player = exportPlayerFunctions(playerJs, signatureInfo, throttlingInfo)
         val safePlayer = player.replace(Regex("</script", RegexOption.IGNORE_CASE), "<\\/script")
         val page = """<!doctype html><html><head><meta charset="utf-8"><script>
-            window.onerror = function(message) { window._convxPlayerError = String(message); };
+            window.onerror = function(message) { window._exhalePlayerError = String(message); };
             $safePlayer
             </script></head><body></body></html>"""
         withContext(Dispatchers.Main.immediate) {

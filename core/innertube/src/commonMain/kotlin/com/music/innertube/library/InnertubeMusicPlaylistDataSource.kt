@@ -1,9 +1,9 @@
 package com.music.innertube.library
 
-import com.convx.music.library.MusicLibraryMutationError
-import com.convx.music.library.MusicLibraryMutationResult
-import com.convx.music.library.MusicPlaylistCreationResult
-import com.convx.music.library.MusicPlaylistRemoteDataSource
+import com.ozyern.exhale.library.MusicLibraryMutationError
+import com.ozyern.exhale.library.MusicLibraryMutationResult
+import com.ozyern.exhale.library.MusicPlaylistCreationResult
+import com.ozyern.exhale.library.MusicPlaylistRemoteDataSource
 import com.music.innertube.InnertubeRepository
 import kotlinx.coroutines.CancellationException
 

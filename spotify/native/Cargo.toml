@@ -1,11 +1,11 @@
 [package]
-name = "convx_spotify"
+name = "exhale_spotify"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.81"
 
 [lib]
-name = "convx_spotify"
+name = "exhale_spotify"
 crate-type = ["cdylib"]
 
 [dependencies]

@@ -4,12 +4,12 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-group = "com.convx.shared"
+group = "com.ozyern.shared"
 version = "0.1.0"
 
 kotlin {
     android {
-        namespace = "com.convx.shared.lyrics.data"
+        namespace = "com.ozyern.shared.lyrics.data"
         compileSdk = 37
         minSdk = 26
     }

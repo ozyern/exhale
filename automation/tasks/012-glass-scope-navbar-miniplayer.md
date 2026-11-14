@@ -51,7 +51,7 @@ one liquid glass; independent settings to extra portrait or landscape.")
 
 ## Context
 
-`app/src/main/kotlin/com/convx/music/ui/component/GlassEffect.kt`
+`app/src/main/kotlin/com/ozyern/exhale/ui/component/GlassEffect.kt`
 (`GlassEffectConfig`, `LocalGlassEffectConfig`, `GlassStyle` enum, `MINI_PLAYER`
 enum member already exists suggesting per-surface awareness may partly
 exist already — check before assuming a rewrite is needed). This task must

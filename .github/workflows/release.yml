@@ -76,17 +76,17 @@ jobs:
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
           test "${TAG#v}" = "$VERSION"
           VERSION_CODE=$(python3 -c 'import sys; a,b,c=(int(v) for v in sys.argv[1].split(".")); print((a*10000+b*100+c)*10000+9999)' "$VERSION")
-          cp app/build/outputs/apk/universalGms/release/*.apk convx-universal-gms.apk
-          cp app/build/outputs/apk/arm32Gms/release/*.apk convx-arm32-gms.apk
-          cp app/build/outputs/apk/universalFoss/release/*.apk convx-universal-foss.apk
-          cp app/build/outputs/apk/arm32Foss/release/*.apk convx-arm32-foss.apk
+          cp app/build/outputs/apk/universalGms/release/*.apk exhale-universal-gms.apk
+          cp app/build/outputs/apk/arm32Gms/release/*.apk exhale-arm32-gms.apk
+          cp app/build/outputs/apk/universalFoss/release/*.apk exhale-universal-foss.apk
+          cp app/build/outputs/apk/arm32Foss/release/*.apk exhale-arm32-foss.apk
           IMAGE_ARGS=()
           if [ -n "${UPDATER_IMAGE_URL:-}" ]; then IMAGE_ARGS+=(--image "$UPDATER_IMAGE_URL"); fi
-          python3 tools/publish_updater_metadata.py --version "$VERSION" --version-code "$VERSION_CODE" --release-notes ".github/release-notes/$TAG.md" --output updater.json "${IMAGE_ARGS[@]}" convx-universal-gms.apk convx-arm32-gms.apk convx-universal-foss.apk convx-arm32-foss.apk
+          python3 tools/publish_updater_metadata.py --version "$VERSION" --version-code "$VERSION_CODE" --release-notes ".github/release-notes/$TAG.md" --output updater.json "${IMAGE_ARGS[@]}" exhale-universal-gms.apk exhale-arm32-gms.apk exhale-universal-foss.apk exhale-arm32-foss.apk
 
       - name: Upload APKs and updater metadata to Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          gh release upload "$TAG" convx-universal-gms.apk convx-arm32-gms.apk convx-universal-foss.apk convx-arm32-foss.apk updater.json --repo "${{ github.repository }}" --clobber
+          gh release upload "$TAG" exhale-universal-gms.apk exhale-arm32-gms.apk exhale-universal-foss.apk exhale-arm32-foss.apk updater.json --repo "${{ github.repository }}" --clobber

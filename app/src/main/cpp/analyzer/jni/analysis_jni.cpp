@@ -77,7 +77,7 @@ void AppendDoubles(std::string& out, const std::vector<double>& values) {
   out += ']';
 }
 
-void AppendEnergyCurve(std::string& out, const std::vector<convx::smart::EnergyPoint>& points) {
+void AppendEnergyCurve(std::string& out, const std::vector<exhale::smart::EnergyPoint>& points) {
   out += '[';
   for (size_t index = 0; index < points.size(); ++index) {
     if (index > 0) out += ',';
@@ -90,7 +90,7 @@ void AppendEnergyCurve(std::string& out, const std::vector<convx::smart::EnergyP
   out += ']';
 }
 
-void AppendCuePoints(std::string& out, const std::vector<convx::smart::MixCuePoint>& points) {
+void AppendCuePoints(std::string& out, const std::vector<exhale::smart::MixCuePoint>& points) {
   out += '[';
   for (size_t index = 0; index < points.size(); ++index) {
     if (index > 0) out += ',';
@@ -118,7 +118,7 @@ void AppendField(std::string& out, const char* name, double value, bool first = 
 extern "C" {
 
 JNIEXPORT jstring JNICALL
-Java_com_convx_music_playback_smart_TrackFeatures_nativeAnalyze(
+Java_com_ozyern_exhale_playback_smart_TrackFeatures_nativeAnalyze(
     JNIEnv* env,
     jclass /* clazz */,
     jfloatArray samples,
@@ -130,8 +130,8 @@ Java_com_convx_music_playback_smart_TrackFeatures_nativeAnalyze(
     env->GetFloatArrayRegion(samples, 0, count, input.data());
   }
 
-  const convx::smart::AnalysisResult result =
-      convx::smart::AnalyzeAudio(input, sample_rate, duration);
+  const exhale::smart::AnalysisResult result =
+      exhale::smart::AnalyzeAudio(input, sample_rate, duration);
 
   std::string json;
   // A whole-track energy curve dominates the output; reserving up front keeps
@@ -176,7 +176,7 @@ Java_com_convx_music_playback_smart_TrackFeatures_nativeAnalyze(
 }
 
 JNIEXPORT jdouble JNICALL
-Java_com_convx_music_playback_smart_TrackFeatures_nativeSampleRate(
+Java_com_ozyern_exhale_playback_smart_TrackFeatures_nativeSampleRate(
     JNIEnv* /* env */,
     jclass /* clazz */) {
   // The rate the analyzer's window and hop constants assume.
@@ -187,7 +187,7 @@ Java_com_convx_music_playback_smart_TrackFeatures_nativeSampleRate(
 // because the caller decodes at whatever rate the container carries and only
 // then knows what conversion is needed.
 JNIEXPORT jfloatArray JNICALL
-Java_com_convx_music_playback_smart_TrackFeatures_nativeResample(
+Java_com_ozyern_exhale_playback_smart_TrackFeatures_nativeResample(
     JNIEnv* env,
     jclass /* clazz */,
     jfloatArray samples,
@@ -200,7 +200,7 @@ Java_com_convx_music_playback_smart_TrackFeatures_nativeResample(
   }
 
   const std::vector<float> resampled =
-      convx::smart::Resample(input, input_rate, output_rate);
+      exhale::smart::Resample(input, input_rate, output_rate);
 
   const jsize produced = static_cast<jsize>(resampled.size());
   jfloatArray result = env->NewFloatArray(produced);

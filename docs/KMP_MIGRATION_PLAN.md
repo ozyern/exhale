@@ -1,17 +1,17 @@
-# Convx KMP Product and Engineering Plan
+# Exhale KMP Product and Engineering Plan
 
 **Status:** Proposed execution plan  
-**Workspace:** Convx KMP copy  
+**Workspace:** Exhale KMP copy  
 **Prepared:** 2026-10-23
 
 ## 1. Executive decision
 
-Move Convx to Kotlin Multiplatform incrementally. Keep the Android application and release path working while shared modules are extracted. Do not replace the current app with a one-shot rewrite.
+Move Exhale to Kotlin Multiplatform incrementally. Keep the Android application and release path working while shared modules are extracted. Do not replace the current app with a one-shot rewrite.
 
 First-wave clients:
 
 - **Android:** current app remains the compatibility and release baseline.
-- **iPhone and iPad:** shared Convx feature and presentation code with native platform integration where it matters.
+- **iPhone and iPad:** shared Exhale feature and presentation code with native platform integration where it matters.
 - **Desktop:** macOS, Windows, and Linux, with its own navigation and window layout rather than a phone screen stretched across a large window.
 - **Browser web app:** out of scope for this migration. Do not add a browser client or Kotlin/Wasm target.
 
@@ -60,7 +60,7 @@ Each seam must have a concise interface, explicit error/lifecycle behavior, an A
 | :shared:core | Portable identifiers, results, clocks, coroutine-facing contracts, common serialization conventions. |
 | :shared:domain | Product models, use cases, repository interfaces, queue/playlist rules, search/library behavior, feature-state transitions. |
 | :shared:data | Portable Ktor clients, common DTOs/parsers, shared repository and sync logic. |
-| :shared:design-system | Convx tokens, typography, spacing, motion, and cross-target Compose controls. |
+| :shared:design-system | Exhale tokens, typography, spacing, motion, and cross-target Compose controls. |
 | :shared:mobile-ui | Shared Android/iOS mobile navigation and screens, adaptive for phones and tablets. |
 | :app | Existing Android shell; migrate its Hilt graph to Koin as shared modules are adopted. |
 | :iosApp | Xcode shell, signing, URL schemes, lifecycle, entitlements, and native integration; may host shared Compose screens. |
@@ -79,7 +79,7 @@ Keep current modules until each has a proven owner and migration path. Convert o
 - **SystemBrowserAuth:** start OAuth and return a validated callback to common auth state.
 - **Clock** and **RandomSource:** inject time/randomness into retries, shuffle, sync, and sleep timer.
 
-Never pass Android Context, Uri, MediaItem, Bitmap, Bundle, SupportSQLiteDatabase, or ExoPlayer through common interfaces. Convert them into Convx models at the adapter seam. Share provider protocols only when dependencies and license terms support every target.
+Never pass Android Context, Uri, MediaItem, Bitmap, Bundle, SupportSQLiteDatabase, or ExoPlayer through common interfaces. Convert them into Exhale models at the adapter seam. Share provider protocols only when dependencies and license terms support every target.
 
 ## 4. Feature sharing and client experience
 
@@ -102,13 +102,13 @@ All adapters must satisfy shared contract tests for observable behavior. Feature
 
 ### Mobile design
 
-Keep Convx's calm, glass-inspired identity. Share tokens and screen structure where that preserves familiar behavior. Keep Android back/notification behavior native; give iOS expected edge navigation, safe areas, keyboard behavior, share sheets, and system media controls. Do not force one platform's gestures or controls onto the other.
+Keep Exhale's calm, glass-inspired identity. Share tokens and screen structure where that preserves familiar behavior. Keep Android back/notification behavior native; give iOS expected edge navigation, safe areas, keyboard behavior, share sheets, and system media controls. Do not force one platform's gestures or controls onto the other.
 
 Use one design-system module for color roles, typography, spacing, radii, motion, artwork treatment, focus/selection, and accessibility semantics. Glass needs platform-tested implementations and a legible opaque fallback for contrast, reduced transparency, and slower GPUs.
 
 ### Desktop design
 
-Use Apple Music's web player as a structural reference for clear navigation, content-led discovery, collections, strong artwork, and accessible playback. Use Apple's macOS Human Interface Guidelines for window, sidebar, toolbar, and keyboard behavior. Keep Convx branding, typography, artwork treatment, and colors; do not reproduce Apple assets or a pixel-identical layout.
+Use Apple Music's web player as a structural reference for clear navigation, content-led discovery, collections, strong artwork, and accessible playback. Use Apple's macOS Human Interface Guidelines for window, sidebar, toolbar, and keyboard behavior. Keep Exhale branding, typography, artwork treatment, and colors; do not reproduce Apple assets or a pixel-identical layout.
 
 Desktop is a workspace:
 
@@ -153,7 +153,7 @@ DataStore and MMKV are Android-specific. Move preference names, defaults, valida
 | :integrations | Share DTOs and protocol logic after Android refs and HTTP engines are separated. |
 | :spotify / Rust-NDK engine | Keep Android implementation. Share import/auth/playlist mapping; investigate Apple/Linux/Windows Rust targets and browser handoff separately. |
 | :network-storage / SMBJ / Media3 OkHttp source | Keep Android adapter. Share source descriptors/sync policy; prove SMB/WebDAV and media-source support per target. |
-| :hig / backdrop effects | Reuse Convx tokens and stable controls first. Audit rendering, shaders, gestures, and target support; provide tested fallbacks. |
+| :hig / backdrop effects | Reuse Exhale tokens and stable controls first. Audit rendering, shaders, gestures, and target support; provide tested fallbacks. |
 | Room, MMKV, DataStore, dependency injection | Keep platform implementations behind shared interfaces until adapters and migrations are proven; Koin is the selected cross-platform DI framework. |
 | ONNX, C++, FFTW, Android audio effects | Native-platform work. Measure portable core, per-platform runtime, or explicit reduced capability for each feature. |
 

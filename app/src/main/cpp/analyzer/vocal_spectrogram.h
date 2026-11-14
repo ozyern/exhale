@@ -42,7 +42,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace convx::smart {
+namespace exhale::smart {
 
 inline constexpr double kVocalSpectrogramSampleRate = 44100;
 inline constexpr size_t kVocalSpectrogramChannels = 2;
@@ -74,4 +74,4 @@ VocalSpectrogram ComputeVocalSpectrogram(
   double sample_rate
 );
 
-}  // namespace convx::smart
+}  // namespace exhale::smart

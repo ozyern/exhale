@@ -45,7 +45,7 @@ def main():
     for value in args.apks:
         path = Path(value)
         name = path.name
-        match = re.fullmatch(r"convx-(universal|arm32)-(gms|foss)\.apk", name)
+        match = re.fullmatch(r"exhale-(universal|arm32)-(gms|foss)\.apk", name)
         if not match or not path.is_file() or path.stat().st_size == 0:
             parser.error(f"unexpected or empty APK: {path}")
         abi, variant = match.groups()
@@ -73,10 +73,10 @@ def main():
         value = re.sub(r"[`*_~]", "", value)
         summary_parts.append(value)
     summary = " ".join(summary_parts)[:800]
-    result = {"schemaVersion": 1, "packageName": "com.convx.music", "version": args.display_version or args.version,
+    result = {"schemaVersion": 1, "packageName": "com.ozyern.exhale", "version": args.display_version or args.version,
               "channel": "nightly" if args.nightly_run else "stable",
               "versionCode": args.version_code + args.nightly_run,
-              "description": summary or f"Convx {args.version}", "changelog": changelog,
+              "description": summary or f"Exhale {args.version}", "changelog": changelog,
               "assets": sorted(assets, key=lambda item: (item["variant"], item["name"]))}
     if args.image:
         if not args.image.startswith("https://") or len(args.image) > 2048:

@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <instrumentation
-        android:name="com.convx.music.network.NetworkSecurityInstrumentation"
-        android:targetPackage="com.convx.music.debug"
+        android:name="com.ozyern.exhale.network.NetworkSecurityInstrumentation"
+        android:targetPackage="com.ozyern.exhale.debug"
         android:label="Network security regression checks" />
     <instrumentation
-        android:name="com.convx.music.db.RoomMigrationTestRunner"
-        android:targetPackage="com.convx.music.debug"
+        android:name="com.ozyern.exhale.db.RoomMigrationTestRunner"
+        android:targetPackage="com.ozyern.exhale.debug"
         android:label="Room migration tests" />
 </manifest>

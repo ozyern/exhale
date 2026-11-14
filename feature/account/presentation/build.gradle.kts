@@ -3,12 +3,12 @@ plugins {
     alias(libs.plugins.android.kmp.library)
 }
 
-group = "com.convx.shared.presentation"
+group = "com.ozyern.shared.presentation"
 version = "0.1.0"
 
 kotlin {
     android {
-        namespace = "com.convx.music.account.presentation"
+        namespace = "com.ozyern.exhale.account.presentation"
         compileSdk = 37
         minSdk = 26
     }

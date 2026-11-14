@@ -1,4 +1,4 @@
-# Task 010 — the reference app spatial audio ported into Convx
+# Task 010 — the reference app spatial audio ported into Exhale
 
 ## What the reference app actually does (read in full, not skimmed)
 
@@ -18,7 +18,7 @@ of them kills the whole sink ("MediaCodecAudioRenderer error") before a sample
 is written. `NOT_SET` = "inactive for this format", and the chain routes around
 the processor. the reference app's own comment records that this bug only showed up on
 local mono/multichannel files, since YouTube is always stereo. Ported verbatim,
-comment included — Convx has a local library and lossless (non-16-bit) paths,
+comment included — Exhale has a local library and lossless (non-16-bit) paths,
 so this is the difference between "spatial works" and "half the library won't
 play".
 
@@ -37,26 +37,26 @@ Wiring on the reference app's side:
   strings `spatial_audio` / `spatial_audio_subtitle`.
 
 the reference app has **no** Bit Perfect mode, so nothing there to port for that half —
-the bypass is Convx-specific and was modelled on Convx's own EQ bypass.
+the bypass is Exhale-specific and was modelled on Exhale's own EQ bypass.
 
-## What landed in Convx
+## What landed in Exhale
 
-New — `app/src/main/kotlin/com/convx/music/playback/audio/SpatialAudioProcessor.kt`
+New — `app/src/main/kotlin/com/ozyern/exhale/playback/audio/SpatialAudioProcessor.kt`
 Straight port (package + license header changed, `java.nio.ByteBuffer` imported
-rather than fully-qualified in the signature, doc reworded to point at Convx's
+rather than fully-qualified in the signature, doc reworded to point at Exhale's
 `EqualizerService.setBitPerfectBypass` for the bypass rationale). DSP constants,
 delay length, `NOT_SET` bail-out and clamping are byte-for-byte the same.
 
-`app/src/main/kotlin/com/convx/music/constants/PreferenceKeys.kt`
+`app/src/main/kotlin/com/ozyern/exhale/constants/PreferenceKeys.kt`
 `SpatialAudioKey = booleanPreferencesKey("spatialAudio")`, documented next to
 `BitPerfectKey`.
 
-`app/src/main/kotlin/com/convx/music/playback/MusicService.kt`
+`app/src/main/kotlin/com/ozyern/exhale/playback/MusicService.kt`
 - `cachedSpatialAudio` mirror field, alongside `cachedBitPerfect` /
   `cachedSkipSilence`.
 - `playerSpatialProcessors: HashMap<Player, SpatialAudioProcessor>`, mirroring
   the existing `playerSilenceProcessors` / `playerStallWatchdogs` maps — this is
-  Convx's equivalent of the reference app's A/B fields, and it covers *every* player
+  Exhale's equivalent of the reference app's A/B fields, and it covers *every* player
   because all three creation sites (main, crossfade standby, DJ engine) go
   through `createExoPlayer()`.
 - `createExoPlayer()` builds one `SpatialAudioProcessor` per player, seeds it
@@ -79,11 +79,11 @@ delay length, `NOT_SET` bail-out and clamping are byte-for-byte the same.
 - `playerSpatialProcessors.remove(player)` in `onDestroy`, next to the existing
   silence-processor removal.
 
-`app/src/main/res/values/convx_strings.xml`
+`app/src/main/res/values/exhale_strings.xml`
 `spatial_audio`, `spatial_audio_description`,
 `spatial_audio_disabled_by_bit_perfect` (added beside the Bit Perfect block).
 
-`app/src/main/kotlin/com/convx/music/ui/screens/settings/PlayerAdvancedSettings.kt`
+`app/src/main/kotlin/com/ozyern/exhale/ui/screens/settings/PlayerAdvancedSettings.kt`
 An `IosSettingsItem` immediately after the Bit Perfect row (this is the page
 that already owns audio-pipeline power-user toggles): switch bound to
 `SpatialAudioKey`, forced to render off + disabled while Bit Perfect is on, with
@@ -96,7 +96,7 @@ crossfade-disabled state.
 `EqualizerService.setBitPerfectBypass(bypass)` sets `forceBypass` on each EQ
 processor: it neither clears the saved profile nor touches `shouldDisable`, so
 the user's own EQ state restores untouched when Bit Perfect goes back off. The
-spatial port does the identical thing at the level Convx's spatial state lives
+spatial port does the identical thing at the level Exhale's spatial state lives
 at — the DataStore preference is never written by the bypass; only the derived
 `enabled` flag is recomputed. Turn Bit Perfect off and the spatial toggle's own
 value takes effect again with no user action.
@@ -118,7 +118,7 @@ row's own crossfade display — noted, not touched.)
 
 ## Check left behind
 
-`app/src/test/kotlin/com/convx/music/playback/audio/SpatialAudioProcessorTest.kt`
+`app/src/test/kotlin/com/ozyern/exhale/playback/audio/SpatialAudioProcessorTest.kt`
 — three plain-JUnit cases, no framework/fixtures:
 1. mono and float formats leave the processor inactive (`NOT_SET`, not a throw)
    — the regression that took the reference app's local library down.

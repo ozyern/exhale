@@ -39,7 +39,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace convx::smart {
+namespace exhale::smart {
 
 // Zero crossings kept either side of each output sample. Higher is a better
 // stopband at linear cost; 32 puts the aliasing well below the noise floor of
@@ -60,4 +60,4 @@ std::vector<float> Resample(
   double output_rate
 );
 
-}  // namespace convx::smart
+}  // namespace exhale::smart

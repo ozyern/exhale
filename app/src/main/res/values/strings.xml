@@ -3,7 +3,7 @@
 <!-- Upstream the reference app strings -->
 <!-- Do not add new features here -->
 <!-- Try to re-use strings here, but be careful on its usage e.g. verb vs noun -->
-<!-- "the reference app" is replaced with "Convx" -->
+<!-- "the reference app" is replaced with "Exhale" -->
 <!-- Translators: Do not modify this file for translations, use the reference app's Weblate instead. -->
 
 <resources>
@@ -259,7 +259,7 @@
     <string name="demucs_auto_download_desc">On Wi-Fi, gets the Demucs model in the background and resumes if interrupted</string>
     <string name="stem_lab">Stem lab (debug)</string>
     <string name="stem_lab_split_now_playing">Split now playing with every separator</string>
-    <string name="stem_lab_desc">Saves each stem of “%1$s” to Music/Convx Stem Lab. Tap again to stop.</string>
+    <string name="stem_lab_desc">Saves each stem of “%1$s” to Music/Exhale Stem Lab. Tap again to stop.</string>
     <string name="stem_lab_nothing_playing">Play a downloaded or cached song first</string>
     <string name="stem_lab_saved">Saved to %1$s</string>
     <string name="stems_storage">Stems on this device (tap to delete)</string>
@@ -589,7 +589,7 @@
     <string name="restore_failed">Failed to restore backup</string>
 
     <string name="discord_integration">Discord Integration</string>
-    <string name="discord_information">Convx uses the KizzyRPC library to set your Discord account\'s status. This involves using the Discord Gateway connection, which may be considered a violation of Discord\'s TOS. However, there are no known cases of user accounts being suspended for this reason. Use at your own risk.\n\Convx will only extract your token, and everything else is stored locally.</string>
+    <string name="discord_information">Exhale uses the KizzyRPC library to set your Discord account\'s status. This involves using the Discord Gateway connection, which may be considered a violation of Discord\'s TOS. However, there are no known cases of user accounts being suspended for this reason. Use at your own risk.\n\Exhale will only extract your token, and everything else is stored locally.</string>
     <string name="dismiss">Dismiss</string>
     <string name="options">Options</string>
     <string name="preview">Preview</string>
@@ -657,7 +657,7 @@
 
     <!-- App icon -->
     <string name="app_icon">App icon</string>
-    <string name="app_icon_desc">Pick the icon Convx shows on your home screen</string>
+    <string name="app_icon_desc">Pick the icon Exhale shows on your home screen</string>
     <string name="app_icon_change_warning">The icon may take a few seconds to update, and some launchers drop the shortcut from your home screen until you re-add it.</string>
     <string name="app_icon_white">White</string>
     <string name="app_icon_azure">Azure</string>
@@ -688,7 +688,7 @@
     <string name="preset_imported">Preset imported</string>
     <string name="preset_import_failed">That file is not a valid preset.</string>
     <string name="preset_import_too_large">That preset is too large to import.</string>
-    <string name="preset_import_newer_version">That preset was made with a newer version of Convx.</string>
+    <string name="preset_import_newer_version">That preset was made with a newer version of Exhale.</string>
     <string name="preset_category_colors">Colors</string>
     <string name="preset_category_layout">Layout and sizing</string>
     <string name="preset_category_font">Fonts</string>
@@ -744,7 +744,7 @@
 
     <string name="media_import_too_large">That file is too large.</string>
     <string name="media_import_unsupported">Only PNG, JPEG, WebP and SVG images are supported.</string>
-    <string name="media_import_unsafe_svg">That SVG uses features Convx will not render.</string>
+    <string name="media_import_unsafe_svg">That SVG uses features Exhale will not render.</string>
     <string name="media_import_corrupt">That image could not be read.</string>
     <string name="media_import_too_many_pixels">That image is too big to decode safely.</string>
     <string name="media_import_io">Could not read that file.</string>
@@ -756,8 +756,8 @@
     <string name="diy_rotation">Rotation</string>
     <string name="diy_size">Size</string>
     <string name="local_permission_title">Allow access to your music</string>
-    <string name="local_permission_body">Convx needs permission to read audio files on this device so it can build your local library. Nothing leaves your phone.</string>
-    <string name="local_permission_blocked_body">Access was turned off for Convx. Open Settings, then allow Music and audio to see the music on this device.</string>
+    <string name="local_permission_body">Exhale needs permission to read audio files on this device so it can build your local library. Nothing leaves your phone.</string>
+    <string name="local_permission_blocked_body">Access was turned off for Exhale. Open Settings, then allow Music and audio to see the music on this device.</string>
     <string name="local_permission_allow">Allow access</string>
     <string name="local_permission_open_settings">Open Settings</string>
     <string name="local_empty_title">No music found</string>

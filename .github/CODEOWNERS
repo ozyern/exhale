@@ -1,6 +1,6 @@
 # Every change is reviewed by the maintainer. Add owners per area as the team grows.
-*                         @cosmictaserdev-creator
+*                         @ozyern
 
 # Release and CI changes
-/.github/                 @cosmictaserdev-creator
-/version.properties       @cosmictaserdev-creator
+/.github/                 @ozyern
+/version.properties       @ozyern

@@ -33,7 +33,7 @@
 // Offline DSP implementation: reusable vectors and percentile copies favor
 // readable whole-track analysis over real-time allocation constraints.
 
-namespace convx::smart {
+namespace exhale::smart {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
@@ -678,4 +678,4 @@ AnalysisResult AnalyzeAudio(
   return result;
 }
 
-}  // namespace convx::smart
+}  // namespace exhale::smart

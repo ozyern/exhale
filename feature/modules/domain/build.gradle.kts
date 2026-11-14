@@ -3,11 +3,11 @@ plugins {
     alias(libs.plugins.android.kmp.library)
     alias(libs.plugins.kotlin.serialization)
 }
-group = "com.convx.shared"
+group = "com.ozyern.shared"
 version = "0.1.0"
 kotlin {
     android {
-        namespace = "com.convx.music.modules.core"
+        namespace = "com.ozyern.exhale.modules.core"
         compileSdk = 37
         minSdk = 26
     }

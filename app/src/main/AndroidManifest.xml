@@ -63,7 +63,7 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="false"
-        android:theme="@style/Theme.Convx"
+        android:theme="@style/Theme.Exhale"
         tools:targetApi="tiramisu">
         <uses-library
             android:name="org.apache.http.legacy"
@@ -72,7 +72,7 @@
         <activity
             android:name=".ui.screens.CrashActivity"
             android:exported="false"
-            android:theme="@style/Theme.Convx"
+            android:theme="@style/Theme.Exhale"
             android:excludeFromRecents="true"
             android:process=":crash" />
 
@@ -85,7 +85,7 @@
             android:icon="@mipmap/ic_launcher"
             android:label="@string/app_name"
             android:roundIcon="@mipmap/ic_launcher_round"
-            android:theme="@style/Theme.Convx.Starting" />
+            android:theme="@style/Theme.Exhale.Starting" />
 
         <activity
             android:name=".MainActivity"
@@ -93,7 +93,7 @@
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
             android:supportsPictureInPicture="true"
             android:launchMode="singleTask"
-            android:theme="@style/Theme.Convx"
+            android:theme="@style/Theme.Exhale"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -116,18 +116,18 @@
                 <data android:pathPrefix="/listen" />
             </intent-filter>
 
-            <!-- Party invite: convx://party/CODE -->
+            <!-- Party invite: exhale://party/CODE -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data android:scheme="convx" />
+                <data android:scheme="exhale" />
                 <data android:host="party" />
             </intent-filter>
 
-            <!-- General Convx scheme for direct deep links (convx://watch?v=..., convx://playlist?list=..., etc.) -->
+            <!-- General Exhale scheme for direct deep links (exhale://watch?v=..., exhale://playlist?list=..., etc.) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
@@ -135,7 +135,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data android:scheme="convx" />
+                <data android:scheme="exhale" />
             </intent-filter>
 
             <!-- Custom scheme for direct opens from browser (works in ALL browsers) -->
@@ -180,33 +180,6 @@
                 <data android:pathPrefix="/search" />
             </intent-filter>
 
-            <!-- Convx domain filter -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
-                <action android:name="android.nfc.action.NDEF_DISCOVERED" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <data android:scheme="http" />
-                <data android:scheme="https" />
-                <data android:host="convx.aryavl.com" />
-                <!-- video prefix -->
-                <data android:pathPrefix="/v/" />
-                <data android:pathPrefix="/watch" />
-                <data android:pathPrefix="/song/" />
-                <!-- channel prefix -->
-                <data android:pathPrefix="/channel/" />
-                <data android:pathPrefix="/artist/" />
-                <!-- playlist prefix -->
-                <data android:pathPrefix="/playlist" />
-                <!-- album prefix -->
-                <data android:pathPrefix="/album/" />
-                <data android:pathPrefix="/browse/" />
-                <!-- search prefix -->
-                <data android:pathPrefix="/search" />
-            </intent-filter>
 
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
@@ -251,7 +224,7 @@
             android:name=".core.updater.UpdateInstallActivity"
             android:exported="false"
             android:excludeFromRecents="true"
-            android:theme="@style/Theme.Convx" />
+            android:theme="@style/Theme.Exhale" />
 
         <receiver
             android:name=".core.updater.UpdateInstallReceiver"
@@ -511,9 +484,9 @@
             android:label="@string/widget_music_player">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.convx.music.widget.PLAY_PAUSE" />
-                <action android:name="com.convx.music.widget.LIKE" />
-                <action android:name="com.convx.music.widget.UPDATE_WIDGET" />
+                <action android:name="com.ozyern.exhale.widget.PLAY_PAUSE" />
+                <action android:name="com.ozyern.exhale.widget.LIKE" />
+                <action android:name="com.ozyern.exhale.widget.UPDATE_WIDGET" />
             </intent-filter>
 
             <meta-data
@@ -526,7 +499,7 @@
             android:name=".widget.WidgetConfigActivity"
             android:exported="true"
             android:excludeFromRecents="true"
-            android:theme="@style/Theme.Convx">
+            android:theme="@style/Theme.Exhale">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
             </intent-filter>
@@ -539,7 +512,7 @@
             android:label="@string/widget_now_playing">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.convx.music.widget.UPDATE_WIDGET" />
+                <action android:name="com.ozyern.exhale.widget.UPDATE_WIDGET" />
             </intent-filter>
 
             <meta-data
@@ -554,7 +527,7 @@
             android:label="@string/widget_lyrics">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.convx.music.widget.UPDATE_WIDGET" />
+                <action android:name="com.ozyern.exhale.widget.UPDATE_WIDGET" />
             </intent-filter>
 
             <meta-data
@@ -569,9 +542,9 @@
             android:label="@string/widget_turntable">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.convx.music.widget.TURNTABLE_PLAY_PAUSE" />
-                <action android:name="com.convx.music.widget.TURNTABLE_LIKE" />
-                <action android:name="com.convx.music.widget.UPDATE_TURNTABLE_WIDGET" />
+                <action android:name="com.ozyern.exhale.widget.TURNTABLE_PLAY_PAUSE" />
+                <action android:name="com.ozyern.exhale.widget.TURNTABLE_LIKE" />
+                <action android:name="com.ozyern.exhale.widget.UPDATE_TURNTABLE_WIDGET" />
             </intent-filter>
 
             <meta-data
@@ -582,7 +555,7 @@
         <!-- Google Cast Options Provider -->
         <meta-data
             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
-            android:value="com.convx.music.cast.CastOptionsProvider" />
+            android:value="com.ozyern.exhale.cast.CastOptionsProvider" />
     </application>
 
 </manifest>

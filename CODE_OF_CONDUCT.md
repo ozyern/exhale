@@ -2,7 +2,7 @@
 
 ## Our pledge
 
-We want Convx to be a friendly, harassment-free project for everyone, whatever their age, background, identity, experience or ability. We pledge to act and interact in ways that keep the community open, welcoming and respectful.
+We want Exhale to be a friendly, harassment-free project for everyone, whatever their age, background, identity, experience or ability. We pledge to act and interact in ways that keep the community open, welcoming and respectful.
 
 ## What we expect
 
@@ -25,7 +25,7 @@ The maintainer is responsible for clarifying and enforcing these standards and m
 
 ## Reporting
 
-To report a problem, message the maintainer privately on the project [Discord](https://discord.gg/Ejeb4cmzfd), or open a private [security advisory](https://github.com/cosmictaserdev-creator/Convx/security/advisories/new) if it involves safety. Reports are kept private, and we will look into each one and respond.
+To report a problem, open a private [security advisory](https://github.com/ozyern/exhale/security/advisories/new) if it involves safety. Reports are kept private, and we will look into each one and respond.
 
 ## Attribution
 

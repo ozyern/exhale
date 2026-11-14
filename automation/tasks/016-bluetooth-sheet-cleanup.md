@@ -32,4 +32,4 @@ cleaner layout.
 ## Context
 
 Reference: `ui glicthes/Screenshot_20260831-124304.png`.
-`app/src/main/kotlin/com/convx/music/convx/AudioDeviceBottomSheet.kt`.
+`app/src/main/kotlin/com/ozyern/exhale/exhale/AudioDeviceBottomSheet.kt`.

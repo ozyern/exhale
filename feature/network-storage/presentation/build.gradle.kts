@@ -5,11 +5,11 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-group = "com.convx.shared.presentation"
+group = "com.ozyern.shared.presentation"
 version = "0.1.0"
 kotlin {
     android {
-        namespace = "com.convx.storage.presentation"
+        namespace = "com.ozyern.storage.presentation"
         compileSdk = 37
         minSdk = 26
     }

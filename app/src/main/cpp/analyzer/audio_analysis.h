@@ -43,7 +43,7 @@
 #include <string>
 #include <vector>
 
-namespace convx::smart {
+namespace exhale::smart {
 
 // Times are seconds, confidence/probability values are nominally in [0, 1],
 // and ordered event vectors use playback order unless stated otherwise.
@@ -147,4 +147,4 @@ TempoResult AnalyzeTempo(
   double audible_start
 );
 
-}  // namespace convx::smart
+}  // namespace exhale::smart

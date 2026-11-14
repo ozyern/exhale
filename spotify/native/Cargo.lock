@@ -232,7 +232,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 
 [[package]]
-name = "convx_spotify"
+name = "exhale_spotify"
 version = "0.1.0"
 dependencies = [
  "android_logger",

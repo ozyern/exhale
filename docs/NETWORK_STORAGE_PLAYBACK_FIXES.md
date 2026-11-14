@@ -2,7 +2,7 @@
 
 ## Shared implementation
 
-The active repository is `artifacts/worktrees/convx-kmp-remote` in the outer
+The active repository is `artifacts/worktrees/exhale-kmp-remote` in the outer
 workspace. Its `:network-storage-core` module owns portable source/credential
 models, source validation, logical media IDs, library scanning, metadata/artwork
 selection, file-source contracts, typed errors, and seek-window bounds. It targets
@@ -23,7 +23,7 @@ Android java.net.URI implementation, including reserved characters and Unicode.
 
 ## Android fixes
 
-The outer media-source resolver sent `convx-network://` items through YouTube
+The outer media-source resolver sent `exhale-network://` items through YouTube
 resolution even though the inner data-source resolver already bypassed them.
 `isDirectMediaSource` now supplies the rule for both resolvers and their URL and
 analysis-head prefetch entry points. Network items reach the remote data source;
@@ -44,7 +44,7 @@ Reference: [BitChord](https://github.com/kushagrasinghx/BitChord), particularly
 `playback/SmbDataSource.kt`, `data/smb/SmbConnection.kt`, and its shared HTTP client.
 The repository's NOTICE records the GPL-3.0 attribution.
 
-| Behavior | Convx change |
+| Behavior | Exhale change |
 | --- | --- |
 | Route SMB before provider resolution | Fixed the outer resolver and both prefetch paths for SMB and WebDAV. |
 | Retry stale SMB transport once | Added to list/open, with connection ownership checks for concurrent readers. |
@@ -53,7 +53,7 @@ The repository's NOTICE records the GPL-3.0 attribution.
 | Bound SMB reads by file length and requested range | Already present in ReadWindow; retained and tested at EOF and overflow boundaries. |
 | Guest login for blank credentials | Already present; retained. |
 | HTTP playback follows redirects | Enabled for WebDAV GET playback and general remote-file reads. |
-| Credential configuration | Retained Convx's independent saved servers, credentials, ports, shares, and base folders. |
+| Credential configuration | Retained Exhale's independent saved servers, credentials, ports, shares, and base folders. |
 
 ## Validation
 
@@ -73,7 +73,7 @@ Android SDK for the app test:
 
 ```sh
 ./gradlew -p clients/kmp :network-storage-core:desktopTest :network-storage-transports:desktopTest
-./gradlew :app:testUniversalFossDebugUnitTest --tests com.convx.music.playback.NetworkPlaybackRoutingTest
+./gradlew :app:testUniversalFossDebugUnitTest --tests com.ozyern.exhale.playback.NetworkPlaybackRoutingTest
 ```
 
 Both Android build workflows run these checks, and the KMP workflow runs core
@@ -101,7 +101,7 @@ python tools/network_storage_fixture.py --host 0.0.0.0
 
 It generates a one-minute WAV with a different tone every ten seconds. On a
 phone connected to the same LAN, add a WebDAV source with address
-`http://YOUR_COMPUTER_LAN_IP:8766/music/`, username `convx`, password `test`.
+`http://YOUR_COMPUTER_LAN_IP:8766/music/`, username `exhale`, password `test`.
 An Android emulator uses `10.0.2.2` for its host computer. Allow the Python server
 on the private LAN if the OS firewall asks. Stop it with Ctrl+C when done.
 
@@ -112,7 +112,7 @@ This fixture covers read-only DAV and ranges; it is not proof of compatibility
 with every NAS server.
 
 For a real SMB test, share that generated folder using Windows file sharing or
-Samba on a computer. Add `smb://COMPUTER_IP/SHARE_NAME` in Convx with the account's
+Samba on a computer. Add `smb://COMPUTER_IP/SHARE_NAME` in Exhale with the account's
 username and password. A Windows Hello PIN is not the SMB password. Test play,
 seeking, next track and reconnect after briefly stopping the share. No dedicated
 NAS hardware is needed.
@@ -129,9 +129,9 @@ It does not create a stable release or update nightly assets.
 Once these local changes are pushed, trigger on their branch:
 
 ```sh
-gh workflow run build.yml --repo cosmictaserdev-creator/Convx-KMP --ref YOUR_BRANCH -f test_release=true
+gh workflow run build.yml --repo cosmictaserdev-creator/Exhale-KMP --ref YOUR_BRANCH -f test_release=true
 ```
 
-Download `convx-universal-gms-test-release-RUN_NUMBER` from that run's Artifacts.
+Download `exhale-universal-gms-test-release-RUN_NUMBER` from that run's Artifacts.
 The current session could not push or dispatch the build because outbound GitHub
 API connections are blocked. No new Actions run or APK is claimed.

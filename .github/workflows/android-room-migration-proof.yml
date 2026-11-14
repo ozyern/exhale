@@ -3,13 +3,13 @@ name: Android Room migration proof
 on:
   pull_request:
     paths:
-      - 'app/src/main/kotlin/com/convx/music/db/**'
-      - 'app/src/main/kotlin/com/convx/music/viewmodels/AtomicFileReplacement.kt'
-      - 'app/src/main/kotlin/com/convx/music/viewmodels/BackupArchiveStagedSettingsValidator.kt'
-      - 'app/src/main/kotlin/com/convx/music/viewmodels/BackupRestoreViewModel.kt'
+      - 'app/src/main/kotlin/com/ozyern/exhale/db/**'
+      - 'app/src/main/kotlin/com/ozyern/exhale/viewmodels/AtomicFileReplacement.kt'
+      - 'app/src/main/kotlin/com/ozyern/exhale/viewmodels/BackupArchiveStagedSettingsValidator.kt'
+      - 'app/src/main/kotlin/com/ozyern/exhale/viewmodels/BackupRestoreViewModel.kt'
       - 'app/src/androidTest/**'
-      - 'app/schemas/com.convx.music.db.InternalDatabase/39.json'
-      - 'app/schemas/com.convx.music.db.InternalDatabase/40.json'
+      - 'app/schemas/com.ozyern.exhale.db.InternalDatabase/39.json'
+      - 'app/schemas/com.ozyern.exhale.db.InternalDatabase/40.json'
       - 'app/build.gradle.kts'
       - 'gradle/libs.versions.toml'
       - '.github/workflows/android-room-migration-proof.yml'
@@ -17,13 +17,13 @@ on:
   push:
     branches: ['**']
     paths:
-      - 'app/src/main/kotlin/com/convx/music/db/**'
-      - 'app/src/main/kotlin/com/convx/music/viewmodels/AtomicFileReplacement.kt'
-      - 'app/src/main/kotlin/com/convx/music/viewmodels/BackupArchiveStagedSettingsValidator.kt'
-      - 'app/src/main/kotlin/com/convx/music/viewmodels/BackupRestoreViewModel.kt'
+      - 'app/src/main/kotlin/com/ozyern/exhale/db/**'
+      - 'app/src/main/kotlin/com/ozyern/exhale/viewmodels/AtomicFileReplacement.kt'
+      - 'app/src/main/kotlin/com/ozyern/exhale/viewmodels/BackupArchiveStagedSettingsValidator.kt'
+      - 'app/src/main/kotlin/com/ozyern/exhale/viewmodels/BackupRestoreViewModel.kt'
       - 'app/src/androidTest/**'
-      - 'app/schemas/com.convx.music.db.InternalDatabase/39.json'
-      - 'app/schemas/com.convx.music.db.InternalDatabase/40.json'
+      - 'app/schemas/com.ozyern.exhale.db.InternalDatabase/39.json'
+      - 'app/schemas/com.ozyern.exhale.db.InternalDatabase/40.json'
       - 'app/build.gradle.kts'
       - 'gradle/libs.versions.toml'
       - '.github/workflows/android-room-migration-proof.yml'
@@ -63,7 +63,7 @@ jobs:
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
       - name: Build app and migration instrumentation APKs
-        run: ./gradlew :app:assembleUniversalFossDebug :app:assembleUniversalFossDebugAndroidTest -PconvxTestRunner=com.convx.music.db.RoomMigrationTestRunner --no-configuration-cache --console=plain
+        run: ./gradlew :app:assembleUniversalFossDebug :app:assembleUniversalFossDebugAndroidTest -PexhaleTestRunner=com.ozyern.exhale.db.RoomMigrationTestRunner --no-configuration-cache --console=plain
       - name: Run schema migration on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:

@@ -91,13 +91,13 @@ screen's provider.
 
 ## Files changed
 
-* `app/src/main/kotlin/com/convx/music/ui/screens/artist/ArtistScreen.kt` — the
+* `app/src/main/kotlin/com/ozyern/exhale/ui/screens/artist/ArtistScreen.kt` — the
   derivation helpers, the scrim, the local wiring; deleted the now-dead
   `rememberHeroPalette` call (its only use was the description colour) and the
   two colour literals.
-* `app/src/main/kotlin/com/convx/music/ui/theme/AppleTokens.kt` —
+* `app/src/main/kotlin/com/ozyern/exhale/ui/theme/AppleTokens.kt` —
   `Metadata` → composable getter + `LocalMetadataColor` (default unchanged).
-* `app/src/test/kotlin/com/convx/music/ui/screens/artist/ArtistChromaTintTest.kt`
+* `app/src/test/kotlin/com/ozyern/exhale/ui/screens/artist/ArtistChromaTintTest.kt`
   — new.
 
 Scoped to the artist page: `AlbumScreen`, the playlist screens and

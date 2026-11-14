@@ -31,7 +31,7 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _reserved: *mut c_void) -> jint {
         android_logger::init_once(
             android_logger::Config::default()
                 .with_max_level(log::LevelFilter::Info)
-                .with_tag("ConvxSpotify")
+                .with_tag("ExhaleSpotify")
                 // Symphonia warns per frame while it resyncs, and a stream it
                 // cannot make sense of produced four thousand lines in a few
                 // seconds — enough logging to be felt as the app stalling. The

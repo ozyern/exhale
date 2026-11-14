@@ -1,4 +1,4 @@
-package = com.convx.music.client.ios.equalizeraudiotapcompat
+package = com.ozyern.exhale.client.ios.equalizeraudiotapcompat
 language = Objective-C
 headers = EqualizerAudioTapCompat.h
 compilerOpts = -framework AVFoundation -framework AudioToolbox -framework CoreMedia -framework MediaToolbox

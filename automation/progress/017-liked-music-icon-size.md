@@ -6,7 +6,7 @@ The auto-playlist icon placeholder in grid view (PlaylistGridItem) was sized at 
 
 ## Fix applied
 
-**File:** `app/src/main/kotlin/com/convx/music/ui/component/Items.kt`
+**File:** `app/src/main/kotlin/com/ozyern/exhale/ui/component/Items.kt`
 **Line:** 1155
 **Change:** Reduced placeholder icon size from `width / 2` to `width / 3`
 

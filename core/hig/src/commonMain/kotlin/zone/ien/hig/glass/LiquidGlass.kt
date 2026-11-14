@@ -6,7 +6,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.convx.music.designsystem.ConvxDesignTokens
+import com.ozyern.exhale.designsystem.ExhaleDesignTokens
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
@@ -32,17 +32,17 @@ data class LiquidGlassMaterial(
 
 object LiquidGlassMaterials {
     val SidePanel = LiquidGlassMaterial(
-        tint = Color.Black.copy(alpha = ConvxDesignTokens.Glass.SidePanelTintOpacity),
-        blurRadius = ConvxDesignTokens.Glass.SidePanelBlurDp.dp,
-        saturation = ConvxDesignTokens.Glass.SidePanelSaturation,
-        refractionHeight = (ConvxDesignTokens.Glass.SidePanelLensHeight * ConvxDesignTokens.Glass.MaxLensDp).dp,
-        refractionAmount = (ConvxDesignTokens.Glass.SidePanelLensAmount * ConvxDesignTokens.Glass.MaxLensDp).dp,
-        highlightAlpha = ConvxDesignTokens.Glass.SidePanelHighlightOpacity,
+        tint = Color.Black.copy(alpha = ExhaleDesignTokens.Glass.SidePanelTintOpacity),
+        blurRadius = ExhaleDesignTokens.Glass.SidePanelBlurDp.dp,
+        saturation = ExhaleDesignTokens.Glass.SidePanelSaturation,
+        refractionHeight = (ExhaleDesignTokens.Glass.SidePanelLensHeight * ExhaleDesignTokens.Glass.MaxLensDp).dp,
+        refractionAmount = (ExhaleDesignTokens.Glass.SidePanelLensAmount * ExhaleDesignTokens.Glass.MaxLensDp).dp,
+        highlightAlpha = ExhaleDesignTokens.Glass.SidePanelHighlightOpacity,
         shadowAlpha = 0.3f,
     )
 
     val SelectedTab = LiquidGlassMaterial(
-        tint = Color(0xFF333333).copy(alpha = ConvxDesignTokens.Glass.DarkSelectedPuckOpacity),
+        tint = Color(0xFF333333).copy(alpha = ExhaleDesignTokens.Glass.DarkSelectedPuckOpacity),
         blurRadius = 2.dp,
         saturation = 1f,
         refractionHeight = 32.dp,
@@ -53,12 +53,12 @@ object LiquidGlassMaterials {
     )
 
     val MiniPlayer = LiquidGlassMaterial(
-        tint = Color.White.copy(alpha = ConvxDesignTokens.Glass.DarkSurfaceLift),
-        blurRadius = ConvxDesignTokens.Glass.MiniPlayerBlurDp.dp,
-        saturation = ConvxDesignTokens.Glass.MiniPlayerSaturation,
-        refractionHeight = (ConvxDesignTokens.Glass.MiniPlayerLensHeight * ConvxDesignTokens.Glass.MaxLensDp).dp,
-        refractionAmount = (ConvxDesignTokens.Glass.MiniPlayerLensAmount * ConvxDesignTokens.Glass.MaxLensDp).dp,
-        highlightAlpha = ConvxDesignTokens.Glass.MiniPlayerHighlightOpacity,
+        tint = Color.White.copy(alpha = ExhaleDesignTokens.Glass.DarkSurfaceLift),
+        blurRadius = ExhaleDesignTokens.Glass.MiniPlayerBlurDp.dp,
+        saturation = ExhaleDesignTokens.Glass.MiniPlayerSaturation,
+        refractionHeight = (ExhaleDesignTokens.Glass.MiniPlayerLensHeight * ExhaleDesignTokens.Glass.MaxLensDp).dp,
+        refractionAmount = (ExhaleDesignTokens.Glass.MiniPlayerLensAmount * ExhaleDesignTokens.Glass.MaxLensDp).dp,
+        highlightAlpha = ExhaleDesignTokens.Glass.MiniPlayerHighlightOpacity,
         shadowAlpha = 0.32f,
     )
 }

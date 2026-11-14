@@ -4,12 +4,12 @@
 
 Not `AutoResizeText.kt` (that composable has no shadow/blur/duplicate-draw
 logic — ruled out first). The actual shared component is
-`app/src/main/kotlin/com/convx/music/ui/component/ScreenTitleBar.kt`'s
+`app/src/main/kotlin/com/ozyern/exhale/ui/component/ScreenTitleBar.kt`'s
 `rememberTitleCollapseProgress(LazyListState, thresholdPx = 220f)`, used by
 all three repro'd screens to drive the iOS-style large-title → compact-bar-
 title handoff:
 
-- `HomeScreen.kt:324` — drives the fade between the big "CONVX" wordmark
+- `HomeScreen.kt:324` — drives the fade between the big "EXHALE" wordmark
   (first `LazyColumn` item) and `MainActivity`'s compact top-bar wordmark.
 - `HistoryScreen.kt:496` and `StatsScreen.kt:492` — drive `FrostedTopBar`'s
   `titleAlpha` against each screen's own `LargeScreenTitle`.
@@ -109,10 +109,10 @@ behavior (three needed no call-site change at all).
 
 ## Files changed
 
-- `app/src/main/kotlin/com/convx/music/ui/component/ScreenTitleBar.kt` —
+- `app/src/main/kotlin/com/ozyern/exhale/ui/component/ScreenTitleBar.kt` —
   `rememberTitleCollapseProgress(LazyListState, ...)` rewritten to measure
   the real title item instead of guessing a fixed pixel threshold.
-- `app/src/main/kotlin/com/convx/music/ui/screens/settings/SettingsScreen.kt`
+- `app/src/main/kotlin/com/ozyern/exhale/ui/screens/settings/SettingsScreen.kt`
   — one-line call-site update to pass `titleItemKey = "title"`.
 
 Not touched: the `LazyGridState` overload of `rememberTitleCollapseProgress`

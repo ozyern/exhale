@@ -1,6 +1,6 @@
-# Contributing to Convx
+# Contributing to Exhale
 
-Thanks for helping with Convx. This guide describes how the project is laid out, how to build it, and how issues and pull requests are handled. If something here is out of date, please send a pull request that fixes it.
+Thanks for helping with Exhale. This guide describes how the project is laid out, how to build it, and how issues and pull requests are handled. If something here is out of date, please send a pull request that fixes it.
 
 By taking part you agree to follow the [Code of Conduct](../CODE_OF_CONDUCT.md).
 
@@ -56,8 +56,8 @@ Keep a change inside one module when you can. Features should talk to each other
 
 ## Finding something to work on
 
-- Issues labelled [`good first issue`](https://github.com/cosmictaserdev-creator/Convx/labels/good%20first%20issue) or [`help wanted`](https://github.com/cosmictaserdev-creator/Convx/labels/help%20wanted) are a good place to start.
-- For anything large, open an issue or ask in the [Discord](https://discord.gg/Ejeb4cmzfd) first, so we agree on the approach before you spend time on it.
+- Issues labelled [`good first issue`](https://github.com/ozyern/exhale/labels/good%20first%20issue) or [`help wanted`](https://github.com/ozyern/exhale/labels/help%20wanted) are a good place to start.
+- For anything large, open an issue first, so we agree on the approach before you spend time on it.
 
 ## Issues and labels
 
@@ -79,7 +79,7 @@ The maintainer triages every issue with labels:
 | `status: in progress` | Someone is working on it. |
 | `status: fixed in nightly` | Fixed in the latest nightly, not yet in stable. |
 
-Please test against the latest [nightly build](https://github.com/cosmictaserdev-creator/Convx/releases/tag/2.0.0-nightly) before reporting. Issues with no activity for 60 days are marked stale and closed a week later.
+Please test against the latest [nightly build](https://github.com/ozyern/exhale/releases/tag/2.0.0-nightly) before reporting. Issues with no activity for 60 days are marked stale and closed a week later.
 
 ## Branches and commits
 
@@ -118,4 +118,4 @@ Please do not open a public issue for a vulnerability. Follow [SECURITY.md](../S
 
 ## Questions
 
-Ask in the [Discord](https://discord.gg/Ejeb4cmzfd) or in [Discussions](https://github.com/cosmictaserdev-creator/Convx/discussions).
+Ask in [Discussions](https://github.com/ozyern/exhale/discussions).

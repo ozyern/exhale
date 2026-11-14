@@ -4,12 +4,12 @@ plugins {
     alias(libs.plugins.kotlin.ksp)
 }
 
-group = "com.convx.shared.data"
+group = "com.ozyern.shared.data"
 version = "0.1.0"
 
 kotlin {
     android {
-        namespace = "com.convx.music.library.data"
+        namespace = "com.ozyern.exhale.library.data"
         compileSdk = 37
         minSdk = 26
     }

@@ -27,12 +27,12 @@ plugins {
 }
 
 android {
-    namespace = "com.convx.music"
+    namespace = "com.ozyern.exhale"
     compileSdk = 37
     ndkVersion = "27.0.12077973"
 
     defaultConfig {
-        applicationId = "com.convx.music"
+        applicationId = "com.ozyern.exhale"
         minSdk = 26
         targetSdk = 36
         val nightlyRunForVersion = (project.findProperty("nightlyRun") as String?)?.toIntOrNull() ?: 0
@@ -41,7 +41,7 @@ android {
         versionName = appVersionName
         buildConfigField("Boolean", "GITHUB_UPDATER_ENABLED", (project.findProperty("githubUpdater") == "true").toString())
 
-        testInstrumentationRunner = providers.gradleProperty("convxTestRunner")
+        testInstrumentationRunner = providers.gradleProperty("exhaleTestRunner")
             .orElse("androidx.test.runner.AndroidJUnitRunner").get()
         vectorDrawables.useSupportLibrary = true
 

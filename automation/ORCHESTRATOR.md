@@ -8,7 +8,7 @@ do *right now*, this firing.
 
 ## This run
 
-1. Working directory: `E:\AndroidStudioProjects\convx`.
+1. Working directory: `E:\AndroidStudioProjects\exhale`.
 2. Confirm the Android device is connected (`adb devices`); if not, log it
    to `automation/progress/_device-unavailable.md` with a timestamp and
    stop this firing entirely — nothing here works without the device.

@@ -60,12 +60,12 @@ jobs:
           ./gradlew assembleUniversalGmsDebug --no-configuration-cache --console=plain --warning-mode summary
 
       - name: Test backup archive validation and rollback
-        run: ./gradlew :app:testUniversalFossDebugUnitTest --tests com.convx.music.viewmodels.BackupArchiveEntryPolicyTest --tests com.convx.music.viewmodels.AtomicFileReplacementTest --no-configuration-cache --console=plain
+        run: ./gradlew :app:testUniversalFossDebugUnitTest --tests com.ozyern.exhale.viewmodels.BackupArchiveEntryPolicyTest --tests com.ozyern.exhale.viewmodels.AtomicFileReplacementTest --no-configuration-cache --console=plain
 
       - name: Test network storage and playback routing
         run: |
           ./gradlew :network-storage-core:desktopTest :network-storage-transports:desktopTest :network-storage-presentation:desktopTest --no-configuration-cache --console=plain
-          ./gradlew :app:testUniversalFossDebugUnitTest --tests com.convx.music.playback.NetworkPlaybackRoutingTest --no-configuration-cache --console=plain
+          ./gradlew :app:testUniversalFossDebugUnitTest --tests com.ozyern.exhale.playback.NetworkPlaybackRoutingTest --no-configuration-cache --console=plain
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
@@ -118,7 +118,7 @@ jobs:
       - name: Test network storage and routing
         run: |
           ./gradlew :network-storage-core:desktopTest :network-storage-transports:desktopTest :network-storage-presentation:desktopTest --no-configuration-cache --console=plain
-          ./gradlew :app:testUniversalFossDebugUnitTest --tests com.convx.music.playback.NetworkPlaybackRoutingTest --no-configuration-cache --console=plain
+          ./gradlew :app:testUniversalFossDebugUnitTest --tests com.ozyern.exhale.playback.NetworkPlaybackRoutingTest --no-configuration-cache --console=plain
       - name: Build release APK
         env:
           STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -137,14 +137,14 @@ jobs:
           apks=(app/build/outputs/apk/universalGms/release/*.apk)
           test "${#apks[@]}" -eq 1
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "${apks[0]}"
-          cp "${apks[0]}" test-release/convx-universal-gms-test-release.apk
+          cp "${apks[0]}" test-release/exhale-universal-gms-test-release.apk
           (cd test-release && sha256sum *.apk > SHA256SUMS)
           printf 'Commit: %s\nRun: %s\nVariant: universalGmsRelease\n' "$BUILD_COMMIT" "$BUILD_URL" > test-release/build.txt
           printf '### Android test release\n\nCommit: `%s`\n\nDownload the APK under **Artifacts** on this run.\n' "$BUILD_COMMIT" >> "$GITHUB_STEP_SUMMARY"
       - name: Upload signed test APK
         uses: actions/upload-artifact@v4
         with:
-          name: convx-universal-gms-test-release-${{ github.run_number }}
+          name: exhale-universal-gms-test-release-${{ github.run_number }}
           path: test-release/
           if-no-files-found: error
           retention-days: 14

@@ -21,7 +21,7 @@ raw Material 3 sheet.
 - Grep every `ModalBottomSheet`/`BottomSheet`-shaped composable in the app
   (`BottomSheet.kt`, `BottomSheetMenu.kt`, `BottomSheetPage.kt`, and any
   screen calling M3's `ModalBottomSheet` directly instead of
-  `com.convx.music.ui.ios.compat.ModalBottomSheet`).
+  `com.ozyern.exhale.ui.ios.compat.ModalBottomSheet`).
 - Any sheet not routed through the `ios.compat` → `hig` bridge gets
   converted to use it, matching the pattern already correct in
   `BottomSheetMenu.kt`.
@@ -33,7 +33,7 @@ raw Material 3 sheet.
 ## Context
 
 `hig/src/main/kotlin/zone/ien/hig/CupertinoBottomSheet.kt` is the vendored
-component. Bridge: `app/src/main/kotlin/com/convx/music/ui/ios/compat/IosCompatTail.kt`
+component. Bridge: `app/src/main/kotlin/com/ozyern/exhale/ui/ios/compat/IosCompatTail.kt`
 (`ModalBottomSheet`). Prior audit in this project confirmed the bridge
 pattern is correct where used — this task's job is finding and converting
 any sheet that bypasses it, not rebuilding the bridge itself.

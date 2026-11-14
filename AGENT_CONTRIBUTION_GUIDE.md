@@ -1,13 +1,13 @@
-# Convx Agent Contribution Guide
+# Exhale Agent Contribution Guide
 
-**Project owner:** Cosmic Taser (`@cosmictaserdev-creator`)
+**Project owner:** Cosmic Taser (`@ozyern`)
 
-This guide is the contribution contract for AI agents working in Convx. Read it before exploring or changing code. Use the bundled skills under [`contributor/skills/`](contributor/skills/) when their topic applies. The Android Compose and Convx motion skills are required for UI work.
+This guide is the contribution contract for AI agents working in Exhale. Read it before exploring or changing code. Use the bundled skills under [`contributor/skills/`](contributor/skills/) when their topic applies. The Android Compose and Exhale motion skills are required for UI work.
 
 ## Project overview
  
 
-Convx is an open-source Android music player built with Kotlin, Jetpack Compose, Media3, and a custom Liquid Glass visual language. It streams and manages music, provides lyrics and integrations, and supports local and network storage. The UI should feel calm, responsive, accessible, and native to Convx.
+Exhale is an open-source Android music player built with Kotlin, Jetpack Compose, Media3, and a custom Liquid Glass visual language. It streams and manages music, provides lyrics and integrations, and supports local and network storage. The UI should feel calm, responsive, accessible, and native to Exhale.
 
 The repository is a Gradle multi-module Android project. Current modules are:
 
@@ -32,7 +32,7 @@ Before placing code, inspect the current module and neighboring implementation. 
 
 The repository owner is Cosmic Taser. Agents contribute changes for review; do not claim ownership of the project or impersonate a human contributor. Keep the diff focused on the requested feature or fix. Preserve unrelated user changes and avoid drive-by reformatting.
 
-Do not mention another application or project as the source of an implementation in product copy, comments, documentation, or commit content. Describe Convx's behavior on its own terms. Follow licenses and attribution requirements for all dependencies and assets.
+Do not mention another application or project as the source of an implementation in product copy, comments, documentation, or commit content. Describe Exhale's behavior on its own terms. Follow licenses and attribution requirements for all dependencies and assets.
 
 ## Code quality and design
 
@@ -71,16 +71,16 @@ Do not create a module for a handful of files, a single screen, or organization 
 
 ## UI, HIG, and glass surfaces
 
-- Follow Convx's HIG and existing design language. Look at `hig/`, nearby screens, themes, and existing shared components before designing a control.
-- Do not build new UI with Material Design components or Material theming. Use the project’s Cupertino-style and custom Convx components. Existing non-visual AndroidX/Compose infrastructure is fine where the project already uses it.
-- For a popup menu, inspect `CupertinoDropdownMenu` and current glass menu patterns. For a bottom sheet, inspect `CupertinoModalBottomSheet` and existing Convx sheet implementations. Use the glass surface that samples the correct nearby backdrop; do not approximate it with a plain translucent fill when an established glass component applies.
+- Follow Exhale's HIG and existing design language. Look at `hig/`, nearby screens, themes, and existing shared components before designing a control.
+- Do not build new UI with Material Design components or Material theming. Use the project’s Cupertino-style and custom Exhale components. Existing non-visual AndroidX/Compose infrastructure is fine where the project already uses it.
+- For a popup menu, inspect `CupertinoDropdownMenu` and current glass menu patterns. For a bottom sheet, inspect `CupertinoModalBottomSheet` and existing Exhale sheet implementations. Use the glass surface that samples the correct nearby backdrop; do not approximate it with a plain translucent fill when an established glass component applies.
 - Use the correct backdrop source and surface scope. A glass surface should sample the content behind its intended visual region, remain legible over changing artwork, and avoid stacking translucent glass surfaces in a way that destroys contrast.
 - Match the existing corner radii, spacing, typography, tonal hierarchy, and light/dark behavior. Use theme values rather than unexplained hard-coded colors.
 - Preserve accessibility: meaningful labels for controls, decorative imagery marked as decorative, adequate touch targets, keyboard/focus behavior where relevant, and layouts that tolerate larger font scales and localization.
 
 ## Motion and micro-interactions
 
-Use [`contributor/skills/convx-android-motion/SKILL.md`](contributor/skills/convx-android-motion/SKILL.md) for every UI feature that changes or adds interactive behavior. New interactive controls should provide concise micro-feedback when it helps users understand press, selection, progress, success, or dismissal. Motion must serve feedback or spatial understanding; do not animate every element just to add movement.
+Use [`contributor/skills/exhale-android-motion/SKILL.md`](contributor/skills/exhale-android-motion/SKILL.md) for every UI feature that changes or adds interactive behavior. New interactive controls should provide concise micro-feedback when it helps users understand press, selection, progress, success, or dismissal. Motion must serve feedback or spatial understanding; do not animate every element just to add movement.
 
 Use Compose animation APIs and the project's existing motion primitives. Keep transitions interruptible, brief, and consistent with the gesture. Prefer animating draw/layer properties where that avoids per-frame recomposition. Respect Android's animator duration scale and avoid motion that impairs readability, playback controls, or accessibility. Test motion on a real device or emulator when possible, including reduced/disabled animation settings.
 
@@ -124,15 +124,15 @@ Before reporting completion:
 
 ## Requirement discovery before implementation
 
-For a substantial feature, broad redesign, or ambiguous UX/architecture request, automatically use [Convx Grill Me](contributor/skills/convx-grill-me/SKILL.md) before making dependent implementation choices. Inspect the repo first and ask one focused question at a time only when the answer materially changes behavior, architecture, safety, privacy, licensing, or scope. Include a recommended answer. Do not ask questions the codebase can answer, and do not slow down clear low-risk work with unnecessary grilling. If an answer is required, pause only the dependent work and continue independent discovery.
+For a substantial feature, broad redesign, or ambiguous UX/architecture request, automatically use [Exhale Grill Me](contributor/skills/exhale-grill-me/SKILL.md) before making dependent implementation choices. Inspect the repo first and ask one focused question at a time only when the answer materially changes behavior, architecture, safety, privacy, licensing, or scope. Include a recommended answer. Do not ask questions the codebase can answer, and do not slow down clear low-risk work with unnecessary grilling. If an answer is required, pause only the dependent work and continue independent discovery.
 
 ## Bundled skills
 
-The complete skill folders are checked into [`contributor/skills/`](contributor/skills/). They work offline and include their companion references and recipes. Use the Convx-specific skills as the primary rules; generic skills provide additional techniques.
+The complete skill folders are checked into [`contributor/skills/`](contributor/skills/). They work offline and include their companion references and recipes. Use the Exhale-specific skills as the primary rules; generic skills provide additional techniques.
 
 ### Clarifying requirements and modeling decisions
 
-- [Convx Grill Me](contributor/skills/convx-grill-me/SKILL.md) — automatically clarify consequential unknowns before substantial implementations.
+- [Exhale Grill Me](contributor/skills/exhale-grill-me/SKILL.md) — automatically clarify consequential unknowns before substantial implementations.
 - [Grill Me](contributor/skills/grill-me/SKILL.md) and [Grilling](contributor/skills/grilling/SKILL.md) — interview approach; ask one question at a time and recommend an answer.
 - [Grill with Docs](contributor/skills/grill-with-docs/SKILL.md) — optional decision docs when requested; do not recreate `docs/` unless asked.
 - [Domain modeling](contributor/skills/domain-modeling/SKILL.md) and [Decision mapping](contributor/skills/decision-mapping/SKILL.md) — model complex domains and dependencies between product choices.
@@ -143,7 +143,7 @@ The complete skill folders are checked into [`contributor/skills/`](contributor/
 - [Android data layer](contributor/skills/android-data-layer/SKILL.md) — data sources, repositories, mapping, persistence, and networking.
 - [Android error handling](contributor/skills/android-error-handling/SKILL.md) — typed failures and coroutine/network errors.
 - [Android module structure](contributor/skills/android-module-structure/SKILL.md) — module boundaries and Gradle organization.
-- [Android navigation](contributor/skills/android-navigation/SKILL.md) — navigation patterns; use Convx's current navigation setup.
+- [Android navigation](contributor/skills/android-navigation/SKILL.md) — navigation patterns; use Exhale's current navigation setup.
 - [Android performance](contributor/skills/android-performance-skill/SKILL.md) — profiling and performance guidance.
 - [Android presentation / MVI](contributor/skills/android-presentation-mvi/SKILL.md) — state and ViewModel patterns; follow local code where it differs.
 - [Android testing](contributor/skills/android-testing/SKILL.md) — unit, UI, and integration test guidance.
@@ -151,19 +151,19 @@ The complete skill folders are checked into [`contributor/skills/`](contributor/
 
 ### Animation and interaction design
 
-- [Convx Android motion](contributor/skills/convx-android-motion/SKILL.md) — required motion rules for Compose UI in this project.
+- [Exhale Android motion](contributor/skills/exhale-android-motion/SKILL.md) — required motion rules for Compose UI in this project.
 - [Animate](contributor/skills/animate/SKILL.md) — web animation implementation; use its reasoning only, not its web code, for Android.
 - [Animate Expo](contributor/skills/animate-expo/SKILL.md) — React Native and Expo only; not an implementation guide for Compose.
 - [Animation vocabulary](contributor/skills/animation-vocabulary/SKILL.md) — motion terminology.
 - [Find animation opportunities](contributor/skills/find-animation-opportunities/SKILL.md) — identify purposeful places for motion.
 - [Improve animations](contributor/skills/improve-animations/SKILL.md) and [Review animations](contributor/skills/review-animations/SKILL.md) — audit or critique existing motion when requested.
-- [Apple design](contributor/skills/apple-design/SKILL.md) and [Emil design engineering](contributor/skills/emil-design-eng/SKILL.md) — interaction and craft principles; translate concepts into native Compose and Convx HIG components.
+- [Apple design](contributor/skills/apple-design/SKILL.md) and [Emil design engineering](contributor/skills/emil-design-eng/SKILL.md) — interaction and craft principles; translate concepts into native Compose and Exhale HIG components.
 
 ### Code quality and design workflow
 
 - [Anti-slop code](contributor/skills/antislop-code/SKILL.md) and [Anti-slop UI](contributor/skills/antislop-ui/SKILL.md) — keep implementation and interfaces specific, clear, and restrained.
 - [Code review](contributor/skills/code-review-skill/SKILL.md) — review changes for correctness, maintainability, and edge cases.
 - [Prototype](contributor/skills/prototype/SKILL.md) — use for interactive design exploration when a prototype is requested; do not treat its web tooling as app implementation.
-- [Pick UI library](contributor/skills/pick-ui-library/SKILL.md) — reference for UI technology choices; follow Convx's existing Compose stack and avoid Material Design components.
+- [Pick UI library](contributor/skills/pick-ui-library/SKILL.md) — reference for UI technology choices; follow Exhale's existing Compose stack and avoid Material Design components.
 
-The bundled skills are references, not instructions to migrate the codebase. If a skill conflicts with this guide or established Convx architecture, follow this guide and the project implementation.
+The bundled skills are references, not instructions to migrate the codebase. If a skill conflicts with this guide or established Exhale architecture, follow this guide and the project implementation.

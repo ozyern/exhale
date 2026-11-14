@@ -6,12 +6,12 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-group = "com.convx.shared"
+group = "com.ozyern.shared"
 version = "0.1.0"
 
 kotlin {
     androidLibrary {
-        namespace = "com.convx.music.hig"
+        namespace = "com.ozyern.exhale.hig"
         compileSdk = 37
         minSdk = 26
     }
@@ -22,7 +22,7 @@ kotlin {
 
     targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget>().configureEach {
         binaries.framework {
-            baseName = "ConvxHig"
+            baseName = "ExhaleHig"
             isStatic = true
         }
     }

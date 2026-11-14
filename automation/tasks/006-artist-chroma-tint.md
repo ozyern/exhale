@@ -34,7 +34,7 @@ from that same mesh/hero color.
 
 ## Context
 
-Color derivation: `app/src/main/kotlin/com/convx/music/ui/theme/colorengine/ColorEngineCore.kt`
-and the Swift reference under `app/src/main/kotlin/com/convx/Color Engine/`.
+Color derivation: `app/src/main/kotlin/com/ozyern/exhale/ui/theme/colorengine/ColorEngineCore.kt`
+and the Swift reference under `app/src/main/kotlin/com/ozyern/Color Engine/`.
 Artist screen: `ui/screens/artist/ArtistScreen.kt`. the reference app reference for
 the mesh look: `the reference app/app/src/main/java/com/music/reference/ui/`.

@@ -35,7 +35,7 @@ Rationale: The frame already applies `WindowInsets.systemBars.asPaddingValues().
 
 ## File Changed
 
-- `app/src/main/kotlin/com/convx/music/ui/player/Player_v2.kt` line 489: `.padding(top = 16.dp, bottom = 8.dp)` → `.padding(top = 24.dp, bottom = 8.dp)`
+- `app/src/main/kotlin/com/ozyern/exhale/ui/player/Player_v2.kt` line 489: `.padding(top = 16.dp, bottom = 8.dp)` → `.padding(top = 24.dp, bottom = 8.dp)`
 
 ## Status
 

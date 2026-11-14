@@ -20,7 +20,7 @@
     <string name="installing_system_update">Installing system\nupdate…</string>
     <string name="making_update_ready">Making Update ready, this may take a while</string>
     <string name="your_app_getting_better">Your App is getting even better…</string>
-    <string name="update_includes_features">This update includes new features and the latest from Convx %1$s, making your app even more helpful. Learn more at %2$s.</string>
+    <string name="update_includes_features">This update includes new features and the latest from Exhale %1$s, making your app even more helpful. Learn more at %2$s.</string>
     <string name="whats_new">What\'s new?</string>
     <string name="update_available">Update</string>
     <string name="checking_for_updates">Checking for updates…</string>
@@ -35,7 +35,7 @@
     <string name="mobile_network_warning">Downloading updates over a mobile network or while roaming may cause additional charges.</string>
     <string name="update_size">Update size: %1$s MB</string>
     <string name="check_internet_connection">Check your internet connection and try again.</string>
-    <string name="convx_version">CONVX version %1$s</string>
+    <string name="exhale_version">EXHALE version %1$s</string>
     <string name="last_checked">Last checked: %1$s</string>
     <string name="install">Install</string>
     <string name="check_for_update">Check for update</string>
@@ -46,19 +46,19 @@
     <string name="app_updates_subtitle">App updates</string>
     <string name="app_update_uptodate">Up to date</string>
     <string name="auto_update_check">Automatic update check</string>
-    <string name="auto_update_check_subtitle">Check for updates after Convx opens</string>
+    <string name="auto_update_check_subtitle">Check for updates after Exhale opens</string>
     <string name="update_notifications">Update Notifications</string>
     <string name="update_notifications_subtitle">Show a notification when a new update is found</string>
     <string name="settings_check_updates_title">Check for updates</string>
     <string name="later">Later</string>
 
 
-    <string name="convx_title">CONVX</string>
+    <string name="exhale_title">EXHALE</string>
     <string name="developer_section">DEVELOPER</string>
     <string name="collaborator_section">COLLABORATOR</string>
     <string name="app_info_section">APP INFO</string>
     <string name="community_section">COMMUNITY</string>
-    <string name="developer_name">Aryan (CosmicTaser)</string>
+    <string name="developer_name">ozyern</string>
     <string name="app_developer">Lead Developer</string>
     <string name="website">Website</string>
     <string name="collaborator_tboyke">T-Boyke</string>
