@@ -253,7 +253,10 @@ fun BottomSheetPlayer(
     // thumbnail thrown up to a banner the width of the screen, a thirteen-fold jump that read as
     // the cover lurching into place.
     val tabletWindow = LocalConfiguration.current.smallestScreenWidthDp >= 600
-    val flyCover = nowPlaying && !landscapeNowPlaying && !tabletWindow
+    // The player opens as a card grown out of the mini player, the whole player inside it from the
+    // first frame (see BottomSheet's cardMorph). The cover is no longer flown on its own.
+    val flyCover = false
+    val cardOpen = nowPlaying
     // The flight lands on the portrait sleeve; the two-column layout's sleeve is somewhere else.
     if (coverFlight != null) SideEffect { coverFlight.enabled = flyCover }
 
@@ -743,6 +746,7 @@ fun BottomSheetPlayer(
         // CoverFlight); the other designs keep the rectangle→pill morph.
         dynamicIslandMorph = !flyCover || coverFlight == null,
         coverFlight = flyCover && coverFlight != null,
+        cardMorph = cardOpen,
         pillHeight = morphPillHeight,
         pillHorizontalInset = morphPillHorizontalInset,
         pillCornerRadius = morphPillCornerRadius,

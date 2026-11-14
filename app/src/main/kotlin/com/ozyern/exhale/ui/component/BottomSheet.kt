@@ -117,6 +117,10 @@ private const val CONTENT_GONE_BELOW = 0.12f
 /** Below this progress the morph window's ground hands over to the pill it has landed on. */
 private const val GROUND_GONE_BELOW = 0.22f
 
+/** Where the card open hands the mini player over to the player, and over how much progress. */
+private const val CARD_HANDOFF_FROM = 0.015f
+private const val CARD_HANDOFF_SPAN = 0.07f
+
 /** Over how much progress above [CONTENT_GONE_BELOW] the content fades in or out. */
 private const val CONTENT_FADE_SPAN = 0.30f
 
@@ -143,6 +147,12 @@ fun BottomSheet(
      * as one card and shrinks back into it (see [com.ozyern.exhale.ui.player.CoverFlight.card]).
      */
     coverFlight: Boolean = false,
+    /**
+     * With [dynamicIslandMorph]: the player opens as a card grown out of the mini player. The whole
+     * player is inside it from the first frame, shrunk evenly to the card's height and solid, on
+     * its own ground, while the mini player's contents give way at once; closing runs it back.
+     */
+    cardMorph: Boolean = false,
     /**
      * Morph target geometry — the bounds, *inside this sheet's own coordinate space*, of whatever
      * the player is collapsing into. Defaults describe the standalone mini-player pill (State A);
@@ -303,7 +313,9 @@ fun BottomSheet(
                             // the whole time: two things that never met. Now a solid card lands on
                             // the pill and only then gives way to it.
                             val p = state.progress.coerceIn(0f, 1f)
-                            val landed = (p / GROUND_GONE_BELOW).coerceIn(0f, 1f)
+                            // The card's ground is solid almost from the start.
+                            val landed = if (cardMorph) ((p - CARD_HANDOFF_FROM * 0.5f) / CARD_HANDOFF_SPAN).coerceIn(0f, 1f)
+                            else (p / GROUND_GONE_BELOW).coerceIn(0f, 1f)
                             val alpha = backgroundColor.alpha * landed * landed * (3f - 2f * landed)
                             if (alpha > 0f) drawRect(backgroundColor.copy(alpha = alpha))
                         }
@@ -356,6 +368,22 @@ fun BottomSheet(
                                 return@graphicsLayer
                             }
 
+                            if (cardMorph) {
+                                // The card: as tall as its window, the player shrunk evenly to fit
+                                // it, centred under the top edge. Even, not squashed: it is the
+                                // player getting smaller, not a strip being pressed flat.
+                                val c = 1f - p
+                                val top = pillTopOffset.toPx() * c
+                                val bottom = (pillTopOffset.toPx() + pillHeight.toPx()) * c + size.height * p
+                                val s = if (size.height > 0f) ((bottom - top) / size.height).coerceIn(0.04f, 1f) else 1f
+                                scaleX = s
+                                scaleY = s
+                                transformOrigin = TransformOrigin(0.5f, 0f)
+                                translationY = top
+                                alpha = ((p - CARD_HANDOFF_FROM) / CARD_HANDOFF_SPAN).coerceIn(0f, 1f)
+                                renderEffect = null
+                                return@graphicsLayer
+                            }
                             // ---- The geometry half of the morph ----
                             //
                             // The collapse scale is DERIVED from the pill, not hand-tuned: at p=0
@@ -474,7 +502,10 @@ fun BottomSheet(
                     .offset { if (state.isExpanded) IntOffset(0, 100_000) else IntOffset.Zero }
                     .graphicsLayer {
                         val p = state.progress.coerceIn(0f, 1f)
-                        if (dynamicIslandMorph) {
+                        if (dynamicIslandMorph && cardMorph) {
+                            // The mini player's contents give way at once as the card takes over.
+                            alpha = 1f - ((p - CARD_HANDOFF_FROM) / CARD_HANDOFF_SPAN).coerceIn(0f, 1f)
+                        } else if (dynamicIslandMorph) {
                             // Counter-morph: pill grows toward the player's width as it fades,
                             // so it reads as "expanding into" the full player rather than
                             // disappearing while the player appears from nowhere.
