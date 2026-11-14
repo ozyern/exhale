@@ -178,13 +178,13 @@ class MainActivity : ComponentActivity() {
 
         // Cold launch from the launcher only (WelcomeActivity hands off with this extra);
         // notification/deep-link opens go straight to the app.
-        // Exhale master's intros, drawn over the already-composed app: the neon mark (the retro
-        // one, the default) or the liquid lens film. Off leaves the system splash alone.
+        // Exhale master's intros, drawn over the already-composed app: the liquid lens film (the
+        // default) or the neon mark (the retro one). Off leaves the system splash alone.
         val introStyle = runCatching {
             com.ozyern.exhale.constants.IntroStyle.valueOf(
-                dataStore[com.ozyern.exhale.constants.IntroStyleKey] ?: com.ozyern.exhale.constants.IntroStyle.NEON.name,
+                dataStore[com.ozyern.exhale.constants.IntroStyleKey] ?: com.ozyern.exhale.constants.IntroStyle.LENS.name,
             )
-        }.getOrDefault(com.ozyern.exhale.constants.IntroStyle.NEON)
+        }.getOrDefault(com.ozyern.exhale.constants.IntroStyle.LENS)
         val playIntro = savedInstanceState == null &&
             !introPlayedThisProcess &&
             introStyle != com.ozyern.exhale.constants.IntroStyle.OFF &&

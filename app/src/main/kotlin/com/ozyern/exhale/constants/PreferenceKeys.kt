@@ -1139,7 +1139,7 @@ val LockScreenLyricsOverlayKey = booleanPreferencesKey("lockScreenLyricsOverlay"
 /** The line being sung written into the lock-screen media card in place of the artist. */
 val LyricsOnMediaCardKey = booleanPreferencesKey("lyricsOnMediaCard")
 
-/** The cold-start intro, from Exhale master: the neon (retro) mark, the liquid lens, or none. */
+/** The cold-start intro, from Exhale master: the liquid lens (the default), the neon (retro) mark, or none. */
 val IntroStyleKey = stringPreferencesKey("introStyle")
 
 

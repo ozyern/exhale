@@ -301,7 +301,7 @@ fun AppearanceSettings(
     // The cold-start intro, from Exhale master.
     val (introStyle, onIntroStyleChange) = rememberEnumPreference(
         com.ozyern.exhale.constants.IntroStyleKey,
-        defaultValue = com.ozyern.exhale.constants.IntroStyle.NEON,
+        defaultValue = com.ozyern.exhale.constants.IntroStyle.LENS,
     )
     val introStyleText: (com.ozyern.exhale.constants.IntroStyle) -> String = {
         when (it) {
