@@ -76,6 +76,7 @@ class App : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+        com.ozyern.exhale.openflac.OpenFlac.jamendoClientId = BuildConfig.JAMENDO_CLIENT_ID
         startKoin {
             androidContext(this@App)
             modules(appModules)

@@ -48,6 +48,7 @@ plugins {
 rootProject.name = "exhale"
 include(":app")
 include(":canvas")
+include(":openflac")
 include(":innertube")
 project(":innertube").projectDir = file("core/innertube")
 include(":lyrics-data")

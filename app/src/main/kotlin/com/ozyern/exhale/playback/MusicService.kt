@@ -3708,6 +3708,9 @@ class MusicService :
             return ResolvingDataSource.Factory(audioSourceBuilder.createCacheDataSource()) { dataSpec ->
                 val mediaId = dataSpec.key ?: error("No media id")
 
+                // FLAC page songs: the id carries the file's address, read straight from its server.
+                FlacSongs.uriFor(mediaId)?.let { return@Factory dataSpec.withUri(it) }
+
                 // DefaultDataSource handles local URIs without YouTube resolution.
                 if (isDirectMediaSource(mediaId)) {
                     return@Factory dataSpec

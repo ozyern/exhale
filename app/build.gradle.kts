@@ -58,6 +58,11 @@ android {
         buildConfigField("String", "LASTFM_API_KEY", "\"$lastFmKey\"")
         buildConfigField("String", "LASTFM_SECRET", "\"$lastFmSecret\"")
 
+        // Jamendo's Creative Commons shelf on the FLAC page needs a client id; without one the
+        // shelf is simply left out.
+        val jamendoClientId = localProperties.getProperty("JAMENDO_CLIENT_ID") ?: System.getenv("JAMENDO_CLIENT_ID") ?: ""
+        buildConfigField("String", "JAMENDO_CLIENT_ID", "\"$jamendoClientId\"")
+
         val isNightly = project.hasProperty("nightly") && project.property("nightly") == "true"
         buildConfigField("Boolean", "IS_NIGHTLY", isNightly.toString())
         // CI stamps the workflow run number so a nightly build knows which one it is.
@@ -368,6 +373,7 @@ dependencies {
     implementation(project(":artwork"))
     implementation(project(":network-storage"))
     implementation(project(":canvas"))
+    implementation(project(":openflac"))
     implementation(project(":playback-core"))
     implementation(project(":playback-presentation"))
     implementation(project(":history-core"))

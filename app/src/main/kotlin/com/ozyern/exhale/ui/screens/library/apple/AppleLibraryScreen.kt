@@ -143,7 +143,7 @@ import kotlinx.coroutines.withContext
  * Apple Music's Library destinations, plus the app's Local, Liked, Cached, Most Played,
  * Uploaded, and History lists, which can be added to the same list via Edit.
  */
-enum class AppleLibraryDestination { Playlists, Artists, Albums, Songs, Local, Downloaded, Liked, Podcasts, Cached, Top, Uploaded, History }
+enum class AppleLibraryDestination { Playlists, Artists, Albums, Songs, Local, Downloaded, Liked, Podcasts, Cached, Top, Uploaded, History, Flac }
 
 /**
  * Library home with pinned items, category links, and recently added content.
@@ -241,6 +241,7 @@ private val Rows = listOf(
     CategoryRowSpec(AppleLibraryDestination.Albums, R.string.filter_albums, sf("SFSquareStack")),
     CategoryRowSpec(AppleLibraryDestination.Songs, R.string.filter_songs, sf("SFMusicNote")),
     CategoryRowSpec(AppleLibraryDestination.Local, R.string.filter_local, sf("SFIphone")),
+    CategoryRowSpec(AppleLibraryDestination.Flac, R.string.flac_library_row, sf("waveform")),
     CategoryRowSpec(AppleLibraryDestination.Downloaded, R.string.filter_downloaded, sf("SFArrowDownCircle")),
     CategoryRowSpec(AppleLibraryDestination.Liked, R.string.filter_liked, sf("SFHeart")),
     CategoryRowSpec(AppleLibraryDestination.Podcasts, R.string.filter_podcasts, sf("microphone")),

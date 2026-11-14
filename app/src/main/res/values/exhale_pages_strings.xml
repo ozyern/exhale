@@ -37,4 +37,5 @@
     <string name="exhale_update_download">Download and install</string>
     <string name="exhale_update_install">Install now</string>
     <string name="exhale_update_try_again">Try again</string>
+    <string name="flac_library_row">FLAC</string>
 </resources>

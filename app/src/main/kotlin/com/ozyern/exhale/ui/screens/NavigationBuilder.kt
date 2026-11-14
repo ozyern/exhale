@@ -721,6 +721,15 @@ fun NavGraphBuilder.navigationBuilder(
     sharedComposable("recognition_history") {
         RecognitionHistoryScreen(navController)
     }
+    sharedComposable(com.ozyern.exhale.ui.screens.flac.FlacRoute) {
+        com.ozyern.exhale.ui.screens.flac.FlacScreen(navController)
+    }
+    sharedComposable(com.ozyern.exhale.ui.screens.flac.FlacReleaseRoute) { backStackEntry ->
+        com.ozyern.exhale.ui.screens.flac.FlacReleaseScreen(
+            navController,
+            android.net.Uri.decode(backStackEntry.arguments?.getString("key").orEmpty()),
+        )
+    }
     sharedComposable("settings/changelog") {
         ChangelogScreen(navController,scrollBehavior)
     }

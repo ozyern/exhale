@@ -47,6 +47,7 @@ fun LibraryScreen(navController: NavController) {
                         AppleLibraryDestination.Top -> navController.navigate("top_playlist/50")
                         AppleLibraryDestination.Uploaded -> navController.navigate("auto_playlist/uploaded")
                         AppleLibraryDestination.History -> navController.navigate("history")
+                        AppleLibraryDestination.Flac -> navController.navigate(com.ozyern.exhale.ui.screens.flac.FlacRoute)
                     }
                 },
             )
