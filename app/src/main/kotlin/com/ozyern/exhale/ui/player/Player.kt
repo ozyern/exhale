@@ -369,7 +369,7 @@ fun BottomSheetPlayer(
         defaultValue = com.ozyern.exhale.constants.PlayerArtworkStyle.CARD,
     )
     val espressoPlayer = !useAppleMusicPlayer && espressoArtworkStyle == com.ozyern.exhale.constants.PlayerArtworkStyle.VINYL
-    val v2Look by rememberEnumPreference(com.ozyern.exhale.constants.PlayerLookKey, com.ozyern.exhale.constants.PlayerLook.SQUARED)
+    val v2Look by rememberEnumPreference(com.ozyern.exhale.constants.PlayerLookKey, com.ozyern.exhale.constants.DefaultPlayerLook)
 
     // Shared between the background slot (BackgroundVideoView polls into it) and the
     // control pills below — see VideoLoopClock's doc for why this is a plain clock.

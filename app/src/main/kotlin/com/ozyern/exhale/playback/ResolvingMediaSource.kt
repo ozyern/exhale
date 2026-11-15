@@ -43,7 +43,22 @@ internal class ResolvingMediaSource(
     // keeps the same song and address, so it is taken in place. Refusing it made the player tear
     // the source down and rebuffer the song on every lyric line.
     override fun canUpdateMediaItem(mediaItem: MediaItem): Boolean =
-        mediaItem.mediaId == item.mediaId && mediaItem.localConfiguration == item.localConfiguration
+        mediaItem.mediaId !in reresolve &&
+            mediaItem.mediaId == item.mediaId && mediaItem.localConfiguration == item.localConfiguration
+
+    companion object {
+        /**
+         * Songs whose next replace must build a new source, so the resolver runs again: the song is
+         * moving to another stream (its FLAC copy turned up, or the copy is being given up), which a
+         * metadata-only update in place would never pick up.
+         */
+        private val reresolve = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+        fun reresolveOnNextReplace(mediaId: String) { reresolve.add(mediaId) }
+
+        /** Called once the replace has gone through, whichever way it went. */
+        fun clearReresolve(mediaId: String) { reresolve.remove(mediaId) }
+    }
 
     override fun updateMediaItem(mediaItem: MediaItem) {
         item = mediaItem

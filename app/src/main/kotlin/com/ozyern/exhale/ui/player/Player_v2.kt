@@ -514,15 +514,19 @@ private fun PlayerV2Content(
         }
     }
 
-    val selectedLook by rememberEnumPreference(key = PlayerLookKey, defaultValue = PlayerLook.SQUARED)
+    val selectedLook by rememberEnumPreference(key = PlayerLookKey, defaultValue = com.ozyern.exhale.constants.DefaultPlayerLook)
     val playerLook = if (auxiliaryPageState != null) PlayerLook.SQUARED else selectedLook
     val isHeroLook = playerLook == PlayerLook.HERO
-    androidx.compose.runtime.DisposableEffect(isHeroLook) {
+    // Full bleed chosen, whether or not lyrics or the queue have the hero squared away right now.
+    val heroSelected = selectedLook == PlayerLook.HERO
+    androidx.compose.runtime.DisposableEffect(heroSelected) {
         PlayerMorph.stayInPlace = false
         // Full bleed docks as BitChord's player does: the sheet slides up out of the dock fading in,
         // and the mini player's cover flies into the hero (see PlayerMorph.rise). Square artwork
-        // keeps Convx's card.
-        PlayerMorph.rise = isHeroLook
+        // keeps Convx's card. Keyed on the choice, not on what is on screen: left on lyrics or the
+        // queue, the player still rises out of the dock with the cover flying into the page's
+        // header, instead of falling back to the card and opening as a bare fade.
+        PlayerMorph.rise = heroSelected
         onDispose {
             PlayerMorph.stayInPlace = false
             PlayerMorph.rise = false
@@ -1255,7 +1259,8 @@ private fun PlayerV2Content(
                                                     if (showPlayerThumbnailShadow) (playerThumbnailShadowElevation / 2f).dp.toPx() else 0f
                                                 },
                                                 videoPoster = !isHeroLook,
-                                                fadeEndpoints = !isHeroLook,
+                                                // Rising, the flying cover lands on the header itself.
+                                                fadeEndpoints = !isHeroLook && !heroSelected,
                                                 fadeOnly = isHeroLook,
                                             ) else Modifier)
                                             .then(rememberDragToQueueModifier(

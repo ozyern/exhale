@@ -46,6 +46,18 @@ object ArchiveFlac {
     private val lookups = ConcurrentHashMap<String, Deferred<Copy?>>()
     @Volatile private var store: SharedPreferences? = null
 
+    /**
+     * Told the song's id when a search finds its copy. A search that outran [LOOKUP_TIMEOUT_MS] has
+     * already let the song start from a lossy source; the player uses this to move it onto the copy.
+     */
+    @Volatile var onCopyFound: ((mediaId: String) -> Unit)? = null
+
+    /** Starts the search for [song]'s copy without waiting for it, so it is known by the time it plays. */
+    fun prefetch(song: MediaMetadata) {
+        if (!enabled || song.id in rejected || known(song.id) != null) return
+        scope.async { find(song) }
+    }
+
     fun init(context: Context) {
         store = context.applicationContext.getSharedPreferences("flac_copies", Context.MODE_PRIVATE)
     }
@@ -91,6 +103,7 @@ object ArchiveFlac {
                         runCatching {
                             store?.edit()?.putString(id, listOf(copy.url, copy.sampleRate ?: "", copy.bitDepth ?: "").joinToString("\t"))?.apply()
                         }
+                        runCatching { onCopyFound?.invoke(id) }
                     }
                 }
             }

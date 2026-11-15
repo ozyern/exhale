@@ -48,7 +48,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 /** Lyrics look: glow and the two blur modes. Kept apart from the animation style and text layout. */
 @Composable
 fun LyricsSettingsScreen(navController: NavController) {
-    val (animationStyle, selectAnimationStyle) = rememberEnumPreference(LyricsAnimationStyleKey, LyricsAnimationStyle.APPLE_V2)
+    val (animationStyle, selectAnimationStyle) = rememberEnumPreference(LyricsAnimationStyleKey, com.ozyern.exhale.constants.DefaultLyricsAnimationStyle)
     var showStyleDialog by rememberSaveable { mutableStateOf(false) }
     if (showStyleDialog) {
         EnumDialog(

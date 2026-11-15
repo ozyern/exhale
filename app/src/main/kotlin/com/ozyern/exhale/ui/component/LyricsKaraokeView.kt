@@ -53,6 +53,8 @@ fun KaraokeLyrics(
     /** Blurs the lines either side of the active one. Off is cheaper and flatter. */
     useBlur: Boolean = true,
     wordGlowEnabled: Boolean = true,
+    /** Tracking, as a share of the font size. */
+    letterSpacingEm: Float = 0.012f,
     onLineClick: (startMs: Int) -> Unit = {},
 ) {
     val synced = remember(lines) { lines.toSyncedLyrics() }
@@ -63,7 +65,7 @@ fun KaraokeLyrics(
         lineHeight = (fontSize * lineSpacing).sp,
         fontWeight = FontWeight.Bold,
         // Keep tracking proportional to the lyric size.
-        letterSpacing = (fontSize * 0.012f).sp,
+        letterSpacing = (fontSize * letterSpacingEm).sp,
         shadow = if (wordGlowEnabled) androidx.compose.ui.graphics.Shadow(
             color = textColor.copy(alpha = 0.24f),
             offset = androidx.compose.ui.geometry.Offset.Zero,
@@ -76,7 +78,7 @@ fun KaraokeLyrics(
         fontSize = (fontSize * 0.82f).sp,
         lineHeight = (fontSize * 0.82f * lineSpacing).sp,
         fontWeight = FontWeight.Bold,
-        letterSpacing = (fontSize * 0.82f * 0.012f).sp,
+        letterSpacing = (fontSize * 0.82f * letterSpacingEm).sp,
         shadow = if (wordGlowEnabled) androidx.compose.ui.graphics.Shadow(
             color = textColor.copy(alpha = 0.18f),
             offset = androidx.compose.ui.geometry.Offset.Zero,
@@ -118,6 +120,14 @@ fun KaraokeLyrics(
         }
     }
 }
+
+/** Apple Music's lyrics face, bundled with the app. */
+internal val AppleLyricsFontFamily = androidx.compose.ui.text.font.FontFamily(
+    androidx.compose.ui.text.font.Font(com.ozyern.exhale.R.font.sfprodisplaybold, FontWeight.Bold),
+)
+
+/** SF Pro Display's tracking at lyric sizes, as a share of the size. */
+internal const val AppleLyricsTrackingEm = -0.012f
 
 /**
  * Whether this set of lines has enough timing to be worth handing to the karaoke view.
@@ -187,7 +197,7 @@ private fun LyricsEntry.toLine(
     background: List<LyricsEntry>,
 ): ISyncedLine? {
     val alignment = if (agent?.lowercase() == "v2") KaraokeAlignment.End else KaraokeAlignment.Start
-    val syllables = wordsWithSpacing().takeIf { it.isNotEmpty() }?.toSyllables()
+    val syllables = (wordsWithSpacing().takeIf { it.isNotEmpty() } ?: estimatedWords(endMs))?.toSyllables()
 
     if (syllables.isNullOrEmpty()) {
         // No word timings: a plain synced line still renders, it just does not light up
@@ -246,6 +256,30 @@ private fun List<WordTimestamp>.toSyllables(): List<KaraokeSyllable> =
             phonetic = null,
         )
     }
+
+/**
+ * Word timings for a line that came with none: its words spread across the line by length, as a
+ * singer's would be, so a line-synced song still lights up word by word the way Apple Music's does
+ * rather than switching on whole. The sweep finishes a little before the line ends, so the line
+ * reads as sung before the next one takes over.
+ */
+private fun LyricsEntry.estimatedWords(endMs: Int): List<WordTimestamp>? {
+    if (text.isBlank()) return null
+    val tokens = Regex("\\S+\\s*").findAll(text.trim()).map { it.value }.toList()
+    if (tokens.isEmpty()) return null
+    val span = ((endMs - time) * EstimatedSweepShare).toLong().coerceAtLeast(tokens.size.toLong())
+    val weights = tokens.map { it.trim().length.coerceAtLeast(1) + 1 }
+    val total = weights.sum().toDouble()
+    var cursor = time.toDouble()
+    return tokens.mapIndexed { index, token ->
+        val start = cursor
+        cursor += span * weights[index] / total
+        WordTimestamp(text = token, startTime = start / 1000.0, endTime = cursor / 1000.0)
+    }
+}
+
+/** Share of a word-less line's time its estimated sweep takes. */
+private const val EstimatedSweepShare = 0.85
 
 /** A syllable shorter than this cannot be seen to animate at all. */
 private const val MinSyllableMs = 1

@@ -115,7 +115,7 @@ fun ColumnScope.PlayerDesignSheetContent(onMoreOptions: () -> Unit) {
     val (gradientRaw) = rememberPreference(PlayerGradientStopsKey, "")
     val (gradientAngle) = rememberPreference(PlayerGradientAngleKey, 90f)
     val (useV2, setUseV2) = rememberPreference(UseAppleMusicPlayerKey, true)
-    val (look, setLook) = rememberEnumPreference(PlayerLookKey, PlayerLook.SQUARED)
+    val (look, setLook) = rememberEnumPreference(PlayerLookKey, com.ozyern.exhale.constants.DefaultPlayerLook)
     val (shadow, setShadow) = rememberPreference(ShowPlayerThumbnailShadowKey, false)
     val (showUpNext, setShowUpNext) = rememberPreference(ShowUpNextKey, false)
     val (hideVolumeBar, setHideVolumeBar) = rememberPreference(HideVolumeBarKey, false)

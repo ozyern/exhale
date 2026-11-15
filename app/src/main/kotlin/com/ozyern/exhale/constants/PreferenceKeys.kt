@@ -112,6 +112,8 @@ enum class PlayerLook {
 }
 
 val PlayerLookKey = stringPreferencesKey("playerLook")
+/** Apple Music v2 opens full bleed until someone picks square artwork. */
+val DefaultPlayerLook = PlayerLook.HERO
 val ShowUpNextKey = booleanPreferencesKey("showUpNext")
 /** Tab view only: caps the expanded player to a phone-like width instead of stretching
  *  it across the wide screen. The mini player stays full-width either way. */
@@ -788,6 +790,8 @@ val FetchedModulesKey = stringPreferencesKey("fetchedModules")
 
 
 val LyricsAnimationStyleKey = stringPreferencesKey("lyricsAnimationStyle")
+/** Apple Music's karaoke view, in SF Pro Display, until another style is picked. */
+val DefaultLyricsAnimationStyle get() = LyricsAnimationStyle.ARCHIVE_TUNE
 enum class LyricsAnimationStyle {
     FLAMINGO,
     NONE,

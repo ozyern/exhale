@@ -458,7 +458,7 @@ fun Lyrics(
     val flamingoBrightSingingWords by rememberPreference(FlamingoBrightSingingWordsKey, true)
     val flamingoWordSwell by rememberPreference(FlamingoWordSwellKey, true)
     val flamingoGlowColor by rememberPreference(FlamingoGlowColorKey, 0xFFFFFFFF.toInt())
-    val lyricsAnimationStyle by rememberEnumPreference(LyricsAnimationStyleKey, LyricsAnimationStyle.APPLE_V2)
+    val lyricsAnimationStyle by rememberEnumPreference(LyricsAnimationStyleKey, com.ozyern.exhale.constants.DefaultLyricsAnimationStyle)
     val lyricsFontSelection by rememberPreference(com.ozyern.exhale.constants.LyricsFontKey, "default")
     val lyricsFontFamily = com.ozyern.exhale.lyrics.rememberLyricsFont(lyricsFontSelection)
     val storedLyricsTextSize by rememberPreference(LyricsTextSizeKey, 30f)
@@ -685,9 +685,11 @@ fun Lyrics(
     var showMaxSelectionToast by remember { mutableStateOf(false) }
 
     val isLyricsProviderShown = lyricsEntity?.provider != null && lyricsEntity?.provider != "Unknown" && !isSelectionModeActive
+    // Line-synced lyrics take it too: their words are given estimated timings, so every synced song
+    // sweeps word by word in the same view rather than dropping to a plainer one.
     val usesArchiveTuneRenderer = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
         lyricsAnimationStyle == LyricsAnimationStyle.ARCHIVE_TUNE &&
-        lines.hasKaraokeTimings()
+        isSynced && lines.isNotEmpty()
     // Exhale master's Melody, and BitChord's own lyrics view: both need timed lines, and fall back
     // to the Flamingo renderer for lyrics without them.
     val usesMelodyRenderer = lyricsAnimationStyle == LyricsAnimationStyle.MELODY && isSynced && lines.isNotEmpty()
@@ -918,15 +920,19 @@ fun Lyrics(
             // Archive Tune animates the full list for depth and duet timing. Without word
             // timestamps, the regular list produces the same result with less work.
             val lyricsOffset = currentSong?.song?.lyricsOffset?.toLong() ?: 0L
+            // Apple Music's own lyrics: SF Pro Display Bold, set a touch tight, and no halo of our
+            // own around the words. A face picked in settings keeps the old look.
+            val appleFace = lyricsFontSelection == "default"
             KaraokeLyrics(
-                fontFamily = lyricsFontFamily,
+                fontFamily = if (appleFace) AppleLyricsFontFamily else lyricsFontFamily,
                 lines = lines,
                 positionMs = { currentPlaybackPosition + lyricsOffset },
                 textColor = textColor,
                 listState = lazyListState,
                 fontSize = lyricsTextSize,
                 lineSpacing = lyricsLineSpacing,
-                wordGlowEnabled = lyricsGlowEffect,
+                wordGlowEnabled = lyricsGlowEffect && !appleFace,
+                letterSpacingEm = if (appleFace) AppleLyricsTrackingEm else 0.012f,
                 onLineClick = { startMs ->
                     if (changeLyrics) playerConnection.player.seekTo(startMs.toLong())
                 },

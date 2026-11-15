@@ -1385,6 +1385,12 @@ class MusicService :
             .map { it[com.ozyern.exhale.constants.PreferArchiveFlacKey] ?: true }
             .distinctUntilChanged()
             .collectLatest(scope) { ArchiveFlac.enabled = it }
+        // A search that outran the start of its song lands while the lossy stream is playing: move
+        // the song onto its FLAC copy there and then, rather than leaving it lossy until next time.
+        ArchiveFlac.onCopyFound = { mediaId ->
+            // A beat later, so a source that was itself waiting on this search has taken the copy.
+            scope.launch { delay(500); moveToArchiveFlac(mediaId) }
+        }
 
         // Lyrics on the lock screen, the media card and ColorOS's Live Space.
         liveLyricsPublisher = LiveLyricsPublisher(
@@ -3459,8 +3465,15 @@ class MusicService :
             val idx = player.currentMediaItemIndex
             val pos = player.currentPosition
             // Replace the wrapper too: an HLS child already holds the old codec
-            // and URL, so preparing that child again cannot apply the fallback.
-            player.currentMediaItem?.let { player.replaceMediaItem(idx, it) }
+            // and URL, so preparing that child again cannot apply the fallback. A stall raises no
+            // error, so the player would otherwise take the replace as a metadata edit and keep the
+            // source it has.
+            ResolvingMediaSource.reresolveOnNextReplace(mediaId)
+            try {
+                player.currentMediaItem?.let { player.replaceMediaItem(idx, it) }
+            } finally {
+                ResolvingMediaSource.clearReresolve(mediaId)
+            }
             player.seekTo(idx, pos)
             player.prepare()
 
@@ -3473,6 +3486,30 @@ class MusicService :
     }
 
     private val losslessStallGuard = LosslessStallGuard()
+
+    /**
+     * Puts the playing song onto its newly found Archive FLAC copy at the same position. Only for the
+     * song on now, still on a lossy source, with enough of it left to be worth a moment's rebuffer.
+     */
+    private fun moveToArchiveFlac(mediaId: String) {
+        if (!playerInitialized.value) return
+        val item = player.currentMediaItem ?: return
+        if (item.mediaId != mediaId || losslessStreamMediaIds.contains(mediaId)) return
+        if (!streamResolver.archiveFlacAllowed(mediaId) || roomPlaybackBridge.jamActive.value) return
+        if (castConnectionHandler?.isCasting?.value == true) return
+        val position = player.currentPosition
+        val duration = player.duration
+        if (duration != C.TIME_UNSET && duration > 0 && duration - position < ARCHIVE_UPGRADE_MIN_REMAINING_MS) return
+        val index = player.currentMediaItemIndex
+        Timber.tag(TAG).i("Archive FLAC copy found mid-song for $mediaId, switching to it")
+        ResolvingMediaSource.reresolveOnNextReplace(mediaId)
+        try {
+            player.replaceMediaItem(index, item)
+        } finally {
+            ResolvingMediaSource.clearReresolve(mediaId)
+        }
+        player.seekTo(index, position)
+    }
 
     private fun updateDiscordRPC(song: Song, showFeedback: Boolean = false) {
         val useDetails = dataStore.get(DiscordUseDetailsKey, false)
@@ -3706,6 +3743,34 @@ class MusicService :
                 runCatching { player.getMediaItemAt(i).mediaId }
                     .getOrNull()?.takeIf { it.isNotEmpty() }?.let(::prefetchStreamUrl)
             }
+            prefetchArchiveFlac(index)
+        }
+
+        /**
+         * Starts the FLAC search for the song on now and the next ones, so a copy is known before the
+         * player gets to them. Searching only when a song is prepared left most songs past the wait
+         * and playing their lossy stream, the copy turning up a play too late.
+         */
+        private fun prefetchArchiveFlac(index: Int) {
+            if (!ArchiveFlac.enabled) return
+            val items = (index..minOf(index + ARCHIVE_PREFETCH_AHEAD, player.mediaItemCount - 1))
+                .mapNotNull { i -> runCatching { player.getMediaItemAt(i) }.getOrNull() }
+                .filter { !isDirectMediaSource(it.mediaId) && !FlacSongs.isFlacId(it.mediaId) && archiveFlacAllowed(it.mediaId) && ArchiveFlac.known(it.mediaId) == null }
+            if (items.isEmpty()) return
+            scope.launch(Dispatchers.IO) {
+                items.forEach { item -> archiveLookupMetadata(item)?.let(ArchiveFlac::prefetch) }
+            }
+        }
+
+        /**
+         * What to search the archive with: the queue item's own details, or the library's when the item
+         * carries none with a length (a restored or handed-over queue), since a search needs the length.
+         */
+        private suspend fun archiveLookupMetadata(mediaItem: MediaItem): MediaMetadata? {
+            val own = mediaItem.metadata
+            if (own != null && own.duration > 0) return own
+            val stored = runCatching { database.getSongById(mediaItem.mediaId)?.toMediaMetadata() }.getOrNull()
+            return stored?.takeIf { it.duration > 0 } ?: own
         }
 
         private val headPrefetchInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -3829,7 +3894,7 @@ class MusicService :
         }
 
         /** Whether [mediaId] may play from its Archive FLAC copy right now. */
-        private fun archiveFlacAllowed(mediaId: String): Boolean =
+        fun archiveFlacAllowed(mediaId: String): Boolean =
             ArchiveFlac.enabled && !roomPlaybackBridge.requiresJamYouTube &&
                 mediaId !in forceStandardAudioMediaIds && mediaId !in videoModeMediaIds &&
                 !forceAacAudioMediaIds.contains(mediaId) &&
@@ -3880,7 +3945,7 @@ class MusicService :
                         // A FLAC copy from the Internet Archive comes before everything, cached
                         // streams included: searched from the song's own details, as master does.
                         if (archiveFlacAllowed(mediaId)) {
-                            val copy = ArchiveFlac.known(mediaId) ?: mediaItem.metadata?.let { ArchiveFlac.find(it) }
+                            val copy = ArchiveFlac.known(mediaId) ?: archiveLookupMetadata(mediaItem)?.let { ArchiveFlac.find(it) }
                             if (copy != null) {
                                 noteArchiveFlacPlaying(mediaId, copy)
                                 return@ResolvingMediaSource progressive.createMediaSource(mediaItem)
@@ -4521,6 +4586,10 @@ class MusicService :
     private val scrobbleCoordinator = ScrobbleCoordinator()
 
     companion object {
+        /** Songs ahead of the playing one whose FLAC copy is searched for in advance. */
+        private const val ARCHIVE_PREFETCH_AHEAD = 2
+        /** Below this much left, a copy found mid-song waits for the next play instead. */
+        private const val ARCHIVE_UPGRADE_MIN_REMAINING_MS = 20_000L
         /** Widget progress repaint cadence while playing with the screen on. */
         private const val WIDGET_PROGRESS_INTERVAL_MS = 1000L
         private const val WIDGET_LYRICS_INTERVAL_MS = 200L

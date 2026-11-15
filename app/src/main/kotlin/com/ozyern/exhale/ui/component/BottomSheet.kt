@@ -97,6 +97,16 @@ private fun playerSheetStiffness(): Float =
 
 private const val BITCHORD_DOCK_STIFFNESS = 195f
 
+/**
+ * Where the sheet's spring may call itself home. The dock's critically damped spring crawls its
+ * last pixel for most of a second, and the whole time the morph holds the mini player's cover
+ * and the page beneath; a dp from rest nobody can see, and it ends about a fifth of a second sooner.
+ */
+private val SheetRestThreshold = 1.dp
+
+/** Outlines nothing: a layer clipped to it draws nothing and takes no touches. */
+private val PassThroughShape = androidx.compose.foundation.shape.GenericShape { _, _ -> }
+
 private const val BackdropFreezeSafetyNs = 900_000_000L
 
 /** Close spring damping when the sheet lands into the mini pill with speed. */
@@ -246,7 +256,15 @@ fun BottomSheet(
                         screenCornerExpansionProgress = cornerExpansion.value,
                     )
                 }
-                shape = RoundedCornerShape(topStart = cornerRadius, topEnd = cornerRadius)
+                // Closing under the morph, the sheet sits untranslated over the whole screen while the
+                // overlay draws it on its way down. It draws nothing in place then anyway, and an
+                // empty clip keeps it from being hit too: a scroll on the page beneath reached the
+                // sheet instead, and dragged the player back open or went nowhere until it settled.
+                shape = if (morphEnabled && PlayerMorph.active && !state.targetOpen) {
+                    PassThroughShape
+                } else {
+                    RoundedCornerShape(topStart = cornerRadius, topEnd = cornerRadius)
+                }
                 clip = true
             }
     ) {
@@ -446,6 +464,7 @@ class BottomSheetState(
     private fun collapseSpring() = spring<Dp>(
         dampingRatio = if (onCollapseLanded != null && !com.ozyern.exhale.ui.player.PlayerMorph.rise) COLLAPSE_LANDING_DAMPING else Spring.DampingRatioNoBouncy,
         stiffness = playerSheetStiffness(),
+        visibilityThreshold = SheetRestThreshold,
     )
 
     fun expand(animationSpec: AnimationSpec<Dp>, initialVelocity: Dp = 0.dp) {
@@ -466,6 +485,7 @@ class BottomSheetState(
             spring(
                 dampingRatio = Spring.DampingRatioNoBouncy,
                 stiffness = playerSheetStiffness(),
+                visibilityThreshold = SheetRestThreshold,
             ),
             initialVelocity = with(density) { velocityPxPerSec.toDp() },
         )
@@ -484,6 +504,7 @@ class BottomSheetState(
             spring(
                 dampingRatio = Spring.DampingRatioNoBouncy,
                 stiffness = playerSheetStiffness(),
+                visibilityThreshold = SheetRestThreshold,
             ),
         )
     }

@@ -181,7 +181,7 @@ fun PlayerThemeScreen(
         UseAppleMusicPlayerKey, defaultValue = true
     )
     val (playerLook, onPlayerLookChange) = rememberEnumPreference(
-        PlayerLookKey, defaultValue = PlayerLook.SQUARED
+        PlayerLookKey, defaultValue = com.ozyern.exhale.constants.DefaultPlayerLook
     )
     val (showPlayerThumbnailShadow, onShowPlayerThumbnailShadowChange) = rememberPreference(
         ShowPlayerThumbnailShadowKey, defaultValue = false
