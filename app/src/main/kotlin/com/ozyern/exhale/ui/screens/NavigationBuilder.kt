@@ -528,6 +528,10 @@ fun NavGraphBuilder.navigationBuilder(
         ContentSettings(navController, scrollBehavior)
     }
 
+    sharedComposable("song_preferences") {
+        com.ozyern.exhale.ui.screens.onboarding.SongPreferencesScreen(navController)
+    }
+
     sharedComposable("settings/content/advanced") {
         ContentAdvancedSettings(navController, scrollBehavior)
     }

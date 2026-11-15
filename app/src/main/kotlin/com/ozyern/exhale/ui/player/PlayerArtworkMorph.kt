@@ -116,7 +116,7 @@ fun Modifier.miniArtworkMorphSource(cornerRadiusPx: Float): Modifier {
             if (it.isAttached) miniArtworkSlot.report(owner, MorphArtTarget(it.boundsInRoot(), cornerRadiusPx))
         }
         .graphicsLayer {
-            alpha = if (!PlayerMorph.active) 1f
+            alpha = if (!PlayerMorph.active || PlayerMorph.pageCard) 1f
             else if (fullArtworkSlot.value?.fadeEndpoints == true && fullArtworkSlot.value?.travels == true) {
                 miniArtworkEndpointAlpha(PlayerMorph.progress)
             }
@@ -153,7 +153,7 @@ fun Modifier.fullArtworkMorphTarget(
             )
         }
         .graphicsLayer {
-            alpha = if (!PlayerMorph.active) {
+            alpha = if (!PlayerMorph.active || PlayerMorph.pageCard) {
                 1f
             } else if (fadeOnly) {
                 1f
@@ -246,7 +246,7 @@ fun PlayerArtworkMorphOverlay(
             }
             .graphicsLayer {
                 val fraction = progress().coerceIn(0f, 1f)
-                if (fraction <= 0f || fraction >= 1f || !PlayerMorph.active) {
+                if (fraction <= 0f || fraction >= 1f || !PlayerMorph.active || PlayerMorph.pageCard) {
                     alpha = 0f
                     shadowElevation = 0f
                     return@graphicsLayer
@@ -431,7 +431,7 @@ private fun FancyArtworkFadeOverlay(
             .size(boxWidthDp, boxHeightDp)
             .graphicsLayer {
                 val fraction = progress().coerceIn(0f, 1f)
-                if (fraction <= 0f || fraction >= PLAYER_MINI_FADE_END || !PlayerMorph.active) {
+                if (fraction <= 0f || fraction >= PLAYER_MINI_FADE_END || !PlayerMorph.active || PlayerMorph.pageCard) {
                     alpha = 0f
                     return@graphicsLayer
                 }

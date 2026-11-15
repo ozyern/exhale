@@ -217,6 +217,31 @@ fun BottomSheet(
                     (state.expandedBound - state.value).toPx()
                 }
             }
+            .graphicsLayer {
+                // Interpolate the corner radius during dragging instead of switching abruptly.
+                val cornerRadius = if (morphEnabled && PlayerMorph.active) {
+                    // The overlay applies rounding to the drawn bounds.
+                    0f
+                } else {
+                    sharedContainerCornerRadius(
+                        collapsedCornerRadius = collapsedCornerRadius.toPx(),
+                        expandedCornerRadius = expandedCornerRadius.toPx(),
+                        progress = state.progress,
+                        screenCornerExpansionProgress = cornerExpansion.value,
+                    )
+                }
+                // Closing under the morph, the sheet sits untranslated over the whole screen while the
+                // overlay draws it on its way down. It draws nothing in place then anyway, and an
+                // empty clip keeps it from being hit too: a scroll on the page beneath reached the
+                // sheet instead, and dragged the player back open or went nowhere until it settled.
+                // The drag detector below sits inside this clip so the empty outline gates it as well.
+                shape = if (morphEnabled && PlayerMorph.active && !state.targetOpen) {
+                    PassThroughShape
+                } else {
+                    RoundedCornerShape(topStart = cornerRadius, topEnd = cornerRadius)
+                }
+                clip = true
+            }
             .pointerInput(state, isExpandable) {
                 if (!isExpandable) return@pointerInput
                 val velocityTracker = VelocityTracker()
@@ -242,30 +267,6 @@ fun BottomSheet(
                         state.performFling(velocity, onDismiss)
                     }
                 )
-            }
-            .graphicsLayer {
-                // Interpolate the corner radius during dragging instead of switching abruptly.
-                val cornerRadius = if (morphEnabled && PlayerMorph.active) {
-                    // The overlay applies rounding to the drawn bounds.
-                    0f
-                } else {
-                    sharedContainerCornerRadius(
-                        collapsedCornerRadius = collapsedCornerRadius.toPx(),
-                        expandedCornerRadius = expandedCornerRadius.toPx(),
-                        progress = state.progress,
-                        screenCornerExpansionProgress = cornerExpansion.value,
-                    )
-                }
-                // Closing under the morph, the sheet sits untranslated over the whole screen while the
-                // overlay draws it on its way down. It draws nothing in place then anyway, and an
-                // empty clip keeps it from being hit too: a scroll on the page beneath reached the
-                // sheet instead, and dragged the player back open or went nowhere until it settled.
-                shape = if (morphEnabled && PlayerMorph.active && !state.targetOpen) {
-                    PassThroughShape
-                } else {
-                    RoundedCornerShape(topStart = cornerRadius, topEnd = cornerRadius)
-                }
-                clip = true
             }
     ) {
         if (handleBack && !state.isCollapsed && !state.isDismissed) {

@@ -45,6 +45,15 @@ object PlayerMorph {
      * close: the cover lands on the mini cover instead. Read in the draw phase only.
      */
     @JvmField var rise: Boolean = false
+
+    /**
+     * True while the player is showing lyrics or the queue. The morph then carries the whole
+     * page as one card that shrinks into the mini player's cover on close and grows back out of
+     * it on open, so the page the player was left on is the page that leaves and returns. Both
+     * covers stay drawn where they are; only the card moves. Snapshot state: the artwork layers
+     * that read it in the draw phase must redraw when the page changes.
+     */
+    var pageCard: Boolean by androidx.compose.runtime.mutableStateOf(false)
     /** The pill's own drop-shadow elevation (px). The card casts it while it is still the
      *  pill, so the shadow is there all the way down instead of popping in on landing. */
     @JvmField var miniShadowElevationPx: Float = 0f
@@ -239,5 +248,5 @@ fun Modifier.recordPlayerLayer(
  * the two are on screen together for the first quarter of every open.
  */
 fun Modifier.hideWhileMorphing(): Modifier = graphicsLayer {
-    alpha = if (PlayerMorph.active) 0f else 1f
+    alpha = if (PlayerMorph.active && !PlayerMorph.pageCard) 0f else 1f
 }

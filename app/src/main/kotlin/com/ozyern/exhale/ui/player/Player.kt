@@ -891,6 +891,14 @@ fun BottomSheetPlayer(
 
     PlayerMorphHostEffects(state, isPreviewOnly)
 
+    // Lyrics and the queue leave and return as one page card (see PlayerMorph.pageCard). The page
+    // itself is kept across a close, so the player reopens where it was left.
+    val showingPage = if (useAppleMusicPlayer) !v17ShowingCover else classicPages.showing
+    DisposableEffect(showingPage, isPreviewOnly) {
+        if (!isPreviewOnly) PlayerMorph.pageCard = showingPage
+        onDispose { if (!isPreviewOnly) PlayerMorph.pageCard = false }
+    }
+
     BottomSheet(
         state = state,
         modifier = modifier,

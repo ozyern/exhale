@@ -683,6 +683,17 @@ internal fun AppRootContent(
                 }
             }
 
+            // Song preferences are offered once, over the start page, until they are finished or
+            // skipped; Settings → Content reopens them later.
+            LaunchedEffect(Unit) {
+                val completed = withContext(Dispatchers.IO) {
+                    activity.dataStore[com.ozyern.exhale.constants.SongPreferencesCompletedKey] ?: false
+                }
+                if (!completed && navController.currentDestination?.route != "song_preferences") {
+                    navController.navigate("song_preferences")
+                }
+            }
+
             DisposableEffect(Unit) {
                 val listener = Consumer<Intent> { intent ->
                     intentRouter.handleDeepLinkIntent(intent, navController)

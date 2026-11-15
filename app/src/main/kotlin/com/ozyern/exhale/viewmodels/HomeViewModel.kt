@@ -12,6 +12,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.music.innertube.YouTube
 import com.music.innertube.models.AlbumItem
+import com.music.innertube.models.ArtistItem
+import com.music.innertube.SearchFilter
 import com.music.innertube.models.Artist
 import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.SongItem
@@ -29,6 +31,7 @@ import com.ozyern.exhale.constants.HideExplicitKey
 import com.ozyern.exhale.constants.HideVideoSongsKey
 import com.ozyern.exhale.constants.DataSaverEnabledKey
 import com.ozyern.exhale.constants.HideYoutubeShortsKey
+import com.ozyern.exhale.constants.PreferredArtistsKey
 import com.ozyern.exhale.constants.InnerTubeCookieKey
 import com.ozyern.exhale.constants.QuickPicks
 import com.ozyern.exhale.constants.QuickPicksKey
@@ -40,6 +43,7 @@ import com.ozyern.exhale.history.ListenHistoryRepository
 import com.ozyern.exhale.history.ListenHistorySettingsRepository
 import com.ozyern.exhale.history.ListenHistorySettingsState
 import com.ozyern.exhale.db.entities.Album
+import com.ozyern.exhale.db.entities.ArtistEntity
 import com.ozyern.exhale.db.entities.LocalItem
 import com.ozyern.exhale.db.entities.Playlist
 import com.ozyern.exhale.db.entities.Song
@@ -63,6 +67,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -632,6 +637,34 @@ class HomeViewModel(
             .filter { it is Song || it is Album }
     }
 
+    /** Picked artists resolved to YouTube Music ids by name; an empty value means none was found. */
+    private val pickedArtistIds = java.util.concurrent.ConcurrentHashMap<String, java.util.Optional<String>>()
+
+    /**
+     * The artists picked in song preferences, as (id, name), in the order they were picked.
+     * Only searches that answered are remembered, so an offline launch asks again next time.
+     */
+    private suspend fun pickedArtists(limit: Int): List<Pair<String, String>> =
+        context.dataStore.get(PreferredArtistsKey, "")
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .take(limit)
+            .mapNotNull { name ->
+                val cached = pickedArtistIds[name]
+                val id = if (cached != null) {
+                    cached.orElse(null)
+                } else {
+                    val result = recommendationRequest { YouTube.search(name, SearchFilter.FILTER_ARTIST) }.getOrNull()
+                        ?: return@mapNotNull null
+                    val found = result.items.filterIsInstance<ArtistItem>().firstOrNull()?.id
+                    pickedArtistIds[name] = java.util.Optional.ofNullable(found)
+                    found
+                } ?: return@mapNotNull null
+                id to name
+            }
+
     private suspend fun loadSimilarRecommendations() {
         val hideExplicit = context.dataStore.get(HideExplicitKey, false)
         val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false) || context.dataStore.get(DataSaverEnabledKey, false)
@@ -700,8 +733,40 @@ class HomeViewModel(
                     }
                 }
 
+            // Artists picked in song preferences: on a new install there is no history to lean
+            // on, so these are what shape the recommendations at first.
+            val playedArtistIds = database.mostPlayedArtists(fromTimeStamp, limit = 15).first().mapTo(HashSet()) { it.id }
+            val pickedDeferreds = pickedArtists(limit = 4)
+                .filter { (id, _) -> id !in playedArtistIds }
+                .map { (artistId, _) ->
+                    async(Dispatchers.IO) {
+                        val page = recommendationRequest { YouTube.artist(artistId) }.getOrNull() ?: return@async null
+                        SimilarRecommendation(
+                            title = com.ozyern.exhale.db.entities.Artist(
+                                artist = ArtistEntity(
+                                    id = artistId,
+                                    name = page.artist.title,
+                                    thumbnailUrl = page.artist.thumbnail,
+                                    channelId = page.artist.channelId,
+                                ),
+                                songCount = 0,
+                            ),
+                            items = page.sections.takeLast(3).flatMap { it.items }
+                                .filterRecommendationItems(hideExplicit, hideVideoSongs)
+                                .take(12)
+                                .ifEmpty { return@async null },
+                        )
+                    }
+                }
+
+            val picked = pickedDeferreds.awaitAll().filterNotNull()
             val results = (artistDeferreds + songDeferreds + albumDeferreds).awaitAll()
-            similarRecommendations.value = results.filterNotNull().shuffled()
+            // Picks lead while history is thin; afterwards they mix in with the rest.
+            similarRecommendations.value = if (playedArtistIds.size < 3) {
+                picked + results.filterNotNull().shuffled()
+            } else {
+                (picked + results.filterNotNull()).shuffled()
+            }
         }
     }
 
@@ -974,6 +1039,18 @@ class HomeViewModel(
             context.dataStore.data
                 .map { it[InnerTubeCookieKey] }
                 .collect { cookie -> updateAccountState(cookie) }
+        }
+
+        // New song-preference picks show up on Home without waiting for a pull to refresh.
+        viewModelScope.launch(Dispatchers.IO) {
+            context.dataStore.data
+                .map { it[PreferredArtistsKey].orEmpty() }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect {
+                    pickedArtistIds.clear()
+                    loadSimilarRecommendations()
+                }
         }
 
         viewModelScope.launch(Dispatchers.IO) {

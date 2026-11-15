@@ -89,7 +89,8 @@ fun PlayerMorphHostEffects(state: BottomSheetState, isPreviewOnly: Boolean) {
         // sheet reaches its bound; disarmed if the close never lands.
         state.onCollapseArmed = { armed ->
             // The rise closes onto the thumbnail, not with a card landing on the pill.
-            if (armed && PlayerMorph.sharedLayersReady && !PlayerMorph.rise) {
+            // The page card closes onto the mini cover, not onto the pill.
+            if (armed && PlayerMorph.sharedLayersReady && !PlayerMorph.rise && !PlayerMorph.pageCard) {
                 landingGeneration++
                 PlayerMorph.landingActive = true
             } else if (!armed) {

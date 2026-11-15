@@ -21,6 +21,7 @@ internal object AppRoutePolicy {
     )
     private val routesWithoutNavigation = setOf(
         "login",
+        "song_preferences",
         "channel_picker",
         "equalizer",
         "wrapped",
@@ -29,6 +30,7 @@ internal object AppRoutePolicy {
     )
     private val routesWithoutPlayer = setOf(
         "wrapped",
+        "song_preferences",
         "update",
         "listen_together/chat",
         "login",

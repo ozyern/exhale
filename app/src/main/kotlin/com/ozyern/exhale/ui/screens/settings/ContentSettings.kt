@@ -13,6 +13,7 @@ import com.composables.sfsymbols.monochrome.SFLeaf
 import com.composables.sfsymbols.monochrome.SFGlobe
 import com.composables.sfsymbols.monochrome.SFLine3Horizontal
 import com.composables.sfsymbols.monochrome.SFMappinAndEllipse
+import com.composables.sfsymbols.monochrome.SFHeart
 import com.composables.sfsymbols.monochrome.SFPlayRectangle
 import com.composables.sfsymbols.monochrome.SFEyeSlashFill
 import com.composables.sfsymbols.monochrome.SFShuffle
@@ -65,6 +66,8 @@ import com.ozyern.exhale.R
 import com.ozyern.exhale.constants.ContentCountryKey
 import com.ozyern.exhale.constants.ContentLanguageKey
 import com.ozyern.exhale.constants.SuggestionRegionKey
+import com.ozyern.exhale.constants.PreferredArtistsKey
+import com.ozyern.exhale.constants.PreferredAudioLanguagesKey
 import com.ozyern.exhale.constants.SuggestionRegionSlugToName
 import com.ozyern.exhale.ui.screens.search.suggestions.SuggestionRegionSheet
 import com.ozyern.exhale.constants.CountryCodeToName
@@ -100,6 +103,8 @@ fun ContentSettings(
     val (contentLanguage, onContentLanguageChange) = rememberPreference(key = ContentLanguageKey, defaultValue = "system")
     val (contentCountry, onContentCountryChange) = rememberPreference(key = ContentCountryKey, defaultValue = "system")
     val (suggestionRegion, onSuggestionRegionChange) = rememberPreference(key = SuggestionRegionKey, defaultValue = "system")
+    val (preferredLanguages) = rememberPreference(key = PreferredAudioLanguagesKey, defaultValue = "")
+    val (preferredArtists) = rememberPreference(key = PreferredArtistsKey, defaultValue = "")
     val (hideExplicit, onHideExplicitChange) = rememberPreference(key = HideExplicitKey, defaultValue = false)
     val (dataSaverEnabled, onDataSaverEnabledChange) = rememberPreference(key = DataSaverEnabledKey, defaultValue = false)
     val (hideVideoSongs, onHideVideoSongsChange) = rememberPreference(key = HideVideoSongsKey, defaultValue = false)
@@ -192,6 +197,12 @@ fun ContentSettings(
                         )
                     },
                     onClick = { showContentCountryDialog = true }
+                ),
+                IosSettingsItem(
+                    icon = rememberVectorPainter(SfSymbols.Monochrome.SFHeart),
+                    title = { Text("Languages & Artists") },
+                    description = { Text(songPreferencesSummary(preferredLanguages, preferredArtists)) },
+                    onClick = { navController.navigate("song_preferences") }
                 ),
                 IosSettingsItem(
                     icon = rememberVectorPainter(SfSymbols.Monochrome.SFGlobeAsiaAustraliaFill),
@@ -314,4 +325,18 @@ fun ContentSettings(
         Spacer(modifier = Modifier.height(16.dp))
     
     }
+}
+
+/** "English, Hindi · 4 artists", or a prompt when nothing has been picked yet. */
+private fun songPreferencesSummary(languagesCsv: String, artistsCsv: String): String {
+    val languages = languagesCsv.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        .map { code -> com.ozyern.exhale.ui.screens.onboarding.OnboardingLanguages.firstOrNull { it.code == code }?.displayName ?: code }
+    val artistCount = artistsCsv.split(",").count { it.isNotBlank() }
+    if (languages.isEmpty() && artistCount == 0) return "Pick what Home recommends"
+    val artists = when (artistCount) {
+        0 -> null
+        1 -> "1 artist"
+        else -> "$artistCount artists"
+    }
+    return listOfNotNull(languages.joinToString(", ").ifEmpty { null }, artists).joinToString(" · ")
 }

@@ -26,6 +26,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.lerp
 import kotlin.math.roundToInt
 import com.ozyern.exhale.ui.component.PLAYER_CONTENT_APPEAR_END
 import com.ozyern.exhale.ui.component.PLAYER_CONTENT_APPEAR_START
@@ -134,6 +135,8 @@ fun PlayerContainerMorphOverlay(
                 // mid-gesture, which walked the card's source edge away from the flying cover.
                 var flightMini: Rect? = null
                 var flightControls: Rect? = null
+                var flightMiniArt: MorphArtTarget? = null
+                var flightPageArt: Rect? = null
                 // The sheet's first draw marks it ready; avoid forcing repeated full-frame redraws.
                 onDrawBehind {
                     val fraction = progress().coerceIn(0f, 1f)
@@ -142,11 +145,15 @@ fun PlayerContainerMorphOverlay(
                     if ((fraction <= 0f && !landing) || fraction >= 1f || !PlayerMorph.sharedLayersReady) {
                         flightMini = null
                         flightControls = null
+                        flightMiniArt = null
+                        flightPageArt = null
                         return@onDrawBehind
                     }
                     if (flightMini == null) {
                         flightMini = miniContainerSlot.value
                         flightControls = miniPlayerControlsRect
+                        flightMiniArt = miniArtworkSlot.value
+                        flightPageArt = fullArtworkSlot.value?.rect
                     }
                     // Opening: the frozen source (the pill stretches under the finger). Closing:
                     // the LIVE pill, so the card lands exactly on the size the pill has now -- a
@@ -166,6 +173,24 @@ fun PlayerContainerMorphOverlay(
                     // overlay's own size. Nothing to register at that end, nothing to go
                     // stale.
                     val full = Rect(0f, 0f, size.width, size.height)
+                    if (PlayerMorph.pageCard && !landing) {
+                        val miniArt = (if (PlayerMorph.targetOpen) flightMiniArt else miniArtworkSlot.value ?: flightMiniArt)
+                        val pageArt = flightPageArt
+                        if (miniArt != null && pageArt != null && drawPageCard(
+                                fraction = fraction,
+                                mini = mini,
+                                miniArt = miniArt,
+                                pageArt = pageArt,
+                                miniLayer = miniLayer,
+                                fullBackgroundLayer = fullBackgroundLayer,
+                                fullContentLayer = fullContentLayer,
+                                expandedRadiusPx = expandedCornerRadius.toPx(),
+                                clipPath = clipPath,
+                            )
+                        ) {
+                            return@onDrawBehind
+                        }
+                    }
                     if (PlayerMorph.rise && !landing) {
                         drawRise(
                             fraction = fraction,
@@ -314,6 +339,24 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRise(
     fullContentLayer: androidx.compose.ui.graphics.layer.GraphicsLayer,
 ) {
     // The bar, as it is: its glass and its words. Its cover stands aside for the travelling one.
+    drawDockedMini(mini, miniLayer)
+    val alpha = riseAlpha(fraction)
+    if (alpha <= 0f) return
+    translate(top = riseSheetTop(size.height, fraction)) {
+        fullBackgroundLayer.alpha = alpha
+        fullBackgroundLayer.renderEffect = null
+        drawLayer(fullBackgroundLayer)
+        fullContentLayer.alpha = alpha
+        fullContentLayer.renderEffect = null
+        drawLayer(fullContentLayer)
+    }
+}
+
+/** The mini player drawn whole at its own place, beneath whatever is travelling. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawDockedMini(
+    mini: Rect,
+    miniLayer: androidx.compose.ui.graphics.layer.GraphicsLayer,
+) {
     translate(left = mini.left, top = mini.top) {
         val surface = PlayerMorph.miniSurfaceLayer
         if (surface != null && surface.size.width > 0 && surface.size.height > 0) {
@@ -326,16 +369,63 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRise(
             drawLayer(miniLayer)
         }
     }
-    val alpha = riseAlpha(fraction)
-    if (alpha <= 0f) return
-    translate(top = riseSheetTop(size.height, fraction)) {
-        fullBackgroundLayer.alpha = alpha
-        fullBackgroundLayer.renderEffect = null
-        drawLayer(fullBackgroundLayer)
-        fullContentLayer.alpha = alpha
-        fullContentLayer.renderEffect = null
-        drawLayer(fullContentLayer)
+}
+
+/**
+ * Lyrics or queue ([PlayerMorph.pageCard]): the whole page, ground and all, travels as one card
+ * between the mini player's cover and its resting place. It is scaled about its top-left corner so
+ * that the page's own header artwork ([pageArt]) sits exactly on the mini cover ([miniArt]) at the
+ * closed end. The card reaches its full size ahead of its position, so on the way down it slides
+ * away first and only shrinks into the cover at the end, and it fades by the same curve so it
+ * dissolves into the cover rather than covering it. Returns false when the ends cannot be used,
+ * and the caller falls back to the usual morph.
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawPageCard(
+    fraction: Float,
+    mini: Rect,
+    miniArt: MorphArtTarget,
+    pageArt: Rect,
+    miniLayer: androidx.compose.ui.graphics.layer.GraphicsLayer,
+    fullBackgroundLayer: androidx.compose.ui.graphics.layer.GraphicsLayer,
+    fullContentLayer: androidx.compose.ui.graphics.layer.GraphicsLayer,
+    expandedRadiusPx: Float,
+    clipPath: Path,
+): Boolean {
+    val from = miniArt.rect
+    if (from.width <= 0f || from.height <= 0f || pageArt.width <= 0f || pageArt.height <= 0f) return false
+    val t = sanitizedProgress(fraction)
+    val grow = pageCardGrow(t)
+
+    drawDockedMini(mini, miniLayer)
+    if (grow <= 0f) return true
+
+    val scale = lerp(from.width / pageArt.width, 1f, grow)
+    val left = lerp(from.left, pageArt.left, t) - pageArt.left * scale
+    val top = lerp(from.top, pageArt.top, t) - pageArt.top * scale
+    val card = Rect(left, top, left + size.width * scale, top + size.height * scale)
+    val radius = lerp(miniArt.radiusPx, expandedRadiusPx, grow)
+
+    clipPath.reset()
+    clipPath.addRoundRect(RoundRect(card, CornerRadius(radius, radius)))
+    clipPath(clipPath) {
+        translate(left = left, top = top) {
+            scale(scaleX = scale, scaleY = scale, pivot = Offset.Zero) {
+                fullBackgroundLayer.alpha = grow
+                fullBackgroundLayer.renderEffect = null
+                drawLayer(fullBackgroundLayer)
+                fullContentLayer.alpha = grow
+                fullContentLayer.renderEffect = null
+                drawLayer(fullContentLayer)
+            }
+        }
     }
+    return true
+}
+
+/** How far the page card has grown out of the mini cover at progress [t]: ease-out, 0..1. */
+internal fun pageCardGrow(t: Float): Float {
+    val rest = 1f - t.coerceIn(0f, 1f)
+    return 1f - rest * rest
 }
 
 /** How much the landing pill flattens at the bottom of its dip, and widens with it. */

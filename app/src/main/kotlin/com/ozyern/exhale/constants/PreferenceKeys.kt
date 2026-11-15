@@ -144,6 +144,11 @@ val AppLanguageKey = stringPreferencesKey("appLanguage")
 val ContentLanguageKey = stringPreferencesKey("contentLanguage")
 val ContentCountryKey = stringPreferencesKey("contentCountry")
 val SuggestionRegionKey = stringPreferencesKey("suggestionRegion")
+
+// Song preferences: the languages and artists picked on first launch or from Settings → Content.
+val SongPreferencesCompletedKey = booleanPreferencesKey("song_preferences_completed")
+val PreferredAudioLanguagesKey = stringPreferencesKey("preferred_audio_languages") // CSV of language codes
+val PreferredArtistsKey = stringPreferencesKey("preferred_artists") // CSV of artist names
 val EnableKugouKey = booleanPreferencesKey("enableKugou")
 val EnableLrcLibKey = booleanPreferencesKey("enableLrclib")
 val EnableBetterLyricsKey = booleanPreferencesKey("enableBetterLyrics")
