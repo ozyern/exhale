@@ -795,8 +795,8 @@ val FetchedModulesKey = stringPreferencesKey("fetchedModules")
 
 
 val LyricsAnimationStyleKey = stringPreferencesKey("lyricsAnimationStyle")
-/** Apple Music's karaoke view, in SF Pro Display, until another style is picked. */
-val DefaultLyricsAnimationStyle get() = LyricsAnimationStyle.ARCHIVE_TUNE
+/** Big bold lines swept word by word, the stack blurred away either side, until another style is picked. */
+val DefaultLyricsAnimationStyle get() = LyricsAnimationStyle.BITCHORD
 enum class LyricsAnimationStyle {
     FLAMINGO,
     NONE,

@@ -9,8 +9,8 @@
 
 package com.ozyern.exhale.ui.lyricsflow
 
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -34,6 +34,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
@@ -76,7 +78,7 @@ fun ExhaleBitChordLyrics(
     modifier: Modifier = Modifier,
     fontFamily: FontFamily? = null,
     /** The type size, in sp. */
-    textSize: Float = 30f,
+    textSize: Float = 34f,
     /** Line height as a multiple of the type size. */
     lineSpacing: Float = 1.18f,
     onSeek: ((Long) -> Unit)? = null,
@@ -149,6 +151,7 @@ fun ExhaleBitChordLyrics(
                     style = style,
                     clock = clock,
                     isActive = index == active,
+                    isSung = active >= 0 && index < active,
                     distance = if (active < 0) 0 else abs(index - active),
                     onClick = onSeek?.takeIf { synced }?.let { seek -> { seek(line.timeMs) } },
                 )
@@ -163,6 +166,7 @@ private fun BitChordLine(
     style: TextStyle,
     clock: MutableLongState,
     isActive: Boolean,
+    isSung: Boolean,
     distance: Int,
     onClick: (() -> Unit)?,
 ) {
@@ -171,23 +175,36 @@ private fun BitChordLine(
     val layout: TextLayoutResult? = remember(line.text, style, width) {
         if (width <= 0) null else measurer.measure(line.text, style, constraints = Constraints(maxWidth = width))
     }
-    // Lines away from the one being sung recede: a little smaller and fainter the further they are.
-    val focus by animateFloatAsState(
-        targetValue = if (isActive) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.9f, stiffness = 260f),
-        label = "bitchordFocus",
+    // The stack falls away either side of the line being sung: the rows next to it stay readable,
+    // the rest recede to a floor, a little smaller, dimmer and softer. One curve for all of it.
+    val step = distance.coerceAtMost(LINE_FALLOFF_ALPHA.lastIndex)
+    val scale by animateFloatAsState(
+        targetValue = if (isActive) 1f else INACTIVE_SCALE,
+        animationSpec = tween(LYRIC_SETTLE_MS, easing = LyricEasing),
+        label = "bitchordScale",
     )
-    val far by animateFloatAsState(
-        targetValue = (distance.coerceAtMost(4) / 4f),
-        animationSpec = tween(420),
-        label = "bitchordFar",
+    val lineAlpha by animateFloatAsState(
+        targetValue = if (isActive) 1f else LINE_FALLOFF_ALPHA[step],
+        animationSpec = tween(LYRIC_SETTLE_MS, easing = LyricEasing),
+        label = "bitchordAlpha",
+    )
+    val blur by animateDpAsState(
+        targetValue = if (isActive) 0.dp else LINE_FALLOFF_BLUR[step.coerceAtMost(LINE_FALLOFF_BLUR.lastIndex)],
+        animationSpec = tween(LYRIC_SETTLE_MS, easing = LyricEasing),
+        label = "bitchordBlur",
+    )
+    // A line that has been sung closes up to full brightness as it leaves.
+    val tail by animateFloatAsState(
+        targetValue = if (isSung) 1f else UNSUNG_ALPHA,
+        animationSpec = tween(LYRIC_SETTLE_MS, easing = LyricEasing),
+        label = "bitchordTail",
     )
     val density = LocalDensity.current
     val heightDp = with(density) { (layout?.size?.height ?: 0).toDp() }
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 11.dp)
+            .padding(horizontal = GUTTER, vertical = 11.dp)
             .onSizeChanged { width = it.width }
             .height(heightDp)
             .then(
@@ -202,16 +219,16 @@ private fun BitChordLine(
                 },
             )
             .graphicsLayer {
-                val s = 0.97f + 0.03f * focus
-                scaleX = s
-                scaleY = s
+                scaleX = scale
+                scaleY = scale
                 transformOrigin = TransformOrigin(0f, 0.5f)
-                alpha = 1f - 0.55f * far * (1f - focus)
+                alpha = lineAlpha
             }
+            .blur(blur, BlurredEdgeTreatment.Unbounded)
             .drawWithContent {
                 val text = layout ?: return@drawWithContent
-                // Every line in the dim ink first; the one being sung is lit over it.
-                drawText(text, color = Color.White.copy(alpha = DIM_ALPHA))
+                // Every line in its resting ink first; the one being sung is lit over it.
+                drawText(text, color = Color.White.copy(alpha = if (isActive) UNSUNG_ALPHA else tail))
                 if (!isActive) return@drawWithContent
                 val sung = sungChars(line, clock.longValue)
                 if (sung <= 0f) return@drawWithContent
@@ -244,7 +261,7 @@ private fun BitChordLine(
                         drawText(
                             text,
                             brush = Brush.horizontalGradient(
-                                0f to Color.White.copy(alpha = 1f - DIM_ALPHA),
+                                0f to Color.White.copy(alpha = 1f - UNSUNG_ALPHA),
                                 1f to Color.Transparent,
                                 startX = x,
                                 endX = x + feather,
@@ -258,7 +275,7 @@ private fun BitChordLine(
 }
 
 /** How many characters of [line] have been sung at [positionMs], as a fraction. */
-private fun sungChars(line: LyricLine, positionMs: Long): Float {
+internal fun sungChars(line: LyricLine, positionMs: Long): Float {
     if (line.words.isEmpty()) return if (positionMs >= line.timeMs) line.text.length.toFloat() else 0f
     val spans = line.wordSpans
     var sung = 0f
@@ -278,8 +295,21 @@ private fun sungChars(line: LyricLine, positionMs: Long): Float {
 /** Where the line being sung sits, as a share of the view's height from its top. */
 private const val ANCHOR_FRACTION = 0.16f
 
-/** The ink of everything not yet sung, and of the lines not being sung. */
-private const val DIM_ALPHA = 0.32f
+/** How far back the part of the playing line not yet sung, and the lines to come, are held. */
+private const val UNSUNG_ALPHA = 0.45f
+
+/** Brightness and softness by distance from the line being sung; the last entry is the floor. */
+private val LINE_FALLOFF_ALPHA = floatArrayOf(1f, 0.74f, 0.6f, 0.48f, 0.4f, 0.34f)
+private val LINE_FALLOFF_BLUR = arrayOf(0.dp, 1.dp, 1.dp, 1.7.dp, 2.4.dp)
+
+/** The stack sits fractionally back; the line being sung comes forward to meet the reader. */
+private const val INACTIVE_SCALE = 0.98f
+
+private const val LYRIC_SETTLE_MS = 400
+private val LyricEasing = androidx.compose.animation.core.CubicBezierEasing(0.41f, 0f, 0.12f, 0.99f)
+
+/** The player's side margin. */
+private val GUTTER = 30.dp
 
 /** The width of the fill's soft leading edge. */
 private val FEATHER = 22.dp

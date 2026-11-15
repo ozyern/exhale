@@ -871,8 +871,9 @@ fun Lyrics(
                 sliderPositionProvider = sliderPositionProvider,
                 // The chosen lyrics font, or BitChord's own bold sans.
                 fontFamily = lyricsFontFamily.takeIf { lyricsFontSelection != "default" },
-                textSize = lyricsTextSize,
-                lineSpacing = lyricsLineSpacing.coerceIn(1.05f, 1.6f),
+                // Left at the app's defaults, the style keeps its own measure: 34 on 41.
+                textSize = if (textSizeOverride == null && storedLyricsTextSize == 30f) 34f else lyricsTextSize,
+                lineSpacing = if (lyricsLineSpacing == 1.3f) 41f / 34f else lyricsLineSpacing.coerceIn(1.05f, 1.6f),
                 onSeek = if (changeLyrics && !isGuest) {
                     { playerConnection.player.seekTo((it - lyricsOffset).coerceAtLeast(0)) }
                 } else {

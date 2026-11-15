@@ -965,7 +965,9 @@ private fun PlayerV2Content(
                                 val heroFadeBrush = remember(isWidePlayerLayout) {
                                     if (isWidePlayerLayout) androidx.compose.ui.graphics.Brush.horizontalGradient(
                                         colorStops = com.ozyern.exhale.ui.component.heroFadeOutStops(0.6f, 1f).toTypedArray(),
-                                    ) else com.ozyern.exhale.ui.component.heroFadeOutBrush()
+                                    // The cover dissolves over its lower 42% into the mesh that carries on in its
+                                    // colours, so there is no edge where the picture stops.
+                                    ) else com.ozyern.exhale.ui.component.heroFadeOutBrush(start = 0.58f)
                                 }
                                 Box(
                                     modifier = if (isHeroLook) {
@@ -1596,6 +1598,37 @@ private fun PlayerV2Content(
                             )
                             .padding(horizontal = 32.dp)
                     ) {
+                    // Above the scrubber: the line being sung on the cover page, opening the lyrics
+                    // on a tap; on the lyrics page, where they came from.
+                    if (!isWidePlayerLayout && playerState != PlayerInternalState.QUEUE) {
+                        androidx.compose.animation.Crossfade(
+                            targetState = playerState == PlayerInternalState.LYRICS,
+                            animationSpec = androidx.compose.animation.core.tween(240),
+                            label = "v2LyricStrip",
+                        ) { onLyrics ->
+                            if (onLyrics) {
+                                val provider = currentLyrics?.provider?.takeIf { it.isNotBlank() && it != "Unknown" }
+                                Box(Modifier.fillMaxWidth().height(28.dp), contentAlignment = Alignment.CenterStart) {
+                                    if (provider != null) Text(
+                                        text = stringResource(R.string.lyrics_by_provider, provider),
+                                        style = AppTheme.typography.bodyMedium.copy(
+                                            fontSize = 15.sp,
+                                            textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
+                                        ),
+                                        color = adaptivePrimary.copy(alpha = 0.55f),
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    )
+                                }
+                            } else {
+                                com.ozyern.exhale.ui.lyricsflow.CurrentLyricStrip(
+                                    sliderPositionProvider = { sliderPosition ?: position },
+                                    onClick = { playerState = PlayerInternalState.LYRICS },
+                                    color = adaptivePrimary,
+                                )
+                            }
+                        }
+                    }
                         // Apple Music Timeline Slider -- its own composable so the 20Hz position ticker
                     // recomposes only the bar and the two time labels, not the whole controls
                     // column (transport, volume, bottom row) on every tick. 120Hz panels.

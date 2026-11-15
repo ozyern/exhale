@@ -996,6 +996,7 @@ fun BottomSheetPlayer(
                         videoLook = CanvasVideoLooks.forMedia(ambientMetadata?.id),
                         transitionMillis = maxOf(bgFadeMs, 800),
                         bleedVisible = { PlayerMorph.rise || (state.isExpanded && !PlayerMorph.active) },
+                        pageShowing = { !v17ShowingCover },
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer { alpha = backgroundAlpha() }

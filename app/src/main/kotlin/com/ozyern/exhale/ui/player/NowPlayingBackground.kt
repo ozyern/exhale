@@ -160,6 +160,11 @@ fun NowPlayingBackground(
      * colours, drifting while the song plays (see FluidArtworkBackground). Off for the previews.
      */
     live: Boolean = true,
+    /**
+     * Lyrics or the queue on screen: the whole cover, blurred, fades in over the ground (360 ms),
+     * since those pages have no hero for the mesh to carry on from.
+     */
+    pageShowing: () -> Boolean = { false },
 ) {
     val gradient by rememberNowPlayingGradient(artworkUrl, hero, videoLook)
     val top by animateColorAsState(
@@ -180,8 +185,18 @@ fun NowPlayingBackground(
                     else Brush.verticalGradient(0f to top, 0.606f to top, 1f to bottom))
             },
     ) {
+        if (hero && videoLook == null) {
+            // The cover's own colours, hung from where the hero stops: the screen carries on in the
+            // colours the cover ends in.
+            val mesh = rememberArtworkMesh(artworkUrl)
+            ArtworkMeshBackdrop(
+                mesh = mesh,
+                seam = { heroSeamPx(size.width, size.height) },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         val (liveSetting) = com.ozyern.exhale.utils.rememberPreference(com.ozyern.exhale.constants.PlayerLiveArtworkKey, true)
-        if (live && liveSetting && videoLook == null) {
+        if (!hero && live && liveSetting && videoLook == null) {
             val playing = com.ozyern.exhale.LocalPlayerConnection.current?.isPlaying
                 ?.collectAsState()?.value ?: false
             // The little movement that shows through the bleed, as on Exhale master's player.
@@ -198,7 +213,7 @@ fun NowPlayingBackground(
             animationSpec = tween(if (showBleed) 650 else 180),
             label = "nowPlayingBleedIn",
         )
-        if (videoLook == null && bleedAlpha > 0f) {
+        if (!hero && videoLook == null && bleedAlpha > 0f) {
             androidx.compose.animation.Crossfade(
                 targetState = artworkUrl,
                 animationSpec = tween(transitionMillis),
@@ -214,8 +229,27 @@ fun NowPlayingBackground(
                 if (url != null) BleedingArtwork(url, heroFraction = if (hero) HERO_FRACTION else 1f)
             }
         }
+        val pageBlur = rememberFullArtworkBlur(artworkUrl)
+        val showPageBlur by remember { androidx.compose.runtime.derivedStateOf(pageShowing) }
+        val pageBlurAlpha by androidx.compose.animation.core.animateFloatAsState(
+            targetValue = if (showPageBlur && pageBlur != null) 1f else 0f,
+            animationSpec = tween(360, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+            label = "nowPlayingPageBlur",
+        )
+        if (pageBlur != null && pageBlurAlpha > 0f) {
+            androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                drawFullArtworkBlur(pageBlur, pageBlurAlpha)
+            }
+        }
     }
 }
+
+/**
+ * Where the hero cover stops on a [width] × [height] player: the V2 hero is laid out
+ * 524/393 of the width tall, flush with the top, short of the controls on a short screen.
+ */
+internal fun heroSeamPx(width: Float, height: Float): Float =
+    minOf(width * 524f / 393f, height * 0.72f)
 
 
 /** Decoded covers for the bleed, so reopening the player never waits on a decode. */
