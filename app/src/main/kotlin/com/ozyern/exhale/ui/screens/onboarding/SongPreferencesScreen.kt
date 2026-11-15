@@ -641,7 +641,10 @@ private fun ArtistBubble(
     }
 }
 
-/** Floating glass controls in place of a bar: a back chevron on the left, a text action on the right. */
+/**
+ * Controls in place of a bar: a back chevron on the left, a text action on the right. Solid, not
+ * glass: glass here sampled a backdrop holding this screen, blurring the buttons into themselves.
+ */
 @Composable
 private fun StepToolbar(
     onBack: (() -> Unit)? = null,
@@ -658,7 +661,7 @@ private fun StepToolbar(
         if (onBack != null) {
             IosButton(
                 onClick = onBack,
-                style = IosButtonStyle.Glass,
+                style = IosButtonStyle.Bordered,
                 borderShape = IosButtonBorderShape.Circle,
                 controlSize = IosControlSize.Large,
             ) {
@@ -670,7 +673,7 @@ private fun StepToolbar(
             IosButton(
                 title = trailingLabel,
                 onClick = onTrailing,
-                style = IosButtonStyle.Glass,
+                style = IosButtonStyle.Bordered,
                 controlSize = IosControlSize.Large,
             )
         }
@@ -749,7 +752,7 @@ private fun StepFooter(
             title = primaryLabel,
             onClick = onPrimary,
             enabled = primaryEnabled,
-            style = IosButtonStyle.GlassProminent,
+            style = IosButtonStyle.BorderedProminent,
             sizing = IosButtonSizing.Flexible,
             controlSize = IosControlSize.ExtraLarge,
         )
