@@ -173,6 +173,7 @@ import com.ozyern.exhale.ui.theme.AppleTokens
 import com.ozyern.exhale.ui.utils.backToMain
 import com.ozyern.exhale.ui.utils.albumRoute
 import com.ozyern.exhale.ui.utils.artistRoute
+import com.ozyern.exhale.models.toMediaMetadata
 import com.ozyern.exhale.ui.utils.pendingSharedArtworkThumbFor
 import com.ozyern.exhale.ui.component.SongRowSkeleton
 import com.ozyern.exhale.ui.component.ShimmerLine
@@ -370,6 +371,32 @@ fun AlbumScreen(
     com.ozyern.exhale.PublishAmbientBackgroundColor(tint)
     val onTint = androidx.compose.ui.graphics.Color.White
 
+    // Apple's genre for the line under the title ("Pop · 2024").
+    val albumGenre by androidx.compose.runtime.produceState<String?>(null, albumWithSongs?.album?.title) {
+        val album = albumWithSongs?.album ?: return@produceState
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                com.ozyern.exhale.canvas.AppleMusicCatalog.albumInfo(album.title, albumWithSongs?.artists?.firstOrNull()?.name)?.genre
+            }.getOrNull()
+        }
+    }
+    // "Lossless" only when every song on it will play from a FLAC copy. The archive's uploads are
+    // whole albums, so once the first song's copy turns up the rest come from the same upload
+    // without another search; a song with no copy ends the look-up and the album goes unmarked.
+    val albumLossless by androidx.compose.runtime.produceState(false, filteredSongs) {
+        val songs = filteredSongs
+        fun allKnown() = songs.isNotEmpty() && songs.all { com.ozyern.exhale.playback.ArchiveFlac.known(it.id) != null }
+        value = allKnown()
+        if (value || songs.isEmpty() || !com.ozyern.exhale.playback.ArchiveFlac.enabled) return@produceState
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            for (song in songs) {
+                if (com.ozyern.exhale.playback.ArchiveFlac.known(song.id) != null) continue
+                com.ozyern.exhale.playback.ArchiveFlac.find(song.toMediaMetadata()) ?: break
+            }
+        }
+        value = allKnown()
+    }
+
     val glassConfig = LocalGlassEffectConfig.current
     val useGlass = glassConfig.isEnabledFor(GlassComponent.NAV_BAR) && isGlassAllowed()
     val chromeShape = ContinuousRoundedRectangle(percent = 50)
@@ -417,22 +444,27 @@ fun AlbumScreen(
              item(key = "album_header", contentType = "header") {
                 val title = albumWithSongs.album.title
                 val artistName = albumWithSongs.artists.joinToString { it.name }
-                val albumInfo = buildString {
-                    albumWithSongs.album.year?.let { append(it).append(" \u00b7 ") }
-                    append(pluralStringResource(R.plurals.n_song, filteredSongs.size, filteredSongs.size))
-                    val duration = filteredSongs.sumOf { it.song.duration }
-                    if (duration > 0) append(" \u00b7 ").append(makeTimeString(duration * 1000L))
-                }
-                com.ozyern.exhale.ui.component.CollectionDetailHeader(
+                val year = albumWithSongs.album.year?.toString()
+                AlbumHeroHeader(
                     title = title,
-                    subtitle = title,
-                    artwork = appleAlbum?.sized(1200) ?: instantThumbUrl ?: albumWithSongs.album.thumbnailUrl,
-                    metadata = albumInfo,
-                    description = description,
-                    descriptionRuns = descriptionRuns?.map { LinkSegment(it.text, it.navigationEndpoint?.urlEndpoint?.url) },
-                    foreground = onTint,
+                    artist = artistName,
+                    artwork = instantThumbUrl ?: albumWithSongs.album.thumbnailUrl,
+                    appleArtwork = appleAlbum?.sized(1200),
+                    pageColor = tint,
+                    heroScale = { heroZoom.scale },
+                    facts = listOfNotNull(albumGenre, year),
+                    lossless = albumLossless,
                     playing = isPlaying && filteredSongs.any { it.id == mediaMetadata?.id },
                     enabled = filteredSongs.isNotEmpty(),
+                    inLibrary = albumWithSongs.album.bookmarkedAt != null,
+                    onArtistClick = albumWithSongs.artists.firstOrNull()?.let { artist ->
+                        { navController.navigate(artistRoute(artist.id, artist.thumbnailUrl)) }
+                    },
+                    onToggleLibrary = {
+                        database.query { update(albumWithSongs.album.toggleLike()) }
+                    },
+                    description = description,
+                    descriptionRuns = descriptionRuns?.map { LinkSegment(it.text, it.navigationEndpoint?.urlEndpoint?.url) },
                     onPlay = {
                         if (filteredSongs.any { it.id == mediaMetadata?.id }) playerConnection.togglePlayPause()
                         else {
@@ -443,27 +475,6 @@ fun AlbumScreen(
                     onShuffle = {
                         playerConnection.service.getAutomix(playlistId)
                         playerConnection.playQueue(LocalAlbumRadio(albumWithSongs.copy(songs = albumWithSongs.songs.shuffled())))
-                    },
-                    rightSymbol = if (downloadState == Download.STATE_COMPLETED) "checkmark" else "arrow.down",
-                    onRightAction = {
-                        when (downloadState) {
-                            Download.STATE_COMPLETED -> showRemoveDownloadDialog = true
-                            Download.STATE_DOWNLOADING -> com.ozyern.exhale.playback.cancelDownloads(context, filteredSongs.map { it.id }, downloadUtil.downloads.value)
-                            else -> com.ozyern.exhale.playback.downloadSongs(context,
-                                filteredSongs.map { com.ozyern.exhale.playback.DownloadTarget(it.id, it.song.title, it.artists.firstOrNull()?.name, it.song.duration) }, downloadUtil.downloads.value)
-                        }
-                    },
-                    titleContent = {
-                        Box(Modifier.fillMaxWidth().height(75.dp).padding(horizontal = 20.dp), contentAlignment = Alignment.Center) {
-                            if (!albumArtistState.loading || artistBundledLogo != null || artistSignatureUrl != null) {
-                                com.ozyern.exhale.ui.screens.artist.ArtistWordmark(
-                                    logo = albumArtistState.artist?.logo,
-                                    name = artistName,
-                                    signatureUrl = artistSignatureUrl,
-                                    bundledLogo = artistBundledLogo,
-                                )
-                            }
-                        }
                     },
                     artworkOverlay = {
                         if (albumCanvasEnabled && canvasArtwork != null) {
@@ -551,6 +562,22 @@ fun AlbumScreen(
                                     }
                                 },
                             ),
+                    )
+                }
+            }
+
+            if (filteredSongs.isNotEmpty()) {
+                // Apple's foot of the track list: how many songs, how long.
+                item(key = "album_footer") {
+                    val minutes = (filteredSongs.sumOf { it.song.duration } + 59) / 60
+                    Text(
+                        text = buildString {
+                            append(pluralStringResource(R.plurals.n_song, filteredSongs.size, filteredSongs.size))
+                            if (minutes > 0) append(", ").append(pluralStringResource(R.plurals.minute, minutes, minutes))
+                        },
+                        style = com.ozyern.exhale.ui.screens.library.apple.SfStyle(15.sp, 20.sp),
+                        color = onTint.copy(alpha = 0.6f),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp).animateItem(),
                     )
                 }
             }
@@ -647,16 +674,21 @@ fun AlbumScreen(
             // the seeded bg, skeleton lines standing where title/artist/actions/
             // about/songs will land — so arrival swaps content, never layout.
             item(key = "shimmer_header", contentType = "header") {
-                com.ozyern.exhale.ui.component.CollectionDetailHeader(
+                AlbumHeroHeader(
                     title = com.ozyern.exhale.ui.utils.selectedArtworkTitle().orEmpty(),
+                    artist = "",
                     artwork = instantThumbUrl,
-                    metadata = "",
-                    foreground = onTint,
+                    appleArtwork = null,
+                    pageColor = tint,
+                    heroScale = { heroZoom.scale },
+                    facts = emptyList(),
+                    lossless = false,
                     playing = false,
                     enabled = false,
+                    inLibrary = false,
+                    loading = true,
                     onPlay = {},
                     onShuffle = {},
-                    titleContent = { Box(Modifier.fillMaxWidth().height(75.dp), contentAlignment = Alignment.Center) { ShimmerLine(.55f, 34.dp) } },
                 )
             }
             item(key = "shimmer_songs_title") {

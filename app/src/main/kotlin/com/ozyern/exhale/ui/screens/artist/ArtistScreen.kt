@@ -266,6 +266,44 @@ fun ArtistScreen(
         artistPage?.sections?.firstOrNull { (it.items.firstOrNull() as? SongItem)?.album != null }?.title
     }
 
+    // Apple Music's Essential Albums for this artist, matched to YouTube albums when tapped.
+    val essentialArtistName = artistPage?.artist?.title ?: libraryArtist?.artist?.name
+    val essentialAlbums by androidx.compose.runtime.produceState(
+        emptyList<com.ozyern.exhale.canvas.AppleEssentialAlbum>(),
+        essentialArtistName,
+    ) {
+        val name = essentialArtistName?.takeIf { it.isNotBlank() && com.ozyern.exhale.utils.AppleArt.enabled } ?: return@produceState
+        value = withContext(Dispatchers.IO) {
+            runCatching { com.ozyern.exhale.canvas.AppleMusicCatalog.essentialAlbums(name) }.getOrDefault(emptyList())
+        }.take(MaxEssentialAlbums)
+    }
+    val pageAlbums = remember(artistPage) {
+        artistPage?.sections.orEmpty().flatMap { it.items }.filterIsInstance<AlbumItem>()
+    }
+    fun youtubeAlbumFor(album: com.ozyern.exhale.canvas.AppleEssentialAlbum): AlbumItem? {
+        val wanted = com.ozyern.exhale.canvas.AppleMusicCatalog.normalize(album.name)
+        return pageAlbums.firstOrNull { com.ozyern.exhale.canvas.AppleMusicCatalog.normalize(it.title) == wanted }
+    }
+    val openEssentialAlbum: (com.ozyern.exhale.canvas.AppleEssentialAlbum) -> Unit = { album ->
+        val known = youtubeAlbumFor(album)
+        if (known != null) {
+            navController.navigate(albumRoute(known.id, known.thumbnail))
+        } else {
+            // Not on this page (an older record): find it the way search does.
+            coroutineScope.launch(Dispatchers.IO) {
+                val found = YouTube.search("${album.name} ${essentialArtistName.orEmpty()}", com.music.innertube.SearchFilter.FILTER_ALBUM)
+                    .getOrNull()?.items?.filterIsInstance<AlbumItem>()
+                    ?.let { items ->
+                        val wanted = com.ozyern.exhale.canvas.AppleMusicCatalog.normalize(album.name)
+                        items.firstOrNull { com.ozyern.exhale.canvas.AppleMusicCatalog.normalize(it.title) == wanted } ?: items.firstOrNull()
+                    }
+                if (found != null) withContext(Dispatchers.Main) {
+                    navController.navigate(albumRoute(found.id, found.thumbnail))
+                }
+            }
+        }
+    }
+
     val lazyListState = rememberLazyListState()
 
     // Per-screen Haze source: the list content the post-hero TopFadeBlur
@@ -1049,6 +1087,25 @@ fun ArtistScreen(
                                     songsRow()
                                 }
                             }
+                            if (section.title == firstSongShelf && essentialAlbums.isNotEmpty()) {
+                                item(key = "essential_albums_title") {
+                                    ArtistSectionHeader(
+                                        title = "Essential Albums",
+                                        modifier = Modifier.animateItem().artistTitleChrome(),
+                                    )
+                                }
+                                items(
+                                    items = essentialAlbums,
+                                    key = { "essential_${it.name}" },
+                                ) { album ->
+                                    EssentialAlbumRow(
+                                        album = album,
+                                        fallbackArtwork = youtubeAlbumFor(album)?.thumbnail,
+                                        onClick = { openEssentialAlbum(album) },
+                                        modifier = Modifier.animateItem(),
+                                    )
+                                }
+                            }
                         } else if (section.items.firstOrNull() is ArtistItem) {
                             items(
                                 items = section.items.distinctBy { it.id }.filterIsInstance<ArtistItem>().take(5),
@@ -1072,7 +1129,8 @@ fun ArtistScreen(
                                 val itemPrefs = com.ozyern.exhale.ui.component.LocalItemPrefs.current
                                 CompositionLocalProvider(
                                     com.ozyern.exhale.ui.component.LocalItemPrefs provides itemPrefs.copy(
-                                        gridCardHeightOverrideDp = if (isVideoShelf) 87 else 154,
+                                        // Albums as Apple shows them on an artist: big covers, two to a screen.
+                                        gridCardHeightOverrideDp = if (isVideoShelf) 87 else 186,
                                     ),
                                 ) {
                                 LazyRow(
@@ -1511,6 +1569,70 @@ private fun FeaturedReleaseCard(
             }
         }
     }
+    }
+}
+
+/** Most Essential Albums an artist page shows. */
+private const val MaxEssentialAlbums = 3
+
+/**
+ * One of Apple's Essential Albums: a large cover, the title, Apple's short note on it in two lines,
+ * and a chevron — a row, not a card, as Apple Music draws it.
+ */
+@Composable
+private fun EssentialAlbumRow(
+    album: com.ozyern.exhale.canvas.AppleEssentialAlbum,
+    fallbackArtwork: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+    ) {
+        val cover = album.artwork?.sized(480) ?: fallbackArtwork?.resize(480, 480)
+        Box(
+            Modifier
+                .size(118.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color.White.copy(alpha = 0.08f)),
+        ) {
+            if (cover != null) {
+                AsyncImage(
+                    model = cover,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = album.name,
+                color = Color.White,
+                fontSize = 17.sp,
+                lineHeight = 22.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val note = album.note ?: album.year
+            if (!note.isNullOrBlank()) {
+                Text(
+                    text = note,
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 15.sp,
+                    lineHeight = 20.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        SymbolIcon(symbol = sf("SFChevronRight"), contentDescription = null, size = 16.dp, tint = Color.White.copy(alpha = 0.6f))
     }
 }
 

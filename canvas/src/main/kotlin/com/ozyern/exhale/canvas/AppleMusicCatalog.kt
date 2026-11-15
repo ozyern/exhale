@@ -104,6 +104,31 @@ object AppleMusicCatalog {
             findArtist(name, priority)?.let { json.encodeToString(it) }
         }?.let { json.decodeFromString<AppleArtist>(it) }
 
+    /**
+     * The artist's Essential Albums, as Apple Music shows them on the artist page: Apple's
+     * `featured-albums` view, each with its short editorial line. Empty when Apple has none.
+     */
+    suspend fun essentialAlbums(artistName: String): List<AppleEssentialAlbum> =
+        cached("essential|$storefront|${normalize(artistName)}") {
+            val id = artistId(artistName) ?: return@cached null
+            val root = request(
+                "/v1/catalog/$storefront/artists/$id",
+                "views" to "featured-albums",
+                "extend" to "editorialNotes",
+            ) ?: return@cached null
+            AppleEssentialAlbumsParser.parse(root).takeIf { it.isNotEmpty() }?.let { json.encodeToString(it) }
+        }?.let { json.decodeFromString<List<AppleEssentialAlbum>>(it) }.orEmpty()
+
+    /** The album's genre on Apple Music, for the line under an album's title. */
+    suspend fun albumInfo(title: String, artist: String?): AppleAlbumInfo? =
+        cached("album-info|$storefront|${normalize(title)}|${normalize(artist.orEmpty())}") {
+            val term = listOfNotNull(title, artist).joinToString(" ")
+            val items = search(term, "albums") ?: return@cached null
+            items.firstOrNull { attrs ->
+                normalize(attrs.str("name")) == normalize(title) && artistMatches(artist, attrs.str("artistName"))
+            }?.let { AppleAlbumInfo(AppleEssentialAlbumsParser.genre(it)) }?.let { json.encodeToString(it) }
+        }?.let { json.decodeFromString<AppleAlbumInfo>(it) }
+
     /** A memory-cache answer: [value] null means Apple was asked and has no match. */
     data class Cached<T>(val value: T?)
 
