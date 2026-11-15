@@ -275,7 +275,7 @@ fun ArtistScreen(
         val name = essentialArtistName?.takeIf { it.isNotBlank() && com.ozyern.exhale.utils.AppleArt.enabled } ?: return@produceState
         value = withContext(Dispatchers.IO) {
             runCatching { com.ozyern.exhale.canvas.AppleMusicCatalog.essentialAlbums(name) }.getOrDefault(emptyList())
-        }.take(MaxEssentialAlbums)
+        }.distinctBy { com.ozyern.exhale.canvas.AppleMusicCatalog.normalize(it.name) }.take(MaxEssentialAlbums)
     }
     val pageAlbums = remember(artistPage) {
         artistPage?.sections.orEmpty().flatMap { it.items }.filterIsInstance<AlbumItem>()
@@ -936,6 +936,7 @@ fun ArtistScreen(
                         }
                     }
                 } else {
+                    var essentialsPlaced = false
                     artistPage?.sections?.fastForEach { section ->
                         val featuredBeside = sideBySide && featuredRelease != null && section.title == firstSongShelf
                         if (section.items.isNotEmpty() && !section.isFeaturedLatest() && !featuredBeside) {
@@ -1087,17 +1088,20 @@ fun ArtistScreen(
                                     songsRow()
                                 }
                             }
-                            if (section.title == firstSongShelf && essentialAlbums.isNotEmpty()) {
+                            if (section.title == firstSongShelf && essentialAlbums.isNotEmpty() && !essentialsPlaced) {
+                                essentialsPlaced = true
                                 item(key = "essential_albums_title") {
                                     ArtistSectionHeader(
                                         title = "Essential Albums",
                                         modifier = Modifier.animateItem().artistTitleChrome(),
                                     )
                                 }
-                                items(
+                                // Keyed by place, not name: Apple lists an album's explicit and clean
+                                // editions under one name, and a repeated key brings the list down.
+                                itemsIndexed(
                                     items = essentialAlbums,
-                                    key = { "essential_${it.name}" },
-                                ) { album ->
+                                    key = { index, _ -> "essential_album_$index" },
+                                ) { _, album ->
                                     EssentialAlbumRow(
                                         album = album,
                                         fallbackArtwork = youtubeAlbumFor(album)?.thumbnail,
