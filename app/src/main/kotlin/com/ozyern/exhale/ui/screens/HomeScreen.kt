@@ -277,6 +277,12 @@ sealed class HomeSection(val id: String, val baseWeight: Int) {
     data class SimilarRecommendation(val index: Int) : HomeSection("similar_recommendation_$index", 10)
     data class HomePageSection(val index: Int) : HomeSection("home_page_section_$index", 10)
     data object MoodAndGenres : HomeSection("mood_and_genres", 5)
+    /** Songs dealt across the artists picked in song preferences. */
+    data class PickedMix(val leading: Boolean) : HomeSection("picked_mix", 95)
+    /** One picked artist's songs and records. */
+    data class PickedArtist(val index: Int, val leading: Boolean) : HomeSection("picked_artist_$index", 88)
+    /** Artists the picked artists' listeners also play. */
+    data class PickedRelated(val leading: Boolean) : HomeSection("picked_related", 80)
 }
 
 /** Picks the Home for the current mode before either view model exists, so local mode never builds the online feed. */

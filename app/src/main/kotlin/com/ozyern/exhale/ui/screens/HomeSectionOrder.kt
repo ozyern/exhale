@@ -57,6 +57,13 @@ internal fun buildHomeSections(
     if (accountPlaylists?.isNotEmpty() == true) list.add(HomeSection.AccountPlaylists)
     if (forgottenFavorites?.isNotEmpty() == true) list.add(HomeSection.ForgottenFavorites)
 
+    // The artists picked in song preferences: a mix, a shelf each, and who else their fans play.
+    homeState.pickedFeed?.let { feed ->
+        if (feed.mix.isNotEmpty()) list.add(HomeSection.PickedMix(feed.leading))
+        feed.shelves.indices.forEach { i -> list.add(HomeSection.PickedArtist(i, feed.leading)) }
+        if (feed.relatedArtists.isNotEmpty()) list.add(HomeSection.PickedRelated(feed.leading))
+    }
+
     // Capped. The survey's most concrete complaint was "I have to see 4 to 6
     // similar-to sections that I don't want", and each extra section is ~12 more
     // simultaneously composed rows — the single largest driver of Home's frame cost
@@ -98,6 +105,10 @@ internal fun buildHomeSections(
     } else {
         list.sortedByDescending { section ->
             when (section) {
+                // While history is thin the picks lead Home; afterwards they sit among the rest.
+                is HomeSection.PickedMix -> if (section.leading) 95 else 35
+                is HomeSection.PickedArtist -> if (section.leading) 88 - section.index else 26 - section.index
+                is HomeSection.PickedRelated -> if (section.leading) 83 else 15
                 is HomeSection.SimilarRecommendation -> 30 - section.index
                 is HomeSection.HomePageSection -> 20 - section.index
                 else -> DEFAULT_HOME_SECTION_ORDER[section] ?: 0

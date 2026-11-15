@@ -95,6 +95,26 @@ data class CommunityPlaylistItem(
     val songs: List<SongItem>
 )
 
+/** One artist picked in song preferences, as a Home shelf: their songs and records. */
+data class PickedArtistShelf(
+    val artistId: String,
+    val name: String,
+    val thumbnail: String?,
+    val items: List<YTItem>,
+)
+
+/**
+ * Home built from the artists picked in song preferences: a mix of songs dealt across all of
+ * them, a shelf each, and the artists their listeners also play.
+ */
+data class PickedArtistFeed(
+    val mix: List<SongItem>,
+    val shelves: List<PickedArtistShelf>,
+    val relatedArtists: List<ArtistItem>,
+    /** History still thin: the picks lead Home rather than sit among the rest. */
+    val leading: Boolean,
+)
+
 @Immutable
 data class HomeUiState(
     val quickPicks: List<Song>? = null,
@@ -102,6 +122,7 @@ data class HomeUiState(
     val listenAgain: HomePage.Section? = null,
     val topSongs: List<Song>? = null,
     val similarRecommendations: List<SimilarRecommendation>? = null,
+    val pickedFeed: PickedArtistFeed? = null,
     val accountPlaylists: List<PlaylistItem>? = null,
     val homePage: HomePage? = null,
     val explorePage: ExplorePage? = null,
@@ -140,6 +161,7 @@ private data class HomeUiFeedC(
     val allYtItems: List<YTItem>,
     val speedDialItems: List<YTItem>,
     val selectedChip: HomePage.Chip?,
+    val pickedFeed: PickedArtistFeed?,
 )
 
 private data class HomeUiFlags(
@@ -214,6 +236,7 @@ class HomeViewModel(
     val listenAgain = MutableStateFlow<HomePage.Section?>(null)
     val topSongs = MutableStateFlow<List<Song>?>(null)
     val similarRecommendations = MutableStateFlow<List<SimilarRecommendation>?>(null)
+    val pickedFeed = MutableStateFlow<PickedArtistFeed?>(null)
     val accountPlaylists = MutableStateFlow<List<PlaylistItem>?>(null)
     val homePage = MutableStateFlow<HomePage?>(null)
     val explorePage = MutableStateFlow<ExplorePage?>(null)
@@ -367,9 +390,9 @@ class HomeViewModel(
                 accountPlaylists, homePage, explorePage, dailyDiscover, communityPlaylists ->
             HomeUiFeedB(accountPlaylists, homePage, explorePage, dailyDiscover, communityPlaylists)
         },
-        combine(allLocalItems, allYtItems, speedDialItems, selectedChip) {
-                allLocalItems, allYtItems, speedDialItems, selectedChip ->
-            HomeUiFeedC(allLocalItems, allYtItems, speedDialItems, selectedChip)
+        combine(allLocalItems, allYtItems, speedDialItems, selectedChip, pickedFeed) {
+                allLocalItems, allYtItems, speedDialItems, selectedChip, pickedFeed ->
+            HomeUiFeedC(allLocalItems, allYtItems, speedDialItems, selectedChip, pickedFeed)
         },
         combine(
             combine(isLoading, isRefreshing, isRandomizing, accountName, accountImageUrl) {
@@ -394,6 +417,7 @@ class HomeViewModel(
             allYtItems = c.allYtItems,
             speedDialItems = c.speedDialItems,
             selectedChip = c.selectedChip,
+            pickedFeed = c.pickedFeed,
             isLoading = flagsPair.first.isLoading,
             isRefreshing = flagsPair.first.isRefreshing,
             isRandomizing = flagsPair.first.isRandomizing,
@@ -665,6 +689,72 @@ class HomeViewModel(
                 id to name
             }
 
+    /**
+     * Home from the artists picked in song preferences. Each artist's page gives their songs and
+     * records; a mix deals their songs out in turn so no one artist runs the list; and the artists
+     * their listeners also play widen it past the picks. While there is little history, all of
+     * it leads Home; afterwards it gives way to what has actually been played.
+     */
+    private suspend fun loadPickedFeed() {
+        val hideExplicit = context.dataStore.get(HideExplicitKey, false)
+        val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false) || context.dataStore.get(DataSaverEnabledKey, false)
+        val fromTimeStamp = System.currentTimeMillis() - 86400000L * 7 * 2
+        val playedArtists = database.mostPlayedArtists(fromTimeStamp, limit = 15).first().size
+        val leading = playedArtists < 3
+        val picked = pickedArtists(limit = MaxPickedArtists)
+        if (picked.isEmpty()) {
+            pickedFeed.value = null
+            return
+        }
+        val pages = coroutineScope {
+            picked.map { (artistId, name) ->
+                async(Dispatchers.IO) {
+                    val page = recommendationRequest { YouTube.artist(artistId) }.getOrNull() ?: return@async null
+                    val songs = page.sections.flatMap { it.items }.filterIsInstance<SongItem>()
+                        .filterRecommendationItems(hideExplicit, hideVideoSongs).filterIsInstance<SongItem>()
+                        .distinctBy { it.id }
+                    val records = page.sections.flatMap { it.items }.filterIsInstance<AlbumItem>()
+                        .filterRecommendationItems(hideExplicit, hideVideoSongs)
+                        .distinctBy { it.id }
+                    val related = page.sections.flatMap { it.items }.filterIsInstance<ArtistItem>()
+                        .filter { it.id != artistId }
+                    Triple(
+                        PickedArtistShelf(
+                            artistId = artistId,
+                            name = page.artist.title.ifBlank { name },
+                            thumbnail = page.artist.thumbnail,
+                            items = (songs.take(8) + records.take(6)).ifEmpty { return@async null },
+                        ),
+                        songs,
+                        related,
+                    )
+                }
+            }.awaitAll().filterNotNull()
+        }
+        if (pages.isEmpty()) return
+        // Dealt in turn, a few from each, so the mix reads as all the picks together.
+        val decks = pages.map { (_, songs, _) -> songs.take(PickedMixPerArtist).shuffled().toMutableList() }
+        val mix = buildList {
+            while (size < PickedMixSize && decks.any { it.isNotEmpty() }) {
+                decks.forEach { deck -> if (deck.isNotEmpty() && size < PickedMixSize) add(deck.removeAt(0)) }
+            }
+        }.distinctBy { it.id }
+        val pickedIds = picked.mapTo(HashSet()) { it.first }
+        val related = pages.flatMap { it.third }
+            .filter { it.id !in pickedIds }
+            .groupBy { it.id }
+            // The artists named by more than one pick first.
+            .entries.sortedByDescending { it.value.size }
+            .map { it.value.first() }
+            .take(12)
+        pickedFeed.value = PickedArtistFeed(
+            mix = mix,
+            shelves = pages.map { it.first }.take(if (leading) MaxPickedShelves else 2),
+            relatedArtists = related,
+            leading = leading,
+        )
+    }
+
     private suspend fun loadSimilarRecommendations() {
         val hideExplicit = context.dataStore.get(HideExplicitKey, false)
         val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false) || context.dataStore.get(DataSaverEnabledKey, false)
@@ -733,40 +823,9 @@ class HomeViewModel(
                     }
                 }
 
-            // Artists picked in song preferences: on a new install there is no history to lean
-            // on, so these are what shape the recommendations at first.
-            val playedArtistIds = database.mostPlayedArtists(fromTimeStamp, limit = 15).first().mapTo(HashSet()) { it.id }
-            val pickedDeferreds = pickedArtists(limit = 4)
-                .filter { (id, _) -> id !in playedArtistIds }
-                .map { (artistId, _) ->
-                    async(Dispatchers.IO) {
-                        val page = recommendationRequest { YouTube.artist(artistId) }.getOrNull() ?: return@async null
-                        SimilarRecommendation(
-                            title = com.ozyern.exhale.db.entities.Artist(
-                                artist = ArtistEntity(
-                                    id = artistId,
-                                    name = page.artist.title,
-                                    thumbnailUrl = page.artist.thumbnail,
-                                    channelId = page.artist.channelId,
-                                ),
-                                songCount = 0,
-                            ),
-                            items = page.sections.takeLast(3).flatMap { it.items }
-                                .filterRecommendationItems(hideExplicit, hideVideoSongs)
-                                .take(12)
-                                .ifEmpty { return@async null },
-                        )
-                    }
-                }
-
-            val picked = pickedDeferreds.awaitAll().filterNotNull()
             val results = (artistDeferreds + songDeferreds + albumDeferreds).awaitAll()
-            // Picks lead while history is thin; afterwards they mix in with the rest.
-            similarRecommendations.value = if (playedArtistIds.size < 3) {
-                picked + results.filterNotNull().shuffled()
-            } else {
-                (picked + results.filterNotNull()).shuffled()
-            }
+            // The picked artists have a feed of their own (loadPickedFeed).
+            similarRecommendations.value = results.filterNotNull().shuffled()
         }
     }
 
@@ -779,6 +838,7 @@ class HomeViewModel(
             launch(Dispatchers.IO) { getDailyDiscover() }
             launch(Dispatchers.IO) { getCommunityPlaylists() }
             launch(Dispatchers.IO) { loadSimilarRecommendations() }
+            launch(Dispatchers.IO) { loadPickedFeed() }
             launch(Dispatchers.IO) {
                 loadHomeAndNewReleases(hideExplicit, hideVideoSongs, hideYoutubeShorts)
             }
@@ -1049,7 +1109,7 @@ class HomeViewModel(
                 .drop(1)
                 .collect {
                     pickedArtistIds.clear()
-                    loadSimilarRecommendations()
+                    loadPickedFeed()
                 }
         }
 
@@ -1068,3 +1128,11 @@ class HomeViewModel(
 
 private const val ChipCacheSize = 8
 private const val ChipCacheTtlMs = 10 * 60 * 1000L
+
+/** Picked artists read into Home's feed. */
+private const val MaxPickedArtists = 8
+/** Artist shelves while the picks lead Home. */
+private const val MaxPickedShelves = 4
+/** Songs each picked artist puts into the mix, and the mix's length. */
+private const val PickedMixPerArtist = 6
+private const val PickedMixSize = 24

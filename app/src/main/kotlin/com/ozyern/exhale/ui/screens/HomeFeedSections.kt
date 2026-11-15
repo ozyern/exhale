@@ -139,6 +139,9 @@ internal fun LazyListScope.homeSectionsContent(
                 section, deps, ui.similarRecommendations,
             )
             is HomeSection.HomePageSection -> homePageSection(section, deps, ui.homePage)
+            is HomeSection.PickedMix -> pickedMixSection(deps, ui.pickedFeed)
+            is HomeSection.PickedArtist -> pickedArtistSection(section, deps, ui.pickedFeed)
+            is HomeSection.PickedRelated -> pickedRelatedSection(deps, ui.pickedFeed)
             HomeSection.MoodAndGenres -> moodAndGenresSection(deps, ui.explorePage)
         }
     }
@@ -768,4 +771,97 @@ internal fun rememberSongsById(
     }
     val songs by flow.collectAsStateWithLifecycle(initialValue = emptyList())
     return remember(songs) { songs.associateBy { it.id } }
+}
+
+
+/** "Picked for You": the picked artists' songs, dealt in turn; a tap plays the mix from that song. */
+internal fun LazyListScope.pickedMixSection(
+    deps: HomeSectionDeps,
+    feed: com.ozyern.exhale.viewmodels.PickedArtistFeed?,
+) {
+    val mix = feed?.mix?.takeIf { it.isNotEmpty() } ?: return
+    item(key = "picked_mix_title", contentType = "section_title") {
+        NavigationTitle(
+            label = "From the artists you picked",
+            title = "Picked for You",
+            onPlayAllClick = {
+                deps.playerConnection.playQueue(
+                    com.ozyern.exhale.playback.queues.ListQueue(
+                        title = "Picked for You",
+                        items = mix.map { it.toMediaItem() },
+                    ),
+                )
+            },
+            modifier = Modifier.animateItem(),
+        )
+    }
+    shelfRow(
+        key = "picked_mix_list",
+        deps = deps,
+        entries = mix.mapIndexed { index, song ->
+            song.toShelfEntry(deps).copy(onClick = {
+                deps.playerConnection.playQueue(
+                    com.ozyern.exhale.playback.queues.ListQueue(
+                        title = "Picked for You",
+                        items = mix.map { it.toMediaItem() },
+                        startIndex = index,
+                    ),
+                )
+            })
+        },
+        compact = true,
+    )
+}
+
+/** A picked artist: their name and picture over a shelf of their songs and records. */
+internal fun LazyListScope.pickedArtistSection(
+    section: HomeSection.PickedArtist,
+    deps: HomeSectionDeps,
+    feed: com.ozyern.exhale.viewmodels.PickedArtistFeed?,
+) {
+    val shelf = feed?.shelves?.getOrNull(section.index) ?: return
+    item(key = "picked_artist_title_${section.index}", contentType = "section_title") {
+        NavigationTitle(
+            label = "More from",
+            title = shelf.name,
+            thumbnail = shelf.thumbnail?.let { url ->
+                {
+                    AsyncImage(
+                        model = url,
+                        contentDescription = null,
+                        modifier = Modifier.size(ListThumbnailSize).clip(CircleShape),
+                    )
+                }
+            },
+            onClick = { deps.navController.navigate(artistRoute(shelf.artistId, shelf.thumbnail)) },
+            modifier = Modifier.animateItem(),
+        )
+    }
+    shelfRow(
+        key = "picked_artist_list_${section.index}",
+        deps = deps,
+        entries = shelf.items.distinctBy { it.id }.map { it.toShelfEntry(deps) },
+        compact = true,
+    )
+}
+
+/** Artists the picked artists' listeners also play. */
+internal fun LazyListScope.pickedRelatedSection(
+    deps: HomeSectionDeps,
+    feed: com.ozyern.exhale.viewmodels.PickedArtistFeed?,
+) {
+    val artists = feed?.relatedArtists?.takeIf { it.isNotEmpty() } ?: return
+    item(key = "picked_related_title", contentType = "section_title") {
+        NavigationTitle(
+            label = "Because you picked them",
+            title = "Artists You Might Like",
+            modifier = Modifier.animateItem(),
+        )
+    }
+    shelfRow(
+        key = "picked_related_list",
+        deps = deps,
+        entries = artists.distinctBy { it.id }.map { it.toShelfEntry(deps) },
+        compact = true,
+    )
 }
