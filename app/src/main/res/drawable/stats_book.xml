@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Stats: an open book with a speech bubble over it. In its own colours, as ColorOS draws its Settings glyphs. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFA65318" android:pathData="M10.3,7.15 C7.6,7.15 6.9,5.6 6.9,4.2 C6.9,2.3 8.4,1.15 10.6,1.15 L13.4,1.15 C15.6,1.15 17.1,2.3 17.1,4.2 C17.1,5.6 16.4,7.15 13.7,7.15 L12.35,8.45 Q12,8.8 11.65,8.45 Z" />
+    <path android:fillColor="#FFFF7F0A" android:pathData="M2.6,7.3 C6,7.5 9,8.6 11.43,9.9 L11.43,22.8 C9,21.4 6,20.4 2.7,20.15 C2.3,20.1 2,19.8 2,19.4 L2,7.9 C2,7.55 2.25,7.28 2.6,7.3 Z" />
+    <path android:fillColor="#FFFF7F0A" android:fillType="evenOdd" android:pathData="M21.4,7.3 C18,7.5 15,8.6 12.57,9.9 L12.57,22.8 C15,21.4 18,20.4 21.3,20.15 C21.7,20.1 22,19.8 22,19.4 L22,7.9 C22,7.55 21.75,7.28 21.4,7.3 Z M15.2,13.27 L19.95,11.91 A0.62,0.62 0 0 0 19.61,10.71 L14.86,12.07 A0.62,0.62 0 0 0 15.2,13.27 Z M15.2,16.6 L19.95,15.29 A0.62,0.62 0 0 0 19.61,14.09 L14.86,15.4 A0.62,0.62 0 0 0 15.2,16.6 Z" />
+</vector>

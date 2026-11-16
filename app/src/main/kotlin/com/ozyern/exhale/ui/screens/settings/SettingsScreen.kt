@@ -93,8 +93,20 @@ import androidx.compose.ui.res.painterResource
 import com.ozyern.exhale.viewmodels.HomeViewModel
 
 /** Root rows that open a page directly rather than a category. */
-private val historyLink = SettingsLink("History", R.drawable.music_history, { systemCyan }, SettingsAction.Route("history"))
-private val statsLink = SettingsLink("Stats", R.drawable.stats, { systemYellow }, SettingsAction.Route("stats"))
+private val historyLink = SettingsLink(
+    "History",
+    R.drawable.history_heart,
+    { systemBlue },
+    SettingsAction.Route("history"),
+    artwork = true,
+)
+private val statsLink = SettingsLink(
+    "Stats",
+    R.drawable.stats_book,
+    { systemOrange },
+    SettingsAction.Route("stats"),
+    artwork = true,
+)
 private val listenTogetherLink = SettingsLink(
     "Listen Together",
     R.drawable.settings_listen_together,

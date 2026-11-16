@@ -1154,6 +1154,12 @@ private fun PlayerV2Content(
                                             )
                                             .background(adaptiveSurface, RoundedCornerShape(if (isHeroLook) 0.dp else 12.dp))
                                             .clip(RoundedCornerShape(if (isHeroLook) 0.dp else 12.dp))
+                                            // Flying back from a page header the cover is drawn in the
+                                            // overlay, outside its frame's dissolve: it carries its own
+                                            // there, gathering as it lands, and hands over to the frame's.
+                                            .heroMorphDissolve {
+                                                if (isHeroLook && isTransitionActive) 1f - coverMorphFrac.value else 0f
+                                            }
                                             // Hero Blend: the artist page's live progressive foot over the
                                             // art AND the canvas video (one blur of the real pixels), then
                                             // the frame's outer fade hands it to the gradient, which starts
@@ -1240,17 +1246,15 @@ private fun PlayerV2Content(
                                         },
                                         label = "headerMorphFrac",
                                     ) { if (it == EnterExitState.Visible) 1f else 0f }
-                                    // Hero Bleed keeps its cover anchored and fades in a copy.
-                                    // Squared shares the cover bounds with the page header.
-                                    val headerArtworkModifier = if (!isHeroLook || targetState == PlayerInternalState.COVER) {
-                                        Modifier.sharedElement(
-                                                rememberSharedContentState(key = "coverArt"),
-                                                animatedVisibilityScope = this@AnimatedContent,
-                                                boundsTransform = { _, _ -> Motion.artwork() },
-                                            )
-                                    } else {
-                                        Modifier
-                                    }
+                                    // Both looks share the cover's bounds with the page header: the
+                                    // cover itself shrinks into this thumbnail and grows back out of
+                                    // it. Hero Bleed used to hold its cover still and fade a copy in
+                                    // here, which read as a dissolve rather than the picture moving.
+                                    val headerArtworkModifier = Modifier.sharedElement(
+                                            rememberSharedContentState(key = "coverArt"),
+                                            animatedVisibilityScope = this@AnimatedContent,
+                                            boundsTransform = { _, _ -> Motion.artwork() },
+                                        )
                                     Box(
                                         modifier = headerArtworkModifier
                                             .size(60.dp)
@@ -1283,13 +1287,15 @@ private fun PlayerV2Content(
                                             )
                                             .background(adaptiveSurface, RoundedCornerShape(7.dp))
                                             .clip(RoundedCornerShape(7.dp))
-                                            .then(
-                                                if (targetState == PlayerInternalState.QUEUE) {
-                                                    Modifier.clickable { playerState = PlayerInternalState.COVER }
-                                                } else {
-                                                    Modifier
-                                                }
-                                            )
+                                            // Leaving the hero, the banner's dissolving foot lets go
+                                            // as it shrinks, so the first frame is still the banner.
+                                            .heroMorphDissolve { if (isHeroLook) 1f - headerMorphFrac.value else 0f }
+                                            // Over the lyrics or the queue, the cover leads back
+                                            // to the player, growing out of the thumbnail again.
+                                            .clickable(
+                                                interactionSource = remember { MutableInteractionSource() },
+                                                indication = null,
+                                            ) { playerState = PlayerInternalState.COVER }
                                     ) {
                                         ThumbnailImage(
                                             artworkUri = artworkMetadata?.thumbnailUrl?.resize(1200, 1200),
@@ -1453,7 +1459,26 @@ private fun PlayerV2Content(
                                         )
                                 ) {
                                     if (targetState == PlayerInternalState.LYRICS) {
-                                        Box(Modifier.fillMaxSize()) {
+                                        // The words arrive once the cover has landed in the header,
+                                        // already on the line being sung, rising a little into place.
+                                        val lyricsReveal = this@AnimatedContent.transition.animateFloat(
+                                            transitionSpec = {
+                                                if (this.targetState == EnterExitState.Visible) {
+                                                    tween(360, delayMillis = 280, easing = FastOutSlowInEasing)
+                                                } else {
+                                                    tween(120)
+                                                }
+                                            },
+                                            label = "lyricsReveal",
+                                        ) { if (it == EnterExitState.Visible) 1f else 0f }
+                                        Box(
+                                            Modifier
+                                                .fillMaxSize()
+                                                .graphicsLayer {
+                                                    alpha = lyricsReveal.value
+                                                    translationY = (1f - lyricsReveal.value) * 18.dp.toPx()
+                                                },
+                                        ) {
                                             Lyrics(
                                                 sliderPositionProvider = { sliderPosition ?: position },
                                                 showLyrics = true,
@@ -2570,3 +2595,30 @@ private fun FadeSwapText(
         )
     }
 }
+
+/** The hero's foot dissolve, alpha at each stop; [heroMorphDissolve] eases it in and out. */
+private val HeroMorphDissolveStops = com.ozyern.exhale.ui.component.heroFadeOutStops(start = 0.58f)
+
+/**
+ * The hero cover's dissolving foot at [strength] (0 none, 1 the banner's own), for a cover drawn in
+ * the shared-element overlay, outside the frame whose dissolve it normally sits in.
+ */
+private fun Modifier.heroMorphDissolve(strength: () -> Float): Modifier = this
+    .graphicsLayer {
+        compositingStrategy = if (strength() > 0.001f) CompositingStrategy.Offscreen else CompositingStrategy.Auto
+    }
+    .drawWithContent {
+        drawContent()
+        val m = strength().coerceIn(0f, 1f)
+        if (m > 0.001f) {
+            drawRect(
+                brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                    colorStops = Array(HeroMorphDissolveStops.size) { i ->
+                        val (at, color) = HeroMorphDissolveStops[i]
+                        at to Color.Black.copy(alpha = 1f - m * (1f - color.alpha))
+                    },
+                ),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+    }
