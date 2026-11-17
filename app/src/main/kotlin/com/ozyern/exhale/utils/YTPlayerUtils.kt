@@ -342,6 +342,44 @@ object YTPlayerUtils {
         val isDashStream: Boolean = false,
         val isHlsStream: Boolean = false,
     )
+    /** What a TIDAL FLAC stream plays as: one direct file, labelled lossless. */
+    private fun tidalPlaybackData(
+        meta: PlayerResponse?,
+        streamUrl: String,
+        quality: TidalQuality,
+        durationSec: Int?,
+    ) = PlaybackData(
+        audioConfig      = meta?.playerConfig?.audioConfig,
+        videoDetails     = meta?.videoDetails,
+        playbackTracking = meta?.playbackTracking,
+        format           = PlayerResponse.StreamingData.Format(
+            itag             = 9999,               // sentinel: lossless FLAC
+            url              = streamUrl,
+            // codecs= segment so the media-info sheet shows "flac", not the "mp3" default
+            mimeType         = "audio/flac; codecs=\"flac\"",
+            bitrate          = 1_411_000,          // nominal 16/44.1 stereo, for the badge
+            width            = null,
+            height           = null,
+            contentLength    = null,
+            quality          = quality.toApiValue(),
+            fps              = null,
+            qualityLabel     = null,
+            averageBitrate   = null,
+            audioQuality     = quality.toApiValue(),
+            approxDurationMs = durationSec?.let { (it * 1000L).toString() },
+            audioSampleRate  = 44100,
+            audioChannels    = 2,
+            loudnessDb       = null,
+            lastModified     = null,
+            signatureCipher  = null,
+            cipher           = null,
+            audioTrack       = null,
+        ),
+        streamUrl              = streamUrl,
+        streamExpiresInSeconds = 3600,
+        isTidalStream          = true,
+    )
+
     /** Resolves the current song and player metadata concurrently for alternate providers. */
     private suspend fun resolvePlaybackMetadata(videoId: String, playlistId: String?) = coroutineScope {
         val nextDeferred = async {
@@ -445,8 +483,11 @@ object YTPlayerUtils {
                 Timber.tag(TAG).d("═══ SPINE INTERCEPT END ═══")
             } // !forceStandardAudio
 
-            // Try Tidal lossless before Saavn when enabled.
-            if (!forceStandardAudio && !requireYouTube && !forceSelectedQuality && allowLossless && context.dataStore.get(EnableTidalStreamingKey, false)) {
+            // Try Tidal lossless before Saavn: the listener's own account when signed in and
+            // preferred, then the public instances when those are enabled.
+            val tidalPublic = context.dataStore.get(EnableTidalStreamingKey, false)
+            val tidalAccount = com.ozyern.exhale.utils.tidal.TidalAccount.isPreferred(context)
+            if (!forceStandardAudio && !requireYouTube && !forceSelectedQuality && allowLossless && (tidalPublic || tidalAccount)) {
                 Timber.tag(TAG).d("Lossless enabled — trying TIDAL for videoId=$videoId")
                 val tidalResult = runCatching {
                     val (currentSong, meta) = resolvePlaybackMetadata(videoId, playlistId)
@@ -463,6 +504,21 @@ object YTPlayerUtils {
                     val wantedTitle = title.lowercase(java.util.Locale.US)
                     val wantedArtists = artistNames.map { it.lowercase(java.util.Locale.US) }
                     val wantedDuration = currentSong?.duration
+
+                    // The listener's own subscription first.
+                    val own = if (tidalAccount) {
+                        com.ozyern.exhale.utils.tidal.TidalAccount.losslessStream(context, title, artistNames, wantedDuration)
+                    } else {
+                        null
+                    }
+                    if (own != null) {
+                        Timber.tag(TAG).i("Tidal account: streaming FLAC \"${own.title}\" (id=${own.trackId}) for videoId=$videoId")
+                        return@runCatching tidalPlaybackData(meta, own.url, TidalQuality.LOSSLESS, own.durationSec)
+                    }
+                    if (!tidalPublic) {
+                        Timber.tag(TAG).d("Tidal account: no lossless stream for \"$query\" — falling back")
+                        return@runCatching null
+                    }
                     val customUrl = context.dataStore.get(TidalInstanceUrlKey, "").ifBlank { null }
 
                     val candidates = TidalService.search(query, customUrl)
@@ -501,37 +557,7 @@ object YTPlayerUtils {
                     }
 
                     Timber.tag(TAG).i("Tidal: streaming FLAC \"${best.title}\" (id=${best.id}, ${quality.toApiValue()}) for videoId=$videoId")
-                    PlaybackData(
-                        audioConfig      = meta?.playerConfig?.audioConfig,
-                        videoDetails     = meta?.videoDetails,
-                        playbackTracking = meta?.playbackTracking,
-                        format           = PlayerResponse.StreamingData.Format(
-                            itag             = 9999,               // sentinel: lossless FLAC
-                            url              = streamUrl,
-                            // codecs= segment so the media-info sheet shows "flac", not the "mp3" default
-                            mimeType         = "audio/flac; codecs=\"flac\"",
-                            bitrate          = 1_411_000,          // nominal 16/44.1 stereo, for the badge
-                            width            = null,
-                            height           = null,
-                            contentLength    = null,
-                            quality          = quality.toApiValue(),
-                            fps              = null,
-                            qualityLabel     = null,
-                            averageBitrate   = null,
-                            audioQuality     = quality.toApiValue(),
-                            approxDurationMs = best.duration?.let { (it * 1000L).toString() },
-                            audioSampleRate  = 44100,
-                            audioChannels    = 2,
-                            loudnessDb       = null,
-                            lastModified     = null,
-                            signatureCipher  = null,
-                            cipher           = null,
-                            audioTrack       = null,
-                        ),
-                        streamUrl              = streamUrl,
-                        streamExpiresInSeconds = 3600,
-                        isTidalStream          = true,
-                    )
+                    tidalPlaybackData(meta, streamUrl, quality, best.duration)
                 }.getOrNull()
 
                 if (tidalResult != null) return Result.success(tidalResult)

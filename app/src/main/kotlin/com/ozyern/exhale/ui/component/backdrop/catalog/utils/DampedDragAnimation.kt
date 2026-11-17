@@ -37,6 +37,8 @@ class DampedDragAnimation(
     val visibilityThreshold: Float,
     val initialScale: Float,
     val pressedScale: Float,
+    /** The pressed height, when it differs from the width's: Apple Music's lens swells wide and flat. */
+    val pressedScaleY: Float = pressedScale,
     val canDrag: (Offset) -> Boolean = { true },
     val onDragStarted: DampedDragAnimation.(position: Offset) -> Unit,
     val onDragStopped: DampedDragAnimation.() -> Unit,
@@ -103,7 +105,7 @@ class DampedDragAnimation(
         pressJob = animationScope.launch {
             launch { pressProgressAnimation.animateTo(1f, pressProgressAnimationSpec) }
             launch { scaleXAnimation.animateTo(pressedScale, scaleXAnimationSpec) }
-            launch { scaleYAnimation.animateTo(pressedScale, scaleYAnimationSpec) }
+            launch { scaleYAnimation.animateTo(pressedScaleY, scaleYAnimationSpec) }
         }
     }
 

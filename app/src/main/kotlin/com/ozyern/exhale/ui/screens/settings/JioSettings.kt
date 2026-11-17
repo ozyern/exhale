@@ -52,6 +52,7 @@ import com.ozyern.exhale.ui.component.ModernSwitch
 import com.ozyern.exhale.ui.utils.backToMain
 import com.ozyern.exhale.utils.rememberEnumPreference
 import com.ozyern.exhale.utils.rememberPreference
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,6 +76,12 @@ fun JioSettings(
         com.ozyern.exhale.constants.PreferArchiveFlacKey,
         defaultValue = true
     )
+    val (tidalToken, _) = rememberPreference(com.ozyern.exhale.constants.TidalAccessTokenKey, defaultValue = "")
+    val (tidalName, _) = rememberPreference(com.ozyern.exhale.constants.TidalAccountNameKey, defaultValue = "")
+    val (preferTidal, onPreferTidalChange) = rememberPreference(com.ozyern.exhale.constants.PreferTidalKey, defaultValue = true)
+    val tidalSignedIn = tidalToken.isNotBlank()
+    val tidalScope = androidx.compose.runtime.rememberCoroutineScope()
+    val tidalContext = androidx.compose.ui.platform.LocalContext.current
     val (forceSelectedQuality, onForceSelectedQualityChange) = rememberPreference(
         ForceSelectedQualityKey,
         defaultValue = false
@@ -146,6 +153,39 @@ fun JioSettings(
                     onClick = { onPreferArchiveFlacChange(!preferArchiveFlac) },
                 ),
             ),
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        IosSettingsGroup(
+            title = "TIDAL",
+            items = buildList {
+                if (tidalSignedIn) {
+                    add(
+                        IosSettingsItem(
+                            title = { Text("Signed in as ${tidalName.ifBlank { "TIDAL" }}") },
+                            description = { Text("Tap to sign out of TIDAL on this phone.") },
+                            onClick = { tidalScope.launch { com.ozyern.exhale.utils.tidal.TidalAccount.signOut(tidalContext) } },
+                        ),
+                    )
+                    add(
+                        IosSettingsItem(
+                            title = { Text("Prefer TIDAL") },
+                            description = { Text("Play songs lossless from your TIDAL account first, ahead of JioSaavn and YouTube Music.") },
+                            trailingContent = { ModernSwitch(checked = preferTidal, onCheckedChange = onPreferTidalChange) },
+                            onClick = { onPreferTidalChange(!preferTidal) },
+                        ),
+                    )
+                } else {
+                    add(
+                        IosSettingsItem(
+                            title = { Text("Sign in to TIDAL") },
+                            description = { Text("Stream lossless FLAC from your own TIDAL subscription. Your login stays on this phone.") },
+                            onClick = { navController.navigate("settings/player/tidal/login") },
+                        ),
+                    )
+                }
+            },
         )
 
         Spacer(modifier = Modifier.height(24.dp))

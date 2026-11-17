@@ -80,6 +80,7 @@ import com.ozyern.exhale.ui.screens.settings.SpotifyScreen
 import com.ozyern.exhale.viewmodels.SpotifyImportViewModel
 import com.ozyern.exhale.ui.screens.settings.ContentSettings
 import com.ozyern.exhale.ui.screens.settings.DiscordLoginScreen
+import com.ozyern.exhale.ui.screens.settings.TidalLoginScreen
 import com.ozyern.exhale.ui.screens.settings.PlayerSettings
 import com.ozyern.exhale.ui.screens.settings.PlayerAdvancedSettings
 import com.ozyern.exhale.ui.screens.settings.AppearanceAdvancedSettings
@@ -568,6 +569,10 @@ fun NavGraphBuilder.navigationBuilder(
 
     sharedComposable("settings/player/jio") {
         JioSettings(navController, scrollBehavior)
+    }
+
+    sharedComposable("settings/player/tidal/login") {
+        TidalLoginScreen(navController)
     }
 
     sharedComposable("settings/scan_music") {

@@ -227,6 +227,18 @@ val EnableTidalStreamingKey = booleanPreferencesKey("enableTidalStreaming")
 val TidalQualityKey         = stringPreferencesKey("tidalQuality")
 val TidalInstanceUrlKey     = stringPreferencesKey("tidalInstanceUrl")
 
+// The listener's own TIDAL account (Settings > Streaming > TIDAL). Stored on this phone only.
+val TidalAccessTokenKey  = stringPreferencesKey("tidalAccessToken")
+val TidalRefreshTokenKey = stringPreferencesKey("tidalRefreshToken")
+val TidalTokenExpiryKey  = longPreferencesKey("tidalTokenExpiry")
+val TidalAccountNameKey  = stringPreferencesKey("tidalAccountName")
+val TidalCountryCodeKey  = stringPreferencesKey("tidalCountryCode")
+/** How the session was made: TidalAccount.FLOW_PKCE (refreshable) or FLOW_WEBCAPTURE (an hour). */
+val TidalAuthFlowKey     = stringPreferencesKey("tidalAuthFlow")
+/** On (default): signed in, a song plays lossless from the listener's TIDAL account before
+ *  JioSaavn or YouTube are asked. */
+val PreferTidalKey       = booleanPreferencesKey("preferTidal")
+
 enum class TidalQuality {
     LOSSLESS,   // 16-bit/44.1kHz FLAC — direct URL, ships now
     HI_RES;     // 24-bit — DASH, not wired yet (inert)

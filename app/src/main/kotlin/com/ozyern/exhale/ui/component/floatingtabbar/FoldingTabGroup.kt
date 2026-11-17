@@ -137,7 +137,10 @@ internal fun FoldingTabGroup(
                 valueRange = 0f..(tabsCount - 1).coerceAtLeast(0).toFloat(),
                 visibilityThreshold = 0.001f,
                 initialScale = 1f,
-                pressedScale = 78f / 56f,
+                // As Apple Music's: held, the slot becomes a wide, low capsule that rises just past
+                // the bar's edges, not a near-round bubble towering over it (it was 78/56 both ways).
+                pressedScale = 1.5f,
+                pressedScaleY = 1.16f,
                 onDragStarted = {},
                 onDragStopped = {
                     val targetIndex = targetValue.fastRoundToInt().fastCoerceIn(0, tabsCount - 1)
@@ -195,7 +198,8 @@ internal fun FoldingTabGroup(
 
         // The tabs again, tinted and invisible: what the slot shows the selected tab through.
         CompositionLocalProvider(
-            LocalLiquidBottomTabScale provides { lerp(1f, 1.2f, dampedDragAnimation.pressProgress) },
+            // Barely magnified, as Apple Music's: the lens tints what is under it rather than enlarging it.
+            LocalLiquidBottomTabScale provides { lerp(1f, 1.06f, dampedDragAnimation.pressProgress) },
         ) {
             Row(
                 Modifier
@@ -240,7 +244,8 @@ internal fun FoldingTabGroup(
         }
         val slotLens: BackdropEffectScope.() -> Unit = {
             val progress = dampedDragAnimation.pressProgress
-            lens(10.dp.toPx() * progress, 14.dp.toPx() * progress, chromaticAberration = true)
+            // Bent at the rim, clear across the middle, so the glyph under it stays legible.
+            lens(12.dp.toPx() * progress, 10.dp.toPx() * progress, chromaticAberration = true)
         }
         // While pressed the slot also refracts the bar's own surface, faded in so release doesn't pop.
         val pressedBackdrop = remember(backdrop, surfaceBackdrop, dampedDragAnimation) {
@@ -287,7 +292,7 @@ internal fun FoldingTabGroup(
                     shadow = { Shadow(alpha = dampedDragAnimation.pressProgress) },
                     innerShadow = {
                         val progress = dampedDragAnimation.pressProgress
-                        InnerShadow(radius = 8.dp * progress, alpha = progress)
+                        InnerShadow(radius = 6.dp * progress, alpha = 0.45f * progress)
                     },
                     onDrawSurface = {
                         val progress = dampedDragAnimation.pressProgress
