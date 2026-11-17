@@ -88,6 +88,12 @@ object TidalAccount {
     private const val SCOPE = "r_usr+w_usr+w_sub"
     private const val DEFAULT_COUNTRY = "US"
 
+    /** Gap between on-demand sign-ins with the baked-in token. */
+    private const val BAKED_SIGN_IN_GAP_MS = 30_000L
+
+    /** Search matches tried for a lossless stream before giving up on a song. */
+    private const val MAX_MATCHES_TRIED = 3
+
     /** Renew this long before the token runs out, so a song never starts on a dead one. */
     private const val EXPIRY_MARGIN_MS = 60_000L
 
@@ -124,9 +130,17 @@ object TidalAccount {
     fun isSignedIn(context: Context): Boolean =
         context.dataStore.get(TidalAccessTokenKey, "").isNotBlank()
 
-    /** Signed in and preferring TIDAL (the default once signed in). */
+    /**
+     * Signed in (or holding a baked-in token that can sign in) and preferring TIDAL, the default.
+     * A baked token counts so a song signs in on demand instead of skipping TIDAL until a restart.
+     */
     fun isPreferred(context: Context): Boolean =
-        isSignedIn(context) && context.dataStore.get(PreferTidalKey, true)
+        (isSignedIn(context) || canUseBakedToken(context)) && context.dataStore.get(PreferTidalKey, true)
+
+    /** A token was baked into this build and the listener has not signed out of it on purpose. */
+    private fun canUseBakedToken(context: Context): Boolean =
+        BuildConfig.TIDAL_DEFAULT_TOKEN.isNotBlank() &&
+            !(context.dataStore.get(TidalDefaultTokenAppliedKey, false) && !isSignedIn(context))
 
     /**
      * Signs in with a token baked into the build (BuildConfig.TIDAL_DEFAULT_TOKEN) so a private build
@@ -166,7 +180,7 @@ object TidalAccount {
             if (token.refreshToken != null) p[TidalRefreshTokenKey] = token.refreshToken else p.remove(TidalRefreshTokenKey)
             p[TidalTokenExpiryKey] = token.expiresAtMillis
             p[TidalAccountNameKey] = token.username ?: "TIDAL"
-            token.countryCode?.let { p[TidalCountryCodeKey] = it }
+            (token.countryCode ?: countryFromAccessToken(token.accessToken))?.let { p[TidalCountryCodeKey] = it }
             p[TidalAuthFlowKey] = flow
         }
     }
@@ -176,15 +190,40 @@ object TidalAccount {
             listOf(TidalAccessTokenKey, TidalRefreshTokenKey, TidalAccountNameKey, TidalCountryCodeKey, TidalAuthFlowKey)
                 .forEach { p.remove(it) }
             p.remove(TidalTokenExpiryKey)
+            // A baked-in token must not sign the listener straight back in.
+            p[TidalDefaultTokenAppliedKey] = true
         }
         btsPlaybackToken = null
+    }
+
+    /** No more than one on-demand baked-token sign-in per window, so an offline queue does not hammer TIDAL. */
+    private val lastBakedSignInAt = java.util.concurrent.atomic.AtomicLong(0L)
+
+    /**
+     * Signs in with the baked-in token when there is no session or the saved one can no longer be
+     * renewed (a stale session restored from a backup, or one TIDAL signed out). Returns the new
+     * access token, or null when there is no baked token, it is the session that just failed, or
+     * a sign-in ran moments ago.
+     */
+    private suspend fun signInWithBakedToken(context: Context, failedRefreshToken: String?): String? {
+        val baked = BuildConfig.TIDAL_DEFAULT_TOKEN
+        if (baked.isBlank() || baked == failedRefreshToken) return null
+        val now = android.os.SystemClock.elapsedRealtime()
+        val last = lastBakedSignInAt.get()
+        if (last != 0L && now - last < BAKED_SIGN_IN_GAP_MS) return null
+        if (!lastBakedSignInAt.compareAndSet(last, now)) return null
+        signInWithToken(context, baked) ?: return null
+        context.dataStore.edit { it[TidalDefaultTokenAppliedKey] = true }
+        btsPlaybackToken = null
+        return context.dataStore.data.first()[TidalAccessTokenKey]?.takeIf { it.isNotBlank() }
     }
 
     /** A usable access token, renewed first when it has run out; null when signed out or renewal failed. */
     private suspend fun accessToken(context: Context, forceRefresh: Boolean = false): String? =
         refreshLock.withLock {
             val p = context.dataStore.data.first()
-            val token = p[TidalAccessTokenKey]?.takeIf { it.isNotBlank() } ?: return@withLock null
+            val token = p[TidalAccessTokenKey]?.takeIf { it.isNotBlank() }
+                ?: return@withLock if (canUseBakedToken(context)) signInWithBakedToken(context, null) else null
             val expiry = p[TidalTokenExpiryKey] ?: 0L
             if (!forceRefresh && System.currentTimeMillis() < expiry - EXPIRY_MARGIN_MS) return@withLock token
             val refresh = p[TidalRefreshTokenKey]?.takeIf { it.isNotBlank() }
@@ -193,7 +232,8 @@ object TidalAccount {
                 return@withLock if (forceRefresh) null else token
             }
             val flow = p[TidalAuthFlowKey] ?: FLOW_PKCE
-            val renewed = refreshAccessToken(refresh, flow) ?: return@withLock if (forceRefresh) null else token
+            val renewed = refreshAccessToken(refresh, flow)
+                ?: return@withLock signInWithBakedToken(context, refresh) ?: if (forceRefresh) null else token
             save(context, renewed.copy(refreshToken = renewed.refreshToken ?: refresh, username = renewed.username ?: p[TidalAccountNameKey]), flow)
             renewed.accessToken
         }
@@ -360,6 +400,26 @@ object TidalAccount {
 
     // ── Playback ─────────────────────────────────────────────────────────────────────────────
 
+    private val _lastResult = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    /** What happened on the last song TIDAL was asked for, shown in Streaming sources settings. */
+    val lastResult: kotlinx.coroutines.flow.StateFlow<String?> = _lastResult
+
+    private fun note(title: String, result: String): Stream? {
+        _lastResult.value = "\"$title\": $result"
+        Timber.tag(TAG).i("%s: %s", title, result)
+        return null
+    }
+
+    /** The account country carried in a TIDAL access token (its "cc" claim), e.g. NZ. */
+    internal fun countryFromAccessToken(accessToken: String): String? = runCatching {
+        val payload = accessToken.split('.').getOrNull(1) ?: return null
+        val json = String(java.util.Base64.getUrlDecoder().decode(payload.trimEnd('=')), Charsets.UTF_8)
+        CountryClaim.find(json)?.groupValues?.get(1)?.uppercase()
+    }.getOrNull()
+
+    private val CountryClaim = Regex(""""cc"\s*:\s*"([A-Za-z]{2})"""")
+
     private class Unauthorized : Exception("TIDAL token rejected")
 
     /**
@@ -373,18 +433,28 @@ object TidalAccount {
         durationSec: Int?,
     ): Stream? = withContext(Dispatchers.IO) {
         if (title.isBlank()) return@withContext null
-        val country = context.dataStore.data.first()[TidalCountryCodeKey]?.ifBlank { null } ?: DEFAULT_COUNTRY
-        var token = accessToken(context) ?: return@withContext null
+        var token = accessToken(context) ?: return@withContext note(title, "not signed in: ${lastSignInProblem()}")
+        // The account's own country (NZ for an NZ account), from settings or else the token itself.
+        val country = context.dataStore.data.first()[TidalCountryCodeKey]?.ifBlank { null }
+            ?: countryFromAccessToken(token)
+            ?: DEFAULT_COUNTRY
         repeat(2) { attempt ->
             try {
-                val match = searchTrack(token, title, artists, durationSec, country) ?: return@withContext null
-                val url = playbackUrl(token, match.first, country)
-                    ?: btsAccessToken(context)?.takeIf { it != token }?.let { playbackUrl(it, match.first, country) }
-                    ?: return@withContext null
-                return@withContext Stream(url, match.first, match.second, match.third)
+                val matches = searchTrack(token, title, artists, durationSec, country)
+                if (matches.isEmpty()) return@withContext note(title, "no TIDAL match")
+                // A track often has a lossy-only twin; try the next match before giving up.
+                for (match in matches.take(MAX_MATCHES_TRIED)) {
+                    val url = playbackUrl(token, match.first, country)
+                        ?: btsAccessToken(context)?.takeIf { it != token }?.let { playbackUrl(it, match.first, country) }
+                        ?: continue
+                    note(title, "FLAC (track ${match.first})")
+                    return@withContext Stream(url, match.first, match.second, match.third)
+                }
+                return@withContext note(title, "matched, but TIDAL gave no lossless stream")
             } catch (_: Unauthorized) {
-                if (attempt == 1) return@withContext null
-                token = accessToken(context, forceRefresh = true) ?: return@withContext null
+                if (attempt == 1) return@withContext note(title, "TIDAL refused the session")
+                token = accessToken(context, forceRefresh = true)
+                    ?: return@withContext note(title, "session expired: ${lastSignInProblem()}")
             }
         }
         null
@@ -404,14 +474,17 @@ object TidalAccount {
         return renewed.accessToken
     }
 
-    /** (id, title, duration in seconds) of the best match, or null below the match bar. */
+    /**
+     * (id, title, duration in seconds) of the matches above the match bar, best first. Among equal
+     * matches a LOSSLESS or HI_RES version comes before its lossy twin.
+     */
     private fun searchTrack(
         token: String,
         title: String,
         artists: List<String>,
         durationSec: Int?,
         country: String,
-    ): Triple<Long, String, Int?>? {
+    ): List<Triple<Long, String, Int?>> {
         val primaryArtist = artists.firstOrNull().orEmpty()
         val query = URLEncoder.encode("$title $primaryArtist".trim(), "UTF-8")
         val request = Request.Builder()
@@ -422,10 +495,9 @@ object TidalAccount {
             client.newCall(request).execute().use { response ->
                 if (response.code == 401) throw Unauthorized()
                 val payload = response.body?.string().orEmpty()
-                if (!response.isSuccessful || payload.isBlank()) return@use null
-                val items = JSONObject(payload).optJSONArray("items") ?: return@use null
-                var best: Triple<Long, String, Int?>? = null
-                var bestScore = Int.MIN_VALUE
+                if (!response.isSuccessful || payload.isBlank()) return@use emptyList()
+                val items = JSONObject(payload).optJSONArray("items") ?: return@use emptyList()
+                val scored = mutableListOf<Pair<Triple<Long, String, Int?>, Pair<Int, Int>>>()
                 for (i in 0 until items.length()) {
                     val item = items.optJSONObject(i) ?: continue
                     val id = item.optLong("id").takeIf { it > 0 } ?: continue
@@ -441,17 +513,17 @@ object TidalAccount {
                     if (primaryArtist.isNotBlank() && candArtists.any { it.contains(primaryArtist, ignoreCase = true) }) score += 30
                     val candDuration = item.optInt("duration").takeIf { it > 0 }
                     if (durationSec != null && candDuration != null && abs(candDuration - durationSec) <= 5) score += 20
-                    if (score > bestScore) {
-                        bestScore = score
-                        best = Triple(id, candTitle, candDuration)
-                    }
+                    val lossless = item.optString("audioQuality").contains("LOSSLESS", ignoreCase = true)
+                    if (score >= 40) scored += Triple(id, candTitle, candDuration) to (score to if (lossless) 1 else 0)
                 }
-                if (bestScore >= 40) best else null
+                scored.sortedWith(compareByDescending<Pair<Triple<Long, String, Int?>, Pair<Int, Int>>> { it.second.first }
+                    .thenByDescending { it.second.second })
+                    .map { it.first }
             }
         }.getOrElse {
             if (it is Unauthorized) throw it
             Timber.tag(TAG).w(it, "search error")
-            null
+            emptyList()
         }
     }
 

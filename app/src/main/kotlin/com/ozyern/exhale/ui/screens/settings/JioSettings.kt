@@ -32,6 +32,7 @@ import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Alignment
@@ -79,6 +80,8 @@ fun JioSettings(
     )
     val (tidalToken, _) = rememberPreference(com.ozyern.exhale.constants.TidalAccessTokenKey, defaultValue = "")
     val (tidalName, _) = rememberPreference(com.ozyern.exhale.constants.TidalAccountNameKey, defaultValue = "")
+    val (tidalCountry, _) = rememberPreference(com.ozyern.exhale.constants.TidalCountryCodeKey, defaultValue = "")
+    val tidalLastResult by com.ozyern.exhale.utils.tidal.TidalAccount.lastResult.collectAsStateWithLifecycle()
     val (preferTidal, onPreferTidalChange) = rememberPreference(com.ozyern.exhale.constants.PreferTidalKey, defaultValue = true)
     val tidalSignedIn = tidalToken.isNotBlank()
     val tidalScope = androidx.compose.runtime.rememberCoroutineScope()
@@ -190,7 +193,12 @@ fun JioSettings(
                     add(
                         IosSettingsItem(
                             title = { Text("Signed in as ${tidalName.ifBlank { "TIDAL" }}") },
-                            description = { Text("Tap to sign out of TIDAL on this phone.") },
+                            description = {
+                                Text(
+                                    (if (tidalCountry.isNotBlank()) "Account region: $tidalCountry. " else "") +
+                                        "Tap to sign out of TIDAL on this phone.",
+                                )
+                            },
                             onClick = { tidalScope.launch { com.ozyern.exhale.utils.tidal.TidalAccount.signOut(tidalContext) } },
                         ),
                     )
@@ -202,6 +210,15 @@ fun JioSettings(
                             onClick = { onPreferTidalChange(!preferTidal) },
                         ),
                     )
+                    // Why the last song did or did not play lossless, so a skip is never a mystery.
+                    tidalLastResult?.let { result ->
+                        add(
+                            IosSettingsItem(
+                                title = { Text("Last song") },
+                                description = { Text(result) },
+                            ),
+                        )
+                    }
                 } else {
                     add(
                         IosSettingsItem(
