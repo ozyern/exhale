@@ -150,7 +150,8 @@ object SettingsHubs {
                 listOf(
                     SettingsLink("Advanced playback", R.drawable.settings, { systemGray }, route("settings/player/advanced"),
                         "Offload, bit-perfect and queue rules", "offload bit perfect duplicates history duration"),
-                    SettingsLink("JioSaavn", R.drawable.music_note, { systemTeal }, route("settings/player/jio"), "Streaming source settings"),
+                    SettingsLink("Streaming sources", R.drawable.music_note, { systemTeal }, route("settings/player/jio"),
+                        "TIDAL lossless and JioSaavn", "tidal flac lossless token jiosaavn saavn"),
                     SettingsLink("AI DJ analysis", R.drawable.equalizer, { systemPurple }, route("ai_dj_set"),
                         "Analyze songs and build a mix", "bpm key mix analysis"),
                 ),

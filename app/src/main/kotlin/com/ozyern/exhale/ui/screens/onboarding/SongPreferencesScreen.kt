@@ -213,7 +213,10 @@ fun SongPreferencesScreen(
                         // The first language becomes the content language unless one was chosen.
                         selectedLanguages.firstOrNull()?.let { first ->
                             if (contentLanguage == SYSTEM_DEFAULT || contentLanguage == "system") {
-                                setContentLanguage(first)
+                                // Content languages are YouTube locales: "zh" alone is not one, "zh-CN" is.
+                                val locale = first.takeIf { it in com.ozyern.exhale.constants.LanguageCodeToName }
+                                    ?: com.ozyern.exhale.constants.LanguageCodeToName.keys.firstOrNull { it.startsWith("$first-") }
+                                locale?.let(setContentLanguage)
                             }
                         }
                         setCompleted(true)

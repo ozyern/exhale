@@ -100,8 +100,8 @@ fun ContentSettings(
 ) {
     val scope = rememberCoroutineScope()
 
-    val (contentLanguage, onContentLanguageChange) = rememberPreference(key = ContentLanguageKey, defaultValue = "system")
-    val (contentCountry, onContentCountryChange) = rememberPreference(key = ContentCountryKey, defaultValue = "system")
+    val (contentLanguage, onContentLanguageChange) = rememberPreference(key = ContentLanguageKey, defaultValue = SYSTEM_DEFAULT)
+    val (contentCountry, onContentCountryChange) = rememberPreference(key = ContentCountryKey, defaultValue = SYSTEM_DEFAULT)
     val (suggestionRegion, onSuggestionRegionChange) = rememberPreference(key = SuggestionRegionKey, defaultValue = "system")
     val (preferredLanguages) = rememberPreference(key = PreferredAudioLanguagesKey, defaultValue = "")
     val (preferredArtists) = rememberPreference(key = PreferredArtistsKey, defaultValue = "")

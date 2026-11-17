@@ -130,6 +130,8 @@ internal fun LazyListScope.figmaRail(
     hero: Boolean = false,
 ) {
     if (items.isEmpty()) return
+    // Charts and mixed feeds can repeat an item; a repeated key crashes the LazyRow.
+    val items = items.distinctBy { it.id }
     if (!hero && items.isSongShelf()) {
         item(key = "${key}_title", contentType = "section_title") {
             NavigationTitle(
@@ -138,7 +140,7 @@ internal fun LazyListScope.figmaRail(
                 onClick = { deps.navController.navigate(route) },
             )
         }
-        shelfList(key = "${key}_list", deps = deps, entries = items.distinctBy { it.id }.map { it.toShelfEntry(deps) })
+        shelfList(key = "${key}_list", deps = deps, entries = items.map { it.toShelfEntry(deps) })
         return
     }
     if (!hero) {

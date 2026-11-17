@@ -88,6 +88,9 @@
     <string name="your_youtube_playlists">Your YouTube playlists</string>
     <string name="similar_to">Similar to</string>
     <string name="new_release_albums">New release albums</string>
+    <string name="new_from_your_artists">New from Your Artists</string>
+    <string name="welcome_brand_version" translatable="false">Exhale %1$s</string>
+    <string name="welcome_tagline">Please, please, please press play</string>
 
     <!-- History -->
     <string name="today">Today</string>

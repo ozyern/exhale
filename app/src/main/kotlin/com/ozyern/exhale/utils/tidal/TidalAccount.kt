@@ -14,11 +14,13 @@ package com.ozyern.exhale.utils.tidal
 import android.content.Context
 import android.util.Base64
 import androidx.datastore.preferences.core.edit
+import com.ozyern.exhale.BuildConfig
 import com.ozyern.exhale.constants.PreferTidalKey
 import com.ozyern.exhale.constants.TidalAccessTokenKey
 import com.ozyern.exhale.constants.TidalAccountNameKey
 import com.ozyern.exhale.constants.TidalAuthFlowKey
 import com.ozyern.exhale.constants.TidalCountryCodeKey
+import com.ozyern.exhale.constants.TidalDefaultTokenAppliedKey
 import com.ozyern.exhale.constants.TidalRefreshTokenKey
 import com.ozyern.exhale.constants.TidalTokenExpiryKey
 import com.ozyern.exhale.utils.dataStore
@@ -56,7 +58,17 @@ object TidalAccount {
     private const val TIDALAPI_CLIENT_ID = "fX2JxdmntZWK0ixT"
     private const val TIDALAPI_CLIENT_SECRET = "1Nn9AfDAjxrgJFJbKNWLeAyKGVGmINuXPPLHVXAvxAg="
 
+    /**
+     * A client whose LOSSLESS answer is one direct FLAC file ("bts" manifest). The other clients get
+     * DASH (which this build does not play) or lossy AAC for the same account, so playback asks with
+     * this one whenever the refresh token allows it.
+     */
+    private const val BTS_CLIENT_ID = "4N3n6Q1x95LL5K7p"
+    private const val BTS_CLIENT_SECRET = "oKOXfJW371cX6xaZ0PyhgGNBdNLlBZd4AKKYougMjik="
+
     const val FLOW_PKCE = "pkce"
+    /** A pasted refresh token renewed with the direct-FLAC client. */
+    const val FLOW_BTS = "bts"
     /** A pasted refresh token belonging to the TV client; renewed with that client. */
     const val FLOW_TV = "tv"
     /** A pasted refresh token belonging to the tidalapi client; renewed with that client. */
@@ -66,6 +78,7 @@ object TidalAccount {
     private fun clientFor(flow: String): Pair<String, String> = when (flow) {
         FLOW_TV -> TV_CLIENT_ID to TV_CLIENT_SECRET
         FLOW_TIDALAPI -> TIDALAPI_CLIENT_ID to TIDALAPI_CLIENT_SECRET
+        FLOW_BTS -> BTS_CLIENT_ID to BTS_CLIENT_SECRET
         else -> PKCE_CLIENT_ID to PKCE_CLIENT_SECRET
     }
     const val FLOW_WEBCAPTURE = "webcapture"
@@ -86,6 +99,10 @@ object TidalAccount {
             .build()
 
     private val refreshLock = Mutex()
+
+    /** A direct-FLAC client session for playback when the saved session's client only gets DASH/AAC. */
+    @Volatile
+    private var btsPlaybackToken: Pair<String, Long>? = null
 
     data class TokenResult(
         val accessToken: String,
@@ -111,6 +128,21 @@ object TidalAccount {
     fun isPreferred(context: Context): Boolean =
         isSignedIn(context) && context.dataStore.get(PreferTidalKey, true)
 
+    /**
+     * Signs in once with a token baked into the build (BuildConfig.TIDAL_DEFAULT_TOKEN) so a private
+     * build streams lossless with no sign-in step. Does nothing when no token was baked in (the case
+     * for any public build), when a session already exists, or when it has run before — so signing
+     * out stays signed out. Safe to call on every launch; it returns at once unless there is work.
+     */
+    suspend fun applyBakedTokenIfPresent(context: Context) {
+        val baked = BuildConfig.TIDAL_DEFAULT_TOKEN
+        if (baked.isBlank() || isSignedIn(context)) return
+        if (context.dataStore.get(TidalDefaultTokenAppliedKey, false)) return
+        context.dataStore.edit { it[TidalDefaultTokenAppliedKey] = true }
+        runCatching { signInWithToken(context, baked) }
+            .onFailure { Timber.tag(TAG).w(it, "baked TIDAL token sign-in failed") }
+    }
+
     suspend fun save(context: Context, token: TokenResult, flow: String) {
         context.dataStore.edit { p ->
             p[TidalAccessTokenKey] = token.accessToken
@@ -128,6 +160,7 @@ object TidalAccount {
                 .forEach { p.remove(it) }
             p.remove(TidalTokenExpiryKey)
         }
+        btsPlaybackToken = null
     }
 
     /** A usable access token, renewed first when it has run out; null when signed out or renewal failed. */
@@ -155,7 +188,8 @@ object TidalAccount {
                 .add("client_secret", clientFor(flow).second)
                 .add("refresh_token", refreshToken)
                 .add("grant_type", "refresh_token")
-                .add("scope", SCOPE)
+                // No scope: the token keeps the scopes it was issued with. Asking for more (w_sub)
+                // makes TIDAL refuse tokens from other players with invalid_scope.
                 .build(),
             "refresh",
         )
@@ -179,7 +213,7 @@ object TidalAccount {
         if (token.length < 20) return null
         lastTokenError = null
         val errors = mutableListOf<String>()
-        for (flow in listOf(FLOW_TIDALAPI, FLOW_PKCE, FLOW_TV)) {
+        for (flow in listOf(FLOW_BTS, FLOW_TIDALAPI, FLOW_PKCE, FLOW_TV)) {
             val session = refreshAccessToken(token, flow) ?: run {
                 lastTokenError?.let { errors += it }
                 null
@@ -273,6 +307,7 @@ object TidalAccount {
     fun lastSignInProblem(): String = when (val e = lastTokenError) {
         null -> "TIDAL could not be reached"
         "invalid_grant" -> "TIDAL says this token has expired or was signed out (invalid_grant)"
+        "invalid_scope" -> "TIDAL refused the token's permissions (invalid_scope)"
         "invalid_client", "unauthorized_client" -> "This token belongs to another app's TIDAL login, which Exhale can't renew ($e)"
         else -> "TIDAL refused the token ($e)"
     }
@@ -326,7 +361,9 @@ object TidalAccount {
         repeat(2) { attempt ->
             try {
                 val match = searchTrack(token, title, artists, durationSec, country) ?: return@withContext null
-                val url = playbackUrl(token, match.first, country) ?: return@withContext null
+                val url = playbackUrl(token, match.first, country)
+                    ?: btsAccessToken(context)?.takeIf { it != token }?.let { playbackUrl(it, match.first, country) }
+                    ?: return@withContext null
                 return@withContext Stream(url, match.first, match.second, match.third)
             } catch (_: Unauthorized) {
                 if (attempt == 1) return@withContext null
@@ -334,6 +371,20 @@ object TidalAccount {
             }
         }
         null
+    }
+
+    /**
+     * An access token from the direct-FLAC client, renewed from the saved refresh token; null when the
+     * session already is that client, has no refresh token, or TIDAL will not renew it for that client.
+     */
+    private suspend fun btsAccessToken(context: Context): String? {
+        val p = context.dataStore.data.first()
+        if (p[TidalAuthFlowKey] == FLOW_BTS) return null
+        btsPlaybackToken?.let { (t, exp) -> if (System.currentTimeMillis() < exp - EXPIRY_MARGIN_MS) return t }
+        val refresh = p[TidalRefreshTokenKey]?.takeIf { it.isNotBlank() } ?: return null
+        val renewed = refreshAccessToken(refresh, FLOW_BTS) ?: return null
+        btsPlaybackToken = renewed.accessToken to renewed.expiresAtMillis
+        return renewed.accessToken
     }
 
     /** (id, title, duration in seconds) of the best match, or null below the match bar. */

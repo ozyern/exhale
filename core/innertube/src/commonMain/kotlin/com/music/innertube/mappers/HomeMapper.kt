@@ -4,6 +4,9 @@ import com.music.innertube.InnerTube
 import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.GridRenderer
 import com.music.innertube.models.MusicCarouselShelfRenderer
+import com.music.innertube.models.MusicTwoRowItemRenderer
+import com.music.innertube.models.YTItem
+import com.music.innertube.pages.SearchPage
 import com.music.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.music.innertube.models.getContinuation
 import com.music.innertube.models.response.BrowseResponse
@@ -90,7 +93,7 @@ internal object HomeMapper {
                             title = content.gridRenderer.header?.gridHeaderRenderer?.title?.runs?.firstOrNull()?.text,
                             items = content.gridRenderer.items
                                 .mapNotNull(GridRenderer.Item::musicTwoRowItemRenderer)
-                                .mapNotNull(RelatedPage.Companion::fromMusicTwoRowItemRenderer)
+                                .mapNotNull(::browseTwoRowItem)
                         )
                     }
 
@@ -99,13 +102,29 @@ internal object HomeMapper {
                             title = content.musicCarouselShelfRenderer.header?.musicCarouselShelfBasicHeaderRenderer?.title?.runs?.firstOrNull()?.text,
                             items = content.musicCarouselShelfRenderer.contents
                                 .mapNotNull(MusicCarouselShelfRenderer.Content::musicTwoRowItemRenderer)
-                                .mapNotNull(RelatedPage.Companion::fromMusicTwoRowItemRenderer)
+                                .mapNotNull(::browseTwoRowItem)
                         )
                     }
 
-                    else -> null
+                    // List shelves (song and music-video pages), titled or not, also inside item sections.
+                    else -> {
+                        val shelf = content.musicShelfRenderer
+                            ?: content.itemSectionRenderer?.contents.orEmpty().firstNotNullOfOrNull { it.musicShelfRenderer }
+                        shelf?.let {
+                            BrowseResult.Item(
+                                title = it.title?.runs?.firstOrNull()?.text,
+                                items = it.contents.orEmpty().mapNotNull { row ->
+                                    row.musicResponsiveListItemRenderer?.let(SearchPage::toYTItem)
+                                },
+                            )
+                        }
+                    }
                 }
             }.orEmpty()
         )
     }
+
+    /** Albums, playlists and artists; then songs and videos, which the related-page parser skips. */
+    private fun browseTwoRowItem(renderer: MusicTwoRowItemRenderer): YTItem? =
+        RelatedPage.fromMusicTwoRowItemRenderer(renderer) ?: HomePage.Section.fromTwoRowItem(renderer)
 }

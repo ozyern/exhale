@@ -129,6 +129,13 @@
     private void readObject(java.io.ObjectInputStream);
 }
 
+# The saved playback snapshot is Java-serialized, which records class and field names. Without
+# stable names (the snapshot itself, MediaMetadata and the QueueType/QueueData subclasses were
+# renamed on every build) each app update failed to read the saved queue and deleted it.
+# Members are kept whole: without an explicit serialVersionUID the stream ID is computed from
+# the method signatures too, so R8 renaming them differently per build also breaks reading.
+-keep class com.ozyern.exhale.models.** implements java.io.Serializable { *; }
+
 ## UCrop Rules
 -dontwarn com.yalantis.ucrop**
 -keep class com.yalantis.ucrop** { *; }

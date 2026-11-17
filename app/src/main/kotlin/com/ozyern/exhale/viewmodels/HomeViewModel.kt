@@ -32,6 +32,8 @@ import com.ozyern.exhale.constants.HideVideoSongsKey
 import com.ozyern.exhale.constants.DataSaverEnabledKey
 import com.ozyern.exhale.constants.HideYoutubeShortsKey
 import com.ozyern.exhale.constants.PreferredArtistsKey
+import com.ozyern.exhale.constants.PreferredAudioLanguagesKey
+import com.ozyern.exhale.ui.screens.onboarding.artistsForLanguages
 import com.ozyern.exhale.constants.InnerTubeCookieKey
 import com.ozyern.exhale.constants.QuickPicks
 import com.ozyern.exhale.constants.QuickPicksKey
@@ -110,10 +112,37 @@ data class PickedArtistShelf(
 data class PickedArtistFeed(
     val mix: List<SongItem>,
     val shelves: List<PickedArtistShelf>,
+    /** The seed artists' albums and singles, newest first. */
+    val releases: List<AlbumItem>,
     val relatedArtists: List<ArtistItem>,
     /** History still thin: the picks lead Home rather than sit among the rest. */
     val leading: Boolean,
 )
+
+/**
+ * "Top Picks for You": the picked artists' mix dealt in turn with songs found from listening
+ * history, so both the listener's picks and what they actually play lead Home. Empty when
+ * neither has anything yet.
+ */
+internal fun personalTopPicks(
+    pickedFeed: PickedArtistFeed?,
+    similarRecommendations: List<SimilarRecommendation>?,
+    limit: Int = PersonalTopPicksSize,
+): List<YTItem> {
+    val picked = pickedFeed?.mix.orEmpty()
+    val fromHistory = similarRecommendations.orEmpty().flatMap { it.items }.filterIsInstance<SongItem>()
+    val seen = HashSet<String>()
+    val out = ArrayList<YTItem>(limit)
+    val a = picked.iterator()
+    val b = fromHistory.iterator()
+    while (out.size < limit && (a.hasNext() || b.hasNext())) {
+        if (a.hasNext()) a.next().let { if (seen.add(it.id)) out += it }
+        if (out.size < limit && b.hasNext()) b.next().let { if (seen.add(it.id)) out += it }
+    }
+    return out
+}
+
+private const val PersonalTopPicksSize = 20
 
 @Immutable
 data class HomeUiState(
@@ -665,29 +694,38 @@ class HomeViewModel(
     private val pickedArtistIds = java.util.concurrent.ConcurrentHashMap<String, java.util.Optional<String>>()
 
     /**
-     * The artists picked in song preferences, as (id, name), in the order they were picked.
-     * Only searches that answered are remembered, so an offline launch asks again next time.
+     * The artists picked in song preferences, in the order they were picked, topped up with the
+     * chosen languages' best-known artists while there are few picks. Names resolve to YouTube
+     * Music ids in parallel; only searches that answered are remembered, so an offline launch
+     * asks again next time.
      */
-    private suspend fun pickedArtists(limit: Int): List<Pair<String, String>> =
-        context.dataStore.get(PreferredArtistsKey, "")
-            .split(",")
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
+    private suspend fun seedArtists(limit: Int): List<SeedArtist> {
+        val prefs = context.dataStore.data.first()
+        fun csv(value: String?) = value.orEmpty().split(",").map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        val picked = csv(prefs[PreferredArtistsKey]).take(limit)
+        val pickedSet = picked.toHashSet()
+        // One artist from each chosen language in turn, so a second language is not crowded out.
+        val perLanguage = csv(prefs[PreferredAudioLanguagesKey])
+            .map { code -> artistsForLanguages(listOf(code)).map { it.name }.filter { it !in pickedSet } }
+        val fromLanguages = (0 until (perLanguage.maxOfOrNull { it.size } ?: 0))
+            .flatMap { i -> perLanguage.mapNotNull { it.getOrNull(i) } }
             .distinct()
-            .take(limit)
-            .mapNotNull { name ->
-                val cached = pickedArtistIds[name]
-                val id = if (cached != null) {
-                    cached.orElse(null)
-                } else {
-                    val result = recommendationRequest { YouTube.search(name, SearchFilter.FILTER_ARTIST) }.getOrNull()
-                        ?: return@mapNotNull null
-                    val found = result.items.filterIsInstance<ArtistItem>().firstOrNull()?.id
-                    pickedArtistIds[name] = java.util.Optional.ofNullable(found)
-                    found
-                } ?: return@mapNotNull null
-                id to name
-            }
+            .take((MinSeedArtists - picked.size).coerceAtLeast(0))
+        val names = picked.map { it to true } + fromLanguages.map { it to false }
+        return coroutineScope {
+            names.map { (name, isPicked) ->
+                async(Dispatchers.IO) { resolveArtistId(name)?.let { SeedArtist(it, name, isPicked) } }
+            }.awaitAll().filterNotNull().distinctBy { it.id }
+        }
+    }
+
+    private suspend fun resolveArtistId(name: String): String? {
+        pickedArtistIds[name]?.let { return it.orElse(null) }
+        val result = recommendationRequest { YouTube.search(name, SearchFilter.FILTER_ARTIST) }.getOrNull() ?: return null
+        val found = result.items.filterIsInstance<ArtistItem>().firstOrNull()?.id
+        pickedArtistIds[name] = java.util.Optional.ofNullable(found)
+        return found
+    }
 
     /**
      * Home from the artists picked in song preferences. Each artist's page gives their songs and
@@ -701,13 +739,15 @@ class HomeViewModel(
         val fromTimeStamp = System.currentTimeMillis() - 86400000L * 7 * 2
         val playedArtists = database.mostPlayedArtists(fromTimeStamp, limit = 15).first().size
         val leading = playedArtists < 3
-        val picked = pickedArtists(limit = MaxPickedArtists)
+        val picked = seedArtists(limit = MaxPickedArtists)
         if (picked.isEmpty()) {
             pickedFeed.value = null
             return
         }
         val pages = coroutineScope {
-            picked.map { (artistId, name) ->
+            picked.map { seed ->
+                val artistId = seed.id
+                val name = seed.name
                 async(Dispatchers.IO) {
                     val page = recommendationRequest { YouTube.artist(artistId) }.getOrNull() ?: return@async null
                     val songs = page.sections.flatMap { it.items }.filterIsInstance<SongItem>()
@@ -718,38 +758,50 @@ class HomeViewModel(
                         .distinctBy { it.id }
                     val related = page.sections.flatMap { it.items }.filterIsInstance<ArtistItem>()
                         .filter { it.id != artistId }
-                    Triple(
-                        PickedArtistShelf(
+                    PickedArtistPage(
+                        seed = seed,
+                        shelf = PickedArtistShelf(
                             artistId = artistId,
                             name = page.artist.title.ifBlank { name },
                             thumbnail = page.artist.thumbnail,
                             items = (songs.take(8) + records.take(6)).ifEmpty { return@async null },
                         ),
-                        songs,
-                        related,
+                        songs = songs,
+                        records = records.filterIsInstance<AlbumItem>(),
+                        related = related,
                     )
                 }
             }.awaitAll().filterNotNull()
         }
         if (pages.isEmpty()) return
         // Dealt in turn, a few from each, so the mix reads as all the picks together.
-        val decks = pages.map { (_, songs, _) -> songs.take(PickedMixPerArtist).shuffled().toMutableList() }
+        val decks = pages.map { it.songs.take(PickedMixPerArtist).shuffled().toMutableList() }
         val mix = buildList {
             while (size < PickedMixSize && decks.any { it.isNotEmpty() }) {
                 decks.forEach { deck -> if (deck.isNotEmpty() && size < PickedMixSize) add(deck.removeAt(0)) }
             }
         }.distinctBy { it.id }
-        val pickedIds = picked.mapTo(HashSet()) { it.first }
-        val related = pages.flatMap { it.third }
+        val pickedIds = picked.mapTo(HashSet()) { it.id }
+        val related = pages.flatMap { it.related }
             .filter { it.id !in pickedIds }
             .groupBy { it.id }
             // The artists named by more than one pick first.
             .entries.sortedByDescending { it.value.size }
             .map { it.value.first() }
             .take(12)
+        // Newest first; within a year, dealt across artists so one discography does not fill the rail.
+        val releases = pages.map { it.records.take(PickedReleasesPerArtist) }
+            .flatMapIndexed { artistIndex, records -> records.mapIndexed { i, record -> Triple(record, i, artistIndex) } }
+            .sortedWith(compareByDescending<Triple<AlbumItem, Int, Int>> { it.first.year ?: 0 }.thenBy { it.second }.thenBy { it.third })
+            .map { it.first }
+            .distinctBy { it.id }
+            .take(PickedReleasesSize)
+        // Artists the listener picked get shelves; language-seeded ones only feed the mix and releases.
+        val shelfPages = pages.filter { it.seed.picked }.ifEmpty { pages }
         pickedFeed.value = PickedArtistFeed(
             mix = mix,
-            shelves = pages.map { it.first }.take(if (leading) MaxPickedShelves else 2),
+            shelves = shelfPages.map { it.shelf }.take(if (leading) MaxPickedShelves else 2),
+            releases = releases,
             relatedArtists = related,
             leading = leading,
         )
@@ -1104,7 +1156,7 @@ class HomeViewModel(
         // New song-preference picks show up on Home without waiting for a pull to refresh.
         viewModelScope.launch(Dispatchers.IO) {
             context.dataStore.data
-                .map { it[PreferredArtistsKey].orEmpty() }
+                .map { it[PreferredArtistsKey].orEmpty() to it[PreferredAudioLanguagesKey].orEmpty() }
                 .distinctUntilChanged()
                 .drop(1)
                 .collect {
@@ -1136,3 +1188,19 @@ private const val MaxPickedShelves = 4
 /** Songs each picked artist puts into the mix, and the mix's length. */
 private const val PickedMixPerArtist = 6
 private const val PickedMixSize = 24
+/** Below this many picked artists, the chosen languages' artists fill the seed list. */
+private const val MinSeedArtists = 4
+/** Records each seed artist puts into "New from your artists", and the rail's length. */
+private const val PickedReleasesPerArtist = 6
+private const val PickedReleasesSize = 20
+
+/** A seed artist for the personal feed; [picked] is false for one added from a chosen language. */
+private data class SeedArtist(val id: String, val name: String, val picked: Boolean)
+
+private data class PickedArtistPage(
+    val seed: SeedArtist,
+    val shelf: PickedArtistShelf,
+    val songs: List<SongItem>,
+    val records: List<AlbumItem>,
+    val related: List<ArtistItem>,
+)

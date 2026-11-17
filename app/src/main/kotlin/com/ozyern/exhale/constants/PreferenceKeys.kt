@@ -233,8 +233,11 @@ val TidalRefreshTokenKey = stringPreferencesKey("tidalRefreshToken")
 val TidalTokenExpiryKey  = longPreferencesKey("tidalTokenExpiry")
 val TidalAccountNameKey  = stringPreferencesKey("tidalAccountName")
 val TidalCountryCodeKey  = stringPreferencesKey("tidalCountryCode")
-/** How the session was made: TidalAccount.FLOW_PKCE (refreshable) or FLOW_WEBCAPTURE (an hour). */
+/** How the session was made: a refreshable TidalAccount flow (FLOW_PKCE, FLOW_BTS, …) or FLOW_WEBCAPTURE (an hour). */
 val TidalAuthFlowKey     = stringPreferencesKey("tidalAuthFlow")
+/** The baked-in default token (BuildConfig.TIDAL_DEFAULT_TOKEN) is signed in once per install;
+ *  this records that so a later sign-out is not undone on the next launch. */
+val TidalDefaultTokenAppliedKey = booleanPreferencesKey("tidalDefaultTokenApplied")
 /** On (default): signed in, a song plays lossless from the listener's TIDAL account before
  *  JioSaavn or YouTube are asked. */
 val PreferTidalKey       = booleanPreferencesKey("preferTidal")

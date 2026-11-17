@@ -161,6 +161,12 @@ class App : Application(), SingletonImageLoader.Factory {
             initializeSettings()
             observeSettingsChanges()
         }
+
+        // A TIDAL token baked into a private build signs in once so lossless works with no setup.
+        // No-op in a public build (no token baked in) or once the listener has signed out.
+        applicationScope.launch(Dispatchers.IO) {
+            com.ozyern.exhale.utils.tidal.TidalAccount.applyBakedTokenIfPresent(this@App)
+        }
     }
 
     private val deferredInitializationStarted = AtomicBoolean(false)

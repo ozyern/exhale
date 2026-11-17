@@ -240,6 +240,7 @@ import com.ozyern.exhale.utils.listItemShape
 import com.ozyern.exhale.utils.rememberPreference
 import com.ozyern.exhale.viewmodels.CommunityPlaylistItem
 import com.ozyern.exhale.viewmodels.HomeViewModel
+import com.ozyern.exhale.viewmodels.personalTopPicks
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -465,8 +466,13 @@ fun HomeScreen(
         (similarRecommendations?.size ?: 0).coerceAtMost(MaxSimilarSections),
         (homePage?.sections?.size ?: 0).coerceAtMost(MaxHomePageSections),
         explorePage?.moodAndGenres != null,
+        // The picked-artist feed arrives after the rest of the network phase; without this key
+        // its sections were never added to an already-built list.
+        homeState.pickedFeed,
     ) {
         buildHomeSections(homeState, heroCardEnabled, randomizeHomeOrder, savedSectionOrder, hiddenSectionIds, randomSeed)
+            // The picked mix leads Home as Top Picks; a second copy of it further down repeats it.
+            .filterNot { it is HomeSection.PickedMix }
     }
 
     // Batch each section lookup into one flow while keeping row updates live.
@@ -486,14 +492,23 @@ fun HomeScreen(
     }
     val newReleaseViewModel: NewReleaseViewModel = koinViewModel()
     val newReleaseAlbums by newReleaseViewModel.newReleaseAlbums.collectAsStateWithLifecycle()
-    val topPicks = remember(chartsPage) {
+    val chartTopPicks = remember(chartsPage) {
         chartsPage?.sections?.firstOrNull { it.chartType == ChartType.TOP }?.items.orEmpty()
     }
+    // Top Picks and new records come from the listener's artists, languages and history; the
+    // regional charts and new releases only fill in while there is nothing personal yet.
+    val personalTopPicks = remember(homeState.pickedFeed, similarRecommendations) {
+        personalTopPicks(homeState.pickedFeed, similarRecommendations)
+    }
+    val personalReleases = homeState.pickedFeed?.releases.orEmpty()
+    val topPicks = personalTopPicks.ifEmpty { chartTopPicks }
     val trending = remember(chartsPage) {
         chartsPage?.sections?.firstOrNull { it.chartType == ChartType.TRENDING }?.items.orEmpty()
     }
     val topPicksTitle = stringResource(R.string.top_picks_for_you)
-    val newReleaseTitle = stringResource(R.string.new_release_albums)
+    val newReleaseTitle = stringResource(
+        if (personalReleases.isNotEmpty()) R.string.new_from_your_artists else R.string.new_release_albums,
+    )
     val trendingTitle = stringResource(R.string.trending)
 
     PullToRefreshBox(
@@ -689,7 +704,9 @@ fun HomeScreen(
                             isPlaying = isPlayingState,
                             topPicks = topPicks.ifEmpty { trending }.ifEmpty { newReleaseAlbums },
                             topPicksTitle = topPicksTitle,
-                            newReleaseAlbums = if (topPicks.isNotEmpty() || trending.isNotEmpty()) newReleaseAlbums else emptyList(),
+                            newReleaseAlbums = personalReleases.ifEmpty {
+                                if (topPicks.isNotEmpty() || trending.isNotEmpty()) newReleaseAlbums else emptyList()
+                            },
                             newReleaseTitle = newReleaseTitle,
                             trending = if (topPicks.isNotEmpty()) trending else emptyList(),
                             trendingTitle = trendingTitle,

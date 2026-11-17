@@ -295,76 +295,7 @@ fun WelcomePagerScreen(onFinished: () -> Unit) {
     val pages = listOf(
         OnboardingPageInfo(
             content = { _ ->
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.Start
-                ) {
-                    Spacer(modifier = Modifier.height(80.dp))
-
-                    Text(
-                        text = stringResource(com.ozyern.exhale.R.string.welcome_to),
-                        style = thinHeaderStyle,
-                        color = AppTheme.colorScheme.onBackground
-                    )
-                    Text(
-                        text = stringResource(com.ozyern.exhale.R.string.app_name).uppercase(),
-                        fontFamily = GoogleSansFlex,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 48.sp,
-                        color = AppTheme.colorScheme.primary,
-                        lineHeight = 56.sp
-                    )
-
-                    val flavorSuffix = if (BuildConfig.FLAVOR.contains("gms", ignoreCase = true)) "Gms Edition" else "Foss Edition"
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(start = 2.dp)
-                    ) {
-                        Text(
-                            text = flavorSuffix,
-                            fontFamily = GoogleSansFlex,
-                            style = AppTheme.typography.titleMedium,
-                            color = AppTheme.colorScheme.secondary
-                        )
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Surface(
-                            shape = CircleShape,
-                            color = AppTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
-                        ) {
-                            Text(
-                                text = "v${BuildConfig.VERSION_NAME}",
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                style = AppTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = AppTheme.colorScheme.onSecondaryContainer
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.weight(1f))
-
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        RotatingShapeContainer(
-                            modifier = Modifier.size(280.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(32.dp))
-
-                        Text(
-                            text = stringResource(com.ozyern.exhale.R.string.welcome_preparing_subtitle),
-                            fontFamily = GoogleSansFlex,
-                            style = AppTheme.typography.bodyLarge,
-                            color = AppTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                    Spacer(modifier = Modifier.weight(1.2f))
-                }
+                WelcomeIntroPage()
             }
         ),
         OnboardingPageInfo(
@@ -885,43 +816,61 @@ fun WelcomePagerScreen(onFinished: () -> Unit) {
     }
 }
 
+/**
+ * The first welcome page: the app's name and version over a gradient line, in OPPO Sans,
+ * eased in once when the page first appears.
+ */
 @Composable
-fun RotatingShapeContainer(modifier: Modifier = Modifier) {
-    val infiniteTransition = rememberInfiniteTransition(label = "shapeRotation")
-    val rotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(20000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "rotation"
+private fun WelcomeIntroPage() {
+    val reveal = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) {
+        reveal.animateTo(1f, tween(durationMillis = 700, easing = FastOutSlowInEasing))
+    }
+    val headline = TextStyle(
+        fontFamily = com.ozyern.exhale.ui.component.OppoSans,
+        fontWeight = FontWeight.Medium,
+        fontSize = 36.sp,
+        lineHeight = 46.sp,
     )
-
-    val primaryColor = AppTheme.colorScheme.primary
-    val backgroundColor = AppTheme.colorScheme.background
-
-    Box(
-        modifier = modifier,
-        contentAlignment = Alignment.Center
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(start = 12.dp, end = 12.dp, top = 96.dp)
+            .graphicsLayer {
+                alpha = reveal.value
+                translationY = (1f - reveal.value) * 24.dp.toPx()
+            },
     ) {
-        Icon(
-            painter = painterResource(id = com.ozyern.exhale.R.drawable.ic_ten_sided_cookie),
-            contentDescription = null,
-            tint = primaryColor,
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer { rotationZ = rotation }
+        Text(
+            text = stringResource(com.ozyern.exhale.R.string.welcome_brand_version, BuildConfig.VERSION_NAME),
+            style = headline,
+            color = AppTheme.colorScheme.onBackground,
         )
-
-        Icon(
-            painter = painterResource(com.ozyern.exhale.R.drawable.exhale_logo),
-            contentDescription = null,
-            modifier = Modifier.size(150.dp),
-            tint = backgroundColor
+        // Wrapped text spans the full width, so the gradient ends where the longest line does.
+        var taglineEnd by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+        val taglineBrush = remember(taglineEnd) {
+            androidx.compose.ui.graphics.Brush.horizontalGradient(
+                *WelcomeTaglineStops,
+                endX = if (taglineEnd > 0f) taglineEnd else Float.POSITIVE_INFINITY,
+            )
+        }
+        Text(
+            text = stringResource(com.ozyern.exhale.R.string.welcome_tagline),
+            style = headline.copy(brush = taglineBrush),
+            onTextLayout = { layout ->
+                taglineEnd = (0 until layout.lineCount).maxOf { layout.getLineRight(it) }
+            },
         )
     }
 }
+
+/** Blue into violet into pink, left to right on every line. */
+private val WelcomeTaglineStops = arrayOf(
+    0f to Color(0xFF2E6BFF),
+    0.45f to Color(0xFF3A2BE8),
+    0.75f to Color(0xFF9B2BD9),
+    1f to Color(0xFFE0389A),
+)
 
 @Composable
 fun PermissionCard(

@@ -105,6 +105,9 @@ data class HomePage(
                         inner.musicShelfRenderer?.let(::fromMusicShelfRenderer)
                     }
 
+            /** A two-row card (song, video, album, playlist or artist) as an item. */
+            fun fromTwoRowItem(renderer: MusicTwoRowItemRenderer): YTItem? = fromMusicTwoRowItemRenderer(renderer)
+
             private fun fromMusicTwoRowItemRenderer(renderer: MusicTwoRowItemRenderer): YTItem? {
                 return when {
                     renderer.isSong -> {
