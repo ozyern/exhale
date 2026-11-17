@@ -104,7 +104,7 @@ fun JioSettings(
                     tidalTokenBusy = false
                     android.widget.Toast.makeText(
                         tidalContext,
-                        if (name != null) "Signed in to TIDAL as $name" else "TIDAL did not accept that token",
+                        if (name != null) "Signed in to TIDAL as $name" else com.ozyern.exhale.utils.tidal.TidalAccount.lastSignInProblem() + ". Try Sign in to TIDAL instead.",
                         android.widget.Toast.LENGTH_LONG,
                     ).show()
                 }

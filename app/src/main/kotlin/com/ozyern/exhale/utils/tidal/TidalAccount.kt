@@ -177,8 +177,13 @@ object TidalAccount {
             ?: Regex("""[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}""").find(text)?.value
             ?: text.removePrefix("Bearer ").trim().trim('"')
         if (token.length < 20) return null
+        lastTokenError = null
+        val errors = mutableListOf<String>()
         for (flow in listOf(FLOW_TIDALAPI, FLOW_PKCE, FLOW_TV)) {
-            val session = refreshAccessToken(token, flow) ?: continue
+            val session = refreshAccessToken(token, flow) ?: run {
+                lastTokenError?.let { errors += it }
+                null
+            } ?: continue
             // The token endpoint names no user on some clients; ask the session for it.
             val named = if (session.username == null || session.countryCode == null) {
                 sessionFromBearer(session.accessToken)?.let { s ->
@@ -190,6 +195,8 @@ object TidalAccount {
             save(context, named.copy(refreshToken = named.refreshToken ?: token), flow)
             return named.username ?: "TIDAL"
         }
+        // A token one client calls expired is expired for all; otherwise report the client mismatch.
+        lastTokenError = errors.firstOrNull { it == "invalid_grant" } ?: errors.firstOrNull()
         val access = sessionFromBearer(token) ?: return null
         save(context, access, FLOW_WEBCAPTURE)
         return access.username ?: "TIDAL"
@@ -258,6 +265,18 @@ object TidalAccount {
             }
         }
 
+    /** TIDAL's reason for the last refused token request, for the sign-in message. */
+    @Volatile
+    private var lastTokenError: String? = null
+
+    /** Why the last [signInWithToken] failed, in words the listener can act on. */
+    fun lastSignInProblem(): String = when (val e = lastTokenError) {
+        null -> "TIDAL could not be reached"
+        "invalid_grant" -> "TIDAL says this token has expired or was signed out (invalid_grant)"
+        "invalid_client", "unauthorized_client" -> "This token belongs to another app's TIDAL login, which Exhale can't renew ($e)"
+        else -> "TIDAL refused the token ($e)"
+    }
+
     private suspend fun tokenRequest(body: FormBody, what: String): TokenResult? =
         withContext(Dispatchers.IO) {
             val request = Request.Builder().url(TOKEN_ENDPOINT).post(body).build()
@@ -266,6 +285,9 @@ object TidalAccount {
                     val payload = response.body?.string().orEmpty()
                     if (!response.isSuccessful || payload.isBlank()) {
                         Timber.tag(TAG).w("token %s failed: %d", what, response.code)
+                        lastTokenError = runCatching {
+                            JSONObject(payload).let { j -> j.optString("error").ifBlank { j.optString("sub_status") } }
+                        }.getOrNull()?.ifBlank { null } ?: "HTTP ${response.code}"
                         return@use null
                     }
                     val json = JSONObject(payload)
