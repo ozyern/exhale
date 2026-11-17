@@ -475,8 +475,9 @@ object TidalAccount {
     }
 
     /**
-     * (id, title, duration in seconds) of the matches above the match bar, best first. Among equal
-     * matches a LOSSLESS or HI_RES version comes before its lossy twin.
+     * (id, title, duration in seconds) of the matches worth playing, best first. Tries cleaner and
+     * looser searches in turn (see [TidalMatch]) because TIDAL finds nothing for a query that carries
+     * a YouTube channel name or an artist written in another script.
      */
     private fun searchTrack(
         token: String,
@@ -485,10 +486,17 @@ object TidalAccount {
         durationSec: Int?,
         country: String,
     ): List<Triple<Long, String, Int?>> {
-        val primaryArtist = artists.firstOrNull().orEmpty()
-        val query = URLEncoder.encode("$title $primaryArtist".trim(), "UTF-8")
+        for (query in TidalMatch.queries(title, artists)) {
+            val ranked = TidalMatch.rank(searchCandidates(token, query, country), title, artists, durationSec)
+            if (ranked.isNotEmpty()) return ranked.map { Triple(it.id, it.title, it.durationSec) }
+        }
+        return emptyList()
+    }
+
+    /** TIDAL's track search for [query]; empty when it finds nothing or fails. */
+    private fun searchCandidates(token: String, query: String, country: String): List<TidalMatch.Candidate> {
         val request = Request.Builder()
-            .url("$API_BASE/search/tracks?query=$query&limit=15&countryCode=$country")
+            .url("$API_BASE/search/tracks?query=${URLEncoder.encode(query, "UTF-8")}&limit=15&countryCode=$country")
             .header("Authorization", "Bearer $token")
             .get().build()
         return runCatching {
@@ -497,28 +505,19 @@ object TidalAccount {
                 val payload = response.body?.string().orEmpty()
                 if (!response.isSuccessful || payload.isBlank()) return@use emptyList()
                 val items = JSONObject(payload).optJSONArray("items") ?: return@use emptyList()
-                val scored = mutableListOf<Pair<Triple<Long, String, Int?>, Pair<Int, Int>>>()
-                for (i in 0 until items.length()) {
-                    val item = items.optJSONObject(i) ?: continue
-                    val id = item.optLong("id").takeIf { it > 0 } ?: continue
-                    val candTitle = item.optString("title")
-                    var score = when {
-                        candTitle.equals(title, ignoreCase = true) -> 50
-                        candTitle.contains(title, ignoreCase = true) || title.contains(candTitle, ignoreCase = true) -> 25
-                        else -> 0
-                    }
-                    val candArtists = item.optJSONArray("artists")?.let { arr ->
-                        (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.optString("name") }
-                    }.orEmpty()
-                    if (primaryArtist.isNotBlank() && candArtists.any { it.contains(primaryArtist, ignoreCase = true) }) score += 30
-                    val candDuration = item.optInt("duration").takeIf { it > 0 }
-                    if (durationSec != null && candDuration != null && abs(candDuration - durationSec) <= 5) score += 20
-                    val lossless = item.optString("audioQuality").contains("LOSSLESS", ignoreCase = true)
-                    if (score >= 40) scored += Triple(id, candTitle, candDuration) to (score to if (lossless) 1 else 0)
+                (0 until items.length()).mapNotNull { i ->
+                    val item = items.optJSONObject(i) ?: return@mapNotNull null
+                    val id = item.optLong("id").takeIf { it > 0 } ?: return@mapNotNull null
+                    TidalMatch.Candidate(
+                        id = id,
+                        title = item.optString("title"),
+                        artists = item.optJSONArray("artists")?.let { arr ->
+                            (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.optString("name") }
+                        }.orEmpty(),
+                        durationSec = item.optInt("duration").takeIf { it > 0 },
+                        lossless = item.optString("audioQuality").contains("LOSSLESS", ignoreCase = true),
+                    )
                 }
-                scored.sortedWith(compareByDescending<Pair<Triple<Long, String, Int?>, Pair<Int, Int>>> { it.second.first }
-                    .thenByDescending { it.second.second })
-                    .map { it.first }
             }
         }.getOrElse {
             if (it is Unauthorized) throw it

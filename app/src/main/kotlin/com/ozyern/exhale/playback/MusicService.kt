@@ -578,6 +578,9 @@ class MusicService :
     // Silent stall recoveries are separate from playback exception retries.
     private val losslessStallCount = mutableMapOf<String, Int>()
     private val MAX_LOSSLESS_STALLS_BEFORE_FALLBACK = 2
+    /** Silence this close to a song's start or end is the song itself, never a lossless stall. */
+    private val STALL_IGNORE_HEAD_MS = 5_000L
+    private val STALL_IGNORE_TAIL_MS = 15_000L
     // Owns DJ analysis and transitions in a scope independent of service restarts.
     private val djEngine: DjEngine by lazy {
         DjEngine(
@@ -1430,7 +1433,12 @@ class MusicService :
             }
         )
 
+        // A broken lossless stream decodes to digital silence; quiet music never stays this close
+        // to zero this long. The old bar (1.5 s under about -48 dBFS) fired on soft intros and quiet
+        // verses, rewinding the song each time and then dropping it to AAC for good.
         val stallWatchdog = LosslessStallWatchdogAudioProcessor(
+            minStallDurationUs = 4_000_000L,
+            silenceThreshold = 4,
             onStallDetected = {
                 if (playerInitialized.value && createdPlayer === this@MusicService.player) {
                     losslessStallGuard.handleLosslessStallDetected()
@@ -3426,6 +3434,15 @@ class MusicService :
             if (stallRecoveryJob?.isActive == true) return
             stallRecoveryJob = scope.launch {
                 val mediaId = player.currentMediaItem?.mediaId ?: return@launch
+                // Songs open and close on real silence; only a gap inside the song is a stall.
+                val position = player.currentPosition
+                val duration = player.duration
+                if (position < STALL_IGNORE_HEAD_MS ||
+                    (duration > 0 && duration - position < STALL_IGNORE_TAIL_MS)
+                ) {
+                    Timber.tag(TAG).d("Ignoring silence at the edge of $mediaId (at $position of $duration ms)")
+                    return@launch
+                }
                 val count = (losslessStallCount[mediaId] ?: 0) + 1
                 losslessStallCount[mediaId] = count
                 Timber.tag(TAG).w("Lossless stall detected for $mediaId (attempt $count)")
