@@ -32,6 +32,7 @@ import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -82,10 +83,35 @@ fun JioSettings(
     val tidalSignedIn = tidalToken.isNotBlank()
     val tidalScope = androidx.compose.runtime.rememberCoroutineScope()
     val tidalContext = androidx.compose.ui.platform.LocalContext.current
+    var showTidalTokenDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var tidalTokenBusy by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val (forceSelectedQuality, onForceSelectedQualityChange) = rememberPreference(
         ForceSelectedQualityKey,
         defaultValue = false
     )
+
+    if (showTidalTokenDialog) {
+        com.ozyern.exhale.ui.component.TextFieldDialog(
+            title = { Text("TIDAL token") },
+            placeholder = { Text("Paste your refresh token") },
+            singleLine = false,
+            maxLines = 6,
+            isInputValid = { it.trim().length >= 20 },
+            onDone = { token ->
+                tidalTokenBusy = true
+                tidalScope.launch {
+                    val name = com.ozyern.exhale.utils.tidal.TidalAccount.signInWithToken(tidalContext, token)
+                    tidalTokenBusy = false
+                    android.widget.Toast.makeText(
+                        tidalContext,
+                        if (name != null) "Signed in to TIDAL as $name" else "TIDAL did not accept that token",
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                }
+            },
+            onDismiss = { showTidalTokenDialog = false },
+        )
+    }
 
     SettingsPage(
         navController = navController,
@@ -182,6 +208,14 @@ fun JioSettings(
                             title = { Text("Sign in to TIDAL") },
                             description = { Text("Stream lossless FLAC from your own TIDAL subscription. Your login stays on this phone.") },
                             onClick = { navController.navigate("settings/player/tidal/login") },
+                        ),
+                    )
+                    add(
+                        IosSettingsItem(
+                            title = { Text(if (tidalTokenBusy) "Checking token…" else "Sign in with token") },
+                            description = { Text("Paste a TIDAL refresh token (or access token). It is checked with TIDAL and kept on this phone only.") },
+                            enabled = !tidalTokenBusy,
+                            onClick = { showTidalTokenDialog = true },
                         ),
                     )
                 }

@@ -48,7 +48,13 @@ object TidalAccount {
     const val PKCE_REDIRECT_URI = "https://tidal.com/android/login/auth"
     const val WEB_PLAYER_URL = "https://listen.tidal.com"
 
+    /** TIDAL's Android TV app, the other client a pasted refresh token may belong to. */
+    private const val TV_CLIENT_ID = "zU4XHVVkc2tDPo4t"
+    private const val TV_CLIENT_SECRET = "VJKhDFqJPqvsPVNBV6ukXTJmwlvbttP7wlMlrc72se4="
+
     const val FLOW_PKCE = "pkce"
+    /** A pasted refresh token belonging to the TV client; renewed with that client. */
+    const val FLOW_TV = "tv"
     const val FLOW_WEBCAPTURE = "webcapture"
 
     private const val TOKEN_ENDPOINT = "https://auth.tidal.com/v1/oauth2/token"
@@ -123,16 +129,17 @@ object TidalAccount {
                 // A web-player session cannot be renewed; try it until TIDAL refuses it.
                 return@withLock if (forceRefresh) null else token
             }
-            val renewed = refreshAccessToken(refresh) ?: return@withLock if (forceRefresh) null else token
-            save(context, renewed.copy(refreshToken = renewed.refreshToken ?: refresh, username = renewed.username ?: p[TidalAccountNameKey]), p[TidalAuthFlowKey] ?: FLOW_PKCE)
+            val flow = p[TidalAuthFlowKey] ?: FLOW_PKCE
+            val renewed = refreshAccessToken(refresh, flow) ?: return@withLock if (forceRefresh) null else token
+            save(context, renewed.copy(refreshToken = renewed.refreshToken ?: refresh, username = renewed.username ?: p[TidalAccountNameKey]), flow)
             renewed.accessToken
         }
 
-    private suspend fun refreshAccessToken(refreshToken: String): TokenResult? =
+    private suspend fun refreshAccessToken(refreshToken: String, flow: String = FLOW_PKCE): TokenResult? =
         tokenRequest(
             FormBody.Builder()
-                .add("client_id", PKCE_CLIENT_ID)
-                .add("client_secret", PKCE_CLIENT_SECRET)
+                .add("client_id", if (flow == FLOW_TV) TV_CLIENT_ID else PKCE_CLIENT_ID)
+                .add("client_secret", if (flow == FLOW_TV) TV_CLIENT_SECRET else PKCE_CLIENT_SECRET)
                 .add("refresh_token", refreshToken)
                 .add("grant_type", "refresh_token")
                 .add("scope", SCOPE)
@@ -141,6 +148,32 @@ object TidalAccount {
         )
 
     // ── Sign-in ──────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Signs in with a token the listener pastes: a refresh token (renewed with whichever TIDAL client
+     * it belongs to, so it keeps working) or, failing that, an access token (good until it expires).
+     * Saved on this phone only. Returns the account name, or null when TIDAL accepted neither.
+     */
+    suspend fun signInWithToken(context: Context, raw: String): String? {
+        val token = raw.trim().removePrefix("Bearer ").trim()
+        if (token.length < 20) return null
+        for (flow in listOf(FLOW_PKCE, FLOW_TV)) {
+            val session = refreshAccessToken(token, flow) ?: continue
+            // The token endpoint names no user on some clients; ask the session for it.
+            val named = if (session.username == null || session.countryCode == null) {
+                sessionFromBearer(session.accessToken)?.let { s ->
+                    session.copy(username = session.username ?: s.username, countryCode = session.countryCode ?: s.countryCode)
+                } ?: session
+            } else {
+                session
+            }
+            save(context, named.copy(refreshToken = named.refreshToken ?: token), flow)
+            return named.username ?: "TIDAL"
+        }
+        val access = sessionFromBearer(token) ?: return null
+        save(context, access, FLOW_WEBCAPTURE)
+        return access.username ?: "TIDAL"
+    }
 
     data class PkceChallenge(val verifier: String, val uniqueKey: String, val authUrl: String)
 
