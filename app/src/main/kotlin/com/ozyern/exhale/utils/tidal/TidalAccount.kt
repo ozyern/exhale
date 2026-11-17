@@ -129,19 +129,36 @@ object TidalAccount {
         isSignedIn(context) && context.dataStore.get(PreferTidalKey, true)
 
     /**
-     * Signs in once with a token baked into the build (BuildConfig.TIDAL_DEFAULT_TOKEN) so a private
-     * build streams lossless with no sign-in step. Does nothing when no token was baked in (the case
-     * for any public build), when a session already exists, or when it has run before — so signing
-     * out stays signed out. Safe to call on every launch; it returns at once unless there is work.
+     * Signs in with a token baked into the build (BuildConfig.TIDAL_DEFAULT_TOKEN) so a private build
+     * streams lossless with no sign-in step. Does nothing when no token was baked in (any public
+     * build) or when a renewable session already exists. A session that cannot be renewed (an
+     * hour-long web session) is replaced. The applied flag is written only after a sign-in that
+     * worked, so a first launch without network retries on the next one, while signing out later
+     * stays signed out. Safe to call on every launch.
      */
     suspend fun applyBakedTokenIfPresent(context: Context) {
         val baked = BuildConfig.TIDAL_DEFAULT_TOKEN
-        if (baked.isBlank() || isSignedIn(context)) return
-        if (context.dataStore.get(TidalDefaultTokenAppliedKey, false)) return
-        context.dataStore.edit { it[TidalDefaultTokenAppliedKey] = true }
-        runCatching { signInWithToken(context, baked) }
-            .onFailure { Timber.tag(TAG).w(it, "baked TIDAL token sign-in failed") }
+        if (baked.isBlank()) return
+        val prefs = context.dataStore.data.first()
+        if (!prefs[TidalRefreshTokenKey].isNullOrBlank()) return
+        if (prefs[TidalDefaultTokenAppliedKey] == true && prefs[TidalAccessTokenKey].isNullOrBlank()) return
+        for ((attempt, wait) in BakedTokenRetryDelaysMs.withIndex()) {
+            if (wait > 0) kotlinx.coroutines.delay(wait)
+            val name = runCatching { signInWithToken(context, baked) }
+                .onFailure { Timber.tag(TAG).w(it, "baked TIDAL token sign-in failed") }
+                .getOrNull()
+            if (name != null) {
+                context.dataStore.edit { it[TidalDefaultTokenAppliedKey] = true }
+                return
+            }
+            // TIDAL refused the token itself: retrying cannot help.
+            if (lastTokenError == "invalid_grant") return
+            Timber.tag(TAG).w("baked TIDAL token sign-in attempt %d: %s", attempt + 1, lastSignInProblem())
+        }
     }
+
+    /** Waits before each baked-token sign-in attempt; the network may still be coming up at launch. */
+    private val BakedTokenRetryDelaysMs = longArrayOf(0L, 5_000L, 20_000L)
 
     suspend fun save(context: Context, token: TokenResult, flow: String) {
         context.dataStore.edit { p ->
