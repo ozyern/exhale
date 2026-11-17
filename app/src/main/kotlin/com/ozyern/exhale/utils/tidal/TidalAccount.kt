@@ -26,6 +26,7 @@ import com.ozyern.exhale.constants.TidalTokenExpiryKey
 import com.ozyern.exhale.utils.dataStore
 import com.ozyern.exhale.utils.get
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -87,6 +88,9 @@ object TidalAccount {
     private const val API_BASE = "https://api.tidal.com/v1"
     private const val SCOPE = "r_usr+w_usr+w_sub"
     private const val DEFAULT_COUNTRY = "US"
+
+    /** How long a TIDAL answer for a song is reused before asking again. */
+    private const val RECENT_LOOKUP_MS = 10 * 60_000L
 
     /** Gap between on-demand sign-ins with the baked-in token. */
     private const val BAKED_SIGN_IN_GAP_MS = 30_000L
@@ -169,6 +173,15 @@ object TidalAccount {
             if (lastTokenError == "invalid_grant") return
             Timber.tag(TAG).w("baked TIDAL token sign-in attempt %d: %s", attempt + 1, lastSignInProblem())
         }
+    }
+
+    /**
+     * Renews the session at app start when it is close to running out, so the first song after
+     * opening the app does not wait on TIDAL's token endpoint as well as its search.
+     */
+    suspend fun warmUp(context: Context) {
+        if (!isSignedIn(context)) return
+        runCatching { accessToken(context) }.onFailure { Timber.tag(TAG).w(it, "TIDAL warm-up failed") }
     }
 
     /** Waits before each baked-token sign-in attempt; the network may still be coming up at launch. */
@@ -405,11 +418,19 @@ object TidalAccount {
     /** What happened on the last song TIDAL was asked for, shown in Streaming sources settings. */
     val lastResult: kotlinx.coroutines.flow.StateFlow<String?> = _lastResult
 
-    private fun note(title: String, result: String): Stream? {
-        _lastResult.value = "\"$title\": $result"
-        Timber.tag(TAG).i("%s: %s", title, result)
-        return null
-    }
+    /** The outcome of one lookup: the stream, what happened, and whether asking again could change it. */
+    private class Lookup(val stream: Stream?, val result: String, val definitive: Boolean)
+
+    private fun found(stream: Stream) = Lookup(stream, "FLAC (track ${stream.trackId})", definitive = true)
+    private fun missed(result: String, definitive: Boolean = false) = Lookup(null, result, definitive)
+
+    /** Lookups shared by every caller asking for the same song at once (playback and prefetch). */
+    private val inFlight = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Deferred<Lookup>>()
+
+    /** Recent answers, so a replay or a prefetched song does not search TIDAL again. */
+    private val recent = java.util.concurrent.ConcurrentHashMap<String, Pair<Lookup, Long>>()
+
+    private val lookupScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
 
     /** The account country carried in a TIDAL access token (its "cc" claim), e.g. NZ. */
     internal fun countryFromAccessToken(accessToken: String): String? = runCatching {
@@ -431,33 +452,64 @@ object TidalAccount {
         title: String,
         artists: List<String>,
         durationSec: Int?,
-    ): Stream? = withContext(Dispatchers.IO) {
-        if (title.isBlank()) return@withContext null
-        var token = accessToken(context) ?: return@withContext note(title, "not signed in: ${lastSignInProblem()}")
+    ): Stream? {
+        if (title.isBlank()) return null
+        val key = listOf(TidalMatch.normalize(title), artists.joinToString(",") { TidalMatch.normalize(it) }, durationSec)
+            .joinToString("|")
+        val now = System.currentTimeMillis()
+        recent[key]?.let { (lookup, at) -> if (now - at < RECENT_LOOKUP_MS) return lookup.stream }
+        val started = android.os.SystemClock.elapsedRealtime()
+        val shared = inFlight.computeIfAbsent(key) {
+            lookupScope.async { lookUpLossless(context, title, artists, durationSec) }
+        }
+        val lookup = try {
+            shared.await()
+        } finally {
+            inFlight.remove(key, shared)
+        }
+        if (lookup.definitive) recent[key] = lookup to System.currentTimeMillis()
+        val elapsed = android.os.SystemClock.elapsedRealtime() - started
+        _lastResult.value = "\"$title\": ${lookup.result} (${elapsed} ms)"
+        Timber.tag(TAG).i("%s: %s in %d ms", title, lookup.result, elapsed)
+        com.ozyern.exhale.utils.PlaybackLogManager.log(
+            if (lookup.stream != null) com.ozyern.exhale.utils.PlaybackLogLevel.INFO else com.ozyern.exhale.utils.PlaybackLogLevel.WARNING,
+            "TIDAL: ${lookup.result} (${elapsed} ms)",
+            "$title — ${artists.joinToString()}",
+        )
+        return lookup.stream
+    }
+
+    private suspend fun lookUpLossless(
+        context: Context,
+        title: String,
+        artists: List<String>,
+        durationSec: Int?,
+    ): Lookup {
+        var token = accessToken(context) ?: return missed("not signed in: ${lastSignInProblem()}")
         // The account's own country (NZ for an NZ account), from settings or else the token itself.
         val country = context.dataStore.data.first()[TidalCountryCodeKey]?.ifBlank { null }
             ?: countryFromAccessToken(token)
             ?: DEFAULT_COUNTRY
         repeat(2) { attempt ->
             try {
-                val matches = searchTrack(token, title, artists, durationSec, country)
-                if (matches.isEmpty()) return@withContext note(title, "no TIDAL match")
+                val search = searchTrack(token, title, artists, durationSec, country)
+                val matches = search.first
+                if (matches.isEmpty()) return missed("no TIDAL match", definitive = search.second)
                 // A track often has a lossy-only twin; try the next match before giving up.
                 for (match in matches.take(MAX_MATCHES_TRIED)) {
                     val url = playbackUrl(token, match.first, country)
                         ?: btsAccessToken(context)?.takeIf { it != token }?.let { playbackUrl(it, match.first, country) }
                         ?: continue
-                    note(title, "FLAC (track ${match.first})")
-                    return@withContext Stream(url, match.first, match.second, match.third)
+                    return found(Stream(url, match.first, match.second, match.third))
                 }
-                return@withContext note(title, "matched, but TIDAL gave no lossless stream")
+                return missed("matched, but TIDAL gave no lossless stream")
             } catch (_: Unauthorized) {
-                if (attempt == 1) return@withContext note(title, "TIDAL refused the session")
+                if (attempt == 1) return missed("TIDAL refused the session")
                 token = accessToken(context, forceRefresh = true)
-                    ?: return@withContext note(title, "session expired: ${lastSignInProblem()}")
+                    ?: return missed("session expired: ${lastSignInProblem()}")
             }
         }
-        null
+        return missed("TIDAL refused the session")
     }
 
     /**
@@ -485,16 +537,27 @@ object TidalAccount {
         artists: List<String>,
         durationSec: Int?,
         country: String,
-    ): List<Triple<Long, String, Int?>> {
+    ): Pair<List<Triple<Long, String, Int?>>, Boolean> {
+        var allAnswered = true
         for (query in TidalMatch.queries(title, artists)) {
-            val ranked = TidalMatch.rank(searchCandidates(token, query, country), title, artists, durationSec)
-            if (ranked.isNotEmpty()) return ranked.map { Triple(it.id, it.title, it.durationSec) }
+            val started = android.os.SystemClock.elapsedRealtime()
+            val candidates = searchCandidates(token, query, country)
+            val elapsed = android.os.SystemClock.elapsedRealtime() - started
+            if (candidates == null) allAnswered = false
+            val ranked = TidalMatch.rank(candidates.orEmpty(), title, artists, durationSec)
+            com.ozyern.exhale.utils.PlaybackLogManager.log(
+                com.ozyern.exhale.utils.PlaybackLogLevel.DEBUG,
+                "TIDAL search: ${candidates?.size ?: "failed"} found, ${ranked.size} match (${elapsed} ms)",
+                query,
+            )
+            if (ranked.isNotEmpty()) return ranked.map { Triple(it.id, it.title, it.durationSec) } to true
         }
-        return emptyList()
+        // "No match" is only worth remembering when every search actually answered.
+        return emptyList<Triple<Long, String, Int?>>() to allAnswered
     }
 
-    /** TIDAL's track search for [query]; empty when it finds nothing or fails. */
-    private fun searchCandidates(token: String, query: String, country: String): List<TidalMatch.Candidate> {
+    /** TIDAL's track search for [query]; empty when it finds nothing, null when the request failed. */
+    private fun searchCandidates(token: String, query: String, country: String): List<TidalMatch.Candidate>? {
         val request = Request.Builder()
             .url("$API_BASE/search/tracks?query=${URLEncoder.encode(query, "UTF-8")}&limit=15&countryCode=$country")
             .header("Authorization", "Bearer $token")
@@ -503,7 +566,7 @@ object TidalAccount {
             client.newCall(request).execute().use { response ->
                 if (response.code == 401) throw Unauthorized()
                 val payload = response.body?.string().orEmpty()
-                if (!response.isSuccessful || payload.isBlank()) return@use emptyList()
+                if (!response.isSuccessful || payload.isBlank()) return@use null
                 val items = JSONObject(payload).optJSONArray("items") ?: return@use emptyList()
                 (0 until items.length()).mapNotNull { i ->
                     val item = items.optJSONObject(i) ?: return@mapNotNull null
@@ -522,7 +585,7 @@ object TidalAccount {
         }.getOrElse {
             if (it is Unauthorized) throw it
             Timber.tag(TAG).w(it, "search error")
-            emptyList()
+            null
         }
     }
 

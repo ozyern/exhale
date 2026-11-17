@@ -650,6 +650,7 @@ object YTPlayerUtils {
                     val contentLength: Long? = null
 
                     Timber.tag(TAG).i("Saavn: streaming from JioSaavn (${deliveredKbps}kbps) for videoId=$videoId")
+                    PlaybackLogManager.log(PlaybackLogLevel.INFO, "Playing from JioSaavn (${deliveredKbps} kbps)", "Video: $videoId")
                     // Reuse the initial YouTube metadata to avoid another request and
                     // preserve playback tracking, audio configuration, and video details.
                     PlaybackData(

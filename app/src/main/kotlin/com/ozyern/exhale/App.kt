@@ -166,6 +166,7 @@ class App : Application(), SingletonImageLoader.Factory {
         // No-op in a public build (no token baked in) or once the listener has signed out.
         applicationScope.launch(Dispatchers.IO) {
             com.ozyern.exhale.utils.tidal.TidalAccount.applyBakedTokenIfPresent(this@App)
+            com.ozyern.exhale.utils.tidal.TidalAccount.warmUp(this@App)
         }
     }
 
