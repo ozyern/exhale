@@ -238,6 +238,9 @@ val TidalAuthFlowKey     = stringPreferencesKey("tidalAuthFlow")
 /** The baked-in default token (BuildConfig.TIDAL_DEFAULT_TOKEN) is signed in once per install;
  *  this records that so a later sign-out is not undone on the next launch. */
 val TidalDefaultTokenAppliedKey = booleanPreferencesKey("tidalDefaultTokenApplied")
+/** The last token taken from the build's remote token source (BuildConfig.TIDAL_TOKEN_URL) that
+ *  signed in; it supersedes the token baked into the build. */
+val TidalRemoteTokenKey = stringPreferencesKey("tidalRemoteToken")
 /** On (default): signed in, a song plays lossless from the listener's TIDAL account before
  *  JioSaavn or YouTube are asked. */
 val PreferTidalKey       = booleanPreferencesKey("preferTidal")
