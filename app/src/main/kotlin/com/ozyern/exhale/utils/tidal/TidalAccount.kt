@@ -52,9 +52,22 @@ object TidalAccount {
     private const val TV_CLIENT_ID = "zU4XHVVkc2tDPo4t"
     private const val TV_CLIENT_SECRET = "VJKhDFqJPqvsPVNBV6ukXTJmwlvbttP7wlMlrc72se4="
 
+    /** The open-source tidalapi client (Fire TV), used by many third-party players. */
+    private const val TIDALAPI_CLIENT_ID = "fX2JxdmntZWK0ixT"
+    private const val TIDALAPI_CLIENT_SECRET = "1Nn9AfDAjxrgJFJbKNWLeAyKGVGmINuXPPLHVXAvxAg="
+
     const val FLOW_PKCE = "pkce"
     /** A pasted refresh token belonging to the TV client; renewed with that client. */
     const val FLOW_TV = "tv"
+    /** A pasted refresh token belonging to the tidalapi client; renewed with that client. */
+    const val FLOW_TIDALAPI = "tidalapi"
+
+    /** A refresh token only renews with the client that issued it; each one, by flow. */
+    private fun clientFor(flow: String): Pair<String, String> = when (flow) {
+        FLOW_TV -> TV_CLIENT_ID to TV_CLIENT_SECRET
+        FLOW_TIDALAPI -> TIDALAPI_CLIENT_ID to TIDALAPI_CLIENT_SECRET
+        else -> PKCE_CLIENT_ID to PKCE_CLIENT_SECRET
+    }
     const val FLOW_WEBCAPTURE = "webcapture"
 
     private const val TOKEN_ENDPOINT = "https://auth.tidal.com/v1/oauth2/token"
@@ -138,8 +151,8 @@ object TidalAccount {
     private suspend fun refreshAccessToken(refreshToken: String, flow: String = FLOW_PKCE): TokenResult? =
         tokenRequest(
             FormBody.Builder()
-                .add("client_id", if (flow == FLOW_TV) TV_CLIENT_ID else PKCE_CLIENT_ID)
-                .add("client_secret", if (flow == FLOW_TV) TV_CLIENT_SECRET else PKCE_CLIENT_SECRET)
+                .add("client_id", clientFor(flow).first)
+                .add("client_secret", clientFor(flow).second)
                 .add("refresh_token", refreshToken)
                 .add("grant_type", "refresh_token")
                 .add("scope", SCOPE)
@@ -155,9 +168,16 @@ object TidalAccount {
      * Saved on this phone only. Returns the account name, or null when TIDAL accepted neither.
      */
     suspend fun signInWithToken(context: Context, raw: String): String? {
-        val token = raw.trim().removePrefix("Bearer ").trim()
+        // Other apps copy the token alone, with "Bearer ", in quotes, or inside a JSON session.
+        val text = raw.trim()
+        val fromJson = runCatching {
+            JSONObject(text).let { j -> j.optString("refresh_token").ifBlank { j.optString("refreshToken") }.ifBlank { j.optString("access_token") } }
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+        val token = fromJson
+            ?: Regex("""[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}""").find(text)?.value
+            ?: text.removePrefix("Bearer ").trim().trim('"')
         if (token.length < 20) return null
-        for (flow in listOf(FLOW_PKCE, FLOW_TV)) {
+        for (flow in listOf(FLOW_TIDALAPI, FLOW_PKCE, FLOW_TV)) {
             val session = refreshAccessToken(token, flow) ?: continue
             // The token endpoint names no user on some clients; ask the session for it.
             val named = if (session.username == null || session.countryCode == null) {
