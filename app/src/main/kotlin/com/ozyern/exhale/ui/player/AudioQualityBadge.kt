@@ -270,21 +270,43 @@ private fun AudioQualityCardPill(text: String, height: androidx.compose.ui.unit.
 fun rememberLiveAudioFormat(playerConnection: PlayerConnection?): androidx.media3.common.Format? {
     val activePlayer = playerConnection?.service?.playerFlow?.collectAsStateWithLifecycle()?.value
     var playerFormat by remember(activePlayer) {
-        mutableStateOf((activePlayer as? ExoPlayer)?.audioFormat)
+        mutableStateOf(currentAudioFormat(activePlayer))
     }
     DisposableEffect(activePlayer) {
         val listener = object : Player.Listener {
             override fun onTracksChanged(tracks: Tracks) {
-                playerFormat = (activePlayer as? ExoPlayer)?.audioFormat
+                playerFormat = currentAudioFormat(activePlayer)
             }
             override fun onPlaybackStateChanged(playbackState: Int) {
-                playerFormat = (activePlayer as? ExoPlayer)?.audioFormat
+                playerFormat = currentAudioFormat(activePlayer)
+            }
+            override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                playerFormat = currentAudioFormat(activePlayer)
             }
         }
         activePlayer?.addListener(listener)
         onDispose { activePlayer?.removeListener(listener) }
     }
     return playerFormat
+}
+
+/**
+ * The audio format of the item playing now, or null while it has none. [ExoPlayer.audioFormat]
+ * outlives its song: a song that would not load kept the one before it's format, so a live video
+ * after an Archive FLAC was badged "Lossless". The current item's selected audio track says
+ * whether there is audio of its own yet; its tracks are emptied the moment the item changes.
+ */
+private fun currentAudioFormat(player: Player?): androidx.media3.common.Format? {
+    val selected = player?.currentTracks?.groups
+        ?.firstOrNull { it.type == androidx.media3.common.C.TRACK_TYPE_AUDIO && it.isSelected }
+        ?: return null
+    val trackFormat = (0 until selected.length).firstOrNull { selected.isTrackSelected(it) }
+        ?.let { selected.getTrackFormat(it) }
+    val decoding = (player as? ExoPlayer)?.audioFormat
+    // The decoder's format has the real rate and depth, but only when it is this track's codec.
+    return decoding?.takeIf {
+        trackFormat == null || codecFamily(it.sampleMimeType, it.codecs) == codecFamily(trackFormat.sampleMimeType, trackFormat.codecs)
+    } ?: trackFormat
 }
 
 /** "flac", "alac", "opus", "eac3", "aac", "mp3", or null when unrecognised. */
