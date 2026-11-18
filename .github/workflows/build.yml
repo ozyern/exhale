@@ -147,7 +147,7 @@ jobs:
           name: exhale-universal-gms-test-release-${{ github.run_number }}
           path: test-release/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4

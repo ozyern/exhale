@@ -71,4 +71,4 @@ jobs:
         with:
           name: Exhale-${{ github.sha }}
           path: app/build/outputs/apk/universalGms/release/*.apk
-          retention-days: 14
+          retention-days: 1
