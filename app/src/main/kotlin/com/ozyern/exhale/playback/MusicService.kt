@@ -266,6 +266,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import timber.log.Timber
 import java.io.ObjectInputStream
@@ -3787,8 +3788,17 @@ class MusicService :
             val own = mediaItem.metadata
             if (own != null && own.duration > 0) return own
             val stored = runCatching { database.getSongById(mediaItem.mediaId)?.toMediaMetadata() }.getOrNull()
-            return stored?.takeIf { it.duration > 0 } ?: own
+            stored?.takeIf { it.duration > 0 }?.let { return it }
+            // Songs from search results and most feeds come without a length, and the search needs one
+            // to tell the recording from live takes: ask YouTube's queue for it.
+            val base = own ?: stored ?: return null
+            val length = songLengths[mediaItem.mediaId] ?: withTimeoutOrNull(ARCHIVE_LENGTH_LOOKUP_MS) {
+                YouTube.queue(listOf(mediaItem.mediaId)).getOrNull()?.firstOrNull()?.duration
+            }?.takeIf { it > 0 }?.also { songLengths[mediaItem.mediaId] = it }
+            return if (length != null) base.copy(duration = length) else base
         }
+
+        private val songLengths = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
         private val headPrefetchInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
@@ -4607,6 +4617,8 @@ class MusicService :
         private const val ARCHIVE_PREFETCH_AHEAD = 2
         /** Below this much left, a copy found mid-song waits for the next play instead. */
         private const val ARCHIVE_UPGRADE_MIN_REMAINING_MS = 20_000L
+        /** How long to wait for YouTube to give a song's length when its queue item has none. */
+        private const val ARCHIVE_LENGTH_LOOKUP_MS = 3_000L
         /** Widget progress repaint cadence while playing with the screen on. */
         private const val WIDGET_PROGRESS_INTERVAL_MS = 1000L
         private const val WIDGET_LYRICS_INTERVAL_MS = 200L

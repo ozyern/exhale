@@ -7,7 +7,7 @@
 package com.ozyern.exhale.openflac
 
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
+import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.get
@@ -104,7 +104,7 @@ object OpenFlac {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     private val client by lazy {
-        HttpClient(CIO) {
+        HttpClient(OkHttp) {
             install(HttpTimeout) {
                 requestTimeoutMillis = 15000
                 connectTimeoutMillis = 10000
@@ -183,7 +183,27 @@ object OpenFlac {
         "mansbestfriend_202611",
         "fruitcakesabrina",
     )
-    private val sabrinaLoaded = java.util.concurrent.atomic.AtomicBoolean(false)
+    @Volatile private var sabrinaLoaded = false
+    private val sabrinaLoading = kotlinx.coroutines.sync.Mutex()
+
+    /**
+     * Reads [SABRINA_ITEMS] once, every caller waiting for it. An album page looks all its songs up
+     * at once; with a flag set by the first, the rest went on to search before the uploads were read,
+     * and "Tears" was never found. A read that fails is tried again by the next song.
+     */
+    private suspend fun loadSabrinaItems() {
+        if (sabrinaLoaded) return
+        sabrinaLoading.lock()
+        try {
+            if (sabrinaLoaded) return
+            val allRead = coroutineScope {
+                SABRINA_ITEMS.map { id -> async { runCatching { archiveTracks(id) }.isSuccess } }.awaitAll()
+            }.all { it }
+            if (allRead) sabrinaLoaded = true
+        } finally {
+            sabrinaLoading.unlock()
+        }
+    }
 
     internal fun cleanSongTitle(title: String): String =
         title
@@ -264,12 +284,7 @@ object OpenFlac {
         fun registered(): Track? = bestRegistered(title, artist, durationSeconds)?.also { noteFound(pArtist, it) }
         registered()?.let { return it }
         val isSabrina = "sabrina" in pArtist && "carpenter" in pArtist
-        if (isSabrina && sabrinaLoaded.compareAndSet(false, true)) {
-            coroutineScope {
-                SABRINA_ITEMS.map { id -> async { runCatching { archiveTracks(id) }.getOrDefault(emptyList()) } }
-                    .awaitAll()
-            }
-        }
+        if (isSabrina) loadSabrinaItems()
         registered()?.let { return it }
         // The uploads this artist's songs were found in before: one request each, no search.
         readKnownItems(pArtist)
@@ -710,8 +725,19 @@ object OpenFlac {
 
     // ---- Shared ---------------------------------------------------------------------------------
 
+    /**
+     * Told of each catalogue request that failed. Every lookup turns a failure into "no copy", so
+     * without this a phone that cannot reach the archive looks the same as a song it does not hold.
+     */
+    @Volatile var log: ((message: String, error: Throwable) -> Unit)? = null
+
     private suspend fun getJson(url: String): JsonObject =
-        json.parseToJsonElement(client.get(url).bodyAsText()).jsonObject
+        try {
+            json.parseToJsonElement(client.get(url).bodyAsText()).jsonObject
+        } catch (e: Exception) {
+            runCatching { log?.invoke("request failed: ${url.substringBefore('?')}", e) }
+            throw e
+        }
 
     /** "https://creativecommons.org/licenses/by-nc-sa/3.0/" → "CC BY-NC-SA 3.0". */
     internal fun licenceName(url: String?): String? {

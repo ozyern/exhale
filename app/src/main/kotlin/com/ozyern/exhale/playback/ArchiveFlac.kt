@@ -60,6 +60,7 @@ object ArchiveFlac {
 
     fun init(context: Context) {
         store = context.applicationContext.getSharedPreferences("flac_copies", Context.MODE_PRIVATE)
+        OpenFlac.log = { message, error -> Timber.tag(TAG).w(error, message) }
     }
 
     /** The copy already known for [mediaId], without searching. */
@@ -84,8 +85,11 @@ object ArchiveFlac {
         if (!enabled || id in rejected) return null
         known(id)?.let { return it }
         missAt[id]?.let { at -> if (System.currentTimeMillis() - at < MISS_RETRY_MS) return null }
-        val artist = song.artists.firstOrNull { it.name.isNotBlank() }?.name ?: return null
-        if (song.title.isBlank() || song.duration <= 0) return null
+        val artist = song.artists.firstOrNull { it.name.isNotBlank() }?.name
+        if (artist == null || song.title.isBlank() || song.duration <= 0) {
+            Timber.tag(TAG).d("not searched for $id: title=\"${song.title}\" artist=$artist duration=${song.duration}")
+            return null
+        }
         val search = lookups.getOrPut(id) {
             scope.async {
                 val track = runCatching {
