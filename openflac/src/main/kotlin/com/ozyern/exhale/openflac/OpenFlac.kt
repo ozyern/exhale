@@ -180,6 +180,8 @@ object OpenFlac {
         "short-n-sweet_202608",
         "emails-i-cant-send-2022-flac",
         "sabrina-carpenter-such-a-funny-way",
+        "mansbestfriend_202611",
+        "fruitcakesabrina",
     )
     private val sabrinaLoaded = java.util.concurrent.atomic.AtomicBoolean(false)
 
@@ -394,18 +396,22 @@ object OpenFlac {
         val base = "mediatype:(audio) AND format:(Flac)"
         val r = "\"$artist\""
         val t = "\"$title\""
+        // Some uploaders write the creator run together ("SabrinaCarpenter"), which the spaced name
+        // never matches: fruitcake's upload was never found that way.
+        val joined = artist.replace(Regex("""\s+"""), "")
+        val c = if (joined != artist.trim() && joined.isNotEmpty()) "$r OR \"$joined\"" else r
         val queries = buildList {
             if (artist.isBlank() || title.isBlank()) return@buildList
             if (album != null) {
                 val a = "\"$album\""
-                add("$base AND creator:($r) AND title:($a)")
+                add("$base AND creator:($c) AND title:($a)")
                 // Uploads with no creator set, titled "Artist - Album (2024) [FLAC]".
                 add("$base AND $r AND title:($a)")
             }
-            add("$base AND creator:($r) AND title:($t)")
+            add("$base AND creator:($c) AND title:($t)")
             // The song's name anywhere in the upload's details, where track lists are written out.
             add("$base AND $r AND $t")
-            add("$base AND creator:($r)")
+            add("$base AND creator:($c)")
             if (album == null) add("$base AND title:($t)")
         }
         val pArtist = plain(artist)
@@ -421,7 +427,10 @@ object OpenFlac {
                 var score = -(queryIndex * 3 + row)
                 if (hasWords(docTitle, pAlbum)) score += 100
                 if (hasWords(docTitle, pTitle)) score += 50
-                if (hasWords(plain(doc.creator), pArtist) || hasWords(docTitle, pArtist)) score += 40
+                val docCreator = plain(doc.creator)
+                if (hasWords(docCreator, pArtist) || hasWords(docTitle, pArtist) ||
+                    hasWords(docCreator, pArtist.replace(" ", ""))
+                ) score += 40
                 scores.merge(doc.identifier, score, ::maxOf)
             }
         }
