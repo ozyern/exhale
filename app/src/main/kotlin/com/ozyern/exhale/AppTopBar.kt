@@ -218,6 +218,16 @@ private fun LibraryTopBarActions(navController: NavHostController) {
                     navController.navigate("stats")
                 },
             )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.music_chem)) },
+                leadingIcon = {
+                    IosGlyph(sf("music.note"), AppTheme.colorScheme.onSurface, 19.dp, enterOnly = true)
+                },
+                onClick = {
+                    menuExpanded = false
+                    navController.navigate("music_chem")
+                },
+            )
         }
     }
 

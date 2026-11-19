@@ -592,7 +592,7 @@ private fun ConnectionStatusCard(
                 fontWeight = FontWeight.Bold,
                 color = AppTheme.colorScheme.primary,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(8.dp))
                     .bounceClick(onClick = onConnect)
                     .padding(horizontal = 10.dp, vertical = 6.dp)
             )
@@ -619,7 +619,7 @@ private fun RoomStatusCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp))
+            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(28.dp))
             .background(
                 Brush.linearGradient(
                     listOf(accent.copy(alpha = 0.30f), accent.copy(alpha = 0.08f))
@@ -662,7 +662,7 @@ private fun RoomStatusCard(
                 Box(
                     modifier = Modifier
                         .size(width = 40.dp, height = 52.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
                         .background(AppTheme.colorScheme.surface.copy(alpha = 0.55f)),
                     contentAlignment = Alignment.Center
                 ) {
@@ -716,7 +716,7 @@ private fun ListenTogetherRoomAction(icon: Int, label: String, onClick: () -> Un
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(16.dp))
             .background(AppTheme.colorScheme.surface.copy(alpha = 0.45f))
             .bounceClick(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 11.dp)
@@ -957,7 +957,7 @@ private fun PendingSuggestionsSection(
                 Box(
                     modifier = Modifier
                         .size(42.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(8.dp))
                         .background(AppTheme.colorScheme.surfaceContainerHighest),
                     contentAlignment = Alignment.Center
                 ) {
@@ -1213,7 +1213,7 @@ private fun SettingsLinkCard(onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(14.dp))
             .bounceClick(onClick = onClick)
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -1416,7 +1416,7 @@ private fun SessionCountdownCard(
                 fontWeight = FontWeight.Bold,
                 color = AppTheme.colorScheme.primary,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(8.dp))
                     .bounceClick(onClick = onExtend)
                     .padding(horizontal = 10.dp, vertical = 6.dp)
             )

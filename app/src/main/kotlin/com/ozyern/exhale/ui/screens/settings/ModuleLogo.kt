@@ -19,7 +19,7 @@ import com.music.spine.SpineModule
 @Composable
 internal fun ModuleLogo(module: SpineModule, modifier: Modifier = Modifier) {
     Box(
-        modifier = modifier.size(36.dp).clip(RoundedCornerShape(8.dp))
+        modifier = modifier.size(36.dp).clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(8.dp))
             .background(AppTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {

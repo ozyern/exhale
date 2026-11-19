@@ -44,6 +44,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -525,6 +526,14 @@ fun StatsScreen(
                 }
 
                 Spacer(Modifier.weight(1f))
+
+                GlassCircleButton(
+                    onClick = { navController.navigate("music_chem") }
+                ) {
+                    SymbolIcon(symbol = sf("music.note"), contentDescription = stringResource(R.string.music_chem))
+                }
+
+                Spacer(Modifier.width(8.dp))
 
                 GlassCircleButton(
                     onClick = { navController.navigate("wrapped") }

@@ -1540,7 +1540,7 @@ private fun FeaturedReleaseCard(
             modifier = Modifier
                 .size(90.dp)
                 .sharedArtworkSource(album.id, album.thumbnail)
-                .clip(RoundedCornerShape(10.dp)),
+                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(10.dp)),
         )
         Spacer(modifier = Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -1601,7 +1601,7 @@ private fun EssentialAlbumRow(
         Box(
             Modifier
                 .size(118.dp)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(8.dp))
                 .background(Color.White.copy(alpha = 0.08f)),
         ) {
             if (cover != null) {

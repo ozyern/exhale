@@ -341,7 +341,7 @@ fun ExploreTabContent(
                                 .weight(1f)
                                 .padding(6.dp)
                                 .height(64.dp)
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(10.dp))
                                 .background(LocalContentColor.current.copy(alpha = 0.1f))
                                 .bounceClick {
                                     navController.navigate(youtubeBrowseRoute(item.endpoint.browseId, item.endpoint.params))

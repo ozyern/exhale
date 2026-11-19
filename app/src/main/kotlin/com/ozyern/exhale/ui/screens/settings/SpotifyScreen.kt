@@ -110,7 +110,7 @@ fun SpotifyScreen(
                                     contentDescription = null,
                                     modifier = Modifier
                                         .size(40.dp)
-                                        .clip(RoundedCornerShape(12.dp)),
+                                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp)),
                                     contentScale = ContentScale.Crop
                                 )
                             }
@@ -189,7 +189,7 @@ fun SpotifyScreen(
                         Box(
                             modifier = Modifier
                                 .size(40.dp)
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
                                 .background(
                                     AppTheme.colorScheme.primary.copy(alpha = 0.1f)
                                 ),
@@ -299,7 +299,7 @@ fun SpotifyScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(12.dp)
-                        .clip(RoundedCornerShape(6.dp)),
+                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(6.dp)),
                     color = AppTheme.colorScheme.primary,
                     trackColor = AppTheme.colorScheme.surfaceVariant
                 )
@@ -417,7 +417,7 @@ private fun SpotifyHomeShelfRow(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .aspectRatio(1f)
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
                                 .background(AppTheme.colorScheme.primary.copy(alpha = 0.08f)),
                             contentScale = ContentScale.Crop,
                             error = painterResource(R.drawable.spotify),

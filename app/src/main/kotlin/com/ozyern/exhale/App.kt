@@ -162,12 +162,9 @@ class App : Application(), SingletonImageLoader.Factory {
             observeSettingsChanges()
         }
 
-        // A TIDAL token baked into a private build signs in once so lossless works with no setup.
-        // No-op in a public build (no token baked in) or once the listener has signed out.
+        // Only the listener's own TIDAL sign-in is used; a session left by the old shared token is dropped.
         applicationScope.launch(Dispatchers.IO) {
-            // A newer token in the private build's token source wins over the one it shipped with.
-            com.ozyern.exhale.utils.tidal.TidalAccount.syncRemoteToken(this@App)
-            com.ozyern.exhale.utils.tidal.TidalAccount.applyBakedTokenIfPresent(this@App)
+            com.ozyern.exhale.utils.tidal.TidalAccount.dropSharedSession(this@App)
             com.ozyern.exhale.utils.tidal.TidalAccount.warmUp(this@App)
         }
     }

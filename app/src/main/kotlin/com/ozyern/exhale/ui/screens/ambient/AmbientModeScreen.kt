@@ -862,7 +862,7 @@ private fun AmbientForeground(
                 modifier = Modifier
                     .fillMaxHeight(0.85f)
                     .aspectRatio(1f)
-                    .clip(RoundedCornerShape(16.dp)),
+                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(16.dp)),
             ) {
                 AsyncImage(
                     model = mediaMetadata?.thumbnailUrl,

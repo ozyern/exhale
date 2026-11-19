@@ -39,7 +39,7 @@ fun BigSeekBar(
         modifier
             .fillMaxWidth()
             .height(48.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(16.dp))
             .onPlaced {
                 width = it.size.width.toFloat()
             }.pointerInput(progressProvider) {

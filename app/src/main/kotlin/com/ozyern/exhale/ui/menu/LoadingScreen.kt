@@ -36,7 +36,7 @@ fun LoadingScreen(
         ) {
             Column(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
+                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(20.dp))
                     .background(AppTheme.colorScheme.surface)
                     .padding(24.dp)
                     .width(200.dp),

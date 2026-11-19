@@ -85,7 +85,7 @@ fun ThumbnailCornerRadiusModal(
                 modifier = Modifier
                     .fillMaxWidth(dialogWidth)
                     .wrapContentHeight()
-                    .clip(RoundedCornerShape(30.dp)),
+                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(30.dp)),
                 shape = AppTheme.shapes.large,
                 color = AppTheme.colorScheme.surface,
                 tonalElevation = 6.dp
@@ -129,7 +129,7 @@ fun ThumbnailCornerRadiusModal(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(10.dp))
                                     .background(
                                         AppTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
                                     )

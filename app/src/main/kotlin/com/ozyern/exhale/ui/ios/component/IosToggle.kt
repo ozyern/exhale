@@ -9,6 +9,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -127,13 +128,15 @@ private fun IosSwitchTrack(checked: Boolean, onColor: Color, enabled: Boolean) {
         modifier = Modifier
             .size(width = 51.dp, height = 31.dp)
             .clip(IosCapsule)
-            .background(if (enabled) track else track.copy(alpha = 0.4f))
+            // Both animations are read where they are drawn and placed, so a flip neither
+            // recomposes nor re-measures the switch on each of its frames.
+            .drawBehind { drawRect(if (enabled) track else track.copy(alpha = 0.4f)) }
             .padding(2.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
         Box(
             Modifier
-                .offset(x = knobOffset)
+                .offset { androidx.compose.ui.unit.IntOffset(knobOffset.roundToPx(), 0) }
                 .size(27.dp)
                 .shadow(elevation = 2.dp, shape = IosCircle)
                 .clip(IosCircle)

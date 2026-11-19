@@ -145,14 +145,14 @@ fun AppFloatingNavBar(
         transitionSpec = {
             if (targetState) {
                 (slideInVertically(
-                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+                    animationSpec = spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMedium)
                 ) { it / 2 } + fadeIn()) togetherWith
                     (slideOutVertically(
                         animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
                     ) { it } + fadeOut())
             } else {
                 (slideInVertically(
-                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+                    animationSpec = spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMedium)
                 ) { it } + fadeIn()) togetherWith
                     (slideOutVertically(
                         animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
@@ -301,6 +301,79 @@ private fun AppFloatingNavBarChrome(
 
     val barTabs = remember(tabScreens, searchScreen) { tabScreens + listOfNotNull(searchScreen) }
     val appBackdrop = LocalAppBackdrop.current
+
+    // Settings > Appearance > Dock: master's classic dock in place of the folding bar. Same tabs,
+    // mini player, search field and fold signal, so both behave the same around the rest of the app.
+    val dockStyle by com.ozyern.exhale.utils.rememberEnumPreference(
+        com.ozyern.exhale.constants.DockStyleKey,
+        com.ozyern.exhale.constants.DockStyle.FOLDING,
+    )
+    if (dockStyle == com.ozyern.exhale.constants.DockStyle.CLASSIC) {
+        val classicTabs = barTabs.map { screen ->
+            com.ozyern.exhale.ui.component.classicdock.FoldingDockTab(
+                key = screen.route,
+                title = stringResource(screen.titleId),
+                icon = screen.icon(appleMusicUi),
+                glyphSize = if (screen == Screens.Search) 36.dp else 32.dp,
+                onClick = {
+                    when {
+                        screen == Screens.Search -> if (searchModeActive) navSearch.onTapBar() else navSearch.onTapSearchIcon()
+                        searchModeActive -> navSearch.onExit()
+                        else -> onItemClick(screen, isRouteSelected(currentRoute, screen.route, navigationItems))
+                    }
+                },
+            )
+        }
+        // The classic dock draws its own glass round the player; the folding bar's would double it.
+        val classicAccessory: (@Composable (Modifier, Boolean) -> Unit)? =
+            if (showPlayerAccessory) {
+                { accessoryModifier, isInline ->
+                    FloatingMiniPlayer(
+                        isInline = isInline,
+                        contentColor = accessoryContentColor,
+                        onClick = onAccessoryClick,
+                        onLyricsClick = onAccessoryLyricsClick,
+                        onQueueClick = onAccessoryQueueClick,
+                        onLongClick = onAccessoryLongClick,
+                        modifier = accessoryModifier,
+                    )
+                }
+            } else {
+                null
+            }
+        com.ozyern.exhale.ui.component.classicdock.FoldingDock(
+            tabs = classicTabs,
+            selectedKey = selectedTabKey,
+            folded = scrollConnection.isInline,
+            // Tapping the folded page circle unfolds the bar by taking the page back to its top.
+            onUnfold = { tabScreens.firstOrNull { it.route == selectedTabKey }?.let { onItemClick(it, true) } },
+            hasSearchTab = searchScreen != null,
+            accentColor = selectedIconColor,
+            accessory = classicAccessory,
+            searchMode = searchModeActive,
+            typing = navSearch.keyboardActive,
+            searchBarContent = { contentModifier ->
+                SearchBarPlaceholder(
+                    state = navSearch,
+                    contentColor = accessoryContentColor,
+                    modifier = contentModifier,
+                    useGlass = useGlass,
+                )
+            },
+            openBar = { barModifier ->
+                com.ozyern.exhale.ui.component.classicdock.ClassicLiquidTabBar(
+                    tabs = classicTabs.filter { it.key != Screens.Search.route },
+                    selectedKey = selectedTabKey,
+                    pureBlack = pureBlack,
+                    modifier = barModifier,
+                )
+            },
+            // The liquid bar's own spacing: 10dp between the tab capsule and the search circle.
+            openGap = 10.dp,
+            modifier = modifier,
+        )
+        return
+    }
 
     FoldingTabBar(
         selectedTabKey = selectedTabKey,

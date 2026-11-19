@@ -107,6 +107,13 @@ fun rememberSideBarSections(
                                 onClick = { navController.navigate("stats") },
                             )
                         )
+                        add(
+                            SideBarLink(
+                                label = context.getString(R.string.music_chem),
+                                iconRes = R.drawable.sparks,
+                                onClick = { navController.navigate("music_chem") },
+                            )
+                        )
                     }
                     if (listenTogetherInTopBar) {
                         add(

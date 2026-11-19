@@ -16,12 +16,14 @@ import kotlin.math.PI
  * The liquid-lens boot film, ported from the HorizonX "Liquid Lens Logo" export the listener
  * supplied (its optical model, shot curves and grade constants are adapted there from Travis
  * Fischer's MIT-licensed recreation; notice in third_party/NOTICES.md). Two shots: a dome of oil
- * swells over the symbol, magnifies it, smears its edges into spectral colour and drains away; then
- * a chrome ball widens into a long low lens over the wordmark, ripples and falls flat while the
- * type decodes into the clean wordmark. A frame is a pure function of film time.
+ * swells over the symbol, magnifies it, smears its edges into spectral colour and drains away. (The
+ * second shot, the wordmark decoding out of type, is cut.) A frame is a pure function of film time.
  */
 internal object LensFilm {
-    const val DURATION = 4f
+    const val DURATION = 1.465f
+
+    /** A frame where the mark has fully formed, shown alone when motion is reduced. */
+    const val SETTLED = 1.0f
 
     /** World units: the frame is 2 tall, y up; a narrow stage widens until this half-width fits. */
     const val CONTENT_HALF_WIDTH = 0.82f
@@ -94,7 +96,7 @@ internal object LensFilm {
     )
 
     val SYMBOL = Shot(
-        start = 0f, end = 1.465f,
+        start = 0f, end = DURATION,
         slotCenterX = -0.0143f, slotCenterY = -0.0038f, slotW = 0.56f, slotH = 0.624f,
         dome = Dome(
             -0.01f, 0f, 3.3f, 1f,
@@ -112,32 +114,8 @@ internal object LensFilm {
         recede = Curve(1.2f, 1f, 1.24f, 0.973f, 1.273f, 0.926f, 1.307f, 0.87f, 1.34f, 0.814f, 1.373f, 0.743f, 1.407f, 0.612f, 1.44f, 0.426f, 1.465f, 0.3f),
     )
 
-    val WORDMARK = Shot(
-        start = 1.465f, end = DURATION,
-        slotCenterX = 0f, slotCenterY = 0.01f, slotW = 1.09f, slotH = 0.34f,
-        dome = Dome(
-            0f, 0f, 2f, 1f,
-            from = Profile(0f, 0f, 2f, 0.8f), to = Profile(0f, 0f, 11.67f, 2.84f),
-            radius = Curve(0f, 0.15f, 0.135f, 0.24f, 0.295f, 0.35f, 0.375f, 0.4f, 0.6f, 0.5f, 0.94f, 0.66f, 1.2f, 0.65f, 1.5f, 0.62f, 1.8f, 0.6f),
-            height = Curve(0f, 0.0136f, 0.135f, 0.041f, 0.295f, 0.0682f, 0.375f, 0.0864f, 0.6f, 0.0385f, 0.94f, 0.0409f, 1.2f, 0.012f, 1.6f, 0f),
-            morph = Curve(0f, 0f),
-            settle = Curve(0.375f, 0f, 0.58f, 1f),
-        ),
-        look = Look(
-            ringWavelength = 0.06f, ringWidth = 0.06f, ringSpeed = 0.08f, softbox = 2f, horizon = 0.25f,
-            ringLight = 1.3f, rippleWavelength = 0.08f, dispersion = 60f, dispersionKnee = 0.3f,
-        ),
-        fade = Curve(0f, 0.3f, 0.035f, 1f),
-        colour = Curve(0.375f, 0.2f, 0.58f, 1f),
-        ring = Curve(0.7f, 0f, 0.9f, 0.003f, 1f, 0.003f, 1.2f, 0.0035f, 1.45f, 0.0025f, 1.62f, 0f),
-        rippleHeight = 0.005f, rippleDecay = 0.5f,
-        ballRadius = 0.065f, ballLift = Curve(0.25f, 0f, 0.4f, -0.2f),
-        gloss = Curve(0.25f, 1f, 0.42f, 0.1f, 0.6f, 0f),
-        dots = Curve(0.9f, 1f, 1.2f, 0f),
-        resolve = Curve(1.25f, 0f, 1.6f, 1f),
-    )
-
-    val SHOTS = listOf(SYMBOL, WORDMARK)
+    // The wordmark shot that followed the symbol was cut: the intro ends on the mark.
+    val SHOTS = listOf(SYMBOL)
 
     fun shotAt(t: Float): Shot = SHOTS.firstOrNull { t >= it.start && t < it.end } ?: SHOTS.last()
 

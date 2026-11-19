@@ -426,7 +426,7 @@ private fun BoxScope.SongsGridPage(count: Int, arts: List<String>, nf: NumberFor
                 repeat(8) { col ->
                     val url = arts.getOrNull((row * 3 + col) % arts.size.coerceAtLeast(1))
                     Rise(100 + row * 120 + col * 40) {
-                        AsyncImage(url, null, contentScale = ContentScale.Crop, modifier = Modifier.size(96.dp).clip(RoundedCornerShape(6.dp)))
+                        AsyncImage(url, null, contentScale = ContentScale.Crop, modifier = Modifier.size(96.dp).clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(6.dp)))
                     }
                 }
             }
@@ -536,7 +536,7 @@ private fun BoxScope.AlbumOrbitPage(arts: List<String?>) {
                         scaleX = 0.4f + 0.6f * burst.value; scaleY = scaleX
                     }
                     .size(92.dp)
-                    .clip(RoundedCornerShape(6.dp)),
+                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(6.dp)),
             )
         }
     }
@@ -592,7 +592,7 @@ private fun BoxScope.SummaryPage(s: WrappedState, nf: NumberFormat, manager: Wra
             Rise(900 + i * 110) {
                 AsyncImage(
                     song.thumbnailUrl, null, contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(110.dp).graphicsLayer { rotationZ = (i - 2) * 6f }.clip(RoundedCornerShape(8.dp)),
+                    modifier = Modifier.size(110.dp).graphicsLayer { rotationZ = (i - 2) * 6f }.clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(8.dp)),
                 )
             }
         }

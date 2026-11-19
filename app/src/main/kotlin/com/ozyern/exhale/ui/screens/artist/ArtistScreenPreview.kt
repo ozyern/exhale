@@ -178,7 +178,7 @@ private fun ArtistScreenPreview() {
                                 Box(
                                     modifier = Modifier
                                         .size(52.dp)
-                                        .clip(RoundedCornerShape(8.dp))
+                                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(8.dp))
                                         .background(Color.White.copy(alpha = 0.12f)),
                                 )
                             },

@@ -76,7 +76,7 @@ fun CollectionDetailHeader(
                 if (onSearch != null) {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 18.dp).height(40.dp)
-                            .clip(RoundedCornerShape(20.dp)).background(foreground.copy(alpha = .12f))
+                            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(20.dp)).background(foreground.copy(alpha = .12f))
                             .clickable(role = Role.Button) {
                                 if (searchValue == null) onSearch() else searchFocusRequester?.requestFocus()
                             }
@@ -117,7 +117,7 @@ fun CollectionDetailHeader(
                         ambientColor = Color.Black.copy(alpha = .18f), spotColor = Color.Black.copy(alpha = .18f)),
                 ) {
                     Box(
-                        Modifier.sharedArtworkTarget().fillMaxSize().clip(RoundedCornerShape(12.dp))
+                        Modifier.sharedArtworkTarget().fillMaxSize().clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
                             .background(foreground.copy(alpha = .12f)),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -164,7 +164,7 @@ fun CollectionDetailHeader(
                         SymbolIcon(sf("shuffle"), stringResource(R.string.shuffle), size = 26.dp)
                     }
                     Row(
-                        Modifier.width(140.dp).height(50.dp).clip(RoundedCornerShape(25.dp))
+                        Modifier.width(140.dp).height(50.dp).clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(25.dp))
                             .background(foreground.copy(alpha = if (enabled) .82f else .4f))
                             .clickable(enabled = enabled, role = Role.Button, onClick = onPlay),
                         verticalAlignment = Alignment.CenterVertically,

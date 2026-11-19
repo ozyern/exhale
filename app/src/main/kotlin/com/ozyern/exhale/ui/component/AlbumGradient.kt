@@ -7,7 +7,7 @@ package com.ozyern.exhale.ui.component
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.layout.Box
 import com.ozyern.exhale.ui.ios.compat.AppTheme
 import androidx.compose.runtime.Composable
@@ -36,15 +36,19 @@ fun AlbumGradient(
         label = "AlbumGradientColor2"
     )
 
+    // Painted in the draw phase: as a `background`, each frame of the 800ms colour change
+    // recomposed this box and rebuilt its brush there.
     Box(
-        modifier = modifier.background(
-            Brush.verticalGradient(
-                colorStops = arrayOf(
-                    0.0f to color1,
-                    0.5f to color2,
-                    1.0f to surfaceColor
+        modifier = modifier.drawBehind {
+            drawRect(
+                Brush.verticalGradient(
+                    colorStops = arrayOf(
+                        0.0f to color1,
+                        0.5f to color2,
+                        1.0f to surfaceColor
+                    )
                 )
             )
-        )
+        }
     )
 }

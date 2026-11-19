@@ -450,6 +450,47 @@ fun AppearanceSettings(
 
         Spacer(modifier = Modifier.height(27.dp))
 
+        run {
+            val (dockStyle, onDockStyleChange) = com.ozyern.exhale.utils.rememberEnumPreference(
+                com.ozyern.exhale.constants.DockStyleKey,
+                defaultValue = com.ozyern.exhale.constants.DockStyle.FOLDING,
+            )
+            val dockIcon = rememberVectorPainter(SfSymbols.Monochrome.SFSliderHorizontal3)
+            fun dockOption(style: com.ozyern.exhale.constants.DockStyle, title: String, description: String) = IosSettingsItem(
+                icon = dockIcon,
+                title = { Text(title) },
+                description = { Text(description) },
+                trailingContent = {
+                    if (dockStyle == style) {
+                        com.ozyern.exhale.ui.component.SymbolIcon(
+                            symbol = com.ozyern.exhale.ui.component.sf("checkmark"),
+                            contentDescription = null,
+                            size = 17.dp,
+                            tint = IosTheme.tint,
+                        )
+                    }
+                },
+                onClick = { onDockStyleChange(style) },
+            )
+            IosSettingsGroup(
+                title = stringResource(R.string.dock_style),
+                items = listOf(
+                    dockOption(
+                        com.ozyern.exhale.constants.DockStyle.FOLDING,
+                        stringResource(R.string.dock_style_folding),
+                        stringResource(R.string.dock_style_folding_desc),
+                    ),
+                    dockOption(
+                        com.ozyern.exhale.constants.DockStyle.CLASSIC,
+                        stringResource(R.string.dock_style_classic),
+                        stringResource(R.string.dock_style_classic_desc),
+                    ),
+                ),
+            )
+        }
+
+        Spacer(modifier = Modifier.height(27.dp))
+
         IosSettingsGroup(
             title = "Display",
             items = buildList {

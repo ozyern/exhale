@@ -770,7 +770,7 @@ fun RichPresence(
                         contentDescription = null,
                         modifier = Modifier
                             .size(96.dp)
-                            .clip(RoundedCornerShape(3.dp))
+                            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(3.dp))
                             .align(Alignment.TopStart)
                             .run {
                                 if (song == null) {

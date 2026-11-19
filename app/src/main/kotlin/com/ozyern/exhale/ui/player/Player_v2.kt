@@ -910,13 +910,11 @@ private fun PlayerV2Content(
                         // In wide layout, keep artwork in the pane and show lyrics in the controls column.
                         targetState = if (wideLyrics) PlayerInternalState.COVER else playerState,
                         transitionSpec = {
-                            // Use one slow, critically damped curve so pane changes feel continuous.
-                            val enterFade = fadeIn(animationSpec = Motion.artwork())
-                            val exitFade = fadeOut(animationSpec = Motion.artwork())
-                            val enter = if (isHeroLook) enterFade else enterFade +
-                                scaleIn(initialScale = 0.95f, animationSpec = Motion.artwork())
-                            val exit = if (isHeroLook) exitFade else exitFade +
-                                scaleOut(targetScale = 0.97f, animationSpec = Motion.artwork())
+                            // One movement, as the reference player has it: the cover and the title
+                            // travel into the header together on a single ease, and the pages only
+                            // fade -- scaled as well, the page behind the travelling cover pulsed.
+                            val enter = fadeIn(animationSpec = tween(PAGE_TRAVEL_MS / 2, delayMillis = PAGE_TRAVEL_MS / 3))
+                            val exit = fadeOut(animationSpec = tween(PAGE_TRAVEL_MS / 3))
                             enter.togetherWith(exit).using(
                                 androidx.compose.animation.SizeTransform(clip = false)
                             ).apply {
@@ -936,7 +934,7 @@ private fun PlayerV2Content(
                                         .sharedElement(
                                             rememberSharedContentState(key = "coverArt"),
                                             animatedVisibilityScope = this@AnimatedContent,
-                                            boundsTransform = { _, _ -> Motion.artwork() },
+                                            boundsTransform = { _, _ -> pageMotion() },
                                         ),
                                 )
                             }
@@ -1056,7 +1054,7 @@ private fun PlayerV2Content(
                                             .sharedElement(
                                                 rememberSharedContentState(key = "coverArt"),
                                                 animatedVisibilityScope = this@AnimatedContent,
-                                                boundsTransform = { _, _ -> Motion.artwork() },
+                                                boundsTransform = { _, _ -> pageMotion() },
                                             )
                                             // Squared morphs into this card. Hero Bleed uses
                                             // its separate thumbnail beside the track title.
@@ -1133,7 +1131,7 @@ private fun PlayerV2Content(
                                     // same curve to avoid a visible jump when opening a pane paused.
                                     val coverMorphFrac = this@AnimatedContent.transition.animateFloat(
                                         transitionSpec = {
-                                            Motion.artwork()
+                                            pageMotion()
                                         },
                                         label = "coverMorphFrac",
                                     ) { if (it == EnterExitState.Visible) 0f else 1f }
@@ -1199,10 +1197,10 @@ private fun PlayerV2Content(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     trackMetaRow(
-                                        Modifier.sharedBounds(rememberSharedContentState(key = "title"), animatedVisibilityScope = this@AnimatedContent, boundsTransform = { _, _ -> Motion.artwork() }),
+                                        Modifier.sharedBounds(rememberSharedContentState(key = "title"), animatedVisibilityScope = this@AnimatedContent, boundsTransform = { _, _ -> pageMotion() }),
                                         // In place, not in the overlay: the colour-dodge ink needs the page behind it to blend with.
-                                        Modifier.sharedBounds(rememberSharedContentState(key = "artist"), animatedVisibilityScope = this@AnimatedContent, boundsTransform = { _, _ -> Motion.artwork() }, renderInOverlayDuringTransition = false),
-                                        Modifier.sharedBounds(rememberSharedContentState(key = "actionButtons"), animatedVisibilityScope = this@AnimatedContent, boundsTransform = { _, _ -> Motion.artwork() }),
+                                        Modifier.sharedBounds(rememberSharedContentState(key = "artist"), animatedVisibilityScope = this@AnimatedContent, boundsTransform = { _, _ -> pageMotion() }, renderInOverlayDuringTransition = false),
+                                        Modifier.sharedBounds(rememberSharedContentState(key = "actionButtons"), animatedVisibilityScope = this@AnimatedContent, boundsTransform = { _, _ -> pageMotion() }),
                                     )
                                     }
                                 }
@@ -1242,7 +1240,7 @@ private fun PlayerV2Content(
                                 ) {
                                     val headerMorphFrac = this@AnimatedContent.transition.animateFloat(
                                         transitionSpec = {
-                                            Motion.artwork()
+                                            pageMotion()
                                         },
                                         label = "headerMorphFrac",
                                     ) { if (it == EnterExitState.Visible) 1f else 0f }
@@ -1253,7 +1251,7 @@ private fun PlayerV2Content(
                                     val headerArtworkModifier = Modifier.sharedElement(
                                             rememberSharedContentState(key = "coverArt"),
                                             animatedVisibilityScope = this@AnimatedContent,
-                                            boundsTransform = { _, _ -> Motion.artwork() },
+                                            boundsTransform = { _, _ -> pageMotion() },
                                         )
                                     Box(
                                         modifier = headerArtworkModifier
@@ -1324,7 +1322,7 @@ private fun PlayerV2Content(
                                             } else Modifier.sharedBounds(
                                                 rememberSharedContentState(key = "title"),
                                                 animatedVisibilityScope = this@AnimatedContent,
-                                                boundsTransform = { _, _ -> Motion.artwork() },
+                                                boundsTransform = { _, _ -> pageMotion() },
                                             )
                                         )
                                         Text(
@@ -1339,7 +1337,7 @@ private fun PlayerV2Content(
                                             } else Modifier.sharedBounds(
                                                 rememberSharedContentState(key = "artist"),
                                                 animatedVisibilityScope = this@AnimatedContent,
-                                                boundsTransform = { _, _ -> Motion.artwork() },
+                                                boundsTransform = { _, _ -> pageMotion() },
                                                 renderInOverlayDuringTransition = false,
                                             ))
                                         )
@@ -1350,7 +1348,7 @@ private fun PlayerV2Content(
                                         modifier = Modifier.sharedBounds(
                                             rememberSharedContentState(key = "actionButtons"),
                                             animatedVisibilityScope = this@AnimatedContent,
-                                            boundsTransform = { _, _ -> Motion.artwork() },
+                                            boundsTransform = { _, _ -> pageMotion() },
                                         )
                                             .flamingoChrome(additiveChrome)
                                             .graphicsLayer { if (additiveChrome) alpha = AdditiveChromeContentAlpha }
@@ -1540,6 +1538,8 @@ private fun PlayerV2Content(
                                                 showInlineLyrics = false,
                                                 playerBackground = playerBackground,
                                                 showHeaderRow = false,
+                                                // Shuffle, repeat and the rest live in the bottom bar's pill.
+                                                showTogglePills = false,
                                                 // Not draggable: v2's queue is reached and left through
                                                 // the header thumbnail / queue toggle only, never a
                                                 // drag gesture nested inside the already-gestural
@@ -1905,7 +1905,10 @@ private fun PlayerV2Content(
                 }
                 }
 
-                Box(Modifier.weight(1f).then(tabChrome), contentAlignment = Alignment.Center) {
+                val isQueueActive = playerState == PlayerInternalState.QUEUE
+                // With the queue open, the speaker's place holds the queue's toggles as one pill,
+                // growing out of the slot as the queue arrives.
+                Box(Modifier.weight(if (isQueueActive) 2.2f else 1f).then(if (isQueueActive) Modifier else tabChrome), contentAlignment = Alignment.Center) {
                     if (showRoutePopover) V2RoutePopover(
                         onDismiss = { showRoutePopover = false },
                         title = textMetadata?.title.orEmpty(),
@@ -1913,47 +1916,65 @@ private fun PlayerV2Content(
                         artworkUrl = artworkMetadata?.thumbnailUrl,
                         onMore = { showAudioDeviceBottomSheet = true },
                     )
-                    if (audioOutput != null) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    AnimatedContent(
+                        targetState = isQueueActive,
+                        transitionSpec = {
+                            (fadeIn(tween(220, delayMillis = 60)) + scaleIn(tween(320, easing = FastOutSlowInEasing), initialScale = 0.8f))
+                                .togetherWith(fadeOut(tween(120)) + scaleOut(tween(200), targetScale = 0.9f))
+                                .using(SizeTransform(clip = false))
+                        },
+                        contentAlignment = Alignment.Center,
+                        label = "bottomBarMiddle",
+                    ) { queueShown ->
+                    if (queueShown) {
+                        QueueTogglesPill(
+                            playerConnection = playerConnection,
+                            tint = bottomTint,
+                            enabled = !isListenTogetherGuest,
+                        )
+                    } else {
+                        if (audioOutput != null) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                IconButton(
+                                    onClick = { showRoutePopover = true },
+                                    modifier = Modifier.background(Color.Transparent, RoundedCornerShape(12.dp))
+                                ) {
+                                    SymbolIcon(symbol = sf(audioDeviceIcons.symbol(audioOutput?.name, audioOutput?.type)), bounceOnEnter = true, bounceOnChange = true, bounceOnTouch = true, contentDescription = "Audio Device", size = 22.dp, tint = bottomTint)
+                                }
+                                Text(
+                                    text = audioDeviceNames.displayName(audioOutput?.name),
+                                    style = AppTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Medium),
+                                    color = bottomTint,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    modifier = Modifier.widthIn(max = 110.dp)
+                                )
+                            }
+                        } else if (BuildConfig.CAST_AVAILABLE && enableGoogleCast) {
+                            CastButton(
+                                modifier = Modifier.size(48.dp),
+                                tintColor = bottomTint,
+                            )
+                        } else {
                             IconButton(
                                 onClick = { showRoutePopover = true },
                                 modifier = Modifier.background(Color.Transparent, RoundedCornerShape(12.dp))
                             ) {
-                                SymbolIcon(symbol = sf(audioDeviceIcons.symbol(audioOutput?.name, audioOutput?.type)), bounceOnEnter = true, bounceOnChange = true, bounceOnTouch = true, contentDescription = "Audio Device", size = 22.dp, tint = bottomTint)
+                                PlayerGlyph(
+                                    slot = PlayerIconSlot.V2_VOLUME_DOWN,
+                                    fallbackSymbol = sf("airplayaudio"),
+                                    tint = bottomTint,
+                                    modifier = Modifier.size(22.dp),
+                                    size = 20.dp,
+                                    contentDescription = "Speaker",
+                                )
                             }
-                            Text(
-                                text = audioDeviceNames.displayName(audioOutput?.name),
-                                style = AppTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Medium),
-                                color = bottomTint,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                modifier = Modifier.widthIn(max = 110.dp)
-                            )
                         }
-                    } else if (BuildConfig.CAST_AVAILABLE && enableGoogleCast) {
-                        CastButton(
-                            modifier = Modifier.size(48.dp),
-                            tintColor = bottomTint,
-                        )
-                    } else {
-                        IconButton(
-                            onClick = { showRoutePopover = true },
-                            modifier = Modifier.background(Color.Transparent, RoundedCornerShape(12.dp))
-                        ) {
-                            PlayerGlyph(
-                                slot = PlayerIconSlot.V2_VOLUME_DOWN,
-                                fallbackSymbol = sf("airplayaudio"),
-                                tint = bottomTint,
-                                modifier = Modifier.size(22.dp),
-                                size = 20.dp,
-                                contentDescription = "Speaker",
-                            )
-                        }
+                    }
                     }
                 }
 
-                val isQueueActive = playerState == PlayerInternalState.QUEUE
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 IconButton(
                     onClick = { playerState = if (isQueueActive) PlayerInternalState.COVER else PlayerInternalState.QUEUE }
@@ -2008,7 +2029,8 @@ private fun V2SeekSection(
     val isTrackPressed by trackInteractionSource.collectIsPressedAsState()
     val trackHeight by animateDpAsState(
         targetValue = if (isTrackDragged || isTrackPressed) 12.dp else 7.dp,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        // Settles before the scrub gets going: a slow bouncy spring was still jiggling under the finger.
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium),
         label = "trackScale",
     )
     val duration = durationProvider().coerceAtLeast(0)
@@ -2622,3 +2644,9 @@ private fun Modifier.heroMorphDissolve(strength: () -> Float): Modifier = this
             )
         }
     }
+
+/** How long the cover takes to travel between the player and a page header, as the reference player. */
+private const val PAGE_TRAVEL_MS = 420
+
+/** The page change's one curve: cover, title and buttons all ride it, so they arrive together. */
+private fun <T> pageMotion(): FiniteAnimationSpec<T> = tween(PAGE_TRAVEL_MS, easing = FastOutSlowInEasing)

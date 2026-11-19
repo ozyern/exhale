@@ -22,6 +22,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,7 +43,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.core.content.res.ResourcesCompat
 import com.ozyern.exhale.R
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -55,9 +55,9 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 
 /**
- * The cold-start sting (the liquid-lens recording and its export): the cross of light under a
- * swelling dome of oil, then AETHER under a long low lens, decoding out of type. [speed] runs the
- * 4-second film faster; a tap skips it; reduced motion shows only its last frame.
+ * The cold-start sting (the liquid-lens recording and its export): the mark under a swelling dome
+ * of oil, and nothing after it. [speed] runs the film faster; a tap skips it; reduced motion shows
+ * only the formed mark.
  */
 @Composable
 fun LiquidLensBoot(onFinished: () -> Unit, modifier: Modifier = Modifier, speed: Float = 1.2f) {
@@ -76,24 +76,25 @@ fun LiquidLensBoot(onFinished: () -> Unit, modifier: Modifier = Modifier, speed:
             finish()
         }
         Box(modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black), contentAlignment = Alignment.Center) {
-            androidx.compose.material3.Text(
-                text = WORDMARK_TEXT,
-                color = androidx.compose.ui.graphics.Color.White,
-                fontSize = androidx.compose.ui.unit.TextUnit(64f, androidx.compose.ui.unit.TextUnitType.Sp),
-                fontFamily = androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font(R.font.pinyon_script)),
-                modifier = Modifier.alpha(alpha.value),
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(R.drawable.splash_logo_gold),
+                contentDescription = null,
+                modifier = Modifier
+                    .size(androidx.compose.ui.unit.Dp(120f))
+                    .alpha(alpha.value),
             )
         }
         return
     }
     val kit = remember { BootKit(context.applicationContext) }
-    var t by remember { mutableFloatStateOf(if (reduce) LensFilm.DURATION else 0f) }
+    var t by remember { mutableFloatStateOf(if (reduce) LensFilm.SETTLED else 0f) }
     LaunchedEffect(Unit) {
         if (!reduce) {
             val start = withFrameNanos { it }
             while (t < LensFilm.DURATION) withFrameNanos { now -> t = min(LensFilm.DURATION, (now - start) / 1e9f * speed) }
         }
-        delay(if (reduce) 900 else 450)
+        // The mark is already falling away at the film's end: dissolve straight onto the app.
+        if (reduce) delay(900)
         finish()
     }
     Canvas(
@@ -122,12 +123,11 @@ private class BootKit(private val context: Context) {
 
     fun draw(scope: androidx.compose.ui.graphics.drawscope.DrawScope, t: Float) = with(scope) {
         if (marks == null || marksFor != size) {
-            marks = listOf(Mark.symbol(context, LensFilm.SYMBOL), Mark.wordmark(context, LensFilm.WORDMARK))
+            marks = listOf(Mark.symbol(context, LensFilm.SYMBOL))
             marksFor = size
         }
-        val index = if (t >= LensFilm.WORDMARK.start) 1 else 0
-        val shot = LensFilm.SHOTS[index]
-        val mark = marks!![index]
+        val shot = LensFilm.SYMBOL
+        val mark = marks!![0]
         val local = t - shot.start
         val f = LensFilm.frame(shot, local)
         val look = shot.look
@@ -254,27 +254,6 @@ private class Mark(val full: Bitmap, val rect: FloatArray) {
             return fit(bmp, shot)
         }
 
-        /** Exhale, signed in the script. */
-        fun wordmark(context: Context, shot: LensFilm.Shot): Mark {
-            val face = ResourcesCompat.getFont(context, R.font.pinyon_script)
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = android.graphics.Color.WHITE
-                typeface = face
-                // The wordmark as the app signs it (Type.Inscription): the script, letters joined.
-                textSize = TEXELS_PER_UNIT * shot.slotH * 0.62f
-                letterSpacing = 0f
-                textAlign = Paint.Align.CENTER
-            }
-            val text = WORDMARK_TEXT
-            val w = (paint.measureText(text) * 1.08f).roundToInt()
-            val h = (paint.textSize * 1.4f).roundToInt()
-            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-            val c = android.graphics.Canvas(bmp)
-            val fm = paint.fontMetrics
-            c.drawText(text, w / 2f, h / 2f - (fm.ascent + fm.descent) / 2f, paint)
-            return fit(bmp, shot)
-        }
-
         /** Where the whole picture sits so its visible ink fills the shot's slot. */
         private fun fit(bmp: Bitmap, shot: LensFilm.Shot): Mark {
             val pixels = IntArray(bmp.width * bmp.height)
@@ -383,8 +362,6 @@ private class TypeFloor(private val atlas: GlyphAtlas) {
         const val CONTRAST = 1.6f
     }
 }
-
-private const val WORDMARK_TEXT = "Exhale"
 
 /**
  * The lens film as Exhale's cold-start intro: played over the app, already composed beneath it, and

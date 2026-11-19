@@ -3937,7 +3937,7 @@ class MusicService :
                     upsert(
                         FormatEntity(
                             id = mediaId,
-                            itag = 9998,
+                            itag = com.ozyern.exhale.ui.player.ARCHIVE_FLAC_ITAG,
                             mimeType = "audio/flac",
                             codecs = "flac",
                             bitrate = rate * depth * 2,

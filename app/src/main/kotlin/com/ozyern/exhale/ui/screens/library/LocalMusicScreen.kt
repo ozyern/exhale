@@ -530,7 +530,7 @@ private fun SongListItem(
             modifier = Modifier
                 .sharedArtworkSource(albumArtworkId, song.thumbnailUrl, artworkOwner)
                 .size(48.dp)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(8.dp))
                 .background(AppTheme.colorScheme.surfaceVariant),
         )
 
@@ -592,7 +592,7 @@ private fun AlbumListItem(
             modifier = Modifier
                 .sharedArtworkSource(album.id, album.thumbnailUrl, artworkOwner)
                 .size(56.dp)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(8.dp))
                 .background(AppTheme.colorScheme.surfaceVariant),
         )
 

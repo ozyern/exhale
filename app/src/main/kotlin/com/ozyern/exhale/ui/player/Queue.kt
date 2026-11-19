@@ -203,6 +203,8 @@ fun Queue(
     handleBack: Boolean = true,
     /** Disable when the host already applies the top system inset. */
     applyTopSystemInset: Boolean = true,
+    /** False when the host shows these toggles itself (V2 keeps them in its bottom bar). */
+    showTogglePills: Boolean = true,
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
@@ -952,7 +954,7 @@ fun Queue(
                 // Group the queue's playback toggles into equal-width pills.
                 var keepPlaying by rememberPreference(AutoLoadMoreKey, defaultValue = true)
                 var crossfadeOn by rememberPreference(CrossfadeEnabledKey, defaultValue = false)
-                FlowRow(
+                if (showTogglePills) FlowRow(
                     modifier = Modifier
                         .padding(horizontal = 30.dp, vertical = 10.dp)
                         .fillMaxWidth(),

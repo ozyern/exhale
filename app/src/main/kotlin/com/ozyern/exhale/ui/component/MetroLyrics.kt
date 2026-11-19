@@ -190,7 +190,7 @@ fun MetroLyricsLine(
 
     val itemModifier = modifier
         .fillMaxWidth()
-        .clip(RoundedCornerShape(16.dp))
+        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(16.dp))
         .combinedClickable(
             enabled = true,
             onClick = onClick,

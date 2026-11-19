@@ -307,14 +307,14 @@ private fun PresetCard(
     val thumbnail = remember(meta.id) { PresetStore.thumbnailFile(context, meta.id) }
     Column(
         Modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(16.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(9f / 16f)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(16.dp))
                 .background(AppTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
@@ -383,7 +383,7 @@ private fun SavePresetDialog(
                         .align(Alignment.CenterHorizontally)
                         .height(180.dp)
                         .aspectRatio(9f / 19.5f)
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(14.dp))
                         .drawWithContent {
                             graphicsLayer.record { this@drawWithContent.drawContent() }
                             drawLayer(graphicsLayer)

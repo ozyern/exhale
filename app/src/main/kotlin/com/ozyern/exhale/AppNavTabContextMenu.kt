@@ -42,6 +42,7 @@ internal fun navTabContextMenu(
         Screens.Library -> listOf(
             item(R.string.history, "history"),
             item(R.string.stats, "stats"),
+            item(R.string.music_chem, "music_chem"),
             item(R.string.account, "account"),
         )
         Screens.Search -> listOf(

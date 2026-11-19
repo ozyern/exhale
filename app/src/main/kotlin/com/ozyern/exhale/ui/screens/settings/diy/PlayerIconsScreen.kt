@@ -272,7 +272,7 @@ fun PlayerIconsScreen(
                     modifier = Modifier
                         .height(320.dp)
                         .aspectRatio(9f / 19.5f)
-                        .clip(RoundedCornerShape(18.dp)),
+                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(18.dp)),
                 )
             }
 
@@ -342,7 +342,7 @@ private fun SlotRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
             .clickable(onClick = onChoose)
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -350,7 +350,7 @@ private fun SlotRow(
         Box(
             modifier = Modifier
                 .size(44.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(10.dp))
                 .background(AppTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
@@ -447,7 +447,7 @@ private fun PlayerIconChoiceDialog(
                                 Box(
                                     Modifier
                                         .size(52.dp)
-                                        .clip(RoundedCornerShape(12.dp))
+                                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
                                         .background(AppTheme.colorScheme.surfaceVariant)
                                         .border(
                                             width = if (selected) 2.dp else 1.dp,

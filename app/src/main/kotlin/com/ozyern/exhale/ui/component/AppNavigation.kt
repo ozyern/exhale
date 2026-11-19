@@ -212,7 +212,7 @@ fun AppLandscapeRail(
             highlightAlpha = 0.3f,
         )
     } else {
-        modifier.background(backgroundColor, RoundedCornerShape(16.dp))
+        modifier.background(backgroundColor, com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(16.dp))
     }
 
     Column(
@@ -232,7 +232,7 @@ fun AppLandscapeRail(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
                     .clickable { onItemClick(screen, isSelected) }
                     .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,

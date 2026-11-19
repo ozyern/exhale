@@ -171,6 +171,7 @@ fun getAllSearchableSettings(): List<SearchableSetting> {
         SearchableSetting(stringResource(R.string.more_content), null, "Accounts & services", "settings/account"),
         SearchableSetting(stringResource(R.string.history), null, "Your listening", "history"),
         SearchableSetting(stringResource(R.string.stats), null, "Your listening", "stats"),
+        SearchableSetting(stringResource(R.string.music_chem), null, "Your listening", "music_chem"),
         SearchableSetting(stringResource(R.string.auto_update_check), null, "Help & diagnostics", "settings/update"),
         SearchableSetting(stringResource(R.string.update_notifications), null, "Help & diagnostics", "settings/update"),
         SearchableSetting(stringResource(R.string.beta_updates), null, "Help & diagnostics", "settings/update"),

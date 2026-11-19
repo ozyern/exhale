@@ -130,7 +130,7 @@ fun AmbientCanvasFitPreview(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(PREVIEW_SCREEN_ASPECT)
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(10.dp))
                     .background(MockScreenBase),
             ) {
                 val panelWidth = maxWidth * effectiveFraction
@@ -214,7 +214,7 @@ fun AmbientCanvasFitPreview(
                             modifier = Modifier
                                 .fillMaxHeight(0.85f)
                                 .aspectRatio(1f)
-                                .clip(RoundedCornerShape(6.dp))
+                                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(6.dp))
                                 .background(Brush.linearGradient(MockCoverColors)),
                         )
                     }

@@ -71,7 +71,7 @@ fun SuggestionRegionSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .clip(RoundedCornerShape(24.dp))
+                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(24.dp))
             ) {
                 item {
                     Text(

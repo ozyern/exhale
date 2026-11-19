@@ -156,9 +156,11 @@ private class BounceIndicationNode(
         animationJob = coroutineScope.launch {
             scaleAnimation.animateTo(
                 targetValue = if (pressed) BouncePressedScale else 1f,
+                // The app's press spring: crisp and settled. Material's medium bounce wobbled
+                // every tap and its low stiffness made the press feel late.
                 animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessMediumLow,
+                    dampingRatio = 0.75f,
+                    stiffness = Motion.PressStiffness,
                     visibilityThreshold = 0.001f,
                 ),
             )

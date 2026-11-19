@@ -1546,4 +1546,58 @@
     <string name="ai_key_edit">Edit key</string>
     <string name="ai_key_save_anyway">Save anyway</string>
     <string name="lyrics_by_provider">Lyrics by %1$s</string>
+
+    <!-- Your Music Chem (the monthly listening capsule) -->
+    <string name="music_chem">Your Music Chem</string>
+    <string name="music_chem_time_listened">Time listened</string>
+    <string name="music_chem_minutes_value">%1$s minutes</string>
+    <string name="music_chem_minutes_of_music">minutes of music</string>
+    <string name="music_chem_top_artist">Top artist</string>
+    <string name="music_chem_top_song">Top song</string>
+    <string name="music_chem_top_artists">Top artists</string>
+    <string name="music_chem_share_action">Share your Music Chem</string>
+    <string name="music_chem_share_of_listening">%1$d%% of your listening</string>
+    <string name="music_chem_plays">Plays</string>
+    <string name="music_chem_daily_average">Daily average</string>
+    <string name="music_chem_daily_average_value">%1$s min</string>
+    <string name="music_chem_on_repeat">On repeat</string>
+    <string name="music_chem_artists_heard">Artists heard</string>
+    <string name="music_chem_older_month">Previous month</string>
+    <string name="music_chem_newer_month">Next month</string>
+    <string name="music_chem_empty_title">Nothing yet this month</string>
+    <string name="music_chem_empty_body">Play some music and your Music Chem fills in as you listen.</string>
+
+    <!-- Theme presets -->
+    <string name="theme_presets">Themes</string>
+    <string name="theme_sabrina_name">Sabrina Carpenter</string>
+    <string name="theme_sabrina_description">Her favourite colours: yellow and blue, with Short n\' Sweet sky</string>
+
+    <!-- Album page header -->
+    <string name="album_about_heading">About the album</string>
+    <string name="album_kind">Album</string>
+    <plurals name="album_track_count">
+        <item quantity="one">%d Track</item>
+        <item quantity="other">%d Tracks</item>
+    </plurals>
+    <string name="album_length_hours">%1$dh %2$dm</string>
+    <string name="album_length_minutes">%1$dm</string>
+
+    <!-- About card easter egg (from master) -->
+    <string name="egg_breathe_in">Breathe in</string>
+    <string name="egg_breathe_out">Breathe out</string>
+    <string name="egg_hint">Follow the ring. Tap the rhythm to change it.</string>
+    <string name="egg_hold">Hold</string>
+    <string name="egg_pattern_relax">Relax \u00b7 4\u20136</string>
+    <string name="egg_pattern_box">Box \u00b7 4\u20134\u20134\u20134</string>
+    <string name="egg_pattern_478">Sleep \u00b7 4\u20137\u20138</string>
+    <string name="egg_close_hint">Tap to ripple &#183; Hold to gather &#183; Swipe down to close</string>
+    <string name="egg_breath_count">%1$s breaths</string>
+    <string name="about_tagline">Music, exhaled.</string>
+
+    <!-- Dock style (Settings > Appearance) -->
+    <string name="dock_style">Dock</string>
+    <string name="dock_style_folding">Folding</string>
+    <string name="dock_style_folding_desc">Folds into the mini player and a search circle as you scroll</string>
+    <string name="dock_style_classic">Classic</string>
+    <string name="dock_style_classic_desc">A glass capsule rides on the selected tab; drag it between tabs</string>
 </resources>

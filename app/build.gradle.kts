@@ -58,16 +58,6 @@ android {
         buildConfigField("String", "LASTFM_API_KEY", "\"$lastFmKey\"")
         buildConfigField("String", "LASTFM_SECRET", "\"$lastFmSecret\"")
 
-        // A TIDAL refresh token baked into a private build so lossless works without signing in.
-        // Supplied only through local.properties (git-ignored) or the environment, never committed,
-        // so a public build ships an empty string and behaves exactly as before.
-        val tidalDefaultToken = localProperties.getProperty("TIDAL_DEFAULT_TOKEN") ?: System.getenv("TIDAL_DEFAULT_TOKEN") ?: ""
-        buildConfigField("String", "TIDAL_DEFAULT_TOKEN", "\"$tidalDefaultToken\"")
-        // Where a private build fetches a newer TIDAL token on every launch, e.g. a secret gist's
-        // raw URL. Same rule as the token: local.properties or the environment only, never committed.
-        val tidalTokenUrl = localProperties.getProperty("TIDAL_TOKEN_URL") ?: System.getenv("TIDAL_TOKEN_URL") ?: ""
-        buildConfigField("String", "TIDAL_TOKEN_URL", "\"$tidalTokenUrl\"")
-
         // Jamendo's Creative Commons shelf on the FLAC page needs a client id; without one the
         // shelf is simply left out.
         val jamendoClientId = localProperties.getProperty("JAMENDO_CLIENT_ID") ?: System.getenv("JAMENDO_CLIENT_ID") ?: ""

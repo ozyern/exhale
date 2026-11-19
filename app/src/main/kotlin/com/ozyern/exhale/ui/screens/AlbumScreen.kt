@@ -360,26 +360,16 @@ fun AlbumScreen(
     val estimatedArtworkBg = com.ozyern.exhale.utils.rememberEstimatedArtworkBg(
         bgUrl.takeIf { !appleAlbumLoading && appleAlbum == null },
     )
-    val tint by androidx.compose.animation.animateColorAsState(
-        com.ozyern.exhale.ui.theme.AppleColors.color(
-            com.ozyern.exhale.ui.theme.AppleColors.pageBackground(
-                appleAlbum?.bgColor ?: estimatedArtworkBg ?: 0x1C1C1E,
-            ),
-        ),
-        label = "albumPage",
-    )
+    // The page in the record's own colour: a deep tint of the artwork's main colour behind
+    // everything, and the credits, facts and notes in a pale tint of the same hue.
+    val pagePalette = androidx.compose.runtime.remember(appleAlbum?.bgColor, estimatedArtworkBg) {
+        com.ozyern.exhale.ui.theme.albumPagePalette(appleAlbum?.bgColor ?: estimatedArtworkBg ?: 0x1C1C1E)
+    }
+    val tint by androidx.compose.animation.animateColorAsState(pagePalette.background, label = "albumPage")
+    val tintVariant by androidx.compose.animation.animateColorAsState(pagePalette.onBackgroundVariant, label = "albumPageText")
     com.ozyern.exhale.PublishAmbientBackgroundColor(tint)
     val onTint = androidx.compose.ui.graphics.Color.White
 
-    // Apple's genre for the line under the title ("Pop · 2024").
-    val albumGenre by androidx.compose.runtime.produceState<String?>(null, albumWithSongs?.album?.title) {
-        val album = albumWithSongs?.album ?: return@produceState
-        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            runCatching {
-                com.ozyern.exhale.canvas.AppleMusicCatalog.albumInfo(album.title, albumWithSongs?.artists?.firstOrNull()?.name)?.genre
-            }.getOrNull()
-        }
-    }
     // "Lossless" only when every song on it will play from a FLAC copy. The archive's uploads are
     // whole albums, so once the first song's copy turns up the rest come from the same upload
     // without another search; a song with no copy ends the look-up and the album goes unmarked.
@@ -452,7 +442,23 @@ fun AlbumScreen(
                     appleArtwork = appleAlbum?.sized(1200),
                     pageColor = tint,
                     heroScale = { heroZoom.scale },
-                    facts = listOfNotNull(albumGenre, year),
+                    facts = run {
+                        // "Album · 2026 · 32 Tracks · 2h 6m"
+                        val seconds = filteredSongs.sumOf { it.song.duration.coerceAtLeast(0).toLong() }
+                        val minutes = (seconds + 30) / 60
+                        val length = when {
+                            seconds <= 0L -> null
+                            minutes >= 60 -> stringResource(R.string.album_length_hours, (minutes / 60).toInt(), (minutes % 60).toInt())
+                            else -> stringResource(R.string.album_length_minutes, minutes.toInt())
+                        }
+                        listOfNotNull(
+                            stringResource(R.string.album_kind),
+                            year,
+                            filteredSongs.size.takeIf { it > 0 }?.let { pluralStringResource(R.plurals.album_track_count, it, it) },
+                            length,
+                        )
+                    },
+                    secondaryColor = tintVariant,
                     lossless = albumLossless,
                     playing = isPlaying && filteredSongs.any { it.id == mediaMetadata?.id },
                     enabled = filteredSongs.isNotEmpty(),
@@ -506,7 +512,7 @@ fun AlbumScreen(
                     SongListItem(
                         song = song,
                         albumIndex = index + 1,
-                        subtitleColor = onTint.copy(alpha = 0.78f),
+                        subtitleColor = tintVariant,
                         subtitleAdditiveChrome = false,
                         leadingDivider = index == 0,
                         thumbnailStartInset = 0.dp,

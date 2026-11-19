@@ -301,6 +301,9 @@ internal fun AppRootContent(
             // Expand only at the list top; collapse as soon as the list scrolls away.
             val floatingNavBarScrollConnection = rememberFloatingTabBarScrollConnection(
                 inlineBehavior = FloatingTabBarInlineBehavior.ExpandedAtTopOnly,
+                // The search input page keeps its search field: the dock never merges with the player
+                // there (it stayed merged, and the field never came). Its result pages may merge.
+                inlineAllowed = { navBackStackEntry?.destination?.route != Screens.Search.route },
             )
             val glassConfigState = rememberGlassConfigState(artworkChromeDark)
             val glassEffectConfig = glassConfigState.config
@@ -1080,14 +1083,14 @@ internal fun AppRootContent(
                                         transitionSpec = {
                                             if (targetState) {
                                                 (slideInVertically(
-                                                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+                                                    animationSpec = spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMedium)
                                                 ) { it / 2 } + fadeIn()) togetherWith
                                                     (slideOutVertically(
                                                         animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
                                                     ) { it } + fadeOut())
                                             } else {
                                                 (slideInVertically(
-                                                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+                                                    animationSpec = spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMedium)
                                                 ) { it } + fadeIn()) togetherWith
                                                     (slideOutVertically(
                                                         animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
@@ -1283,7 +1286,9 @@ internal fun AppRootContent(
             } // Box end
 
                 com.ozyern.exhale.core.updater.FloatingUpdaterHost(
-                    visible = currentRoute == "home" && playerBottomSheetState.progress == 0f &&
+                    // Threshold flag, not the raw progress: reading progress here recomposed the
+                    // whole root on every frame of the player opening and closing.
+                    visible = currentRoute == "home" && !playerAboveBars &&
                         !LocalMenuState.current.isVisible && !LocalBottomSheetPageState.current.isVisible,
                     backdrop = menuBackdrop,
                     onDetails = { navController.navigate("update") { launchSingleTop = true } },
@@ -1293,7 +1298,7 @@ internal fun AppRootContent(
             // Keep the same glass material over the expanded player as over Home.
                 // Menus on album, artist, playlist and player surfaces use the dark palette too.
                 val menuDark = com.ozyern.exhale.ui.theme.isForcedDarkRoute(currentRoute) || currentRoute?.startsWith("search") == true ||
-                    playerBottomSheetState.progress > 0f
+                    playerAboveBars
                 ForcedDarkScope(enabled = menuDark) {
                 OverlayMenu(
                     state = LocalMenuState.current,

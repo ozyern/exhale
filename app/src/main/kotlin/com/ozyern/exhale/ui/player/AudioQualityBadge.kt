@@ -67,6 +67,8 @@ fun AudioQualityBadge(
         ?: playerFormat?.averageBitrate?.takeIf { it > 0 }
     val sampleRate = currentFormat?.sampleRate?.takeIf { it > 0 }
         ?: playerFormat?.sampleRate?.takeIf { it > 0 }
+    val bitDepth = pcmBitDepth(playerFormat?.pcmEncoding) ?: currentFormat?.archiveBitDepth()
+    val channels = playerFormat?.channelCount?.takeIf { it > 0 }
     val quality = audioQualityLabel(
         mime = mime,
         codecs = codecs,
@@ -77,7 +79,16 @@ fun AudioQualityBadge(
     if (showCard) {
         AudioQualityCard(
             quality = quality,
-            detail = audioQualityDetail(mime, codecs, detailBitrate, sampleRate),
+            detail = audioQualityDetail(mime, codecs, detailBitrate, sampleRate, bitDepth),
+            specs = audioQualitySpecs(
+                mime = mime,
+                codecs = codecs,
+                bitrate = detailBitrate,
+                sampleRate = sampleRate,
+                bitDepth = bitDepth,
+                channels = channels,
+                source = if (currentFormat?.itag == ARCHIVE_FLAC_ITAG) "Internet Archive" else null,
+            ),
             onOpenSettings = onOpenQualitySettings,
             onDismiss = { showCard = false },
         )
@@ -110,7 +121,12 @@ fun AudioQualityBadge(
         }
         Text(
             text = quality.label,
-            style = TextStyle(fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Normal),
+            // Hi-Res reads heavier than plain Lossless so the two tiers are told apart at a glance.
+            style = TextStyle(
+                fontSize = 11.sp,
+                lineHeight = 14.sp,
+                fontWeight = if (quality.hiRes) FontWeight.SemiBold else FontWeight.Normal,
+            ),
             color = if (chrome) VibrantChromeInk else tint,
             maxLines = 1,
             modifier = Modifier.vibrantChrome(chrome),
@@ -118,8 +134,11 @@ fun AudioQualityBadge(
     }
 }
 
-/** What the badge says. [lossless] adds the waveform glyph. */
-data class AudioQuality(val label: String, val lossless: Boolean)
+/** What the badge says. [lossless] adds the waveform glyph; [hiRes] marks the above-48 kHz tier. */
+data class AudioQuality(val label: String, val lossless: Boolean, val hiRes: Boolean = false)
+
+/** `itag` [com.ozyern.exhale.playback.MusicService] stores for an Internet Archive FLAC copy. */
+internal const val ARCHIVE_FLAC_ITAG = 9998
 
 /**
  * Apple's wording: "Lossless" up to 48 kHz, "Hi-Res Lossless" above it, "Dolby Atmos" for
@@ -139,8 +158,8 @@ fun audioQualityLabel(mime: String?, codecs: String?, bitrate: Int?, sampleRate:
         containsFormat("ec-3") || containsFormat("eac3") || containsFormat("joc") || containsFormat("atmos") ->
             AudioQuality("Dolby Atmos", lossless = false)
         containsFormat("flac") || containsFormat("alac") -> {
-            val label = if ((sampleRate ?: 0) > 48_000) "Hi-Res Lossless" else "Lossless"
-            AudioQuality(label, lossless = true)
+            val hiRes = (sampleRate ?: 0) > 48_000
+            AudioQuality(if (hiRes) "Hi-Res Lossless" else "Lossless", lossless = true, hiRes = hiRes)
         }
         else -> {
             val codec = when {
@@ -156,23 +175,97 @@ fun audioQualityLabel(mime: String?, codecs: String?, bitrate: Int?, sampleRate:
 }
 
 /** Card detail line, Apple's style: "24-bit/96 kHz FLAC", "Opus · 151 kbps · 48 kHz". */
-fun audioQualityDetail(mime: String?, codecs: String?, bitrate: Int?, sampleRate: Int?): String {
+fun audioQualityDetail(
+    mime: String?,
+    codecs: String?,
+    bitrate: Int?,
+    sampleRate: Int?,
+    bitDepth: Int? = null,
+): String {
+    val codec = codecDisplayName(mime, codecs)
+    val khz = sampleRate?.let(::formatKhz)
+    return if (codec == "FLAC" || codec == "ALAC") {
+        val resolution = listOfNotNull(bitDepth?.let { "$it-bit" }, khz).joinToString("/").ifEmpty { null }
+        listOfNotNull(resolution, codec).joinToString(" ")
+    } else {
+        listOfNotNull(codec, bitrate?.let { "${it / 1000} kbps" }, khz).joinToString(" · ")
+    }
+}
+
+/**
+ * The full spec sheet for the tap card, one (name, value) row per known fact. Rows whose value
+ * is unknown are left out rather than shown as "—". A lossless stream without a measured
+ * bitrate gets its PCM rate (rate × depth × channels), which is what it decodes to.
+ */
+fun audioQualitySpecs(
+    mime: String?,
+    codecs: String?,
+    bitrate: Int?,
+    sampleRate: Int?,
+    bitDepth: Int?,
+    channels: Int?,
+    source: String? = null,
+): List<Pair<String, String>> {
+    val codec = codecDisplayName(mime, codecs)
+    val lossless = codec == "FLAC" || codec == "ALAC"
+    val shownBitrate = bitrate
+        ?: if (lossless && sampleRate != null && bitDepth != null) sampleRate * bitDepth * (channels ?: 2) else null
+    val tier = when {
+        lossless && (sampleRate ?: 0) > 48_000 -> "Hi-Res Lossless (above 48 kHz)"
+        lossless -> "Lossless (up to 48 kHz)"
+        else -> "Lossy (compressed)"
+    }
+    return listOfNotNull(
+        "Quality" to tier,
+        "Codec" to codec,
+        bitDepth?.let { "Bit depth" to "$it-bit" },
+        sampleRate?.let { "Sample rate" to formatKhz(it) },
+        channels?.let { "Channels" to channelName(it) },
+        shownBitrate?.let { "Bitrate" to "${it / 1000} kbps" },
+        source?.let { "Source" to it },
+    )
+}
+
+private fun codecDisplayName(mime: String?, codecs: String?): String {
     val audioFormat = (mime.orEmpty() + " " + codecs.orEmpty()).lowercase()
-    val khz = sampleRate?.let { if (it % 1000 == 0) "${it / 1000} kHz" else "%.1f kHz".format(it / 1000f) }
-    val codec = when {
+    return when {
         "flac" in audioFormat -> "FLAC"
         "alac" in audioFormat -> "ALAC"
         "ec-3" in audioFormat || "eac3" in audioFormat -> "Dolby Digital Plus"
         "opus" in audioFormat -> "Opus"
         "mp4a" in audioFormat || "aac" in audioFormat -> "AAC"
         "mp3" in audioFormat || "mpeg" in audioFormat -> "MP3"
+        "vorbis" in audioFormat -> "Vorbis"
         else -> "Audio"
     }
-    return if (codec == "FLAC" || codec == "ALAC") {
-        listOfNotNull(khz, codec).joinToString(" ")
-    } else {
-        listOfNotNull(codec, bitrate?.let { "${it / 1000} kbps" }, khz).joinToString(" · ")
-    }
+}
+
+private fun formatKhz(hz: Int): String =
+    if (hz % 1000 == 0) "${hz / 1000} kHz" else "%.1f kHz".format(java.util.Locale.ROOT, hz / 1000f)
+
+private fun channelName(count: Int): String = when (count) {
+    1 -> "Mono"
+    2 -> "Stereo"
+    6 -> "5.1 Surround"
+    8 -> "7.1 Surround"
+    else -> "$count channels"
+}
+
+/** Bits per sample for a decoded PCM encoding, or null when the player has not said. */
+internal fun pcmBitDepth(encoding: Int?): Int? = when (encoding) {
+    androidx.media3.common.C.ENCODING_PCM_8BIT -> 8
+    androidx.media3.common.C.ENCODING_PCM_16BIT -> 16
+    androidx.media3.common.C.ENCODING_PCM_24BIT -> 24
+    androidx.media3.common.C.ENCODING_PCM_32BIT,
+    androidx.media3.common.C.ENCODING_PCM_FLOAT -> 32
+    else -> null
+}
+
+/** An Archive FLAC row stores bitrate = rate × depth × 2, so its depth can be read back. */
+internal fun com.ozyern.exhale.db.entities.FormatEntity.archiveBitDepth(): Int? {
+    if (itag != ARCHIVE_FLAC_ITAG) return null
+    val rate = sampleRate?.takeIf { it > 0 } ?: return null
+    return (bitrate / (rate * 2)).takeIf { it in setOf(16, 24, 32) }
 }
 
 /**
@@ -184,6 +277,7 @@ fun audioQualityDetail(mime: String?, codecs: String?, bitrate: Int?, sampleRate
 private fun AudioQualityCard(
     quality: AudioQuality,
     detail: String,
+    specs: List<Pair<String, String>>,
     onOpenSettings: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
@@ -226,8 +320,20 @@ private fun AudioQualityCard(
                     detail,
                     color = Color.White.copy(alpha = 0.6f),
                     fontSize = 17.sp,
-                    modifier = Modifier.padding(start = textInset, top = 4.dp, bottom = cardW * 0.074f),
+                    modifier = Modifier.padding(start = textInset, top = 4.dp, bottom = cardW * 0.05f),
                 )
+                specs.forEach { (name, value) ->
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = textInset, vertical = 3.dp),
+                    ) {
+                        Text(name, color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp)
+                        Text(value, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+                androidx.compose.foundation.layout.Spacer(Modifier.height(cardW * 0.06f))
                 if (onOpenSettings != null) {
                     AudioQualityCardPill(
                         text = androidx.compose.ui.res.stringResource(R.string.audio_quality_settings),

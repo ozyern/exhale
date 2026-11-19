@@ -79,7 +79,7 @@ fun IosMenuGroup(
     val enterOffset = remember { Animatable(28f) }
     val enterAlpha = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
-        launch { enterOffset.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)) }
+        launch { enterOffset.animateTo(0f, spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMedium)) }
         launch { enterAlpha.animateTo(1f, tween(180)) }
     }
 

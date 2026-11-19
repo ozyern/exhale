@@ -235,12 +235,10 @@ val TidalAccountNameKey  = stringPreferencesKey("tidalAccountName")
 val TidalCountryCodeKey  = stringPreferencesKey("tidalCountryCode")
 /** How the session was made: a refreshable TidalAccount flow (FLOW_PKCE, FLOW_BTS, …) or FLOW_WEBCAPTURE (an hour). */
 val TidalAuthFlowKey     = stringPreferencesKey("tidalAuthFlow")
-/** The baked-in default token (BuildConfig.TIDAL_DEFAULT_TOKEN) is signed in once per install;
- *  this records that so a later sign-out is not undone on the next launch. */
-val TidalDefaultTokenAppliedKey = booleanPreferencesKey("tidalDefaultTokenApplied")
-/** The last token taken from the build's remote token source (BuildConfig.TIDAL_TOKEN_URL) that
- *  signed in; it supersedes the token baked into the build. */
-val TidalRemoteTokenKey = stringPreferencesKey("tidalRemoteToken")
+/** Left by earlier builds that signed in with a shared TIDAL token; read once to sign that session
+ *  out (TidalAccount.dropSharedSession), then removed. */
+val LegacyDefaultTokenAppliedKey = booleanPreferencesKey("tidalDefaultTokenApplied")
+val LegacyRemoteTokenKey = stringPreferencesKey("tidalRemoteToken")
 /** On (default): signed in, a song plays lossless from the listener's TIDAL account before
  *  JioSaavn or YouTube are asked. */
 val PreferTidalKey       = booleanPreferencesKey("preferTidal")
@@ -726,6 +724,17 @@ val HideVolumeBarKey = booleanPreferencesKey("hideVolumeBar")
 val AppleMusicUiKey = booleanPreferencesKey("appleMusicUi")
 /** Shows a multi-icon tab row instead of the simple mini bar. Off by default. */
 val MiniBarTabStyleKey = booleanPreferencesKey("miniBarTabStyle")
+
+/** Which bottom dock the app draws (Settings > Appearance > Dock). */
+val DockStyleKey = stringPreferencesKey("dockStyle")
+
+enum class DockStyle {
+    /** This branch's folding tab bar. The default. */
+    FOLDING,
+
+    /** Master's classic dock: its own fold, and a glass capsule riding on the selected tab. */
+    CLASSIC,
+}
 
 /** Shows the sound-search and shuffle buttons on Home. On by default. */
 val ShowHomeFabKey = booleanPreferencesKey("showHomeFab")

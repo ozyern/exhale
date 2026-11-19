@@ -67,6 +67,7 @@ object PresetKeys {
         IosOverscrollKey,
         AppleMusicUiKey,
         MiniBarTabStyleKey,
+        DockStyleKey,
         LibraryIconsOnlyKey,
         ShowAudioQualityBadgeKey,
     )

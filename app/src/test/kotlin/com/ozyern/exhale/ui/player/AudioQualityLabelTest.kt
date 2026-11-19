@@ -8,7 +8,7 @@ class AudioQualityLabelTest {
     @Test
     fun `apple wording for lossless, hi-res and atmos`() {
         assertEquals(AudioQuality("Lossless", true), audioQualityLabel("audio/flac", null, 900_000, 44_100))
-        assertEquals(AudioQuality("Hi-Res Lossless", true), audioQualityLabel("audio/flac", null, null, 96_000))
+        assertEquals(AudioQuality("Hi-Res Lossless", true, hiRes = true), audioQualityLabel("audio/flac", null, null, 96_000))
         assertEquals(AudioQuality("Dolby Atmos", false), audioQualityLabel("audio/mp4", "ec-3", 768_000, 48_000))
     }
 
@@ -24,6 +24,37 @@ class AudioQualityLabelTest {
         assertEquals("96 kHz FLAC", audioQualityDetail("audio/flac", null, null, 96_000))
         assertEquals("44.1 kHz ALAC", audioQualityDetail("audio/mp4", "alac", null, 44_100))
         assertEquals("Opus · 151 kbps · 48 kHz", audioQualityDetail("audio/webm", "opus", 151_018, 48_000))
+        assertEquals("24-bit/96 kHz FLAC", audioQualityDetail("audio/flac", null, null, 96_000, bitDepth = 24))
+        assertEquals("16-bit/44.1 kHz FLAC", audioQualityDetail("audio/flac", null, null, 44_100, bitDepth = 16))
+    }
+
+    @Test
+    fun `24-bit at 48 kHz is lossless, not hi-res`() {
+        assertEquals(AudioQuality("Lossless", true), audioQualityLabel("audio/flac", null, null, 48_000))
+    }
+
+    @Test
+    fun `spec sheet lists every known fact and derives lossless bitrate`() {
+        val specs = audioQualitySpecs("audio/flac", null, null, 96_000, 24, 2, "Internet Archive").toMap()
+        assertEquals("Hi-Res Lossless (above 48 kHz)", specs["Quality"])
+        assertEquals("FLAC", specs["Codec"])
+        assertEquals("24-bit", specs["Bit depth"])
+        assertEquals("96 kHz", specs["Sample rate"])
+        assertEquals("Stereo", specs["Channels"])
+        assertEquals("4608 kbps", specs["Bitrate"])
+        assertEquals("Internet Archive", specs["Source"])
+
+        val lossy = audioQualitySpecs("audio/webm", "opus", 151_018, 48_000, null, null).toMap()
+        assertEquals("Lossy (compressed)", lossy["Quality"])
+        assertNull(lossy["Bit depth"])
+        assertNull(lossy["Channels"])
+    }
+
+    @Test
+    fun `bit depth from pcm encoding`() {
+        assertEquals(16, pcmBitDepth(androidx.media3.common.C.ENCODING_PCM_16BIT))
+        assertEquals(24, pcmBitDepth(androidx.media3.common.C.ENCODING_PCM_24BIT))
+        assertNull(pcmBitDepth(androidx.media3.common.Format.NO_VALUE))
     }
 
     @Test

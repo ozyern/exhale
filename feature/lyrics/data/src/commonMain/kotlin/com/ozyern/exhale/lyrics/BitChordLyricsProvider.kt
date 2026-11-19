@@ -12,9 +12,17 @@ class BitChordLyricsProvider(
     override val requiresVideoId: Boolean get() = id == "SimpMusic"
 
     override suspend fun getLyrics(id: String, title: String, artist: String, duration: Int, album: String?): Result<String> = try {
-        val lines = lookup(id, title.forLyricsSearch(), artist.artistForLyricsSearch(), duration.toLong() * 1000L, album)
-        if (lines.isNullOrEmpty()) Result.failure(NoSuchElementException("No lyrics found"))
-        else Result.success(lines.toExhaleLyrics())
+        // The song and artist as a lyrics site files them (see LyricsSearch): a YouTube title
+        // asked verbatim missed every source, or matched another song.
+        val (song, singer) = LyricsSearch.query(title, artist)
+        val durationMs = duration.toLong() * 1000L
+        val lines = lookup(id, song, singer, durationMs, album)
+        when {
+            lines.isNullOrEmpty() -> Result.failure(NoSuchElementException("No lyrics found"))
+            // Timed for another cut of the song: let the next source answer instead.
+            !LyricsSearch.fits(lines, durationMs, title) -> Result.failure(NoSuchElementException("Lyrics are timed for another version"))
+            else -> Result.success(lines.toExhaleLyrics())
+        }
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (error: Exception) {

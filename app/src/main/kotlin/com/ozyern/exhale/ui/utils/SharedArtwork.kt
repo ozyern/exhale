@@ -49,6 +49,14 @@ private val isMorphClosing = mutableStateOf(false)
 private val libraryMorph = mutableStateOf(false)
 fun isLibraryArtworkMorph(): Boolean = libraryMorph.value
 
+/**
+ * Whether the current navigation has a tapped tile for its cover to fly out of (or back into).
+ * With one, a collection page fades in place around the flying cover -- one movement -- rather
+ * than sliding in sideways while the cover flies up, two movements pulling against each other.
+ */
+private val artworkMorph = mutableStateOf(false)
+fun isArtworkMorph(): Boolean = artworkMorph.value
+
 /** See [isMorphClosing]. */
 fun markMorphDirection(isPop: Boolean) {
     isMorphClosing.value = isPop
@@ -70,12 +78,14 @@ class NavigationArtworkState {
         val selectedId = if (returning) selected?.id ?: id else id
         if (selectedId.isNullOrBlank()) {
             if (!returning) pendingReturnId = null
+            artworkMorph.value = false
             return null
         }
         pendingReturnId = selectedId.takeIf { returning }
         selected = sources.select(selectedId, returning)
         if (!returning) libraryOrigins[selectedId] = selected?.owner in librarySourceOwners
         libraryMorph.value = libraryOrigins[selectedId] == true
+        artworkMorph.value = selected != null
         return selected?.url
     }
 

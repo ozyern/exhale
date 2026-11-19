@@ -62,9 +62,11 @@ val PlayerHorizontalPadding = 32.dp
  *  instead of stretching across the wide screen. */
 val CompactPlayerMaxWidth = 480.dp
 
+// Near-critical, as iOS moves its bars: Material's medium bounce on a low stiffness wobbled
+// the sheet and bar for most of a second after they had arrived.
 val NavigationBarAnimationSpec = spring<Dp>(
-    dampingRatio = Spring.DampingRatioMediumBouncy,
-    stiffness = Spring.StiffnessLow
+    dampingRatio = 0.86f,
+    stiffness = Spring.StiffnessMediumLow
 )
 
 val BottomSheetAnimationSpec = spring<Dp>(

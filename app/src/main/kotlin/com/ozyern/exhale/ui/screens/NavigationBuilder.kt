@@ -204,6 +204,10 @@ fun NavGraphBuilder.navigationBuilder(
         StatsScreen(navController)
     }
 
+    sharedComposable("music_chem") {
+        com.ozyern.exhale.ui.screens.musicchem.MusicChemScreen(navController)
+    }
+
     sharedComposable("mood_and_genres") {
         MoodAndGenresScreen(navController, scrollBehavior)
     }
@@ -774,8 +778,11 @@ private fun NavGraphBuilder.sharedComposable(
         arguments = arguments,
         enterTransition = {
             if (collection) {
-                if (com.ozyern.exhale.ui.utils.isLibraryArtworkMorph()) fadeIn(tween(PageEnterMillis))
+                // A cover flying out of a tile: the page gathers in place around it.
+                if (com.ozyern.exhale.ui.utils.isArtworkMorph()) fadeIn(tween(PageEnterMillis, easing = FastOutSlowInEasing))
                 else slideInHorizontally(Motion.collectionPush()) { it }
+            } else if (detail && com.ozyern.exhale.ui.utils.isArtworkMorph()) {
+                fadeIn(tween(PageEnterMillis, easing = FastOutSlowInEasing))
             } else if (detail) {
                 slideInHorizontally(tween(PageEnterMillis, easing = FastOutSlowInEasing)) { it } +
                     fadeIn(tween(PageEnterMillis, easing = FastOutSlowInEasing))
@@ -795,8 +802,12 @@ private fun NavGraphBuilder.sharedComposable(
         },
         popExitTransition = {
             if (collection) {
-                if (com.ozyern.exhale.ui.utils.isLibraryArtworkMorph()) fadeOut(tween(PageExitMillis))
+                // The cover flies home to its tile; the page lets go in place rather than sliding
+                // off without it.
+                if (com.ozyern.exhale.ui.utils.isArtworkMorph()) fadeOut(tween(PageExitMillis, easing = FastOutSlowInEasing))
                 else slideOutHorizontally(Motion.collectionPush()) { it }
+            } else if (detail && com.ozyern.exhale.ui.utils.isArtworkMorph()) {
+                fadeOut(tween(PageExitMillis, easing = FastOutSlowInEasing))
             } else if (detail) {
                 // Tween, not spring: predictive back scrubs this by gesture progress.
                 slideOutHorizontally(tween(PageExitMillis, easing = FastOutSlowInEasing)) { it / 4 } +
@@ -825,5 +836,8 @@ private fun NavGraphBuilder.sharedComposable(
     }
 }
 
-private const val PageEnterMillis = 400
-private const val PageExitMillis = 400
+// The design system's page clock, not a private one: these drifted to 400/400 here, slower than
+// the 260ms push beside them and with exits as slow as entrances, so pages dragged on the way out.
+// A page settles under a flying cover (500ms), which lands last.
+private const val PageEnterMillis = com.ozyern.exhale.designsystem.MotionTokens.PageEnterMillis
+private const val PageExitMillis = com.ozyern.exhale.designsystem.MotionTokens.PageExitMillis

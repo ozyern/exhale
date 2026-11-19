@@ -127,7 +127,7 @@ fun <T> ChipsRow(
                 // Selected chips expand into a full pill.
                 targetValue = if (isSelected) 100.dp else 8.dp,
                 animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    dampingRatio = 0.86f,
                     stiffness = Spring.StiffnessMedium
                 ),
                 label = "corner_radius"
@@ -147,7 +147,7 @@ fun <T> ChipsRow(
                 border = pillBorder,
                 modifier = Modifier.animateContentSize(
                     animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        dampingRatio = 0.86f,
                         stiffness = Spring.StiffnessMedium
                     )
                 )
@@ -258,7 +258,7 @@ fun <Int> ChoiceChipsRow(
                 val cornerRadius by animateDpAsState(
                     targetValue = if (isSelected) 20.dp else 8.dp,
                     animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        dampingRatio = 0.86f,
                         stiffness = Spring.StiffnessMedium
                     ),
                     label = "corner_radius"
@@ -277,7 +277,7 @@ fun <Int> ChoiceChipsRow(
                         .padding(horizontal = 4.dp)
                         .animateContentSize(
                             animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                dampingRatio = 0.86f,
                                 stiffness = Spring.StiffnessMedium
                             )
                         )

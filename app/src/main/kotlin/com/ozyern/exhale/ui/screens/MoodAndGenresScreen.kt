@@ -253,7 +253,7 @@ fun MoodAndGenresButton(
         modifier =
         modifier
             .height(MoodAndGenresButtonHeight)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
             .background(backgroundColor)
             .bounceClick(onClick = onClick)
             .padding(horizontal = 16.dp),

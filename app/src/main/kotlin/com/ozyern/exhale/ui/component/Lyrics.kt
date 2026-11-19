@@ -405,7 +405,7 @@ private fun LyricsColorSwatches(
             Box(
                 modifier = Modifier
                     .size(32.dp)
-                    .background(color, shape = RoundedCornerShape(8.dp))
+                    .background(color, shape = com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(8.dp))
                     .clickable { onColorSelected(color) }
                     .border(
                         2.dp,
@@ -1169,7 +1169,7 @@ fun Lyrics(
                     }
                     val itemModifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp)) // Clip for background
+                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(8.dp)) // Clip for background
                         .combinedClickable(
                             enabled = true,
                             onClick = {
@@ -2080,7 +2080,7 @@ fun Lyrics(
                             .fillMaxWidth()
                             .aspectRatio(1f)
                             .padding(8.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
                     ) {
                         LyricsImageCard(
                             lyricText = lyricsText,

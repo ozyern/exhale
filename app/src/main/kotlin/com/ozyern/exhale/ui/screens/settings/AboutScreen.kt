@@ -28,7 +28,10 @@ import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -110,6 +113,12 @@ fun AboutScreen(
     val buildLine = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · ${BuildConfig.BUILD_TYPE}"
     val copiedText = stringResource(R.string.exhale_about_build_info_copied)
 
+    // The About card's easter egg: hold the card, then tap its hidden side seven times.
+    var showEasterEgg by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    if (showEasterEgg) {
+        com.ozyern.exhale.ui.component.ExhaleBreathingEgg(onDismiss = { showEasterEgg = false })
+    }
+
     SettingsPage(
         navController = navController,
         title = stringResource(R.string.about),
@@ -120,6 +129,7 @@ fun AboutScreen(
         AboutHero(
             status = updateStatusText(updateState),
             onClick = { navController.navigate("update") },
+            onSecretUnlocked = { showEasterEgg = true },
             modifier = Modifier.widthIn(max = 520.dp).align(Alignment.CenterHorizontally),
         )
         Spacer(Modifier.height(16.dp))
@@ -219,13 +229,104 @@ private fun AboutSpec(label: String, value: String) {
     }
 }
 
+/** Taps on the card's hidden side that open the breathing egg. Android's version-tap egg wants seven too. */
+private const val SecretTapCount = 7
+
 /**
- * The square card at the head of About: Exhale's artwork, the drawn wordmark and the version, and
- * a frosted pill saying whether this is the newest Exhale. It lights up as the page opens, the
- * artwork sweeping in from the lower left. Tapping it opens Software update.
+ * The square card at the head of About. Tapping it opens Software update.
+ *
+ * It is also the easter egg, as on master: hold it and it turns over to graphite, confetti falls and
+ * piles up and the tagline comes up behind it; each tap there throws another handful, and the
+ * seventh opens [com.ozyern.exhale.ui.component.ExhaleBreathingEgg]. Hold again for the release card.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun AboutHero(
+    status: String,
+    onClick: () -> Unit,
+    onSecretUnlocked: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var flipped by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var taps by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var burst by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val interaction = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val press by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (pressed) 0.98f else 1f,
+        animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.75f, stiffness = com.ozyern.exhale.ui.utils.Motion.PressStiffness),
+        label = "aboutHeroPress",
+    )
+    // Taps on the hidden side have to come in a run; a pause starts the count again.
+    LaunchedEffect(taps) {
+        if (taps in 1 until SecretTapCount) {
+            delay(2_500)
+            taps = 0
+        }
+    }
+    Box(
+        modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .graphicsLayer {
+                scaleX = press
+                scaleY = press
+            }
+            .combinedClickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = {
+                    if (flipped) {
+                        burst++
+                        val next = taps + 1
+                        if (next >= SecretTapCount) {
+                            taps = 0
+                            onSecretUnlocked()
+                        } else {
+                            taps = next
+                        }
+                    } else {
+                        onClick()
+                    }
+                },
+                onLongClick = {
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                    flipped = !flipped
+                    burst = 0
+                    taps = 0
+                },
+            ),
+    ) {
+        AnimatedContent(
+            targetState = flipped,
+            transitionSpec = {
+                (fadeIn(tween(260)) + androidx.compose.animation.scaleIn(tween(320), initialScale = 0.97f)) togetherWith
+                    fadeOut(tween(200))
+            },
+            label = "aboutEgg",
+            modifier = Modifier.fillMaxSize(),
+        ) { hidden ->
+            if (!hidden) {
+                AboutReleaseFace(status = status, modifier = Modifier.fillMaxSize())
+            } else {
+                AboutConfettiEgg(
+                    tagline = stringResource(R.string.about_tagline).replace(", ", ",\n"),
+                    burst = burst,
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(30.dp)),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The card's front: Exhale's artwork, the drawn wordmark and the version, and a frosted pill saying
+ * whether this is the newest Exhale. It lights up as the page opens, the artwork sweeping in from
+ * the lower left.
  */
 @Composable
-private fun AboutHero(status: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun AboutReleaseFace(status: String, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(30.dp)
     val reveal = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
@@ -234,12 +335,9 @@ private fun AboutHero(status: String, onClick: () -> Unit, modifier: Modifier = 
     }
     Box(
         modifier
-            .fillMaxWidth()
-            .aspectRatio(1f)
             .clip(shape)
             .background(Color(0xFF0B0A22))
-            .border(1.dp, Color.White.copy(alpha = 0.12f), shape)
-            .bounceClick(onClick = onClick),
+            .border(1.dp, Color.White.copy(alpha = 0.12f), shape),
     ) {
         val art = rememberLayerBackdrop()
         Box(Modifier.matchParentSize().layerBackdrop(art)) {

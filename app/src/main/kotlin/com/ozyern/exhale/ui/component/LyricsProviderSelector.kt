@@ -53,7 +53,7 @@ fun LyricsProviderSelector(
 
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(24.dp))
+            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(24.dp))
             .background(AppTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f))
             .clickable(onClick = onOpenMenu)
             .heightIn(min = 44.dp)

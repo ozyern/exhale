@@ -2415,7 +2415,7 @@ fun BottomSheetPlayer(
                     val trackHeight by animateDpAsState(
                         targetValue = if (isTrackActive) 16.dp else 10.dp,
                         animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            dampingRatio = 0.8f,
                             stiffness = Spring.StiffnessMedium
                         ),
                         label = "trackHeight"

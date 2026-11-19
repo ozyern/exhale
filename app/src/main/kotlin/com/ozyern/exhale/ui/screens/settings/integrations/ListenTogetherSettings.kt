@@ -755,7 +755,7 @@ fun BlockedUsersDialog(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
                                 .background(AppTheme.colorScheme.surfaceVariant)
                                 .padding(12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween

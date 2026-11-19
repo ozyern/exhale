@@ -104,7 +104,7 @@ fun CrashLogsSettingsScreen(navController: NavController) {
                     color = IosTheme.colors.label,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(16.dp))
                         .background(IosTheme.colors.secondarySystemGroupedBackground)
                         .padding(16.dp),
                 )

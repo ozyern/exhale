@@ -314,7 +314,7 @@ private fun HomeShelfListRowBody(entry: ShelfEntry, modifier: Modifier = Modifie
             modifier = Modifier
                 .sharedArtworkSource(artworkId, entry.thumbnailUrl, owner)
                 .size(HomeShelfListArt)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(8.dp))
                 .border(0.25.dp, Color.Black.copy(alpha = 0.1f), RoundedCornerShape(8.dp)),
         )
         Column(Modifier.padding(start = 12.dp).weight(1f)) {

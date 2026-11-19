@@ -14,17 +14,15 @@ package com.ozyern.exhale.utils.tidal
 import android.content.Context
 import android.util.Base64
 import androidx.datastore.preferences.core.edit
-import com.ozyern.exhale.BuildConfig
+import com.ozyern.exhale.constants.LegacyDefaultTokenAppliedKey
+import com.ozyern.exhale.constants.LegacyRemoteTokenKey
 import com.ozyern.exhale.constants.PreferTidalKey
 import com.ozyern.exhale.constants.TidalAccessTokenKey
 import com.ozyern.exhale.constants.TidalAccountNameKey
 import com.ozyern.exhale.constants.TidalAuthFlowKey
 import com.ozyern.exhale.constants.TidalCountryCodeKey
-import com.ozyern.exhale.constants.TidalDefaultTokenAppliedKey
-import com.ozyern.exhale.constants.TidalRemoteTokenKey
 import com.ozyern.exhale.constants.TidalRefreshTokenKey
 import com.ozyern.exhale.constants.TidalTokenExpiryKey
-import com.ozyern.exhale.utils.PlaybackLogLevel
 import com.ozyern.exhale.utils.PlaybackLogManager
 import com.ozyern.exhale.utils.dataStore
 import com.ozyern.exhale.utils.get
@@ -35,7 +33,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -93,14 +90,8 @@ object TidalAccount {
     private const val SCOPE = "r_usr+w_usr+w_sub"
     private const val DEFAULT_COUNTRY = "US"
 
-    /** A token source is a few hundred bytes; anything far larger is not one. */
-    private const val MAX_TOKEN_SOURCE_BYTES = 16_384L
-
     /** How long a TIDAL answer for a song is reused before asking again. */
     private const val RECENT_LOOKUP_MS = 10 * 60_000L
-
-    /** Gap between on-demand sign-ins with the baked-in token. */
-    private const val BAKED_SIGN_IN_GAP_MS = 30_000L
 
     /** Search matches tried for a lossless stream before giving up on a song. */
     private const val MAX_MATCHES_TRIED = 3
@@ -141,51 +132,25 @@ object TidalAccount {
     fun isSignedIn(context: Context): Boolean =
         context.dataStore.get(TidalAccessTokenKey, "").isNotBlank()
 
-    /**
-     * Signed in (or holding a baked-in token that can sign in) and preferring TIDAL, the default.
-     * A baked token counts so a song signs in on demand instead of skipping TIDAL until a restart.
-     */
+    /** Signed in and preferring TIDAL, the default. */
     fun isPreferred(context: Context): Boolean =
-        (isSignedIn(context) || canUseBakedToken(context)) && context.dataStore.get(PreferTidalKey, true)
+        isSignedIn(context) && context.dataStore.get(PreferTidalKey, true)
 
     /**
-     * The token this build signs in with by itself: the newest one taken from the remote token
-     * source, else the one baked in. Empty in a public build, which has neither.
+     * Earlier builds could sign in by themselves with a TIDAL token built into the app or fetched
+     * from a remote source, so one account played for everyone holding that build. That is gone:
+     * each listener signs in with their own account. A session that may have come from the shared
+     * token is signed out once, and the leftover markers are removed. Safe to call on every launch.
      */
-    private fun defaultToken(context: Context): String =
-        context.dataStore.get(TidalRemoteTokenKey, "").ifBlank { BuildConfig.TIDAL_DEFAULT_TOKEN }
-
-    /** A default token exists and the listener has not signed out of it on purpose. */
-    private fun canUseBakedToken(context: Context): Boolean =
-        defaultToken(context).isNotBlank() &&
-            !(context.dataStore.get(TidalDefaultTokenAppliedKey, false) && !isSignedIn(context))
-
-    /**
-     * Signs in with a token baked into the build (BuildConfig.TIDAL_DEFAULT_TOKEN) so a private build
-     * streams lossless with no sign-in step. Does nothing when no token was baked in (any public
-     * build) or when a renewable session already exists. A session that cannot be renewed (an
-     * hour-long web session) is replaced. The applied flag is written only after a sign-in that
-     * worked, so a first launch without network retries on the next one, while signing out later
-     * stays signed out. Safe to call on every launch.
-     */
-    suspend fun applyBakedTokenIfPresent(context: Context) {
-        val baked = defaultToken(context)
-        if (baked.isBlank()) return
+    suspend fun dropSharedSession(context: Context) {
         val prefs = context.dataStore.data.first()
-        if (!prefs[TidalRefreshTokenKey].isNullOrBlank()) return
-        if (prefs[TidalDefaultTokenAppliedKey] == true && prefs[TidalAccessTokenKey].isNullOrBlank()) return
-        for ((attempt, wait) in BakedTokenRetryDelaysMs.withIndex()) {
-            if (wait > 0) kotlinx.coroutines.delay(wait)
-            val name = runCatching { signInWithToken(context, baked) }
-                .onFailure { Timber.tag(TAG).w(it, "baked TIDAL token sign-in failed") }
-                .getOrNull()
-            if (name != null) {
-                context.dataStore.edit { it[TidalDefaultTokenAppliedKey] = true }
-                return
-            }
-            // TIDAL refused the token itself: retrying cannot help.
-            if (lastTokenError == "invalid_grant") return
-            Timber.tag(TAG).w("baked TIDAL token sign-in attempt %d: %s", attempt + 1, lastSignInProblem())
+        if (prefs[LegacyDefaultTokenAppliedKey] == null && prefs[LegacyRemoteTokenKey] == null) return
+        val fromSharedToken = prefs[LegacyRemoteTokenKey] != null ||
+            (prefs[LegacyDefaultTokenAppliedKey] == true && !prefs[TidalAccessTokenKey].isNullOrBlank())
+        if (fromSharedToken) signOut(context)
+        context.dataStore.edit {
+            it.remove(LegacyDefaultTokenAppliedKey)
+            it.remove(LegacyRemoteTokenKey)
         }
     }
 
@@ -197,9 +162,6 @@ object TidalAccount {
         if (!isSignedIn(context)) return
         runCatching { accessToken(context) }.onFailure { Timber.tag(TAG).w(it, "TIDAL warm-up failed") }
     }
-
-    /** Waits before each baked-token sign-in attempt; the network may still be coming up at launch. */
-    private val BakedTokenRetryDelaysMs = longArrayOf(0L, 5_000L, 20_000L)
 
     suspend fun save(context: Context, token: TokenResult, flow: String) {
         context.dataStore.edit { p ->
@@ -217,32 +179,8 @@ object TidalAccount {
             listOf(TidalAccessTokenKey, TidalRefreshTokenKey, TidalAccountNameKey, TidalCountryCodeKey, TidalAuthFlowKey)
                 .forEach { p.remove(it) }
             p.remove(TidalTokenExpiryKey)
-            // A baked-in token must not sign the listener straight back in.
-            p[TidalDefaultTokenAppliedKey] = true
         }
         btsPlaybackToken = null
-    }
-
-    /** No more than one on-demand baked-token sign-in per window, so an offline queue does not hammer TIDAL. */
-    private val lastBakedSignInAt = java.util.concurrent.atomic.AtomicLong(0L)
-
-    /**
-     * Signs in with the baked-in token when there is no session or the saved one can no longer be
-     * renewed (a stale session restored from a backup, or one TIDAL signed out). Returns the new
-     * access token, or null when there is no baked token, it is the session that just failed, or
-     * a sign-in ran moments ago.
-     */
-    private suspend fun signInWithBakedToken(context: Context, failedRefreshToken: String?): String? {
-        val baked = defaultToken(context)
-        if (baked.isBlank() || baked == failedRefreshToken) return null
-        val now = android.os.SystemClock.elapsedRealtime()
-        val last = lastBakedSignInAt.get()
-        if (last != 0L && now - last < BAKED_SIGN_IN_GAP_MS) return null
-        if (!lastBakedSignInAt.compareAndSet(last, now)) return null
-        signInWithToken(context, baked) ?: return null
-        context.dataStore.edit { it[TidalDefaultTokenAppliedKey] = true }
-        btsPlaybackToken = null
-        return context.dataStore.data.first()[TidalAccessTokenKey]?.takeIf { it.isNotBlank() }
     }
 
     /** A usable access token, renewed first when it has run out; null when signed out or renewal failed. */
@@ -250,7 +188,7 @@ object TidalAccount {
         refreshLock.withLock {
             val p = context.dataStore.data.first()
             val token = p[TidalAccessTokenKey]?.takeIf { it.isNotBlank() }
-                ?: return@withLock if (canUseBakedToken(context)) signInWithBakedToken(context, null) else null
+                ?: return@withLock null
             val expiry = p[TidalTokenExpiryKey] ?: 0L
             if (!forceRefresh && System.currentTimeMillis() < expiry - EXPIRY_MARGIN_MS) return@withLock token
             val refresh = p[TidalRefreshTokenKey]?.takeIf { it.isNotBlank() }
@@ -260,7 +198,7 @@ object TidalAccount {
             }
             val flow = p[TidalAuthFlowKey] ?: FLOW_PKCE
             val renewed = refreshAccessToken(refresh, flow)
-                ?: return@withLock signInWithBakedToken(context, refresh) ?: if (forceRefresh) null else token
+                ?: return@withLock if (forceRefresh) null else token
             save(context, renewed.copy(refreshToken = renewed.refreshToken ?: refresh, username = renewed.username ?: p[TidalAccountNameKey]), flow)
             renewed.accessToken
         }
@@ -326,71 +264,6 @@ object TidalAccount {
         return token.takeIf { it.length >= 20 }
     }
 
-    // ── Remote token source ──────────────────────────────────────────────────────────────────
-
-    /**
-     * Checks the remote token source compiled into a private build (BuildConfig.TIDAL_TOKEN_URL) and,
-     * when it holds a token other than the last one taken from it, signs in with that token so the
-     * account can be changed without shipping an app update. Runs on every app start. An unchanged
-     * token, an unreachable source or a token TIDAL refuses leaves the current session as it is.
-     */
-    suspend fun syncRemoteToken(context: Context) = withContext(Dispatchers.IO) {
-        val source = BuildConfig.TIDAL_TOKEN_URL
-        if (source.isBlank()) return@withContext
-        val body = fetchTokenSource(source)
-            ?: return@withContext remoteNote(PlaybackLogLevel.WARNING, "token source unreachable; keeping the current session")
-        val token = parseToken(body)
-            ?: return@withContext remoteNote(PlaybackLogLevel.WARNING, "no token found in the token source")
-        val prefs = context.dataStore.data.first()
-        if (token == prefs[TidalRemoteTokenKey]) return@withContext
-        if (token == prefs[TidalRefreshTokenKey]) {
-            context.dataStore.edit { it[TidalRemoteTokenKey] = token }
-            return@withContext
-        }
-        // Only a refresh token may replace the session: an access token would expire within the hour.
-        if (signInWithToken(context, token, allowAccessToken = false) == null) {
-            return@withContext remoteNote(
-                PlaybackLogLevel.WARNING,
-                "new token from the token source was refused: ${lastSignInProblem()}",
-            )
-        }
-        context.dataStore.edit {
-            it[TidalRemoteTokenKey] = token
-            it[TidalDefaultTokenAppliedKey] = true
-        }
-        btsPlaybackToken = null
-        recent.clear()
-        remoteNote(PlaybackLogLevel.INFO, "signed in with a new token from the token source")
-    }
-
-    /** The token source's text, or null when it cannot be read. Bypasses GitHub's five-minute cache. */
-    private fun fetchTokenSource(source: String): String? {
-        val url = source.toHttpUrlOrNull() ?: return null
-        val fresh = if (url.host.endsWith("githubusercontent.com")) {
-            url.newBuilder().setQueryParameter("t", System.currentTimeMillis().toString()).build()
-        } else {
-            url
-        }
-        val request = Request.Builder().url(fresh).header("Cache-Control", "no-cache").get().build()
-        return runCatching {
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@use null
-                val body = response.body ?: return@use null
-                body.source().let { source ->
-                    source.request(MAX_TOKEN_SOURCE_BYTES)
-                    source.buffer.readUtf8(minOf(source.buffer.size, MAX_TOKEN_SOURCE_BYTES))
-                }
-            }
-        }.getOrElse {
-            Timber.tag(TAG).w(it, "token source fetch failed")
-            null
-        }
-    }
-
-    private fun remoteNote(level: PlaybackLogLevel, message: String) {
-        Timber.tag(TAG).i("remote token: %s", message)
-        PlaybackLogManager.log(level, "TIDAL: $message")
-    }
 
     data class PkceChallenge(val verifier: String, val uniqueKey: String, val authUrl: String)
 

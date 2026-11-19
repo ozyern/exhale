@@ -104,7 +104,11 @@ fun ThemeScreen(
 ) {
     val (darkMode, onDarkModeChange) = rememberEnumPreference(DarkModeKey, DarkMode.AUTO)
     // The preview needs this value even though its toggle lives in advanced settings.
-    val (pureBlack) = rememberPreference(PureBlackKey, defaultValue = false)
+    val (pureBlack, onPureBlackChange) = rememberPreference(PureBlackKey, defaultValue = false)
+    val (appBackgroundColorInt, onAppBackgroundColorChange) =
+        rememberPreference(com.ozyern.exhale.constants.AppBackgroundColorKey, defaultValue = 0)
+    val (appTextColorInt, onAppTextColorChange) =
+        rememberPreference(com.ozyern.exhale.constants.AppTextColorKey, defaultValue = 0)
     val (selectedThemeColorInt, onSelectedThemeColorChange) = rememberPreference(
         SelectedThemeColorKey,
         DefaultThemeColor.toArgb()
@@ -131,11 +135,35 @@ fun ThemeScreen(
         onDynamicThemeChange(isDynamicColor)
     }
 
-    // Reset theme colors without deleting the selected home background image.
+    // Reset theme colors without deleting the selected home background image. A theme's page
+    // and text colours go too, or resetting after one left its page colour behind.
+    val sabrina = SabrinaThemeSettings()
     val onReset: () -> Unit = {
         onDarkModeChange(DarkMode.AUTO)
         onSelectedThemeColorChange(DefaultThemeColor.toArgb())
         onDynamicThemeChange(true)
+        if (appBackgroundColorInt == sabrina.background.toArgb()) onAppBackgroundColorChange(0)
+        if (appTextColorInt == sabrina.text.toArgb()) onAppTextColorChange(0)
+    }
+
+    val sabrinaSelected = selectedThemeColorInt == sabrina.accent.toArgb() &&
+        appBackgroundColorInt == sabrina.background.toArgb() &&
+        appTextColorInt == sabrina.text.toArgb() &&
+        darkMode == sabrina.darkMode
+    val applySabrina: () -> Unit = {
+        onSelectedThemeColorChange(sabrina.accent.toArgb())
+        onDynamicThemeChange(false)
+        onAppBackgroundColorChange(sabrina.background.toArgb())
+        onAppTextColorChange(sabrina.text.toArgb())
+        onPureBlackChange(false)
+        onDarkModeChange(sabrina.darkMode)
+    }
+    val presets: @Composable (Modifier) -> Unit = { presetsModifier ->
+        ThemePresetsSection(
+            sabrinaSelected = sabrinaSelected,
+            onApplySabrina = applySabrina,
+            modifier = presetsModifier,
+        )
     }
 
     SettingsPage(
@@ -153,6 +181,7 @@ fun ThemeScreen(
                 onReset = onReset,
                 fontLabel = fontLabel,
                 onFontClick = onFontClick,
+                presets = presets,
             )
         } else {
             PortraitThemeLayout(
@@ -164,6 +193,7 @@ fun ThemeScreen(
                 onReset = onReset,
                 fontLabel = fontLabel,
                 onFontClick = onFontClick,
+                presets = presets,
             )
         }
     }
@@ -179,6 +209,7 @@ fun PortraitThemeLayout(
     onReset: () -> Unit,
     fontLabel: String,
     onFontClick: () -> Unit,
+    presets: @Composable (Modifier) -> Unit = {},
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -209,6 +240,10 @@ fun PortraitThemeLayout(
             selectedThemeColor = selectedThemeColor,
             onSelectedThemeColorChange = onSelectedThemeColorChange,
         )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        presets(Modifier.fillMaxWidth(0.9f))
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -263,6 +298,7 @@ fun LandscapeThemeLayout(
     onReset: () -> Unit,
     fontLabel: String,
     onFontClick: () -> Unit,
+    presets: @Composable (Modifier) -> Unit = {},
 ) {
     Row(
         modifier = Modifier
@@ -303,6 +339,10 @@ fun LandscapeThemeLayout(
                 selectedThemeColor = selectedThemeColor,
                 onSelectedThemeColorChange = onSelectedThemeColorChange,
             )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            presets(Modifier.fillMaxWidth())
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -631,7 +671,7 @@ fun ThemeMockup(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(32.dp)
-                            .background(AppTheme.colorScheme.primary, RoundedCornerShape(6.dp))
+                            .background(AppTheme.colorScheme.primary, com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(6.dp))
                     )
                     
                     Row(
@@ -642,14 +682,14 @@ fun ThemeMockup(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(40.dp)
-                                .background(AppTheme.colorScheme.secondary, RoundedCornerShape(6.dp))
+                                .background(AppTheme.colorScheme.secondary, com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(6.dp))
                         )
                         
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(40.dp)
-                                .background(AppTheme.colorScheme.tertiary, RoundedCornerShape(6.dp))
+                                .background(AppTheme.colorScheme.tertiary, com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(6.dp))
                         )
                     }
                 }
@@ -738,7 +778,7 @@ fun ThemeMockupPortrait(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
-                            .background(AppTheme.colorScheme.primary, RoundedCornerShape(4.dp))
+                            .background(AppTheme.colorScheme.primary, com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(4.dp))
                     )
                     
                     Row(
@@ -751,14 +791,14 @@ fun ThemeMockupPortrait(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .background(AppTheme.colorScheme.secondary, RoundedCornerShape(4.dp))
+                                .background(AppTheme.colorScheme.secondary, com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(4.dp))
                         )
                         
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .background(AppTheme.colorScheme.tertiary, RoundedCornerShape(4.dp))
+                                .background(AppTheme.colorScheme.tertiary, com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(4.dp))
                         )
                     }
                 }

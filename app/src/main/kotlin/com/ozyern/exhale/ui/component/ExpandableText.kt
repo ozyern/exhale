@@ -101,7 +101,7 @@ fun ExpandableText(
             Box(
                 modifier = Modifier
                     .padding(top = 8.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(8.dp))
                     .background(AppTheme.colorScheme.secondaryContainer)
                     .clickable { isExpanded = !isExpanded }
                     .padding(horizontal = 10.dp, vertical = 4.dp)

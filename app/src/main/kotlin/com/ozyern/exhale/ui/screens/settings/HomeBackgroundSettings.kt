@@ -231,7 +231,7 @@ fun HomeBackgroundControls() {
                 .fillMaxWidth()
                 .aspectRatio(16f / 10f)
                 .padding(vertical = 12.dp)
-                .clip(RoundedCornerShape(20.dp))
+                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(20.dp))
                 .background(AppTheme.colorScheme.surfaceContainerHighest),
         ) {
             if (path.isNotEmpty() && isVideo) {

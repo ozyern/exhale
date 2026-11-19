@@ -389,10 +389,23 @@ class FloatingTabBarScrollConnection(
     initialIsInline: Boolean = false,
     private val scrollThresholdPx: Float,
     private val expandThresholdPx: Float = scrollThresholdPx,
-    private val inlineBehavior: FloatingTabBarInlineBehavior = FloatingTabBarInlineBehavior.OnScrollDown
+    private val inlineBehavior: FloatingTabBarInlineBehavior = FloatingTabBarInlineBehavior.OnScrollDown,
+    /**
+     * Read, never stored: false where the bar must not merge with the player (the search input
+     * page). Snapshot reads inside it make [isInline] follow it on the very frame it changes, so
+     * a page that forbids merging never draws one merged frame on arrival.
+     */
+    private val inlineAllowed: () -> Boolean = { true },
 ) : NestedScrollConnection {
-    var isInline by mutableStateOf(initialIsInline)
-        private set
+    private var inlineRequested by mutableStateOf(initialIsInline)
+
+    /** Merged with the player: requested by the scroll, and allowed on this page. */
+    var isInline: Boolean
+        get() = inlineRequested && inlineAllowed()
+        private set(value) {
+            // A scroll on a page that forbids merging must not leave a merge waiting for the next page.
+            inlineRequested = value && inlineAllowed()
+        }
 
     private var accumulatedScroll = 0f
 
@@ -450,7 +463,7 @@ class FloatingTabBarScrollConnection(
         when (inlineBehavior) {
             FloatingTabBarInlineBehavior.OnScrollDown -> {
                 // Collapse needs more hysteresis to avoid flicker; expansion should respond sooner.
-                if (accumulatedScroll <= -scrollThresholdPx && !isInline) {
+                if (accumulatedScroll <= -scrollThresholdPx && !isInline && inlineAllowed()) {
                     isInline = true
                     accumulatedScroll = 0f
                 } else if (accumulatedScroll >= expandThresholdPx && isInline) {
@@ -460,7 +473,7 @@ class FloatingTabBarScrollConnection(
             }
 
             FloatingTabBarInlineBehavior.OnScrollUp -> {
-                if (accumulatedScroll >= scrollThresholdPx && !isInline) {
+                if (accumulatedScroll >= scrollThresholdPx && !isInline && inlineAllowed()) {
                     isInline = true
                     accumulatedScroll = 0f
                 } else if (accumulatedScroll <= -scrollThresholdPx && isInline) {
@@ -493,7 +506,7 @@ class FloatingTabBarScrollConnection(
                 isInline = false
                 accumulatedScroll = 0f
             }
-        } else if (abs(consumed.y) > AtTopSlopPx && !isInline) {
+        } else if (abs(consumed.y) > AtTopSlopPx && !isInline && inlineAllowed()) {
             isInline = true
             accumulatedScroll = 0f
         }
@@ -513,6 +526,7 @@ internal const val AtTopSlopPx = 0.5f
  * enough that the bar returns immediately on scroll up, large enough that a shaky finger
  * mid-scroll cannot oscillate it.
  * @param inlineBehavior controls when the bar collapses to inline mode
+ * @param inlineAllowed read on every check; false keeps the bar expanded (see the class)
  * @return A remembered [FloatingTabBarScrollConnection] instance.
  */
 @Composable
@@ -520,8 +534,10 @@ fun rememberFloatingTabBarScrollConnection(
     initialIsInline: Boolean = false,
     scrollThreshold: Dp = 50.dp,
     expandThreshold: Dp = 8.dp,
-    inlineBehavior: FloatingTabBarInlineBehavior = FloatingTabBarInlineBehavior.OnScrollDown
+    inlineBehavior: FloatingTabBarInlineBehavior = FloatingTabBarInlineBehavior.OnScrollDown,
+    inlineAllowed: () -> Boolean = { true },
 ): FloatingTabBarScrollConnection = with(LocalDensity.current) {
+    val currentInlineAllowed by androidx.compose.runtime.rememberUpdatedState(inlineAllowed)
     val scrollThresholdPx = scrollThreshold.toPx()
     val expandThresholdPx = expandThreshold.toPx()
     remember(scrollThresholdPx, expandThresholdPx, inlineBehavior, initialIsInline) {
@@ -530,6 +546,7 @@ fun rememberFloatingTabBarScrollConnection(
             scrollThresholdPx,
             expandThresholdPx,
             inlineBehavior,
+            inlineAllowed = { currentInlineAllowed() },
         )
     }
 }

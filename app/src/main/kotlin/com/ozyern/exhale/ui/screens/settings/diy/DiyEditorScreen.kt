@@ -807,7 +807,7 @@ private fun EmojiPanel(onPick: (String) -> Unit) {
                     text = emoji,
                     fontSize = 26.sp,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(10.dp))
                         .clickable { onPick(emoji) }
                         .padding(6.dp),
                 )

@@ -26,7 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.isSpecified
@@ -166,7 +166,12 @@ fun IosButton(
 
     Row(
         modifier = modifier
-            .scale(pressScale)
+            // Read in the draw phase: as `.scale(pressScale)` every frame of a press recomposed
+            // the button, and buttons are everywhere.
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
             .then(sizeModifier)
             .then(surface)
             .clickable(

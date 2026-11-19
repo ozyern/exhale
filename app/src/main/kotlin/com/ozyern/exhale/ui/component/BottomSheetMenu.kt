@@ -221,7 +221,7 @@ fun IosGrabber(modifier: Modifier = Modifier, dragOffsetPx: Float = 0f) {
                 scaleX = 1f + stretch * 0.7f
                 scaleY = 1f - stretch * 0.3f
             }
-            .clip(RoundedCornerShape(2.5.dp))
+            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(2.5.dp))
             .background(IosTheme.colors.systemGray3)
     )
 }
