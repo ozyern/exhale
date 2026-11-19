@@ -56,8 +56,8 @@ fun AppNavHost(
         // Tabs swap outright; every other page crossfades in 180ms (see PageMotion).
         enterTransition = { PageMotion.enter(initialState.destination.route, targetState.destination.route) },
         exitTransition = { PageMotion.exit(initialState.destination.route, targetState.destination.route) },
-        popEnterTransition = { PageMotion.enter(initialState.destination.route, targetState.destination.route) },
-        popExitTransition = { PageMotion.exit(initialState.destination.route, targetState.destination.route) },
+        popEnterTransition = { PageMotion.popEnter(initialState.destination.route, targetState.destination.route) },
+        popExitTransition = { PageMotion.popExit(initialState.destination.route, targetState.destination.route) },
         modifier = Modifier.fillMaxSize(),
     ) {
         navigationBuilder(

@@ -34,6 +34,7 @@ import com.ozyern.artwork.ArtworkSourceRegistry
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onPlaced
 import androidx.navigation.NavBackStackEntry
+import androidx.compose.ui.Alignment
 
 /** Shared-transition scope around the NavHost; null outside navigation and previews. */
 val LocalSharedTransitionScope = compositionLocalOf<SharedTransitionScope?> { null }
@@ -311,41 +312,21 @@ fun Modifier.sharedArtworkSource(id: String?, thumbnailUrl: String? = null, owne
     return if (state.selected?.owner != owner || state.selected?.id != id) {
         then(track)
     } else {
-        then(track).sharedArtworkElement(id)
+        // The tapped tile is the small end of the card the page grows out of (ContainerTransform).
+        then(track).containerTransformElement(id, ContentScale.Crop, Alignment.Center)
     }
 }
 
-/** Marks the destination hero as the other end of the morph. Place before size, clip, and shadow. */
+/**
+ * The hero no longer flies on its own: the whole page grows out of the tile (see
+ * [sharedPageTarget]), the cover with it. Kept so the heroes that mark themselves still compile.
+ */
+@Suppress("UnusedReceiverParameter")
 @Composable
-fun Modifier.sharedArtworkTarget(): Modifier {
-    val id = LocalMorphArtworkId.current ?: return this
-    if (!hasMorphSource(id)) return this
-    return sharedArtworkElement(id)
-}
+fun Modifier.sharedArtworkTarget(): Modifier = this
 
 /** Artwork id provided to a morph destination; null outside a morph route. */
 val LocalMorphArtworkId = compositionLocalOf<String?> { null }
 
-/** Adds a shared element when both transition scopes are available. */
-@Composable
-private fun Modifier.sharedArtworkElement(id: String): Modifier {
-    // Pages crossfade (PageMotion): a square tile's cover flying into the tall, full-bleed hero
-    // changed shape on the way and never read cleanly.
-    if (!PageFlights) return this
-    val sharedScope = LocalSharedTransitionScope.current
-    val animatedScope = LocalNavAnimatedVisibilityScope.current
-    if (sharedScope == null || animatedScope == null) return this
-    return with(sharedScope) {
-        this@sharedArtworkElement.sharedElement(
-            sharedContentState = rememberSharedContentState(SharedArtworkKey(id)),
-            animatedVisibilityScope = animatedScope,
-            boundsTransform = { _, _ -> Motion.sharedArtwork() },
-            // Draw above both pages so their clips cannot cut off the artwork.
-            renderInOverlayDuringTransition = true,
-            zIndexInOverlay = 1f,
-        )
-    }
-}
-
-/** Whether covers and titles fly between a tile and the page it opens. Off: pages crossfade. */
+/** Whether a title flies on its own between a tile and the page header. Off: it rides the card. */
 private const val PageFlights = false

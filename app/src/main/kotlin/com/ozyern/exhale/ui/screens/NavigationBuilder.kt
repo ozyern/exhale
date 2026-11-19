@@ -113,6 +113,7 @@ import com.ozyern.exhale.core.commitscreen.CommitScreen
 import com.ozyern.exhale.ui.screens.equalizer.axion.AxionEqScreen
 import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 import com.ozyern.exhale.ui.utils.PageMotion
+import com.ozyern.exhale.ui.utils.sharedPageTarget
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 fun NavGraphBuilder.navigationBuilder(
@@ -250,8 +251,8 @@ fun NavGraphBuilder.navigationBuilder(
         ),
         enterTransition = { PageMotion.enter(initialState.destination.route, targetState.destination.route) },
         exitTransition = { PageMotion.exit(initialState.destination.route, targetState.destination.route) },
-        popEnterTransition = { PageMotion.enter(initialState.destination.route, targetState.destination.route) },
-        popExitTransition = { PageMotion.exit(initialState.destination.route, targetState.destination.route) },
+        popEnterTransition = { PageMotion.popEnter(initialState.destination.route, targetState.destination.route) },
+        popExitTransition = { PageMotion.popExit(initialState.destination.route, targetState.destination.route) },
     ) {
         com.ozyern.exhale.ui.theme.ForcedDarkScope { OnlineSearchResult(navController) }
     }
@@ -764,13 +765,15 @@ private fun NavGraphBuilder.sharedComposable(
         arguments = arguments,
         enterTransition = { PageMotion.enter(initialState.destination.route, targetState.destination.route) },
         exitTransition = { PageMotion.exit(initialState.destination.route, targetState.destination.route) },
-        popEnterTransition = { PageMotion.enter(initialState.destination.route, targetState.destination.route) },
-        popExitTransition = { PageMotion.exit(initialState.destination.route, targetState.destination.route) },
+        popEnterTransition = { PageMotion.popEnter(initialState.destination.route, targetState.destination.route) },
+        popExitTransition = { PageMotion.popExit(initialState.destination.route, targetState.destination.route) },
     ) { entry ->
         CompositionLocalProvider(
             LocalNavAnimatedVisibilityScope provides this,
             LocalMorphArtworkId provides entry.morphArtworkId(),
         ) {
+          // The whole page is the large end of the card it grows out of, when a tile was tapped.
+          androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().sharedPageTarget()) {
             if (collection) {
                 val corner = com.ozyern.exhale.ui.player.rememberScreenCornerRadius()
                 val shape = remember(corner) { ContinuousRoundedRectangle(corner) }
@@ -782,6 +785,7 @@ private fun NavGraphBuilder.sharedComposable(
                     },
                 ) { com.ozyern.exhale.ui.theme.ForcedDarkScope(darkRoute) { content(entry) } }
             } else com.ozyern.exhale.ui.theme.ForcedDarkScope(darkRoute) { content(entry) }
+          }
         }
     }
 }
