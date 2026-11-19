@@ -89,7 +89,7 @@ fun AudioQualityBadge(
                 sampleRate = sampleRate,
                 bitDepth = bitDepth,
                 channels = channels,
-                source = if (currentFormat?.itag == ARCHIVE_FLAC_ITAG) "Internet Archive" else null,
+                source = if (currentFormat?.itag == ARCHIVE_FLAC_ITAG) stringResource(R.string.lossless_source_name) else null,
             ),
             onOpenSettings = onOpenQualitySettings,
             onDismiss = { showCard = false },
