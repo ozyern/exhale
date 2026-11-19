@@ -29,9 +29,10 @@ internal object Recordings {
     private val known = LinkedHashMap<String, String?>()
     private const val Remembered = 64
 
-    suspend fun isrc(title: String, artist: String, durationMs: Long, album: String?): String? {
+    /** Held across the lookup, so the sources asking at once wait for one answer instead of each asking. */
+    suspend fun isrc(title: String, artist: String, durationMs: Long, album: String?): String? = lock.withLock {
         val key = "$title|$artist|$durationMs"
-        lock.withLock { if (key in known) return known[key] }
+        if (key in known) return@withLock known[key]
         val found = try {
             withTimeoutOrNull(IdentifyTimeoutMs) { BiniLyrics.identify(title, artist, durationMs, album)?.isrc }
                 ?.takeIf { it.isNotBlank() }
@@ -40,10 +41,8 @@ internal object Recordings {
         } catch (_: Exception) {
             null
         }
-        lock.withLock {
-            known[key] = found
-            if (known.size > Remembered) known.remove(known.keys.first())
-        }
-        return found
+        known[key] = found
+        if (known.size > Remembered) known.remove(known.keys.first())
+        found
     }
 }

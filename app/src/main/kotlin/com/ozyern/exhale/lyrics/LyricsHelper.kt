@@ -82,8 +82,9 @@ class LyricsHelper(
                 policy.consider(it.provider, providers.indexOfFirst { p -> p.id == it.provider }, it.lyrics)
             }
             val remaining = providers.indices.toMutableList()
-            // Keep one fast line fallback in the first window while the leading
-            // word providers work. No more than three source attempts run at once.
+            // Every source is asked at once, as Exhale for Windows asks them: each now tries several
+            // phrasings, and three at a time left the later sources unasked before the deadline.
+            // LRCLIB still goes out early as the fast line-timed fallback.
             val fallback = providers.indexOfFirst { it.id == "LrcLib" }
             if (fallback > 2) { remaining.remove(fallback); remaining.add(2, fallback) }
             val answers = Channel<Pair<Int, Result<String>>>(Channel.UNLIMITED)
@@ -91,7 +92,7 @@ class LyricsHelper(
             val completed = hashSetOf<Int>()
             var inFlight = 0
             fun fillWindow() {
-                while (inFlight < 3 && remaining.isNotEmpty()) {
+                while (remaining.isNotEmpty()) {
                     val bestWord = policy.best?.takeIf { it.sync == LyricsSyncLevel.WORD }
                     val next = if (bestWord == null) 0 else remaining.indexOfFirst { it < bestWord.priority }
                     if (next < 0) break

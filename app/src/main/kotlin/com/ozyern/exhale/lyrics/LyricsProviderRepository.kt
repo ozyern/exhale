@@ -36,7 +36,8 @@ class LyricsProviderRepository(private val context: Context) {
 
     private val lock = Any()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val gate = Semaphore(3)
+    /** Room for every source at once (there are seventeen), as Exhale for Windows asks them. */
+    private val gate = Semaphore(17)
     private val attempts = LinkedHashMap<Key, Attempt>(40, 0.75f, true)
     private val revision = MutableStateFlow(0L)
 
