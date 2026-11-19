@@ -171,6 +171,22 @@
                 <data android:host="listen" />
             </intent-filter>
 
+            <!-- Links shared from Exhale (exhale.ozyern.me). Verified separately from the YouTube
+                 hosts below, against /.well-known/assetlinks.json on the domain. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="https" />
+                <data android:host="exhale.ozyern.me" />
+                <data android:pathPrefix="/watch" />
+                <data android:pathPrefix="/playlist" />
+                <data android:pathPrefix="/channel/" />
+                <data android:pathPrefix="/browse/" />
+            </intent-filter>
+
             <!-- Youtube filter -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />

@@ -3,7 +3,8 @@ package com.music.innertube.models
 import com.music.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_ATV
 import com.music.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_PODCAST_EPISODE
 
-const val SHARE_DOMAIN = "music.youtube.com"
+/** Where shared links point: Exhale's own domain, on YouTube Music's paths (see ShareUtils). */
+const val SHARE_DOMAIN = "exhale.ozyern.me"
 const val SHARE_BASE_URL = "https://$SHARE_DOMAIN"
 
 sealed class YTItem {

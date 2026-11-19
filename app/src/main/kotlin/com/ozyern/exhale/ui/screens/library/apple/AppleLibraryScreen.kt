@@ -545,7 +545,7 @@ internal fun LibraryItemMenu(
             cover = item.artworkUrls.firstOrNull(),
             subtitle = pluralStringResource(R.plurals.n_song, item.songCount, item.songCount),
             loadSongs = { localPlaylistSongDataSource.loadSongs(item.id).map { it.song } },
-            shareUrl = item.browseId?.let { "https://music.youtube.com/playlist?list=$it" },
+            shareUrl = item.browseId?.let(com.ozyern.exhale.utils.ShareUtils::playlistUrl),
             isPinned = item.pinnedAtEpochMillis != null,
             pinLabel = R.string.pin_playlist,
             unpinLabel = R.string.unpin_playlist,
