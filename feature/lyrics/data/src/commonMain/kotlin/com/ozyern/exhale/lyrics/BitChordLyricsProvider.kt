@@ -2,26 +2,73 @@ package com.ozyern.exhale.lyrics
 
 import com.ozyern.exhale.lyrics.bitchord.*
 import kotlinx.coroutines.CancellationException
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
-/** BitChord's providers, adapted to Exhale's persisted lyric format. */
+/** How long a source may keep rephrasing before its answer would arrive too late to be used. */
+private val PhrasingBudget = 9.seconds
+
+/** One question to a source: the song, how it is phrased, and the recording when it is known. */
+class LyricsAsk(
+    val id: String,
+    val title: String,
+    val artist: String,
+    val durationMs: Long,
+    val album: String?,
+    val isrc: String?,
+)
+
+/**
+ * BitChord's providers, adapted to Exhale's persisted lyric format and asked the way Exhale for
+ * Windows asks them: the recording named first where a source can use it ([usesRecording]), then
+ * every phrasing in turn ([LyricsSearch.phrasings]), and for the sources that match on length, once
+ * more with the length set aside ([lengthFree]), since a video's runtime carries its intro and tail.
+ * Whatever answers has to fit the song ([LyricsSearch.fits]) or the next phrasing is tried.
+ */
 class BitChordLyricsProvider(
     override val id: String,
     override val displayName: String,
-    private val lookup: suspend (String, String, String, Long, String?) -> List<LyricLine>?,
+    private val usesRecording: Boolean = false,
+    private val lengthFree: Boolean = false,
+    private val lookup: suspend (LyricsAsk) -> List<LyricLine>?,
 ) : LyricsProvider {
     override val requiresVideoId: Boolean get() = id == "SimpMusic"
 
     override suspend fun getLyrics(id: String, title: String, artist: String, duration: Int, album: String?): Result<String> = try {
-        // The song and artist as a lyrics site files them (see LyricsSearch): a YouTube title
-        // asked verbatim missed every source, or matched another song.
-        val (song, singer) = LyricsSearch.query(title, artist)
         val durationMs = duration.toLong() * 1000L
-        val lines = lookup(id, song, singer, durationMs, album)
+        val phrasings = LyricsSearch.phrasings(title, artist)
+        val isrc = if (usesRecording) {
+            phrasings.firstOrNull()?.let { (song, singer) -> Recordings.isrc(song, singer, durationMs, album) }
+        } else {
+            null
+        }
+        val asks = phrasings.map { (song, singer) -> LyricsAsk(id, song, singer, durationMs, album, isrc) } +
+            listOfNotNull(
+                phrasings.firstOrNull()
+                    ?.takeIf { lengthFree && durationMs > 0 }
+                    ?.let { (song, singer) -> LyricsAsk(id, song, singer, 0L, null, isrc) },
+            )
+        var timedForAnother = false
+        var found: List<LyricLine>? = null
+        // A source that looks songs up by video id has nothing to rephrase.
+        val started = TimeSource.Monotonic.markNow()
+        for (ask in if (requiresVideoId) asks.take(1) else asks) {
+            // The repository gives a source twelve seconds in all; no new phrasing after nine.
+            if (started.elapsedNow() > PhrasingBudget) break
+            val lines = lookup(ask)
+            if (lines.isNullOrEmpty()) continue
+            // Timed for another cut of the song: try the next phrasing, then let the next source answer.
+            if (!LyricsSearch.fits(lines, durationMs, title)) {
+                timedForAnother = true
+                continue
+            }
+            found = lines
+            break
+        }
         when {
-            lines.isNullOrEmpty() -> Result.failure(NoSuchElementException("No lyrics found"))
-            // Timed for another cut of the song: let the next source answer instead.
-            !LyricsSearch.fits(lines, durationMs, title) -> Result.failure(NoSuchElementException("Lyrics are timed for another version"))
-            else -> Result.success(lines.toExhaleLyrics())
+            found != null -> Result.success(found.toExhaleLyrics())
+            timedForAnother -> Result.failure(NoSuchElementException("Lyrics are timed for another version"))
+            else -> Result.failure(NoSuchElementException("No lyrics found"))
         }
     } catch (cancelled: CancellationException) {
         throw cancelled
@@ -48,20 +95,28 @@ internal fun List<LyricLine>.toExhaleLyrics(): String {
 
 object BitChordLyricsProviders {
     val all: List<LyricsProvider> = listOf(
-        BitChordLyricsProvider("LrcRed", "lrc.red") { _, t, a, d, _ -> LrcRed.lyrics(t, a, d) },
-        BitChordLyricsProvider("BiniLyrics", "BiniLyrics") { _, t, a, d, al -> BiniLyrics.lyrics(t, a, d, al)?.lines },
-        BitChordLyricsProvider("BetterLyrics", "Better Lyrics") { _, t, a, d, al -> BetterLyrics.lyrics(t, a, d, al) },
-        BitChordLyricsProvider("BetterLyricsPortato", "BetterLyrics Portato") { _, t, a, d, al -> BetterLyrics.portato(t, a, d, al) },
-        BitChordLyricsProvider("Paxsenix", "PaxSenix") { _, t, a, d, al -> PaxSenix.lyrics(t, a, d, al) },
-        BitChordLyricsProvider("PaxsenixSpotify", "PaxSenix: Spotify") { _, t, a, d, _ -> PaxSenix.spotifyLyrics(t, a, d) },
-        BitChordLyricsProvider("PaxsenixMusixmatch", "PaxSenix: Musixmatch") { _, t, a, d, _ -> PaxSenix.musixmatchLyrics(t, a, d) },
-        BitChordLyricsProvider("YouLyPlus", "LyricsPlus") { _, t, a, d, al -> LyricsPlus.lyrics(t, a, d, al) },
-        BitChordLyricsProvider("SimpMusic", "SimpMusic") { videoId, _, _, d, _ -> SimpMusicLyrics.lyrics(videoId, d) },
-        BitChordLyricsProvider("Unison", "Unison") { _, t, a, d, al -> Unison.lyrics(t, a, d, al) },
-        BitChordLyricsProvider("Megalobiz", "Megalobiz") { _, t, a, _, _ -> Megalobiz.lyrics(t, a) },
-        BitChordLyricsProvider("Kugou", "KuGou") { _, t, a, d, al -> KuGou.lyrics(t, a, d, al) },
-        BitChordLyricsProvider("LrcLib", "LRCLIB") { _, t, a, d, _ -> LrcLib.lyrics(t, a, d) },
-        BitChordLyricsProvider("Musixmatch", "Musixmatch") { _, t, a, d, _ -> Musixmatch.lyrics(t, a, d) },
-        BitChordLyricsProvider("Genius", "Genius") { _, t, a, _, _ -> Genius.lyrics(t, a) },
+        BitChordLyricsProvider("LrcRed", "lrc.red", usesRecording = true) { LrcRed.lyrics(it.title, it.artist, it.durationMs, it.isrc) },
+        BitChordLyricsProvider("BiniLyrics", "BiniLyrics", usesRecording = true) {
+            BiniLyrics.lyrics(it.title, it.artist, it.durationMs, it.album, it.isrc)?.lines
+        },
+        BitChordLyricsProvider("BetterLyrics", "Better Lyrics", lengthFree = true) {
+            BetterLyrics.lyrics(it.title, it.artist, it.durationMs, it.album)
+        },
+        BitChordLyricsProvider("BetterLyricsPortato", "BetterLyrics Portato", lengthFree = true) {
+            BetterLyrics.portato(it.title, it.artist, it.durationMs, it.album)
+        },
+        BitChordLyricsProvider("Paxsenix", "PaxSenix") { PaxSenix.lyrics(it.title, it.artist, it.durationMs, it.album) },
+        BitChordLyricsProvider("PaxsenixSpotify", "PaxSenix: Spotify") { PaxSenix.spotifyLyrics(it.title, it.artist, it.durationMs) },
+        BitChordLyricsProvider("PaxsenixMusixmatch", "PaxSenix: Musixmatch") { PaxSenix.musixmatchLyrics(it.title, it.artist, it.durationMs) },
+        BitChordLyricsProvider("YouLyPlus", "LyricsPlus", usesRecording = true) {
+            LyricsPlus.lyrics(it.title, it.artist, it.durationMs, it.album, it.isrc)
+        },
+        BitChordLyricsProvider("SimpMusic", "SimpMusic") { SimpMusicLyrics.lyrics(it.id, it.durationMs) },
+        BitChordLyricsProvider("Unison", "Unison") { Unison.lyrics(it.title, it.artist, it.durationMs, it.album) },
+        BitChordLyricsProvider("Megalobiz", "Megalobiz") { Megalobiz.lyrics(it.title, it.artist) },
+        BitChordLyricsProvider("Kugou", "KuGou", lengthFree = true) { KuGou.lyrics(it.title, it.artist, it.durationMs, it.album) },
+        BitChordLyricsProvider("LrcLib", "LRCLIB") { LrcLib.lyrics(it.title, it.artist, it.durationMs) },
+        BitChordLyricsProvider("Musixmatch", "Musixmatch") { Musixmatch.lyrics(it.title, it.artist, it.durationMs) },
+        BitChordLyricsProvider("Genius", "Genius") { Genius.lyrics(it.title, it.artist) },
     )
 }

@@ -34,6 +34,26 @@ object LyricsSearch {
     }
 
     /**
+     * Every way worth asking a lyrics site for this song, best first, without repeats: as a lyrics
+     * site files it ([query]), then with the singer the title credits instead of the uploader,
+     * then exactly as written on YouTube with every artist. A source that misses on one phrasing
+     * often has the song under another, which is most of what Exhale for Windows finds here that a
+     * single question did not.
+     */
+    fun phrasings(title: String, artists: String): List<Pair<String, String>> {
+        val artistList = artists.split(", ").map(String::trim).filter(String::isNotEmpty)
+        val primary = query(title, artists)
+        val credited = creditedArtist(title, artistList)
+            ?.let(::artistOfChannel)
+            ?.artistForLyricsSearch()
+            ?.let { primary.first to it }
+        val asWritten = title.trim() to artistList.joinToString(", ")
+        return listOfNotNull(primary, credited, asWritten)
+            .filter { (song, artist) -> song.isNotBlank() && artist.isNotBlank() }
+            .distinctBy { (song, artist) -> song.lowercase() to artist.lowercase() }
+    }
+
+    /**
      * Whether timed lyrics could belong to the recording playing, judged by their timestamps against
      * its length. Another cut's timings (a radio edit, a live take, a video with an intro) run past the
      * end, start late or stop far short, and scroll out of step from the first verse; turned away, the

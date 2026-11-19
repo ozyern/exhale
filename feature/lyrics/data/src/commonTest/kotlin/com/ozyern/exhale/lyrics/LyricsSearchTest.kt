@@ -33,6 +33,18 @@ class LyricsSearchTest {
         assertEquals("Espresso" to "Sabrina Carpenter", LyricsSearch.query("Espresso", "Sabrina Carpenter"))
     }
 
+    @Test fun phrasingsTryTheSingerThenTheTitleAsWritten() {
+        val upload = "Re Bawri (Song) | Alia Bhatt | Sona Mohapatra | T-Series"
+        assertEquals(
+            listOf("Re Bawri" to "Alia Bhatt", upload to "T-Series"),
+            LyricsSearch.phrasings(upload, "T-Series"),
+        )
+    }
+
+    @Test fun aPlainTitleIsAskedOnce() {
+        assertEquals(listOf("Espresso" to "Sabrina Carpenter"), LyricsSearch.phrasings("Espresso", "Sabrina Carpenter"))
+    }
+
     private fun timed(vararg seconds: Int) = seconds.map { LyricLine(it * 1000L, "line $it") }
 
     @Test fun timingsFromAnotherCutAreTurnedAway() {
