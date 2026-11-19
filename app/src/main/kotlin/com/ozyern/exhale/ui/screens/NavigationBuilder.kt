@@ -112,6 +112,7 @@ import com.ozyern.exhale.core.changelog.ChangelogScreen
 import com.ozyern.exhale.core.commitscreen.CommitScreen
 import com.ozyern.exhale.ui.screens.equalizer.axion.AxionEqScreen
 import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
+import com.ozyern.exhale.ui.utils.PageMotion
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 fun NavGraphBuilder.navigationBuilder(
@@ -247,26 +248,10 @@ fun NavGraphBuilder.navigationBuilder(
                 type = NavType.StringType
             },
         ),
-        enterTransition = {
-            fadeIn(Motion.push()) + slideInHorizontally(Motion.push()) { it / 3 }
-        },
-        exitTransition = {
-            if (targetState.destination.route?.startsWith("search/") == true) {
-                fadeOut(Motion.push())
-            } else {
-                fadeOut(Motion.push(), targetAlpha = Motion.PushDimAlpha) + slideOutHorizontally(Motion.push()) { Motion.parallaxOffset(it) }
-            }
-        },
-        popEnterTransition = {
-            if (initialState.destination.route?.startsWith("search/") == true) {
-                fadeIn(Motion.push())
-            } else {
-                fadeIn(Motion.push()) + slideInHorizontally(Motion.push()) { Motion.parallaxOffset(-it) }
-            }
-        },
-        popExitTransition = {
-            fadeOut(Motion.appearExit())
-        },
+        enterTransition = { PageMotion.enter(initialState.destination.route, targetState.destination.route) },
+        exitTransition = { PageMotion.exit(initialState.destination.route, targetState.destination.route) },
+        popEnterTransition = { PageMotion.enter(initialState.destination.route, targetState.destination.route) },
+        popExitTransition = { PageMotion.exit(initialState.destination.route, targetState.destination.route) },
     ) {
         com.ozyern.exhale.ui.theme.ForcedDarkScope { OnlineSearchResult(navController) }
     }
@@ -777,46 +762,10 @@ private fun NavGraphBuilder.sharedComposable(
     composable(
         route = route,
         arguments = arguments,
-        enterTransition = {
-            if (collection) {
-                // A cover flying out of a tile: the page gathers in place around it.
-                if (com.ozyern.exhale.ui.utils.isArtworkMorph()) fadeIn(tween(PageEnterMillis, easing = FastOutSlowInEasing))
-                else slideInHorizontally(Motion.collectionPush()) { it }
-            } else if (detail && com.ozyern.exhale.ui.utils.isArtworkMorph()) {
-                fadeIn(tween(PageEnterMillis, easing = FastOutSlowInEasing))
-            } else if (detail) {
-                slideInHorizontally(tween(PageEnterMillis, easing = FastOutSlowInEasing)) { it } +
-                    fadeIn(tween(PageEnterMillis, easing = FastOutSlowInEasing))
-            } else {
-                fadeIn(tween(Motion.PushMillis))
-            }
-        },
-        exitTransition = {
-            val nextCollection = targetState.destination.route?.let { it.startsWith("album/") || it.contains("playlist/") } == true
-            if (nextCollection) fadeOut(tween(PageExitMillis), targetAlpha = if (com.ozyern.exhale.ui.utils.isLibraryArtworkMorph()) 0f else .999f)
-            else fadeOut(tween(PageExitMillis), targetAlpha = 0.7f)
-        },
-        popEnterTransition = {
-            val leavingCollection = initialState.destination.route?.let { it.startsWith("album/") || it.contains("playlist/") } == true
-            if (leavingCollection) fadeIn(tween(PageEnterMillis), initialAlpha = if (com.ozyern.exhale.ui.utils.isLibraryArtworkMorph()) 0f else .999f)
-            else fadeIn(tween(PageEnterMillis), initialAlpha = 0.7f)
-        },
-        popExitTransition = {
-            if (collection) {
-                // The cover flies home to its tile; the page lets go in place rather than sliding
-                // off without it.
-                if (com.ozyern.exhale.ui.utils.isArtworkMorph()) fadeOut(tween(PageExitMillis, easing = FastOutSlowInEasing))
-                else slideOutHorizontally(Motion.collectionPush()) { it }
-            } else if (detail && com.ozyern.exhale.ui.utils.isArtworkMorph()) {
-                fadeOut(tween(PageExitMillis, easing = FastOutSlowInEasing))
-            } else if (detail) {
-                // Tween, not spring: predictive back scrubs this by gesture progress.
-                slideOutHorizontally(tween(PageExitMillis, easing = FastOutSlowInEasing)) { it / 4 } +
-                    fadeOut(tween(PageExitMillis, easing = FastOutSlowInEasing))
-            } else {
-                fadeOut(Motion.appearExit())
-            }
-        },
+        enterTransition = { PageMotion.enter(initialState.destination.route, targetState.destination.route) },
+        exitTransition = { PageMotion.exit(initialState.destination.route, targetState.destination.route) },
+        popEnterTransition = { PageMotion.enter(initialState.destination.route, targetState.destination.route) },
+        popExitTransition = { PageMotion.exit(initialState.destination.route, targetState.destination.route) },
     ) { entry ->
         CompositionLocalProvider(
             LocalNavAnimatedVisibilityScope provides this,

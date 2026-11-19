@@ -340,35 +340,19 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRise(
 ) {
     // The bar, as it is: its glass and its words. Its cover stands aside for the travelling one.
     drawDockedMini(mini, miniLayer)
-    val groundAlpha = riseGroundAlpha(fraction)
-    if (groundAlpha <= 0f) return
+    // Ground and all, as the reference does: the whole player clears out of the way a little ahead
+    // of the artwork, so the cover lands on the bar rather than on a ghost of the player.
+    val alpha = riseAlpha(fraction)
+    if (alpha <= 0f) return
     translate(top = riseSheetTop(size.height, fraction)) {
-        // The ground slides as a solid sheet: faded with the rest, the page showed through the
-        // half-open player and its words floated over it.
-        fullBackgroundLayer.alpha = groundAlpha
+        fullBackgroundLayer.alpha = alpha
         fullBackgroundLayer.renderEffect = null
         drawLayer(fullBackgroundLayer)
-        val contentAlpha = riseAlpha(fraction)
-        if (contentAlpha > 0f) {
-            fullContentLayer.alpha = contentAlpha
-            fullContentLayer.renderEffect = null
-            drawLayer(fullContentLayer)
-        }
+        fullContentLayer.alpha = alpha
+        fullContentLayer.renderEffect = null
+        drawLayer(fullContentLayer)
     }
 }
-
-/**
- * The sheet's ground while it docks: solid for most of the travel, let go only over the last
- * stretch, where the sheet is low enough that the bar it lands on has to show through it.
- */
-internal fun riseGroundAlpha(fraction: Float): Float {
-    val t = ((sanitizedProgress(fraction) - RISE_GROUND_FADE_END) / (RISE_GROUND_SOLID_FROM - RISE_GROUND_FADE_END))
-        .coerceIn(0f, 1f)
-    return t * t * (3f - 2f * t)
-}
-
-private const val RISE_GROUND_FADE_END = 0.04f
-private const val RISE_GROUND_SOLID_FROM = 0.3f
 
 /** The mini player drawn whole at its own place, beneath whatever is travelling. */
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawDockedMini(

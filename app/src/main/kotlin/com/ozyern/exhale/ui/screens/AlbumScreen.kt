@@ -204,6 +204,7 @@ import com.music.innertube.models.SongItem
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import com.ozyern.exhale.ui.theme.albumPagePalette
+import com.ozyern.exhale.ui.theme.rememberDominantArtworkColor
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -363,8 +364,11 @@ fun AlbumScreen(
     )
     // The page in the record's own colour: a deep tint of the artwork's main colour behind
     // everything, and the credits, facts and notes in a pale tint of the same hue.
-    val pagePalette = remember(appleAlbum?.bgColor, estimatedArtworkBg) {
-        albumPagePalette(appleAlbum?.bgColor ?: estimatedArtworkBg ?: 0x1C1C1E)
+    // Seeded from the colour the cover is mostly made of, as the reference reads it; Apple's own
+    // background colour only while that is still being read.
+    val dominantArtwork = rememberDominantArtworkColor(bgUrl)
+    val pagePalette = remember(dominantArtwork, appleAlbum?.bgColor, estimatedArtworkBg) {
+        albumPagePalette(dominantArtwork ?: appleAlbum?.bgColor ?: estimatedArtworkBg ?: 0x1C1C1E)
     }
     val tint by androidx.compose.animation.animateColorAsState(pagePalette.background, label = "albumPage")
     val tintVariant by androidx.compose.animation.animateColorAsState(pagePalette.onBackgroundVariant, label = "albumPageText")

@@ -6,6 +6,7 @@
 package com.ozyern.exhale.ui.player
 
 import com.ozyern.exhale.ui.component.filmGrain
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
@@ -185,7 +186,11 @@ fun NowPlayingBackground(
                     else Brush.verticalGradient(0f to top, 0.606f to top, 1f to bottom))
             },
     ) {
-        if (hero && videoLook == null) {
+        val (liveSetting) = com.ozyern.exhale.utils.rememberPreference(com.ozyern.exhale.constants.PlayerLiveArtworkKey, true)
+        // Master's live ground, under the hero as well as the square: the cover's colours moving
+        // slowly, and the cover itself bled down the screen beneath the banner.
+        val liveGround = live && liveSetting && videoLook == null
+        if (hero && videoLook == null && !liveGround) {
             // The cover's own colours, hung from where the hero stops: the screen carries on in the
             // colours the cover ends in.
             val mesh = rememberArtworkMesh(artworkUrl)
@@ -195,8 +200,7 @@ fun NowPlayingBackground(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        val (liveSetting) = com.ozyern.exhale.utils.rememberPreference(com.ozyern.exhale.constants.PlayerLiveArtworkKey, true)
-        if (!hero && live && liveSetting && videoLook == null) {
+        if (liveGround) {
             val playing = com.ozyern.exhale.LocalPlayerConnection.current?.isPlaying
                 ?.collectAsState()?.value ?: false
             // The little movement that shows through the bleed, as on Exhale master's player.
@@ -213,7 +217,7 @@ fun NowPlayingBackground(
             animationSpec = tween(if (showBleed) 650 else 180),
             label = "nowPlayingBleedIn",
         )
-        if (!hero && videoLook == null && bleedAlpha > 0f) {
+        if ((!hero || liveGround) && videoLook == null && bleedAlpha > 0f) {
             androidx.compose.animation.Crossfade(
                 targetState = artworkUrl,
                 animationSpec = tween(transitionMillis),
@@ -226,7 +230,33 @@ fun NowPlayingBackground(
                     .filmGrain(0.07f),
             ) { url ->
                 // The square look has no full-width cover: the whole cover, blurred, is its ground.
-                if (url != null) BleedingArtwork(url, heroFraction = if (hero) HERO_FRACTION else 1f)
+                // The hero's bleed starts where its banner stops, so the cover never ends.
+                if (url != null) {
+                    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+                        val heroFraction = if (hero && constraints.maxHeight > 0) {
+                            heroSeamPx(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat()) / constraints.maxHeight
+                        } else {
+                            1f
+                        }
+                        BleedingArtwork(url, heroFraction = heroFraction)
+                    }
+                }
+            }
+            if (hero && liveGround) {
+                // Only as dark as the controls need: clear under the cover, deepening to the transport.
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = bleedAlpha }
+                        .background(
+                            Brush.verticalGradient(
+                                0f to Color.Black.copy(alpha = 0.06f),
+                                0.45f to Color.Black.copy(alpha = 0.16f),
+                                0.75f to Color.Black.copy(alpha = 0.30f),
+                                1f to Color.Black.copy(alpha = 0.46f),
+                            ),
+                        ),
+                )
             }
         }
         val pageBlur = rememberFullArtworkBlur(artworkUrl)

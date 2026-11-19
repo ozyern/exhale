@@ -1135,6 +1135,21 @@ private fun PlayerV2Content(
                                         },
                                         label = "coverMorphFrac",
                                     ) { if (it == EnterExitState.Visible) 0f else 1f }
+                                    // Master's live cover. The drift breathes in once the player has
+                                    // settled and out the moment it moves, so every flight into the
+                                    // dock or a page header leaves from, and lands on, the still frame.
+                                    val coverSettled = state.isExpanded && !state.isDragging && !PlayerMorph.active
+                                    val coverDriftClock = rememberCoverDrift(playing = isPlaying, settled = coverSettled)
+                                    val coverLive = animateFloatAsState(
+                                        targetValue = if (isHeroLook && coverSettled) 1f else 0f,
+                                        animationSpec = tween(if (coverSettled) 900 else 160),
+                                        label = "coverLive",
+                                    )
+                                    val coverPauseDepth = animateFloatAsState(
+                                        targetValue = if (isHeroLook && !isPlaying) 1f else 0f,
+                                        animationSpec = spring(dampingRatio = 0.86f, stiffness = 170f),
+                                        label = "coverPauseDepth",
+                                    )
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
@@ -1144,6 +1159,12 @@ private fun PlayerV2Content(
                                                 val s = rest + (1f - rest) * coverMorphFrac.value
                                                 scaleX = s
                                                 scaleY = s
+                                                // The spring dips below 0 on its way back up.
+                                                val depth = coverPauseDepth.value.coerceIn(0f, 1f)
+                                                coverDrift(
+                                                    t = coverDriftClock.value,
+                                                    live = coverLive.value * (1f - coverMorphFrac.value) * (1f - depth),
+                                                )
                                             }
                                             .customSoftShadow(
                                                 elevation = playerThumbnailShadowElevation.dp,
@@ -1183,6 +1204,15 @@ private fun PlayerV2Content(
                                             modifier = Modifier.fillMaxSize(),
                                             onFrame = if (isHeroLook) ({ heroVideoFrame.intValue++ }) else null,
                                         )
+                                        // Paused, the cover sinks back and dims.
+                                        if (isHeroLook) {
+                                            Box(
+                                                Modifier
+                                                    .fillMaxSize()
+                                                    .graphicsLayer { alpha = coverPauseDepth.value.coerceIn(0f, 1f) }
+                                                    .background(Color.Black.copy(alpha = COVER_PAUSE_DIM)),
+                                            )
+                                        }
                                     }
                                     }
                                 }

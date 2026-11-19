@@ -189,6 +189,8 @@ fun Modifier.sharedTitleTarget(): Modifier {
 
 @Composable
 private fun Modifier.sharedTitleElement(id: String): Modifier {
+    // Pages crossfade (PageMotion); the title no longer flies between a tile and a header.
+    if (!PageFlights) return this
     val sharedScope = LocalSharedTransitionScope.current ?: return this
     val animatedScope = LocalNavAnimatedVisibilityScope.current ?: return this
     return with(sharedScope) {
@@ -327,6 +329,9 @@ val LocalMorphArtworkId = compositionLocalOf<String?> { null }
 /** Adds a shared element when both transition scopes are available. */
 @Composable
 private fun Modifier.sharedArtworkElement(id: String): Modifier {
+    // Pages crossfade (PageMotion): a square tile's cover flying into the tall, full-bleed hero
+    // changed shape on the way and never read cleanly.
+    if (!PageFlights) return this
     val sharedScope = LocalSharedTransitionScope.current
     val animatedScope = LocalNavAnimatedVisibilityScope.current
     if (sharedScope == null || animatedScope == null) return this
@@ -341,3 +346,6 @@ private fun Modifier.sharedArtworkElement(id: String): Modifier {
         )
     }
 }
+
+/** Whether covers and titles fly between a tile and the page it opens. Off: pages crossfade. */
+private const val PageFlights = false

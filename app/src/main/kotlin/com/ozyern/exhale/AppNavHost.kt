@@ -27,6 +27,7 @@ import com.ozyern.exhale.ui.screens.navigationBuilder
 import com.ozyern.exhale.ui.utils.Motion
 import com.ozyern.exhale.ui.utils.isMorphRoute
 import kotlinx.coroutines.launch
+import com.ozyern.exhale.ui.utils.PageMotion
 
 /** The app's NavHost: push/pop motion plus the destination graph. */
 @OptIn(
@@ -52,41 +53,11 @@ fun AppNavHost(
         // Which tab this opens on (launch shortcut / the
         // default-open-tab preference) -- passed in by the caller.
         startDestination = startDestination,
-        // The incoming screen slides a full width while the outgoing
-        // screen moves a third of that distance and dims. Both use the
-        // same curve to keep the parallax in sync.
-        enterTransition = {
-            slideInHorizontally(if (isMorphRoute(targetState.destination.route)) Motion.artwork() else Motion.push()) { it }
-        },
-        exitTransition = {
-            // A destination that grows out of one of this
-            // screen's tiles must not slide it away underneath:
-            // the tile is the thing the next screen is coming
-            // out of, so this one holds still and dims.
-            if (isMorphRoute(targetState.destination.route)) {
-                fadeOut(Motion.artwork(), targetAlpha = 0.7f)
-            } else {
-                slideOutHorizontally(Motion.push()) {
-                    Motion.parallaxOffset(it)
-                } + fadeOut(Motion.push(), targetAlpha = Motion.PushDimAlpha)
-            }
-        },
-        // The screen underneath eases back from its parallax offset while the leaving one slides off,
-        // so back mirrors the push. The incoming screen stays opaque to avoid a transparent overlap.
-        popEnterTransition = {
-            if (isMorphRoute(initialState.destination.route)) {
-                EnterTransition.None
-            } else {
-                slideInHorizontally(Motion.push()) { Motion.parallaxOffset(-it) }
-            }
-        },
-        popExitTransition = {
-            if (isMorphRoute(initialState.destination.route)) {
-                fadeOut(Motion.artwork())
-            } else {
-                slideOutHorizontally(Motion.push()) { it } + fadeOut(Motion.push())
-            }
-        },
+        // Tabs swap outright; every other page crossfades in 180ms (see PageMotion).
+        enterTransition = { PageMotion.enter(initialState.destination.route, targetState.destination.route) },
+        exitTransition = { PageMotion.exit(initialState.destination.route, targetState.destination.route) },
+        popEnterTransition = { PageMotion.enter(initialState.destination.route, targetState.destination.route) },
+        popExitTransition = { PageMotion.exit(initialState.destination.route, targetState.destination.route) },
         modifier = Modifier.fillMaxSize(),
     ) {
         navigationBuilder(

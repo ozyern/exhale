@@ -144,13 +144,11 @@ fun SeededShimmerHero(
  */
 @Composable
 fun pillGlassBackground(shape: androidx.compose.foundation.shape.CornerBasedShape): Modifier {
-    // Fixed style like GlassCircleButton: pill glass stays even when the
-    // NAV_BAR bar toggle is off. Only old/unsupported devices fall back.
-    val glassConfig = LocalGlassEffectConfig.current.withFixedStyle()
+    // Like GlassCircleButton: the page's own colour, through dark glass. Only old devices fall back.
     if (isGlassAllowed()) {
         return Modifier
             .chromeShadow(shape)
-            .liquidGlass(config = glassConfig, shape = shape)
+            .pageChromeGlass(shape)
     }
     val isDark = AppTheme.colorScheme.surface.luminance() <= 0.5f
     return Modifier

@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.border
 import androidx.compose.ui.util.fastCoerceAtMost
 import androidx.compose.ui.util.lerp
 import com.ozyern.exhale.ui.component.backdrop.catalog.utils.InteractiveHighlight
@@ -154,12 +155,7 @@ fun GlassCircleButton(
     )
 
     val backgroundModifier = if (useGlass) {
-        Modifier.liquidGlass(
-            config = glassConfig,
-            shape = GlassCircleShape,
-            highlightAlpha = highlightAlpha,
-            rimTintColor = effectiveRimTintColor,
-        )
+        Modifier.pageChromeGlass(GlassCircleShape)
     } else if (!forceFlat && hazeState != null) {
         Modifier
             .clip(GlassCircleShape)
@@ -237,7 +233,8 @@ fun ContrastCircleButton(
     val interactionSource = remember { MutableInteractionSource() }
     val elasticStretch = rememberElasticStretch()
 
-    val bg = if (filled) onTint else onTint.copy(alpha = 0.16f)
+    // Unfilled, a light veil over the page with a hairline edge: the page's own colour shows through.
+    val bg = if (filled) onTint else onTint.copy(alpha = 0.07f)
     val contentColor = if (filled) {
         if (onTint == Color.White) Color.Black else Color.White
     } else {
@@ -252,6 +249,7 @@ fun ContrastCircleButton(
             .chromeShadow(GlassCircleShape)
             .clip(GlassCircleShape)
             .background(bg)
+            .then(if (filled) Modifier else Modifier.border(1.dp, onTint.copy(alpha = 0.10f), GlassCircleShape))
             .combinedClickable(
                 enabled = enabled,
                 onClick = onClick,
