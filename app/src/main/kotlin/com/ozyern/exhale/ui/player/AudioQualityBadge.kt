@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +41,18 @@ import com.ozyern.exhale.ui.ios.compat.Icon
 import com.ozyern.exhale.ui.ios.compat.Text
 import com.ozyern.exhale.utils.rememberPreference
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 
 /** Shows the active track's audio quality between the elapsed and remaining times. */
 @Composable
@@ -96,26 +107,67 @@ fun AudioQualityBadge(
         )
     }
 
+    // As Apple Music sets it: no plate, just the glyph and the words in the player's ink. Hi-Res
+    // carries a band of light sweeping across it on a loop; plain Lossless holds still, so the two
+    // tiers are told apart at a glance.
+    val ink = if (chrome) VibrantChromeInk else tint
+    Box(
+        modifier = modifier
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) { showCard = true }
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        AudioQualityMark(quality, ink = if (quality.hiRes) ink.copy(alpha = ink.alpha * 0.62f) else ink, chrome = chrome)
+        if (quality.hiRes) {
+            // The light: a white copy of the mark, shown only under a moving band. A copy over the
+            // mark rather than a mask on it, so the mark's own chrome blending is left alone.
+            val sweep = rememberInfiniteTransition(label = "hiResSweep").animateFloat(
+                initialValue = -0.6f,
+                targetValue = 1.6f,
+                animationSpec = infiniteRepeatable(tween(durationMillis = 2200, easing = LinearEasing)),
+                label = "hiResSweepX",
+            )
+            AudioQualityMark(
+                quality,
+                ink = Color.White,
+                chrome = false,
+                modifier = Modifier
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithContent {
+                        drawContent()
+                        val center = sweep.value * size.width
+                        val half = size.width * 0.3f
+                        drawRect(
+                            brush = Brush.horizontalGradient(
+                                0f to Color.Transparent,
+                                0.5f to Color.White.copy(alpha = 0.95f),
+                                1f to Color.Transparent,
+                                startX = center - half,
+                                endX = center + half,
+                            ),
+                            blendMode = BlendMode.DstIn,
+                        )
+                    },
+            )
+        }
+    }
+}
+
+/** The waveform glyph (lossless tiers only) and the tier's name. */
+@Composable
+private fun AudioQualityMark(quality: AudioQuality, ink: Color, chrome: Boolean, modifier: Modifier = Modifier) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = modifier
-            .shadow(
-                elevation = 2.dp,
-                shape = ContinuousRoundedRectangle(5.dp),
-                ambientColor = Color.Black.copy(alpha = 0.14f),
-                spotColor = Color.Black.copy(alpha = 0.18f),
-            )
-            .clip(ContinuousRoundedRectangle(5.dp))
-            .background(tint.copy(alpha = 0.15f))
-            .clickable { showCard = true }
-            .padding(horizontal = 8.dp, vertical = 1.dp),
+        modifier = modifier,
     ) {
         if (quality.lossless) {
             Icon(
                 painter = painterResource(R.drawable.ic_lossless),
                 contentDescription = null,
-                tint = if (chrome) VibrantChromeInk else tint,
+                tint = ink,
                 modifier = Modifier
                     .size(width = 15.dp, height = 8.dp)
                     .vibrantChrome(chrome),
@@ -123,13 +175,12 @@ fun AudioQualityBadge(
         }
         Text(
             text = quality.label,
-            // Hi-Res reads heavier than plain Lossless so the two tiers are told apart at a glance.
             style = TextStyle(
                 fontSize = 11.sp,
                 lineHeight = 14.sp,
-                fontWeight = if (quality.hiRes) FontWeight.SemiBold else FontWeight.Normal,
+                fontWeight = if (quality.hiRes) FontWeight.Medium else FontWeight.Normal,
             ),
-            color = if (chrome) VibrantChromeInk else tint,
+            color = ink,
             maxLines = 1,
             modifier = Modifier.vibrantChrome(chrome),
         )
