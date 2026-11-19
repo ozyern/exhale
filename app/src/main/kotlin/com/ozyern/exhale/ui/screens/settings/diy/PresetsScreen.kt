@@ -81,6 +81,7 @@ import com.ozyern.exhale.utils.preset.PresetStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 /**
  * The user's saved looks: a grid of thumbnails, each one a complete visual snapshot that can be
@@ -307,14 +308,14 @@ private fun PresetCard(
     val thumbnail = remember(meta.id) { PresetStore.thumbnailFile(context, meta.id) }
     Column(
         Modifier
-            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(16.dp))
+            .clip(ContinuousRoundedRectangle(16.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(9f / 16f)
-                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(16.dp))
+                .clip(ContinuousRoundedRectangle(16.dp))
                 .background(AppTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
@@ -383,7 +384,7 @@ private fun SavePresetDialog(
                         .align(Alignment.CenterHorizontally)
                         .height(180.dp)
                         .aspectRatio(9f / 19.5f)
-                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(14.dp))
+                        .clip(ContinuousRoundedRectangle(14.dp))
                         .drawWithContent {
                             graphicsLayer.record { this@drawWithContent.drawContent() }
                             drawLayer(graphicsLayer)

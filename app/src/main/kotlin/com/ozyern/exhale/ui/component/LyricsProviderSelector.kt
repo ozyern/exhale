@@ -38,6 +38,7 @@ import com.ozyern.exhale.ui.ios.compat.IconButton
 import com.ozyern.exhale.ui.ios.compat.Text
 import com.ozyern.exhale.utils.rememberPreference
 import com.ozyern.exhale.viewmodels.LyricsProviderViewModel
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 @Composable
 fun LyricsProviderSelector(
@@ -53,7 +54,7 @@ fun LyricsProviderSelector(
 
     Row(
         modifier = modifier
-            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(24.dp))
+            .clip(ContinuousRoundedRectangle(24.dp))
             .background(AppTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f))
             .clickable(onClick = onOpenMenu)
             .heightIn(min = 44.dp)

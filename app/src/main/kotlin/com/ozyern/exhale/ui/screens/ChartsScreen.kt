@@ -203,7 +203,7 @@ fun ChartsScreen(
                                         Box(
                                             modifier = Modifier
                                                 .size(ListItemHeight - 16.dp)
-                                                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(4.dp))
+                                                .clip(ContinuousRoundedRectangle(4.dp))
                                                 .background(AppTheme.colorScheme.onSurface),
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))

@@ -39,6 +39,7 @@ import com.ozyern.exhale.ui.component.backdrop.highlight.HighlightStyle
 import androidx.compose.ui.graphics.isSpecified
 import com.ozyern.exhale.ui.theme.isHueless
 import com.ozyern.exhale.ui.component.elasticStretchLayerBlock
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 /**
  * Colors for the iOS-style menu panel. Burn and dodge blends flatten to solid colors
@@ -63,7 +64,7 @@ object IosMenuMaterial {
     val CornerRadius = 32.dp
 
     /** Smoothed panel silhouette. */
-    val PanelShape = com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(
+    val PanelShape = ContinuousRoundedRectangle(
         CornerRadius,
         continuity = com.ozyern.exhale.ui.component.shapes.continuities.G2Continuity(
             profile = com.ozyern.exhale.ui.component.shapes.continuities.G2ContinuityProfile.figmaSmoothing(0.6),

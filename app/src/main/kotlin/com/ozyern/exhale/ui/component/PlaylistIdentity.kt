@@ -33,6 +33,7 @@ import com.ozyern.exhale.ui.ios.compat.Text
 import com.ozyern.exhale.ui.ios.compat.Button
 import com.ozyern.exhale.ui.ios.foundation.IosTheme
 import com.ozyern.exhale.ui.screens.library.apple.SfStyle
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 @Composable
 fun PlaylistIdentity(
@@ -47,7 +48,7 @@ fun PlaylistIdentity(
     val coverSize = minOf(maxWidth * .68f, 300.dp)
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
-            Modifier.sharedArtworkTarget().size(coverSize).clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
+            Modifier.sharedArtworkTarget().size(coverSize).clip(ContinuousRoundedRectangle(12.dp))
                 .background(colors.secondarySystemGroupedBackground),
             contentAlignment = Alignment.Center,
         ) {
@@ -88,7 +89,7 @@ fun PlaylistPlaybackActions(
         for (shuffle in listOf(false, true)) {
             Row(
                 Modifier.weight(1f).height(48.dp)
-                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
+                    .clip(ContinuousRoundedRectangle(12.dp))
                     .background(fill)
                     .clickable(enabled = enabled, role = Role.Button, onClick = if (shuffle) onShuffle else onPlay),
                 horizontalArrangement = Arrangement.Center,

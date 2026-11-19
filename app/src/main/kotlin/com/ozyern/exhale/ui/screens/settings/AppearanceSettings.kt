@@ -138,6 +138,10 @@ import com.ozyern.exhale.constants.LyricsScrollKey
 import com.ozyern.exhale.constants.MiniPlayerWaveformKey
 import com.ozyern.exhale.constants.AppFont
 import com.ozyern.exhale.constants.SelectedFontKey
+import com.ozyern.exhale.constants.DockStyle
+import com.ozyern.exhale.constants.DockStyleKey
+import com.ozyern.exhale.ui.component.SymbolIcon
+import com.ozyern.exhale.ui.component.sf
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -451,19 +455,16 @@ fun AppearanceSettings(
         Spacer(modifier = Modifier.height(27.dp))
 
         run {
-            val (dockStyle, onDockStyleChange) = com.ozyern.exhale.utils.rememberEnumPreference(
-                com.ozyern.exhale.constants.DockStyleKey,
-                defaultValue = com.ozyern.exhale.constants.DockStyle.FOLDING,
-            )
+            val (dockStyle, onDockStyleChange) = rememberEnumPreference(DockStyleKey, DockStyle.FOLDING)
             val dockIcon = rememberVectorPainter(SfSymbols.Monochrome.SFSliderHorizontal3)
-            fun dockOption(style: com.ozyern.exhale.constants.DockStyle, title: String, description: String) = IosSettingsItem(
+            fun dockOption(style: DockStyle, title: String, description: String) = IosSettingsItem(
                 icon = dockIcon,
                 title = { Text(title) },
                 description = { Text(description) },
                 trailingContent = {
                     if (dockStyle == style) {
-                        com.ozyern.exhale.ui.component.SymbolIcon(
-                            symbol = com.ozyern.exhale.ui.component.sf("checkmark"),
+                        SymbolIcon(
+                            symbol = sf("checkmark"),
                             contentDescription = null,
                             size = 17.dp,
                             tint = IosTheme.tint,
@@ -476,12 +477,12 @@ fun AppearanceSettings(
                 title = stringResource(R.string.dock_style),
                 items = listOf(
                     dockOption(
-                        com.ozyern.exhale.constants.DockStyle.FOLDING,
+                        DockStyle.FOLDING,
                         stringResource(R.string.dock_style_folding),
                         stringResource(R.string.dock_style_folding_desc),
                     ),
                     dockOption(
-                        com.ozyern.exhale.constants.DockStyle.CLASSIC,
+                        DockStyle.CLASSIC,
                         stringResource(R.string.dock_style_classic),
                         stringResource(R.string.dock_style_classic_desc),
                     ),

@@ -15,11 +15,12 @@ import coil3.compose.AsyncImage
 import com.ozyern.exhale.ui.ios.compat.AppTheme
 import com.ozyern.exhale.ui.ios.compat.Text
 import com.music.spine.SpineModule
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 @Composable
 internal fun ModuleLogo(module: SpineModule, modifier: Modifier = Modifier) {
     Box(
-        modifier = modifier.size(36.dp).clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(8.dp))
+        modifier = modifier.size(36.dp).clip(ContinuousRoundedRectangle(8.dp))
             .background(AppTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {

@@ -1074,7 +1074,7 @@ private fun GlassLivePreview(
         modifier = modifier
             .fillMaxWidth()
             .height(190.dp)
-            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(20.dp)),
+            .clip(ContinuousRoundedRectangle(20.dp)),
         contentAlignment = Alignment.BottomCenter,
     ) {
         BoxWithConstraints(

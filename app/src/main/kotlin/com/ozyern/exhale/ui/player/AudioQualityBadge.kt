@@ -23,6 +23,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.annotation.StringRes
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -192,8 +194,19 @@ fun audioQualityDetail(
     }
 }
 
+/** A row of the quality card's spec sheet; [label] is its name in the card. */
+enum class AudioSpec(@StringRes val label: Int) {
+    QUALITY(R.string.audio_spec_quality),
+    CODEC(R.string.audio_spec_codec),
+    BIT_DEPTH(R.string.audio_spec_bit_depth),
+    SAMPLE_RATE(R.string.audio_spec_sample_rate),
+    CHANNELS(R.string.audio_spec_channels),
+    BITRATE(R.string.audio_spec_bitrate),
+    SOURCE(R.string.audio_spec_source),
+}
+
 /**
- * The full spec sheet for the tap card, one (name, value) row per known fact. Rows whose value
+ * The full spec sheet for the tap card, one row per known fact. Rows whose value
  * is unknown are left out rather than shown as "—". A lossless stream without a measured
  * bitrate gets its PCM rate (rate × depth × channels), which is what it decodes to.
  */
@@ -205,7 +218,7 @@ fun audioQualitySpecs(
     bitDepth: Int?,
     channels: Int?,
     source: String? = null,
-): List<Pair<String, String>> {
+): List<Pair<AudioSpec, String>> {
     val codec = codecDisplayName(mime, codecs)
     val lossless = codec == "FLAC" || codec == "ALAC"
     val shownBitrate = bitrate
@@ -216,13 +229,13 @@ fun audioQualitySpecs(
         else -> "Lossy (compressed)"
     }
     return listOfNotNull(
-        "Quality" to tier,
-        "Codec" to codec,
-        bitDepth?.let { "Bit depth" to "$it-bit" },
-        sampleRate?.let { "Sample rate" to formatKhz(it) },
-        channels?.let { "Channels" to channelName(it) },
-        shownBitrate?.let { "Bitrate" to "${it / 1000} kbps" },
-        source?.let { "Source" to it },
+        AudioSpec.QUALITY to tier,
+        AudioSpec.CODEC to codec,
+        bitDepth?.let { AudioSpec.BIT_DEPTH to "$it-bit" },
+        sampleRate?.let { AudioSpec.SAMPLE_RATE to formatKhz(it) },
+        channels?.let { AudioSpec.CHANNELS to channelName(it) },
+        shownBitrate?.let { AudioSpec.BITRATE to "${it / 1000} kbps" },
+        source?.let { AudioSpec.SOURCE to it },
     )
 }
 
@@ -277,7 +290,7 @@ internal fun com.ozyern.exhale.db.entities.FormatEntity.archiveBitDepth(): Int? 
 private fun AudioQualityCard(
     quality: AudioQuality,
     detail: String,
-    specs: List<Pair<String, String>>,
+    specs: List<Pair<AudioSpec, String>>,
     onOpenSettings: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
@@ -322,21 +335,21 @@ private fun AudioQualityCard(
                     fontSize = 17.sp,
                     modifier = Modifier.padding(start = textInset, top = 4.dp, bottom = cardW * 0.05f),
                 )
-                specs.forEach { (name, value) ->
+                specs.forEach { (spec, value) ->
                     Row(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = textInset, vertical = 3.dp),
                     ) {
-                        Text(name, color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp)
+                        Text(stringResource(spec.label), color = Color.White.copy(alpha = 0.6f), fontSize = 15.sp)
                         Text(value, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                     }
                 }
                 androidx.compose.foundation.layout.Spacer(Modifier.height(cardW * 0.06f))
                 if (onOpenSettings != null) {
                     AudioQualityCardPill(
-                        text = androidx.compose.ui.res.stringResource(R.string.audio_quality_settings),
+                        text = stringResource(R.string.audio_quality_settings),
                         height = pillH,
                         fill = Color.White.copy(alpha = 0.16f),
                         textColor = Color.White,
@@ -345,7 +358,7 @@ private fun AudioQualityCard(
                     androidx.compose.foundation.layout.Spacer(Modifier.height(cardW * 0.026f))
                 }
                 AudioQualityCardPill(
-                    text = androidx.compose.ui.res.stringResource(android.R.string.ok),
+                    text = stringResource(android.R.string.ok),
                     height = pillH,
                     fill = Color.White,
                     textColor = Color.Black,

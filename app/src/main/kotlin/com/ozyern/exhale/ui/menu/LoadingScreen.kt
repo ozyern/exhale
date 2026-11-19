@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.ozyern.exhale.R
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 /** Progress dialog with a shimmer indicator and percentage. */
 @Composable
@@ -36,7 +37,7 @@ fun LoadingScreen(
         ) {
             Column(
                 modifier = Modifier
-                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(20.dp))
+                    .clip(ContinuousRoundedRectangle(20.dp))
                     .background(AppTheme.colorScheme.surface)
                     .padding(24.dp)
                     .width(200.dp),

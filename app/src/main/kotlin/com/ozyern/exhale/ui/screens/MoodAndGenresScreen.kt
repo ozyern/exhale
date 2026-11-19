@@ -80,6 +80,7 @@ import com.ozyern.exhale.ui.component.shimmer.ShimmerHost
 import com.ozyern.exhale.ui.utils.backToMain
 import com.ozyern.exhale.viewmodels.MoodAndGenresViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -253,7 +254,7 @@ fun MoodAndGenresButton(
         modifier =
         modifier
             .height(MoodAndGenresButtonHeight)
-            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
+            .clip(ContinuousRoundedRectangle(12.dp))
             .background(backgroundColor)
             .bounceClick(onClick = onClick)
             .padding(horizontal = 16.dp),

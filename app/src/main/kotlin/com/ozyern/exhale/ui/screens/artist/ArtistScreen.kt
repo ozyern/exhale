@@ -215,6 +215,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.ozyern.exhale.ui.component.floatingtabbar.gooey
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 /** Apple Music artist page type: white, with the secondary tiers as plain alpha steps. */
 private val ArtistTextTiers = listOf(
@@ -1374,7 +1375,7 @@ private val ArtistWordmarkMaxWidth = 286.dp
 /** Gap between the wordmark box and the hero foot. */
 private val ArtistWordmarkFootInset = 4.dp
 
-private val ArtistCapsuleShape = com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(percent = 50)
+private val ArtistCapsuleShape = ContinuousRoundedRectangle(percent = 50)
 
 private fun com.music.innertube.pages.ArtistSection.isFeaturedLatest(): Boolean =
     title.contains("Latest", ignoreCase = true) && items.firstOrNull() is AlbumItem
@@ -1517,7 +1518,7 @@ private fun FeaturedReleaseCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(22.dp)
+    val shape = ContinuousRoundedRectangle(22.dp)
     com.ozyern.exhale.ui.utils.ArtworkSourceHost(modifier) { sourceModifier ->
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -1540,7 +1541,7 @@ private fun FeaturedReleaseCard(
             modifier = Modifier
                 .size(90.dp)
                 .sharedArtworkSource(album.id, album.thumbnail)
-                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(10.dp)),
+                .clip(ContinuousRoundedRectangle(10.dp)),
         )
         Spacer(modifier = Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -1601,7 +1602,7 @@ private fun EssentialAlbumRow(
         Box(
             Modifier
                 .size(118.dp)
-                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(8.dp))
+                .clip(ContinuousRoundedRectangle(8.dp))
                 .background(Color.White.copy(alpha = 0.08f)),
         ) {
             if (cover != null) {

@@ -60,6 +60,7 @@ import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.sin
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 data class HyphenGroupWord(
     val pos: Int,
@@ -190,7 +191,7 @@ fun MetroLyricsLine(
 
     val itemModifier = modifier
         .fillMaxWidth()
-        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(16.dp))
+        .clip(ContinuousRoundedRectangle(16.dp))
         .combinedClickable(
             enabled = true,
             onClick = onClick,

@@ -93,6 +93,7 @@ import com.ozyern.exhale.viewmodels.ListenTogetherViewModel
 import kotlinx.coroutines.flow.collectLatest
 import com.ozyern.exhale.ui.screens.settings.SettingsPage
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -755,7 +756,7 @@ fun BlockedUsersDialog(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
+                                .clip(ContinuousRoundedRectangle(12.dp))
                                 .background(AppTheme.colorScheme.surfaceVariant)
                                 .padding(12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween

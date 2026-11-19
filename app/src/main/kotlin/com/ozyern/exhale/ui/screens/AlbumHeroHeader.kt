@@ -50,6 +50,7 @@ import com.ozyern.exhale.ui.ios.compat.LocalContentColor
 import com.ozyern.exhale.ui.ios.compat.Text
 import com.ozyern.exhale.ui.screens.library.apple.SfStyle
 import com.ozyern.exhale.ui.utils.sharedTitleTarget
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 /**
  * Apple Music's album page head: the cover edge to edge from the top of the screen, running down
@@ -168,7 +169,7 @@ internal fun AlbumHeroHeader(
                         modifier = Modifier
                             .weight(1f)
                             .height(52.dp)
-                            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(26.dp))
+                            .clip(ContinuousRoundedRectangle(26.dp))
                             .background(foreground.copy(alpha = if (enabled) 1f else .45f))
                             .clickable(enabled = enabled, role = Role.Button, onClick = onPlay),
                     ) {

@@ -105,6 +105,7 @@ import kotlinx.coroutines.withContext
 import java.util.UUID
 import kotlin.math.min
 import kotlin.math.roundToInt
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 /** How many steps back the editor remembers. Deep enough to undo a bad drag, not a whole session. */
 private const val UNDO_DEPTH = 30
@@ -807,7 +808,7 @@ private fun EmojiPanel(onPick: (String) -> Unit) {
                     text = emoji,
                     fontSize = 26.sp,
                     modifier = Modifier
-                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(10.dp))
+                        .clip(ContinuousRoundedRectangle(10.dp))
                         .clickable { onPick(emoji) }
                         .padding(6.dp),
                 )

@@ -43,6 +43,7 @@ import com.ozyern.exhale.R
 import com.ozyern.exhale.utils.SongBundle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 @Composable
 fun CoverSearchDialog(
@@ -67,7 +68,7 @@ fun CoverSearchDialog(
     Dialog(onDismissRequest = { if (!applying) onDismiss() }) {
         Column(
             Modifier
-                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(24.dp))
+                .clip(ContinuousRoundedRectangle(24.dp))
                 .background(MaterialTheme.colorScheme.surface)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -83,7 +84,7 @@ fun CoverSearchDialog(
                     Box(
                         Modifier
                             .fillMaxWidth()
-                            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
+                            .clip(ContinuousRoundedRectangle(12.dp))
                             .background(MaterialTheme.colorScheme.surfaceVariant)
                             .padding(horizontal = 14.dp, vertical = 12.dp),
                     ) {
@@ -109,7 +110,7 @@ fun CoverSearchDialog(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .aspectRatio(1f)
-                            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(10.dp))
+                            .clip(ContinuousRoundedRectangle(10.dp))
                             .clickable(enabled = !applying) {
                                 applying = true
                                 scope.launch {

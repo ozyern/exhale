@@ -101,6 +101,12 @@ import com.ozyern.exhale.ui.utils.bounceClick
 import com.ozyern.exhale.ui.utils.additiveChrome
 import com.ozyern.exhale.ui.utils.vibrantChrome
 import kotlinx.coroutines.delay
+import com.ozyern.exhale.constants.DockStyle
+import com.ozyern.exhale.constants.DockStyleKey
+import com.ozyern.exhale.ui.component.classicdock.ClassicLiquidTabBar
+import com.ozyern.exhale.ui.component.classicdock.FoldingDock
+import com.ozyern.exhale.ui.component.classicdock.FoldingDockTab
+import com.ozyern.exhale.utils.rememberEnumPreference
 
 // Continuous capsule shape supports the tab puck morph and the bar glass.
 private val NavBarShape = com.ozyern.exhale.ui.component.shapes.NavContinuousCapsule
@@ -302,15 +308,11 @@ private fun AppFloatingNavBarChrome(
     val barTabs = remember(tabScreens, searchScreen) { tabScreens + listOfNotNull(searchScreen) }
     val appBackdrop = LocalAppBackdrop.current
 
-    // Settings > Appearance > Dock: master's classic dock in place of the folding bar. Same tabs,
-    // mini player, search field and fold signal, so both behave the same around the rest of the app.
-    val dockStyle by com.ozyern.exhale.utils.rememberEnumPreference(
-        com.ozyern.exhale.constants.DockStyleKey,
-        com.ozyern.exhale.constants.DockStyle.FOLDING,
-    )
-    if (dockStyle == com.ozyern.exhale.constants.DockStyle.CLASSIC) {
+    // Settings > Appearance > Dock. Same tabs, player, search field and fold signal as the folding bar.
+    val dockStyle by rememberEnumPreference(DockStyleKey, DockStyle.FOLDING)
+    if (dockStyle == DockStyle.CLASSIC) {
         val classicTabs = barTabs.map { screen ->
-            com.ozyern.exhale.ui.component.classicdock.FoldingDockTab(
+            FoldingDockTab(
                 key = screen.route,
                 title = stringResource(screen.titleId),
                 icon = screen.icon(appleMusicUi),
@@ -324,7 +326,7 @@ private fun AppFloatingNavBarChrome(
                 },
             )
         }
-        // The classic dock draws its own glass round the player; the folding bar's would double it.
+        // The classic dock glazes the player itself.
         val classicAccessory: (@Composable (Modifier, Boolean) -> Unit)? =
             if (showPlayerAccessory) {
                 { accessoryModifier, isInline ->
@@ -341,11 +343,11 @@ private fun AppFloatingNavBarChrome(
             } else {
                 null
             }
-        com.ozyern.exhale.ui.component.classicdock.FoldingDock(
+        FoldingDock(
             tabs = classicTabs,
             selectedKey = selectedTabKey,
             folded = scrollConnection.isInline,
-            // Tapping the folded page circle unfolds the bar by taking the page back to its top.
+            // The folded page circle scrolls back to the top, which unfolds the bar.
             onUnfold = { tabScreens.firstOrNull { it.route == selectedTabKey }?.let { onItemClick(it, true) } },
             hasSearchTab = searchScreen != null,
             accentColor = selectedIconColor,
@@ -361,14 +363,13 @@ private fun AppFloatingNavBarChrome(
                 )
             },
             openBar = { barModifier ->
-                com.ozyern.exhale.ui.component.classicdock.ClassicLiquidTabBar(
+                ClassicLiquidTabBar(
                     tabs = classicTabs.filter { it.key != Screens.Search.route },
                     selectedKey = selectedTabKey,
                     pureBlack = pureBlack,
                     modifier = barModifier,
                 )
             },
-            // The liquid bar's own spacing: 10dp between the tab capsule and the search circle.
             openGap = 10.dp,
             modifier = modifier,
         )

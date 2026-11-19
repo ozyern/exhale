@@ -81,6 +81,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.json.Json
 import org.json.JSONArray
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
@@ -619,7 +620,7 @@ private fun ModuleItem(
                         style = AppTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         color = AppTheme.colorScheme.primary,
                         modifier = Modifier
-                            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(4.dp))
+                            .clip(ContinuousRoundedRectangle(4.dp))
                             .background(AppTheme.colorScheme.primary.copy(alpha = 0.1f))
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                     )
@@ -649,7 +650,7 @@ private fun ModuleItem(
                             style = AppTheme.typography.labelSmall,
                             color = AppTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier
-                                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(4.dp))
+                                .clip(ContinuousRoundedRectangle(4.dp))
                                 .background(AppTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                                 .padding(horizontal = 6.dp, vertical = 2.dp),
                         )

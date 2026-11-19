@@ -96,6 +96,9 @@ import com.ozyern.exhale.utils.rememberEnumPreference
 import com.ozyern.exhale.utils.rememberPreference
 import com.materialkolor.PaletteStyle
 import com.materialkolor.rememberDynamicColorScheme
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
+import com.ozyern.exhale.constants.AppBackgroundColorKey
+import com.ozyern.exhale.constants.AppTextColorKey
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -106,9 +109,9 @@ fun ThemeScreen(
     // The preview needs this value even though its toggle lives in advanced settings.
     val (pureBlack, onPureBlackChange) = rememberPreference(PureBlackKey, defaultValue = false)
     val (appBackgroundColorInt, onAppBackgroundColorChange) =
-        rememberPreference(com.ozyern.exhale.constants.AppBackgroundColorKey, defaultValue = 0)
+        rememberPreference(AppBackgroundColorKey, defaultValue = 0)
     val (appTextColorInt, onAppTextColorChange) =
-        rememberPreference(com.ozyern.exhale.constants.AppTextColorKey, defaultValue = 0)
+        rememberPreference(AppTextColorKey, defaultValue = 0)
     val (selectedThemeColorInt, onSelectedThemeColorChange) = rememberPreference(
         SelectedThemeColorKey,
         DefaultThemeColor.toArgb()
@@ -671,7 +674,7 @@ fun ThemeMockup(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(32.dp)
-                            .background(AppTheme.colorScheme.primary, com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(6.dp))
+                            .background(AppTheme.colorScheme.primary, ContinuousRoundedRectangle(6.dp))
                     )
                     
                     Row(
@@ -682,14 +685,14 @@ fun ThemeMockup(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(40.dp)
-                                .background(AppTheme.colorScheme.secondary, com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(6.dp))
+                                .background(AppTheme.colorScheme.secondary, ContinuousRoundedRectangle(6.dp))
                         )
                         
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(40.dp)
-                                .background(AppTheme.colorScheme.tertiary, com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(6.dp))
+                                .background(AppTheme.colorScheme.tertiary, ContinuousRoundedRectangle(6.dp))
                         )
                     }
                 }
@@ -778,7 +781,7 @@ fun ThemeMockupPortrait(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f)
-                            .background(AppTheme.colorScheme.primary, com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(4.dp))
+                            .background(AppTheme.colorScheme.primary, ContinuousRoundedRectangle(4.dp))
                     )
                     
                     Row(
@@ -791,14 +794,14 @@ fun ThemeMockupPortrait(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .background(AppTheme.colorScheme.secondary, com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(4.dp))
+                                .background(AppTheme.colorScheme.secondary, ContinuousRoundedRectangle(4.dp))
                         )
                         
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .background(AppTheme.colorScheme.tertiary, com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(4.dp))
+                                .background(AppTheme.colorScheme.tertiary, ContinuousRoundedRectangle(4.dp))
                         )
                     }
                 }

@@ -77,6 +77,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 /** File size limits for picked background images and videos. */
 private const val MaxHomeBackgroundImageBytes = 20L * 1024 * 1024
@@ -231,7 +232,7 @@ fun HomeBackgroundControls() {
                 .fillMaxWidth()
                 .aspectRatio(16f / 10f)
                 .padding(vertical = 12.dp)
-                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(20.dp))
+                .clip(ContinuousRoundedRectangle(20.dp))
                 .background(AppTheme.colorScheme.surfaceContainerHighest),
         ) {
             if (path.isNotEmpty() && isVideo) {

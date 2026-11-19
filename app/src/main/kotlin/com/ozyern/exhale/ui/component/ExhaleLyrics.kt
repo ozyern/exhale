@@ -49,6 +49,7 @@ import com.ozyern.exhale.lyrics.wordsWithSpacing
 import com.ozyern.exhale.ui.screens.settings.LyricsPosition
 import com.ozyern.exhale.utils.rememberPreference
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 /**
  * Exact Apple Music style lyrics animation ported from convx-5.0.3
@@ -171,7 +172,7 @@ fun ExhaleLyricsLine(
             this.scaleX = scale
             this.scaleY = scale
         }
-        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(16.dp))
+        .clip(ContinuousRoundedRectangle(16.dp))
         .combinedClickable(
             enabled = true,
             onClick = onClick,

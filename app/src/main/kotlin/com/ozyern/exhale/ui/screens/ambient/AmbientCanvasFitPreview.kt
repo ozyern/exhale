@@ -58,6 +58,7 @@ import com.ozyern.exhale.constants.AmbientCanvasAnchorSide
 import com.ozyern.exhale.constants.AmbientCanvasFitMode
 import com.ozyern.exhale.ui.theme.AppleTokens
 import kotlin.math.roundToInt
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 /**
  * A live preview of Ambient Mode's background, for Settings → Ambient Mode.
@@ -130,7 +131,7 @@ fun AmbientCanvasFitPreview(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(PREVIEW_SCREEN_ASPECT)
-                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(10.dp))
+                    .clip(ContinuousRoundedRectangle(10.dp))
                     .background(MockScreenBase),
             ) {
                 val panelWidth = maxWidth * effectiveFraction
@@ -214,7 +215,7 @@ fun AmbientCanvasFitPreview(
                             modifier = Modifier
                                 .fillMaxHeight(0.85f)
                                 .aspectRatio(1f)
-                                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(6.dp))
+                                .clip(ContinuousRoundedRectangle(6.dp))
                                 .background(Brush.linearGradient(MockCoverColors)),
                         )
                     }

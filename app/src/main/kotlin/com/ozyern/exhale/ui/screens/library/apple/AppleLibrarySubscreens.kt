@@ -146,6 +146,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import com.ozyern.exhale.ui.component.backdrop.backdrops.layerBackdrop
 import kotlinx.coroutines.launch
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 // Shared subpage header: the large title scrolls beneath the toolbar and fades into its
 // compact title. The toolbar also provides a back button and optional trailing actions.
@@ -343,7 +344,7 @@ private fun ArtRow(
             .then(if (onClick != null) Modifier.iosRowPress(onClick = onClick) else Modifier)
             .padding(start = 16.dp),
     ) {
-        val shape = if (circle) CircleShape else com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(radius)
+        val shape = if (circle) CircleShape else ContinuousRoundedRectangle(radius)
         AsyncImage(
             model = art,
             onSuccess = com.ozyern.exhale.ui.utils.sharedArtworkImageListener(

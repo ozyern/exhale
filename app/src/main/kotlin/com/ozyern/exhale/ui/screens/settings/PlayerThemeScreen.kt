@@ -351,7 +351,7 @@ fun PlayerThemeScreen(
                                             .align(Alignment.Center)
                                             .fillMaxWidth(0.6f)
                                             .aspectRatio(1f)
-                                            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(6.dp))
+                                            .clip(ContinuousRoundedRectangle(6.dp))
                                             .background(AppTheme.colorScheme.primary)
                                     )
                                 }
@@ -406,9 +406,9 @@ fun PlayerThemeScreen(
                     Modifier
                         .width(56.dp)
                         .height(28.dp)
-                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(8.dp))
+                        .clip(ContinuousRoundedRectangle(8.dp))
                         .tiltedGradient(gradientStops, gradientAngle)
-                        .border(1.dp, AppTheme.colorScheme.outline, com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(8.dp))
+                        .border(1.dp, AppTheme.colorScheme.outline, ContinuousRoundedRectangle(8.dp))
                 )
             }
         }
@@ -516,7 +516,7 @@ private fun GradientSheet(
                 Modifier
                     .fillMaxWidth()
                     .height(120.dp)
-                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(16.dp))
+                    .clip(ContinuousRoundedRectangle(16.dp))
                     .tiltedGradient(working.toList(), angle)
             )
 
@@ -726,7 +726,7 @@ private fun PlayerLayoutList(
                         modifier = Modifier
                             .fillMaxWidth()
                             .alpha(if (isHidden) 0.4f else 1f)
-                            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(14.dp))
+                            .clip(ContinuousRoundedRectangle(14.dp))
                             .background(AppTheme.colorScheme.surfaceContainerLowest)
                             .draggableHandle()
                             .padding(10.dp),
@@ -840,7 +840,7 @@ private fun PresetCard(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .width(PresetCardWidth)
-            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(20.dp))
+            .clip(ContinuousRoundedRectangle(20.dp))
             .clickable(enabled = enabled, onClick = onClick)
                 .animateContentSize()
             // Disabled presets stay readable but visibly out of play.

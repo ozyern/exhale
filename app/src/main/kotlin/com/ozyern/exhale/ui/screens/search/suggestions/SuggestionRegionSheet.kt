@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.ozyern.exhale.constants.SuggestionRegionSlugToName
 import kotlinx.coroutines.launch
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 @Composable
 fun SuggestionRegionSheet(
@@ -71,7 +72,7 @@ fun SuggestionRegionSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(24.dp))
+                    .clip(ContinuousRoundedRectangle(24.dp))
             ) {
                 item {
                     Text(

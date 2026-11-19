@@ -37,6 +37,7 @@ import com.ozyern.exhale.utils.CrashHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 @Composable
 fun CrashLogsSettingsScreen(navController: NavController) {
@@ -104,7 +105,7 @@ fun CrashLogsSettingsScreen(navController: NavController) {
                     color = IosTheme.colors.label,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(16.dp))
+                        .clip(ContinuousRoundedRectangle(16.dp))
                         .background(IosTheme.colors.secondarySystemGroupedBackground)
                         .padding(16.dp),
                 )

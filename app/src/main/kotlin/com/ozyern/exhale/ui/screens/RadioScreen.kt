@@ -349,7 +349,7 @@ private fun RadioStationHeader(
             model = thumbnail,
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.size(88.dp).clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp)),
+            modifier = Modifier.size(88.dp).clip(ContinuousRoundedRectangle(12.dp)),
         )
         Column(Modifier.weight(1f)) {
             Text(

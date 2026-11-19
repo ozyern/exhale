@@ -36,18 +36,18 @@ class AudioQualityLabelTest {
     @Test
     fun `spec sheet lists every known fact and derives lossless bitrate`() {
         val specs = audioQualitySpecs("audio/flac", null, null, 96_000, 24, 2, "Internet Archive").toMap()
-        assertEquals("Hi-Res Lossless (above 48 kHz)", specs["Quality"])
-        assertEquals("FLAC", specs["Codec"])
-        assertEquals("24-bit", specs["Bit depth"])
-        assertEquals("96 kHz", specs["Sample rate"])
-        assertEquals("Stereo", specs["Channels"])
-        assertEquals("4608 kbps", specs["Bitrate"])
-        assertEquals("Internet Archive", specs["Source"])
+        assertEquals("Hi-Res Lossless (above 48 kHz)", specs[AudioSpec.QUALITY])
+        assertEquals("FLAC", specs[AudioSpec.CODEC])
+        assertEquals("24-bit", specs[AudioSpec.BIT_DEPTH])
+        assertEquals("96 kHz", specs[AudioSpec.SAMPLE_RATE])
+        assertEquals("Stereo", specs[AudioSpec.CHANNELS])
+        assertEquals("4608 kbps", specs[AudioSpec.BITRATE])
+        assertEquals("Internet Archive", specs[AudioSpec.SOURCE])
 
         val lossy = audioQualitySpecs("audio/webm", "opus", 151_018, 48_000, null, null).toMap()
-        assertEquals("Lossy (compressed)", lossy["Quality"])
-        assertNull(lossy["Bit depth"])
-        assertNull(lossy["Channels"])
+        assertEquals("Lossy (compressed)", lossy[AudioSpec.QUALITY])
+        assertNull(lossy[AudioSpec.BIT_DEPTH])
+        assertNull(lossy[AudioSpec.CHANNELS])
     }
 
     @Test

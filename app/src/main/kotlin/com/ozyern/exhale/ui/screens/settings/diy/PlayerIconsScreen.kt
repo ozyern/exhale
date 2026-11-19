@@ -89,6 +89,7 @@ import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
 import java.io.File
 import com.ozyern.exhale.ui.screens.settings.SettingsPage
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 /**
  * Swaps the player's control glyphs for the user's own artwork.
@@ -272,7 +273,7 @@ fun PlayerIconsScreen(
                     modifier = Modifier
                         .height(320.dp)
                         .aspectRatio(9f / 19.5f)
-                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(18.dp)),
+                        .clip(ContinuousRoundedRectangle(18.dp)),
                 )
             }
 
@@ -342,7 +343,7 @@ private fun SlotRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
+            .clip(ContinuousRoundedRectangle(12.dp))
             .clickable(onClick = onChoose)
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -350,7 +351,7 @@ private fun SlotRow(
         Box(
             modifier = Modifier
                 .size(44.dp)
-                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(10.dp))
+                .clip(ContinuousRoundedRectangle(10.dp))
                 .background(AppTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
@@ -447,7 +448,7 @@ private fun PlayerIconChoiceDialog(
                                 Box(
                                     Modifier
                                         .size(52.dp)
-                                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
+                                        .clip(ContinuousRoundedRectangle(12.dp))
                                         .background(AppTheme.colorScheme.surfaceVariant)
                                         .border(
                                             width = if (selected) 2.dp else 1.dp,

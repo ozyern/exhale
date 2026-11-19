@@ -64,6 +64,7 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 @Composable
 fun rememberAdjustedFontSize(
@@ -304,7 +305,7 @@ fun LyricsImageCard(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .size(coverArtSize)
-                            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(3.dp))
+                            .clip(ContinuousRoundedRectangle(3.dp))
                             .border(1.dp, mainTextColor.copy(alpha = 0.16f), RoundedCornerShape(3.dp))
                     )
                     Spacer(modifier = Modifier.width(16.dp))

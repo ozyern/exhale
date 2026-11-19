@@ -82,7 +82,7 @@ fun SheetCornerRadiusModal(
                 modifier = Modifier
                     .fillMaxWidth(dialogWidth)
                     .wrapContentHeight()
-                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(30.dp)),
+                    .clip(ContinuousRoundedRectangle(30.dp)),
                 shape = AppTheme.shapes.large,
                 color = AppTheme.colorScheme.surface,
                 tonalElevation = 6.dp
@@ -126,7 +126,7 @@ fun SheetCornerRadiusModal(
                                 modifier = Modifier
                                     .padding(top = 5.dp, bottom = 8.dp)
                                     .size(width = 36.dp, height = 5.dp)
-                                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(2.5.dp))
+                                    .clip(ContinuousRoundedRectangle(2.5.dp))
                                     .background(AppTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f))
                             )
                             Box(

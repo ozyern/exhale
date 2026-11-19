@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.ozyern.exhale.R
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 data class LinkSegment(
     val text: String,
@@ -101,7 +102,7 @@ fun ExpandableText(
             Box(
                 modifier = Modifier
                     .padding(top = 8.dp)
-                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(8.dp))
+                    .clip(ContinuousRoundedRectangle(8.dp))
                     .background(AppTheme.colorScheme.secondaryContainer)
                     .clickable { isExpanded = !isExpanded }
                     .padding(horizontal = 10.dp, vertical = 4.dp)

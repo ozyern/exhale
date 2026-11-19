@@ -52,6 +52,7 @@ import com.ozyern.exhale.ui.ios.compat.Text
 import com.ozyern.exhale.ui.theme.LocalAccentTextColor
 import com.ozyern.exhale.ui.theme.LocalMetadataColor
 import com.ozyern.exhale.ui.utils.additiveChrome
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 /**
  * Static preview of the artist header treatment — reference-style hero with the
@@ -178,7 +179,7 @@ private fun ArtistScreenPreview() {
                                 Box(
                                     modifier = Modifier
                                         .size(52.dp)
-                                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(8.dp))
+                                        .clip(ContinuousRoundedRectangle(8.dp))
                                         .background(Color.White.copy(alpha = 0.12f)),
                                 )
                             },

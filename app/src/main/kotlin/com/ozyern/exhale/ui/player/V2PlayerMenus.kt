@@ -53,6 +53,7 @@ import com.ozyern.exhale.ui.ios.foundation.IosMenuMaterial
 import com.ozyern.exhale.ui.ios.foundation.IosTheme
 import com.ozyern.exhale.ui.ios.foundation.LocalIosContentColor
 import com.ozyern.exhale.ui.ios.foundation.LocalIosTextStyle
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 /** Panel, no sheet (a sheet ducked the player), drawn in-window over the player -- see [V2Floating]. */
 @Composable
@@ -303,7 +304,7 @@ fun V2RoutePopover(
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
             modifier = Modifier
                 .width(300.dp)
-                .iosMenuSurface(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(34.dp), menuStretch)
+                .iosMenuSurface(ContinuousRoundedRectangle(34.dp), menuStretch)
                 .padding(14.dp),
         ) {
             androidx.compose.foundation.layout.Row(
@@ -316,7 +317,7 @@ fun V2RoutePopover(
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop,
                     modifier = Modifier
                         .size(48.dp)
-                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(7.dp)),
+                        .clip(ContinuousRoundedRectangle(7.dp)),
                 )
                 androidx.compose.foundation.layout.Spacer(Modifier.width(10.dp))
                 androidx.compose.foundation.layout.Column {
@@ -330,7 +331,7 @@ fun V2RoutePopover(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp)
-                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(percent = 50))
+                    .clip(ContinuousRoundedRectangle(percent = 50))
                     .background(Color.White.copy(alpha = if (automatic) 0.35f else 0.12f))
                     .clickable {
                         service?.setPreferredAudioDevice(null)
@@ -374,7 +375,7 @@ fun V2RoutePopover(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp)
-                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(percent = 50))
+                        .clip(ContinuousRoundedRectangle(percent = 50))
                         .background(Color.White.copy(alpha = if (selected) 0.35f else 0.12f))
                         .clickable {
                             service?.setPreferredAudioDevice(device.deviceId)

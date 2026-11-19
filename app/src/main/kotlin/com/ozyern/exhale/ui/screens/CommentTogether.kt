@@ -57,6 +57,7 @@ import androidx.compose.ui.platform.LocalContext
 import java.text.SimpleDateFormat
 import java.util.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -140,7 +141,7 @@ fun CommentTogetherScreen(navController: NavController) {
                                     modifier = Modifier
                                         .fillMaxHeight()
                                         .width(4.dp)
-                                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(2.dp))
+                                        .clip(ContinuousRoundedRectangle(2.dp))
                                         .background(AppTheme.colorScheme.primary)
                                 )
                                 Column(
@@ -278,7 +279,7 @@ private fun MessageItem(
                                 modifier = Modifier
                                     .fillMaxHeight()
                                     .width(3.dp)
-                                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(1.5.dp))
+                                    .clip(ContinuousRoundedRectangle(1.5.dp))
                                     .background(AppTheme.colorScheme.primary)
                             )
                             Column(modifier = Modifier.padding(start = 10.dp)) {

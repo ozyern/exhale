@@ -1600,4 +1600,13 @@
     <string name="dock_style_folding_desc">Folds into the mini player and a search circle as you scroll</string>
     <string name="dock_style_classic">Classic</string>
     <string name="dock_style_classic_desc">A glass capsule rides on the selected tab; drag it between tabs</string>
+
+    <!-- Audio quality card rows -->
+    <string name="audio_spec_quality">Quality</string>
+    <string name="audio_spec_codec">Codec</string>
+    <string name="audio_spec_bit_depth">Bit depth</string>
+    <string name="audio_spec_sample_rate">Sample rate</string>
+    <string name="audio_spec_channels">Channels</string>
+    <string name="audio_spec_bitrate">Bitrate</string>
+    <string name="audio_spec_source">Source</string>
 </resources>

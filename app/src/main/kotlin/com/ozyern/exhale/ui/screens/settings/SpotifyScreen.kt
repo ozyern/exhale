@@ -60,6 +60,7 @@ import com.ozyern.exhale.ui.component.IosSettingsGroup
 import com.ozyern.exhale.ui.component.IosSettingsItem
 import com.ozyern.exhale.viewmodels.SpotifyImportViewModel
 import com.ozyern.exhale.viewmodels.SpotifyImportUiState
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -110,7 +111,7 @@ fun SpotifyScreen(
                                     contentDescription = null,
                                     modifier = Modifier
                                         .size(40.dp)
-                                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp)),
+                                        .clip(ContinuousRoundedRectangle(12.dp)),
                                     contentScale = ContentScale.Crop
                                 )
                             }
@@ -189,7 +190,7 @@ fun SpotifyScreen(
                         Box(
                             modifier = Modifier
                                 .size(40.dp)
-                                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
+                                .clip(ContinuousRoundedRectangle(12.dp))
                                 .background(
                                     AppTheme.colorScheme.primary.copy(alpha = 0.1f)
                                 ),
@@ -299,7 +300,7 @@ fun SpotifyScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(12.dp)
-                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(6.dp)),
+                        .clip(ContinuousRoundedRectangle(6.dp)),
                     color = AppTheme.colorScheme.primary,
                     trackColor = AppTheme.colorScheme.surfaceVariant
                 )
@@ -417,7 +418,7 @@ private fun SpotifyHomeShelfRow(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .aspectRatio(1f)
-                                .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
+                                .clip(ContinuousRoundedRectangle(12.dp))
                                 .background(AppTheme.colorScheme.primary.copy(alpha = 0.08f)),
                             contentScale = ContentScale.Crop,
                             error = painterResource(R.drawable.spotify),

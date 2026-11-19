@@ -111,6 +111,7 @@ import com.ozyern.exhale.core.updater.UpdateScreen
 import com.ozyern.exhale.core.changelog.ChangelogScreen
 import com.ozyern.exhale.core.commitscreen.CommitScreen
 import com.ozyern.exhale.ui.screens.equalizer.axion.AxionEqScreen
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 fun NavGraphBuilder.navigationBuilder(
@@ -823,7 +824,7 @@ private fun NavGraphBuilder.sharedComposable(
         ) {
             if (collection) {
                 val corner = com.ozyern.exhale.ui.player.rememberScreenCornerRadius()
-                val shape = remember(corner) { com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(corner) }
+                val shape = remember(corner) { ContinuousRoundedRectangle(corner) }
                 val pageTransition = transition
                 androidx.compose.foundation.layout.Box(
                     Modifier.fillMaxSize().graphicsLayer {

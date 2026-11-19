@@ -74,6 +74,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import kotlin.math.abs
 import java.net.URLEncoder
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -357,7 +358,7 @@ fun TrendingAppleMusicSection(
                                         com.ozyern.exhale.ui.component.ShimmerBox(Modifier.fillMaxSize())
                                     },
                                     modifier = Modifier
-                                        .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(AppleTokens.Artwork))
+                                        .clip(ContinuousRoundedRectangle(AppleTokens.Artwork))
                                         .size(68.dp)
                                 )
                             }
@@ -479,7 +480,7 @@ fun TrendingAlbumsSection(
                                 com.ozyern.exhale.ui.component.ShimmerBox(Modifier.fillMaxSize(), shape = RoundedCornerShape(12.dp))
                             },
                             modifier = Modifier.sharedArtworkSource(album.sharedArtworkId, album.thumbnailUrl, artworkOwner)
-                                .size(120.dp).clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp)).background(AppTheme.colorScheme.surfaceVariant)
+                                .size(120.dp).clip(ContinuousRoundedRectangle(12.dp)).background(AppTheme.colorScheme.surfaceVariant)
                         )
                         Surface(modifier = Modifier.size(28.dp).offset((-4).dp, (-4).dp), shape = CircleShape, color = AppTheme.colorScheme.primary, tonalElevation = 4.dp) {
                             Box(contentAlignment = Alignment.Center) {
@@ -506,7 +507,7 @@ fun TrendingAlbumsSection(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
                             .size(120.dp)
-                            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
+                            .clip(ContinuousRoundedRectangle(12.dp))
                             .background(AppTheme.colorScheme.primaryContainer)
                     ) {
                         SymbolIcon(symbol = sf("SFAntennaRadiowavesLeftAndRight"), contentDescription = null, size = 32.dp, tint = AppTheme.colorScheme.primary)
@@ -558,7 +559,7 @@ fun TrendingVideosSection(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(16.dp))
+                    .clip(ContinuousRoundedRectangle(16.dp))
                     .onGloballyPositioned { coordinates ->
                         val cardCenter = coordinates.boundsInRoot().center.x
                         val screenWidth = context.resources.displayMetrics.widthPixels

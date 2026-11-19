@@ -83,6 +83,17 @@ import org.koin.androidx.compose.koinViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.scaleIn
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import com.ozyern.exhale.ui.component.ExhaleBreathingEgg
+import com.ozyern.exhale.ui.utils.Motion
 
 /** The release this build is, as the About page and Software update page both name it. */
 internal val exhaleBuildFlavor: String
@@ -113,10 +124,9 @@ fun AboutScreen(
     val buildLine = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · ${BuildConfig.BUILD_TYPE}"
     val copiedText = stringResource(R.string.exhale_about_build_info_copied)
 
-    // The About card's easter egg: hold the card, then tap its hidden side seven times.
-    var showEasterEgg by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var showEasterEgg by remember { mutableStateOf(false) }
     if (showEasterEgg) {
-        com.ozyern.exhale.ui.component.ExhaleBreathingEgg(onDismiss = { showEasterEgg = false })
+        ExhaleBreathingEgg(onDismiss = { showEasterEgg = false })
     }
 
     SettingsPage(
@@ -239,7 +249,7 @@ private const val SecretTapCount = 7
  * piles up and the tagline comes up behind it; each tap there throws another handful, and the
  * seventh opens [com.ozyern.exhale.ui.component.ExhaleBreathingEgg]. Hold again for the release card.
  */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AboutHero(
     status: String,
@@ -247,18 +257,18 @@ private fun AboutHero(
     onSecretUnlocked: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var flipped by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-    var taps by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
-    var burst by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
-    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
-    val interaction = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    var flipped by remember { mutableStateOf(false) }
+    var taps by remember { mutableIntStateOf(0) }
+    var burst by remember { mutableIntStateOf(0) }
+    val haptic = LocalHapticFeedback.current
+    val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val press by androidx.compose.animation.core.animateFloatAsState(
+    val press by animateFloatAsState(
         targetValue = if (pressed) 0.98f else 1f,
-        animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.75f, stiffness = com.ozyern.exhale.ui.utils.Motion.PressStiffness),
+        animationSpec = spring(dampingRatio = 0.75f, stiffness = Motion.PressStiffness),
         label = "aboutHeroPress",
     )
-    // Taps on the hidden side have to come in a run; a pause starts the count again.
+    // A pause between taps starts the count again.
     LaunchedEffect(taps) {
         if (taps in 1 until SecretTapCount) {
             delay(2_500)
@@ -291,7 +301,7 @@ private fun AboutHero(
                     }
                 },
                 onLongClick = {
-                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     flipped = !flipped
                     burst = 0
                     taps = 0
@@ -301,7 +311,7 @@ private fun AboutHero(
         AnimatedContent(
             targetState = flipped,
             transitionSpec = {
-                (fadeIn(tween(260)) + androidx.compose.animation.scaleIn(tween(320), initialScale = 0.97f)) togetherWith
+                (fadeIn(tween(260)) + scaleIn(tween(320), initialScale = 0.97f)) togetherWith
                     fadeOut(tween(200))
             },
             label = "aboutEgg",

@@ -56,6 +56,7 @@ import com.ozyern.exhale.ui.screens.Screens
 import com.ozyern.exhale.ui.utils.pressWobble
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 @Immutable
 private data class NavItemState(
@@ -212,7 +213,7 @@ fun AppLandscapeRail(
             highlightAlpha = 0.3f,
         )
     } else {
-        modifier.background(backgroundColor, com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(16.dp))
+        modifier.background(backgroundColor, ContinuousRoundedRectangle(16.dp))
     }
 
     Column(
@@ -232,7 +233,7 @@ fun AppLandscapeRail(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)
-                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
+                    .clip(ContinuousRoundedRectangle(12.dp))
                     .clickable { onItemClick(screen, isSelected) }
                     .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,

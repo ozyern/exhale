@@ -125,6 +125,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.floor
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 @Composable
 fun AmbientModeScreen(navController: NavController) {
@@ -862,7 +863,7 @@ private fun AmbientForeground(
                 modifier = Modifier
                     .fillMaxHeight(0.85f)
                     .aspectRatio(1f)
-                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(16.dp)),
+                    .clip(ContinuousRoundedRectangle(16.dp)),
             ) {
                 AsyncImage(
                     model = mediaMetadata?.thumbnailUrl,

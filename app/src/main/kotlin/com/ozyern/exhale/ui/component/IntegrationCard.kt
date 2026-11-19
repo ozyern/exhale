@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.unit.dp
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 /**
  * A Material 3 Expressive style settings group component
@@ -104,7 +105,7 @@ private fun IntegrationCardItemRow(
             Box(
                 modifier = Modifier
                     .size(40.dp)
-                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(12.dp))
+                    .clip(ContinuousRoundedRectangle(12.dp))
                     .background(
                         AppTheme.colorScheme.primary.copy(
                             alpha = if (item.isHighlighted) 0.15f else 0.1f

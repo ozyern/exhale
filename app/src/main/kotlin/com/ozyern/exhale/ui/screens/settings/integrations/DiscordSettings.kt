@@ -112,6 +112,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import com.ozyern.exhale.ui.screens.settings.SettingsPage
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 private enum class DiscordStatus { ONLINE, IDLE, DND }
 private enum class DiscordActivityType { LISTENING, PLAYING, WATCHING, COMPETING }
@@ -770,7 +771,7 @@ fun RichPresence(
                         contentDescription = null,
                         modifier = Modifier
                             .size(96.dp)
-                            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(3.dp))
+                            .clip(ContinuousRoundedRectangle(3.dp))
                             .align(Alignment.TopStart)
                             .run {
                                 if (song == null) {

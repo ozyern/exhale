@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.unit.dp
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 @Composable
 fun BigSeekBar(
@@ -39,7 +40,7 @@ fun BigSeekBar(
         modifier
             .fillMaxWidth()
             .height(48.dp)
-            .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(16.dp))
+            .clip(ContinuousRoundedRectangle(16.dp))
             .onPlaced {
                 width = it.size.width.toFloat()
             }.pointerInput(progressProvider) {

@@ -45,6 +45,7 @@ import com.ozyern.exhale.utils.rememberPreference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,7 +86,7 @@ fun ThumbnailCornerRadiusModal(
                 modifier = Modifier
                     .fillMaxWidth(dialogWidth)
                     .wrapContentHeight()
-                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(30.dp)),
+                    .clip(ContinuousRoundedRectangle(30.dp)),
                 shape = AppTheme.shapes.large,
                 color = AppTheme.colorScheme.surface,
                 tonalElevation = 6.dp
@@ -129,7 +130,7 @@ fun ThumbnailCornerRadiusModal(
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
                                     .fillMaxWidth()
-                                    .clip(com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle(10.dp))
+                                    .clip(ContinuousRoundedRectangle(10.dp))
                                     .background(
                                         AppTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
                                     )
