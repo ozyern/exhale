@@ -9,7 +9,7 @@
 package com.ozyern.exhale.ui.utils
 
 import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.SharedTransitionScope.ResizeMode.Companion.ScaleToBounds
+import androidx.compose.animation.SharedTransitionScope.ResizeMode.Companion.scaleToBounds
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.spring
@@ -77,7 +77,7 @@ internal fun Modifier.containerTransformElement(id: String, contentScale: Conten
             enter = fadeIn(tween(220)),
             exit = fadeOut(tween(220)),
             boundsTransform = { _, _ -> ContainerBounds },
-            resizeMode = ScaleToBounds(contentScale, alignment),
+            resizeMode = scaleToBounds(contentScale, alignment),
             renderInOverlayDuringTransition = true,
             zIndexInOverlay = 1f,
             clipInOverlayDuringTransition = OverlayClip(GrowingCornerShape(screenCorner)),
