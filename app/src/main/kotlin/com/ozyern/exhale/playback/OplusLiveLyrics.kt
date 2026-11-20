@@ -154,8 +154,11 @@ object OplusLiveLyrics {
     /** Any inline timing tag, including the `<start|end>` form word-synced sources use. */
     internal val AnyTimeTagRegex = Regex("""<[\d:.|]+>""")
 
-    /** Exhale's singer tag, `{agent:v1}`: ours to read, never text to show. */
-    private val AgentTagRegex = Regex("""\{agent:[^}]+}""")
+    /**
+     * Exhale's singer tag, `{agent:v1}`: ours to read, never text to show. Both braces escaped:
+     * Android's ICU engine rejects a bare `}` that the JVM's accepts, and this object never loads.
+     */
+    private val AgentTagRegex = Regex("""\{agent:[^}]+\}""")
 
     /** Exhale's background-vocal marker at the start of a row. */
     private const val BACKGROUND_TAG = "{bg}"

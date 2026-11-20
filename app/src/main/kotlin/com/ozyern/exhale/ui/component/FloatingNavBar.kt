@@ -103,7 +103,7 @@ import com.ozyern.exhale.ui.utils.vibrantChrome
 import kotlinx.coroutines.delay
 import com.ozyern.exhale.constants.DockStyle
 import com.ozyern.exhale.constants.DockStyleKey
-import com.ozyern.exhale.ui.component.classicdock.ClassicLiquidTabBar
+import com.ozyern.exhale.constants.DefaultDockStyle
 import com.ozyern.exhale.ui.component.classicdock.FoldingDock
 import com.ozyern.exhale.ui.component.classicdock.FoldingDockTab
 import com.ozyern.exhale.utils.rememberEnumPreference
@@ -309,14 +309,16 @@ private fun AppFloatingNavBarChrome(
     val appBackdrop = LocalAppBackdrop.current
 
     // Settings > Appearance > Dock. Same tabs, player, search field and fold signal as the folding bar.
-    val dockStyle by rememberEnumPreference(DockStyleKey, DockStyle.FOLDING)
+    val dockStyle by rememberEnumPreference(DockStyleKey, DefaultDockStyle)
     if (dockStyle == DockStyle.CLASSIC) {
         val classicTabs = barTabs.map { screen ->
             FoldingDockTab(
                 key = screen.route,
                 title = stringResource(screen.titleId),
                 icon = screen.icon(appleMusicUi),
-                glyphSize = if (screen == Screens.Search) 36.dp else 32.dp,
+                // As master's dock: SF Symbols, bold, bouncing; glyphs that fill their viewbox drawn smaller.
+                symbol = screen.navSymbol(),
+                glyphSize = if (screen == Screens.Search) 28.dp else 32.dp,
                 onClick = {
                     when {
                         screen == Screens.Search -> if (searchModeActive) navSearch.onTapBar() else navSearch.onTapSearchIcon()
@@ -362,15 +364,8 @@ private fun AppFloatingNavBarChrome(
                     useGlass = useGlass,
                 )
             },
-            openBar = { barModifier ->
-                ClassicLiquidTabBar(
-                    tabs = classicTabs.filter { it.key != Screens.Search.route },
-                    selectedKey = selectedTabKey,
-                    pureBlack = pureBlack,
-                    modifier = barModifier,
-                )
-            },
-            openGap = 10.dp,
+            // No bar of its own: search rides in the open bar as its last tab, as on master.
+            openGap = 8.dp,
             modifier = modifier,
         )
         return
