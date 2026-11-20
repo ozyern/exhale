@@ -13,6 +13,8 @@ import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import com.ozyern.exhale.lyrics.LyricsEntry
 import com.ozyern.exhale.lyrics.LyricsUtils
+import java.util.Locale
+import kotlin.math.roundToLong
 import org.json.JSONObject
 
 /**
@@ -152,7 +154,18 @@ object OplusLiveLyrics {
     /** Any inline timing tag, including the `<start|end>` form word-synced sources use. */
     internal val AnyTimeTagRegex = Regex("""<[\d:.|]+>""")
 
-    private val WordTimeRegex = Regex("""<\d{1,3}:\d{2}(?:[.:]\d{1,3})?>""")
+    /** Exhale's singer tag, `{agent:v1}`: ours to read, never text to show. */
+    private val AgentTagRegex = Regex("""\{agent:[^}]+}""")
+
+    /** Exhale's background-vocal marker at the start of a row. */
+    private const val BACKGROUND_TAG = "{bg}"
+
+    /**
+     * The document rides in the same metadata parcel as the artwork, under the binder transaction
+     * limit. Past this the karaoke lane goes first; a song whose plain lines alone exceed it
+     * publishes nothing rather than a parcel that fails to cross.
+     */
+    internal const val MAX_PAYLOAD_CHARS = 100_000
 
     /**
      * Normalises whatever a provider gave us into the line-level LRC the ROM can scroll, or null
@@ -194,22 +207,60 @@ object OplusLiveLyrics {
                 tags += next.value
                 rest = rest.substring(next.range.last + 1)
             }
-            val text = rest.replace(AnyTimeTagRegex, "").replace(Regex("\\s+"), " ").trim()
+            val text = rest.replace(AnyTimeTagRegex, "").replace(AgentTagRegex, "")
+                .replace(Regex("\\s+"), " ").trim()
+            // Background vocals overlap the lead line; as rows of their own they would make the
+            // lock screen jump back and forth between the two.
+            if (text.startsWith(BACKGROUND_TAG)) return@mapNotNull null
             if (text.isEmpty() || tag.value.isEmpty()) null else tags.map { it + text }
         }.flatten().toList()
         return rows.takeIf { it.isNotEmpty() }?.joinToString("\n", postfix = "\n")
     }
 
     /**
-     * The word-timed form, for ROMs that highlight per syllable, or null when we have no word
-     * timings to offer. Enhanced LRC passes through; TTML is re-emitted with its word timings.
+     * The word-timed `rawLyric` lane, `[line]<w1>word <w2>word<end>`, or null when not every line
+     * carries word timings.
+     *
+     * All or nothing: a karaoke lane with holes in it disagrees with `lyric` about which lines
+     * exist. Always rebuilt from the parsed entries, never passed through, so enhanced LRC,
+     * rich-sync and Exhale's own word rows all lose their `{agent:}`/`{bg}` tags and headers.
      */
-    private fun toEnhancedLrc(lyrics: String): String? {
-        lyrics.takeIf { WordTimeRegex.containsMatchIn(it) }?.let { return it }
-        return entriesToLrc(lyrics) { entry ->
-            val words = entry.words?.takeIf { it.isNotEmpty() } ?: return@entriesToLrc null
-            words.joinToString("") { word -> stamp(word.startTime, "<", ">") + word.text }
+    internal fun toEnhancedLrc(lyrics: String?): String? {
+        if (lyrics.isNullOrBlank()) return null
+        val entries = timedEntries(lyrics) ?: return null
+        if (entries.any { it.words.isNullOrEmpty() }) return null
+        return entries.joinToString("\n", postfix = "\n") { stamp(it.time, "[", "]") + wordLine(it) }
+    }
+
+    /**
+     * One line's words with absolute times that never move backward, closed by the last word's
+     * end. The parser trims every word, so the spacing is taken back from the line's own text;
+     * otherwise the lock screen sweeps across "Helloworld".
+     */
+    private fun wordLine(entry: LyricsEntry): String {
+        val words = entry.words.orEmpty()
+        val text = entry.text
+        val out = StringBuilder()
+        var cursor = 0
+        var last = 0L
+        words.forEachIndexed { i, word ->
+            val start = maxOf(last, (word.startTime * 1000).roundToLong())
+            last = start
+            val at = text.indexOf(word.text, cursor)
+            val piece = if (at >= 0) {
+                var end = at + word.text.length
+                while (end < text.length && text[end].isWhitespace()) end++
+                cursor = end
+                text.substring(at, end)
+            } else if (i < words.lastIndex) {
+                word.text + " "
+            } else {
+                word.text
+            }
+            out.append(stamp(start, "<", ">")).append(piece)
         }
+        val end = maxOf(last, (words.last().endTime * 1000).roundToLong())
+        return out.append(stamp(end, "<", ">")).toString()
     }
 
     /**
@@ -269,7 +320,7 @@ object OplusLiveLyrics {
         rawLyrics: String?,
         album: String? = null,
         durationMs: Long = 0L,
-    ): String {
+    ): String? {
         // The full document the ColorOS Live Lyrics contract describes, not just the four fields
         // the lock screen needs to draw a line.
         //
@@ -287,7 +338,8 @@ object OplusLiveLyrics {
         // there is a usable timeline. The document was complete in every other respect and still
         // showed nothing, because a reader that cannot tell a lyric payload from an empty one falls
         // back to its own "no lyrics" state.
-        return JSONObject()
+        val rawLyric = toEnhancedLrc(rawLyrics)
+        fun document(withWords: Boolean): String = JSONObject()
             .put("songName", songName)
             .put("artist", artist)
             .apply { album?.takeIf { it.isNotBlank() }?.let { put("album", it) } }
@@ -295,7 +347,7 @@ object OplusLiveLyrics {
             .put("lyricType", 0)
             .put("noLyric", false)
             .put("lyric", lrc)
-            .apply { rawLyrics?.let { raw -> toEnhancedLrc(raw)?.let { put("rawLyric", it) } } }
+            .apply { if (withWords && rawLyric != null) put("rawLyric", rawLyric) }
             .put("provider", BuildConfig.APPLICATION_ID)
             .put("source", "${BuildConfig.APPLICATION_ID}-v${BuildConfig.VERSION_NAME}")
             // Identity in the order the contract recommends: media id first, then title, artist
@@ -311,6 +363,8 @@ object OplusLiveLyrics {
             )
             .put("sessionGeneration", generation)
             .toString()
+        // Drop the karaoke lane before dropping the lyric itself.
+        return sequenceOf(true, false).map(::document).firstOrNull { it.length <= MAX_PAYLOAD_CHARS }
     }
 
     /** The payload currently attached to this item, if any. */
@@ -382,23 +436,31 @@ object OplusLiveLyrics {
      * is how the enhanced form opts out of cues that carry no word timings.
      */
     private fun entriesToLrc(lyrics: String, line: (LyricsEntry) -> String?): String? {
-        val entries = runCatching { LyricsUtils.parseLyrics(lyrics) }.getOrNull().orEmpty()
-            .filter { it.time > 0L || it.text.isNotBlank() }
-        if (entries.none { it.time > 0L }) return null
-        if (entries.isEmpty()) return null
-        val rendered = entries.mapNotNull { entry ->
-            val body = line(entry) ?: return@mapNotNull null
-            stamp(entry.time / 1000.0, "[", "]") + body
+        val rendered = timedEntries(lyrics)?.mapNotNull { entry ->
+            line(entry)?.let { body -> stamp(entry.time, "[", "]") + body }
         }
-        return rendered.takeIf { it.isNotEmpty() }?.joinToString("\n")
+        return rendered?.takeIf { it.isNotEmpty() }?.joinToString("\n")
     }
 
-    /** `mm:ss.cc` wrapped in the given delimiters. [seconds] is clamped at zero. */
-    private fun stamp(seconds: Double, open: String, close: String): String {
-        val totalMs = (seconds * 1000.0).toLong().coerceAtLeast(0L)
-        val minutes = totalMs / 60_000
-        val secs = (totalMs % 60_000) / 1000
-        val millis = totalMs % 1000
-        return "%s%02d:%02d.%03d%s".format(open, minutes, secs, millis, close)
+    /**
+     * The lead lines with text, in time order, or null when the source carries no timeline at
+     * all (unsynced text parses to entries at zero). Background vocals are left out, as in
+     * [lineLane].
+     */
+    private fun timedEntries(lyrics: String): List<LyricsEntry>? {
+        val entries = runCatching { LyricsUtils.parseLyrics(lyrics) }.getOrNull().orEmpty()
+        if (entries.none { it.time > 0L }) return null
+        return entries.filter { !it.isBackground && it.text.isNotBlank() }
+            .sortedBy { it.time }
+            .takeIf { it.isNotEmpty() }
+    }
+
+    /**
+     * `mm:ss.mmm` wrapped in the given delimiters; [ms] is clamped at zero. Always ASCII digits:
+     * the default locale would write Eastern Arabic or Bengali numerals the ROM cannot parse.
+     */
+    private fun stamp(ms: Long, open: String, close: String): String {
+        val t = ms.coerceAtLeast(0L)
+        return String.format(Locale.US, "%s%02d:%02d.%03d%s", open, t / 60_000, (t / 1000) % 60, t % 1000, close)
     }
 }

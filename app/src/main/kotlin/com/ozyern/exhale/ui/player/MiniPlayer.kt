@@ -1188,7 +1188,8 @@ internal fun MiniPlayerBackgroundLayer(
     isPlaying: Boolean = true,
 ) {
     val context = LocalContext.current
-    
+    val backgroundMotionReduced by com.ozyern.exhale.utils.rememberPreference(com.ozyern.exhale.constants.ReduceDynamicBlurKey, false)
+
     when (style) {
         PlayerBackgroundStyle.BLUR -> {
             // Baked blur on the 128px decode (see Player.kt BLUR branch): same
@@ -1221,7 +1222,7 @@ internal fun MiniPlayerBackgroundLayer(
                 // infinite transition would otherwise invalidate every frame of
                 // every scroll. One recomposition per scroll start/end.
                 val motionFrozen = LocalAppMotionFrozen.current
-                val progress: ComposeState<Float> = if (isPlaying && !motionFrozen.value) {
+                val progress: ComposeState<Float> = if (isPlaying && !motionFrozen.value && !backgroundMotionReduced) {
                     val infiniteTransition = rememberInfiniteTransition(label = "GlowAnimation")
                     infiniteTransition.animateFloat(
                         initialValue = 0f,
@@ -1288,7 +1289,7 @@ internal fun MiniPlayerBackgroundLayer(
 
         PlayerBackgroundStyle.LIVE_MESH -> {
             val motionFrozen = LocalAppMotionFrozen.current
-            val rotation: ComposeState<Float> = if (isPlaying && !motionFrozen.value) {
+            val rotation: ComposeState<Float> = if (isPlaying && !motionFrozen.value && !backgroundMotionReduced) {
                 val infiniteTransition = rememberInfiniteTransition(label = "liveMesh")
                 infiniteTransition.animateFloat(
                     initialValue = 0f,

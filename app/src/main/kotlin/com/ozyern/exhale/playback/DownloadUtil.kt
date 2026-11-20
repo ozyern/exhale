@@ -464,14 +464,16 @@ class DownloadUtil(
 
     /** Queues a best-quality copy of a downloaded song; the current copy stays until it is complete. */
     fun upgradeQuality(songId: String) {
-        val title = runBlocking(Dispatchers.IO) { database.songTitle(songId).orEmpty() }
-        val key = songId + UPGRADE_SUFFIX
-        DownloadService.sendAddDownload(
-            appContext,
-            ExoDownloadService::class.java,
-            DownloadRequest.Builder(key, key.toUri()).setCustomCacheKey(key).setData(title.toByteArray()).build(),
-            false,
-        )
+        scope.launch {
+            val title = database.songTitle(songId).orEmpty()
+            val key = songId + UPGRADE_SUFFIX
+            DownloadService.sendAddDownload(
+                appContext,
+                ExoDownloadService::class.java,
+                DownloadRequest.Builder(key, key.toUri()).setCustomCacheKey(key).setData(title.toByteArray()).build(),
+                false,
+            )
+        }
     }
 
     /** Swaps the finished upgrade in only when it is better than what is stored; otherwise drops it. */

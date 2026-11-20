@@ -99,23 +99,26 @@ class LiveLyricsPublisher(
     }
 
     private suspend fun publish(metadata: MediaMetadata?, lyrics: String?) {
-        val (lrc, parsed) = withContext(Dispatchers.Default) {
+        // Parsing, the karaoke lane and the JSON are all off the main thread; only the player calls
+        // below need it.
+        val (payload, parsed) = withContext(Dispatchers.Default) {
             val lrc = OplusLiveLyrics.toLrc(lyrics)
-            lrc to (lrc?.let { runCatching { LyricsUtils.parseLyrics(it) }.getOrNull() }.orEmpty())
+            val parsed = lrc?.let { runCatching { LyricsUtils.parseLyrics(it) }.getOrNull() }.orEmpty()
+            val payload = if (lrc == null || metadata == null || !liveSpace) null else {
+                OplusLiveLyrics.buildPayloadFromLrc(
+                    songId = metadata.id,
+                    songName = metadata.title,
+                    artist = metadata.artists.joinToString { a -> a.name },
+                    lrc = lrc,
+                    rawLyrics = lyrics,
+                    album = metadata.album?.title,
+                    durationMs = metadata.duration.takeIf { d -> d > 0 }?.times(1000L) ?: 0L,
+                )
+            }
+            payload to parsed
         }
         startTicker(parsed)
-        if (metadata == null || !liveSpace) return
-        val payload = lrc?.let {
-            OplusLiveLyrics.buildPayloadFromLrc(
-                songId = metadata.id,
-                songName = metadata.title,
-                artist = metadata.artists.joinToString { a -> a.name },
-                lrc = it,
-                rawLyrics = lyrics,
-                album = metadata.album?.title,
-                durationMs = metadata.duration.takeIf { d -> d > 0 }?.times(1000L) ?: 0L,
-            )
-        } ?: return
+        if (metadata == null || !liveSpace || payload == null) return
         if (carries(metadata.id, payload)) return
         forceDocument(metadata.id, payload)
         // One retry, only if the first did not stick: OPlus debounces updates that arrive close

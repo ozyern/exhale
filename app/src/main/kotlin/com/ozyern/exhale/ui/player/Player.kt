@@ -424,6 +424,8 @@ fun BottomSheetPlayer(
     }
 
     val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
+    // Low-power setting: the glow, live mesh and quality sweep hold still instead of looping.
+    val backgroundMotionReduced by rememberPreference(com.ozyern.exhale.constants.ReduceDynamicBlurKey, false)
     val swipeLyrics by rememberPreference(SwipeLyricsKey, false)
     val enableLyricsThumbnailPlayPause by rememberPreference(EnableLyricsThumbnailPlayPauseKey, false)
     val isKeepScreenOn by rememberPreference(KeepScreenOn, false)
@@ -1083,7 +1085,7 @@ fun BottomSheetPlayer(
                             label = "GlowAnimatedContent"
                         ) { colors ->
                             if (colors.isNotEmpty()) {
-                                val progress: androidx.compose.runtime.State<Float> = if (isPlaying && !state.isCollapsed) {
+                                val progress: androidx.compose.runtime.State<Float> = if (isPlaying && !state.isCollapsed && !backgroundMotionReduced) {
                                     val infiniteTransition =
                                         rememberInfiniteTransition(label = "GlowAnimation")
 
@@ -1349,7 +1351,7 @@ fun BottomSheetPlayer(
                         }
                     }
                     PlayerBackgroundStyle.LIVE_MESH -> {
-                        val shouldAnimateLiveMesh = isPlaying && !state.isCollapsed
+                        val shouldAnimateLiveMesh = isPlaying && !state.isCollapsed && !backgroundMotionReduced
                         val anchorRotation: androidx.compose.runtime.State<Float>
                         val fastRotation: androidx.compose.runtime.State<Float>
                         val slowRotation: androidx.compose.runtime.State<Float>
@@ -2606,7 +2608,7 @@ fun BottomSheetPlayer(
                                     // sweep kept awaiting a frame for as long as the player was
                                     // on screen — the whole app redrew every vsync, paused
                                     // included. Spin it only while something is actually playing.
-                                    val animatedRotation = if (isPlaying && !state.isCollapsed) {
+                                    val animatedRotation = if (isPlaying && !state.isCollapsed && !backgroundMotionReduced) {
                                         val infiniteTransition =
                                             rememberInfiniteTransition(label = "QualityIconTransition")
                                         infiniteTransition.animateFloat(

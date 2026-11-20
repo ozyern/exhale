@@ -29,7 +29,10 @@ import com.ozyern.exhale.playback.MusicService.Companion.PERSISTENT_QUEUE_FILE
 import com.ozyern.exhale.playback.MusicService.Companion.PERSISTENT_PLAYER_STATE_FILE
 import com.ozyern.exhale.utils.reportException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
 import java.io.FileInputStream
@@ -55,45 +58,55 @@ class BackupRestoreViewModel(
     val database: MusicDatabase,
 ) : ViewModel() {
     fun backup(context: Context, uri: Uri) {
-        runCatching {
-            context.applicationContext.contentResolver.openOutputStream(uri)?.use {
-                it.buffered().zipOutputStream().use { outputStream ->
-                    (context.filesDir / "datastore" / SETTINGS_FILENAME).inputStream().buffered()
-                        .use { inputStream ->
-                            outputStream.putNextEntry(ZipEntry(SETTINGS_FILENAME))
-                            inputStream.copyTo(outputStream)
-                        }
-                    runBlocking(Dispatchers.IO) {
-                        database.checkpoint()
-                    }
-                    FileInputStream(database.openHelper.writableDatabase.path).use { inputStream ->
-                        outputStream.putNextEntry(ZipEntry(InternalDatabase.DB_NAME))
+        val appContext = context.applicationContext
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { writeBackup(appContext, uri) } }
+            result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
+            result.onSuccess {
+                Toast.makeText(appContext, R.string.backup_create_success, Toast.LENGTH_SHORT).show()
+            }.onFailure {
+                reportException(it)
+                Toast.makeText(appContext, R.string.backup_create_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private suspend fun writeBackup(context: Context, uri: Uri) {
+        val output = context.contentResolver.openOutputStream(uri) ?: error("Could not open backup destination")
+        output.use {
+            it.buffered().zipOutputStream().use { outputStream ->
+                (context.filesDir / "datastore" / SETTINGS_FILENAME).inputStream().buffered()
+                    .use { inputStream ->
+                        outputStream.putNextEntry(ZipEntry(SETTINGS_FILENAME))
                         inputStream.copyTo(outputStream)
                     }
-                    // Background media is stored as files; DataStore saves only its path.
-                    context.filesDir.listFiles { file -> file.name.startsWith(HOME_BACKGROUND_FILE_PREFIX) }
-                        ?.forEach { bgFile ->
-                            bgFile.inputStream().use { inputStream ->
-                                outputStream.putNextEntry(ZipEntry("$HOME_BACKGROUND_ZIP_DIR/${bgFile.name}"))
-                                inputStream.copyTo(outputStream)
-                            }
-                        }
+                database.checkpoint()
+                FileInputStream(database.openHelper.writableDatabase.path).use { inputStream ->
+                    outputStream.putNextEntry(ZipEntry(InternalDatabase.DB_NAME))
+                    inputStream.copyTo(outputStream)
                 }
+                // Background media is stored as files; DataStore saves only its path.
+                context.filesDir.listFiles { file -> file.name.startsWith(HOME_BACKGROUND_FILE_PREFIX) }
+                    ?.forEach { bgFile ->
+                        bgFile.inputStream().use { inputStream ->
+                            outputStream.putNextEntry(ZipEntry("$HOME_BACKGROUND_ZIP_DIR/${bgFile.name}"))
+                            inputStream.copyTo(outputStream)
+                        }
+                    }
             }
-        }.onSuccess {
-            Toast.makeText(context, R.string.backup_create_success, Toast.LENGTH_SHORT).show()
-        }.onFailure {
-            reportException(it)
-            Toast.makeText(context, R.string.backup_create_failed, Toast.LENGTH_SHORT).show()
         }
     }
 
     fun restore(context: Context, uri: Uri) {
+        val appContext = context.applicationContext
+        viewModelScope.launch(Dispatchers.IO) { restoreArchive(appContext, uri) }
+    }
+
+    private suspend fun restoreArchive(appContext: Context, uri: Uri) {
         var databaseClosed = false
         var restoreCommitted = false
         runCatching {
             Timber.tag("RESTORE").i("Starting restore from URI: $uri")
-            val appContext = context.applicationContext
             val databaseFile = File(database.openHelper.writableDatabase.path)
             val stagedFiles = linkedMapOf<File, StagedFileReplacement>()
             try {
@@ -127,7 +140,7 @@ class BackupRestoreViewModel(
 
                 if (stagedFiles.values.any { it.destinationFile.canonicalFile == databaseFile.canonicalFile }) {
                     appContext.stopService(Intent(appContext, MusicService::class.java))
-                    runBlocking(Dispatchers.IO) { database.checkpoint() }
+                    database.checkpoint()
                     com.ozyern.exhale.utils.CrashHandler.databaseCloseExpected = true
                     databaseClosed = true
                     database.close()
@@ -150,11 +163,14 @@ class BackupRestoreViewModel(
             restartApplication(appContext)
             exitProcess(0)
         }.onFailure {
+            if (it is CancellationException) throw it
             reportException(it)
             Timber.tag("RESTORE").e(it, "Restore failed")
-            Toast.makeText(context, R.string.restore_failed, Toast.LENGTH_SHORT).show()
+            withContext(Dispatchers.Main) {
+                Toast.makeText(appContext, R.string.restore_failed, Toast.LENGTH_SHORT).show()
+            }
             if (databaseClosed || restoreCommitted) {
-                restartApplication(context.applicationContext)
+                restartApplication(appContext)
                 exitProcess(0)
             }
         }
@@ -204,7 +220,7 @@ class BackupRestoreViewModel(
         }
     }
 
-    private fun validateStagedDatabase(context: Context, stagedFile: File) {
+    private suspend fun validateStagedDatabase(context: Context, stagedFile: File) {
         val source = AndroidSQLiteDatabase.openDatabase(
             stagedFile.absolutePath,
             null,
@@ -229,7 +245,7 @@ class BackupRestoreViewModel(
             check(migratedVersion == INTERNAL_DATABASE_VERSION) {
                 "Backup database did not migrate to version $INTERNAL_DATABASE_VERSION"
             }
-            runBlocking(Dispatchers.IO) { stagedDatabase.checkpoint() }
+            stagedDatabase.checkpoint()
         } finally {
             stagedDatabase.close()
         }

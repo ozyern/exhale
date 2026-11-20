@@ -473,7 +473,7 @@
     <string name="dj_bit_perfect_note">Turn off bit-perfect output to use song transitions.</string>
     <string name="top_bar_blur_single_pass">Single pass (recommended)</string>
     <string name="top_bar_blur_haze_progressive">Haze progressive</string>
-    <string name="reduce_dynamic_blur_desc">Replace live blur (Haze blend and top blur) with flat colour on hero screens for low-power devices</string>
+    <string name="reduce_dynamic_blur_desc">Replace live blur with flat colour and hold moving artwork backgrounds still, for low-power devices</string>
     <string name="theme_packs">Theme packs</string>
     <string name="theme_pack_save_current">Save current as new theme</string>
     <string name="theme_pack_import">Import theme from file</string>

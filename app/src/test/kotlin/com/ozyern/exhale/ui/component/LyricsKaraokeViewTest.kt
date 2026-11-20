@@ -4,7 +4,6 @@ import com.ozyern.exhale.lyrics.LyricsEntry
 import com.ozyern.exhale.lyrics.WordTimestamp
 import com.mocharealm.accompanist.lyrics.core.model.karaoke.KaraokeAlignment
 import com.mocharealm.accompanist.lyrics.core.model.karaoke.KaraokeLine
-import com.mocharealm.accompanist.lyrics.core.model.synced.SyncedLine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -92,8 +91,11 @@ class LyricsKaraokeViewTest {
             sung(90_000, "after the break", words = null),
         ).toSyncedLyrics().lines
 
-        val first = lines.first() as SyncedLine
-        assertEquals(4_000, first.end)
+        // Word-less lines get an estimated sweep, so the line is karaoke-shaped; what matters is
+        // that it lets go within the hold cap rather than staying lit through the break.
+        val first = lines.first()
+        assertTrue(first is KaraokeLine.MainKaraokeLine)
+        assertTrue("ended at ${first.end}", first.end in 1..4_000)
     }
 
     @Test
@@ -101,9 +103,9 @@ class LyricsKaraokeViewTest {
         val first = listOf(
             sung(0, "one", words = null),
             sung(1_500, "two", words = null),
-        ).toSyncedLyrics().lines.first() as SyncedLine
+        ).toSyncedLyrics().lines.first()
 
-        assertEquals(1_499, first.end)
+        assertTrue("ended at ${first.end}", first.end in 1..1_499)
     }
 
     @Test

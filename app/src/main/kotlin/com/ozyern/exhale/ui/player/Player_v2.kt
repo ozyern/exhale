@@ -703,6 +703,8 @@ private fun PlayerV2Content(
     )
 
     val (compactPlayerInTabView) = rememberPreference(CompactPlayerInTabViewKey, false)
+    // Low-power setting: the cover holds still rather than drifting under the glass every frame.
+    val coverMotionReduced by rememberPreference(com.ozyern.exhale.constants.ReduceDynamicBlurKey, false)
     val isWidePlayerLayout =
         diyOrientation == DiyOrientation.LANDSCAPE &&
             !(LocalTabView.current && compactPlayerInTabView)
@@ -1139,7 +1141,7 @@ private fun PlayerV2Content(
                                     // settled and out the moment it moves, so every flight into the
                                     // dock or a page header leaves from, and lands on, the still frame.
                                     val coverSettled = state.isExpanded && !state.isDragging && !PlayerMorph.active
-                                    val coverDriftClock = rememberCoverDrift(playing = isPlaying, settled = coverSettled)
+                                    val coverDriftClock = rememberCoverDrift(playing = isPlaying && !coverMotionReduced, settled = coverSettled)
                                     val coverLive = animateFloatAsState(
                                         targetValue = if (isHeroLook && coverSettled) 1f else 0f,
                                         animationSpec = tween(if (coverSettled) 900 else 160),

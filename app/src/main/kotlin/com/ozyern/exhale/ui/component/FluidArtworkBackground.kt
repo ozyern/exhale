@@ -8,6 +8,7 @@ package com.ozyern.exhale.ui.component
 
 import androidx.compose.ui.graphics.asImageBitmap
 
+import android.animation.ValueAnimator
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
 import android.graphics.RuntimeShader
@@ -36,6 +37,9 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.platform.LocalContext
 import coil3.imageLoader
+import com.ozyern.exhale.constants.ReduceDynamicBlurKey
+import com.ozyern.exhale.ui.utils.Motion
+import com.ozyern.exhale.utils.rememberPreference
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.request.transformations
@@ -139,7 +143,7 @@ private class Cover(bitmap: Bitmap) {
  * The cover at [url] as a slowly moving field of its own colours. A new cover cross-fades in over 1.4s
  * rather than cutting.
  *
- * It moves only while music plays, and at 30 frames a second: the field drifts slowly enough that a
+ * It moves only while music plays (and never under Reduce live blur or with system animations off), and at 30 frames a second: the field drifts slowly enough that a
  * phone's 120 Hz adds nothing to see, and every frame it moves is a full-screen shader pass — plus,
  * behind the pages, every piece of glass chrome that samples it redrawing too. Paused, in the
  * background, or [paused] by the caller, the clock stops and nothing is drawn again until it moves.
@@ -157,10 +161,11 @@ fun FluidArtworkBackground(
     var previous by remember { mutableStateOf<Cover?>(null) }
     val blend = remember { Animatable(1f) }
     val clock = remember { mutableFloatStateOf(0f) }
-    // Inside the player while it is only pre-built behind the dock, nobody can see it move.
-    // This build composes the player only while it is shown.
-    val shown = true
-    val isPaused by rememberUpdatedState(paused || !shown)
+    // Low-power and reduced-motion settings keep the field as a still picture: every frame it
+    // moves is a full-screen shader pass plus a redraw of the glass that samples it.
+    val (reduceMotion) = rememberPreference(ReduceDynamicBlurKey, false)
+    val still = reduceMotion || !ValueAnimator.areAnimatorsEnabled()
+    val isPaused by rememberUpdatedState(paused || still)
 
     LaunchedEffect(url) {
         if (url == null) return@LaunchedEffect
@@ -173,7 +178,7 @@ fun FluidArtworkBackground(
         previous = current ?: Cover(small)
         current = Cover(small)
         blend.snapTo(0f)
-        blend.animateTo(1f, tween(1_400, easing = LinearOutSlowInEasing))
+        blend.animateTo(1f, Motion.gate(still, tween(1_400, easing = LinearOutSlowInEasing)))
     }
 
     // One frame clock; drawing reads it, composition never does. Stepped, and asleep while still.

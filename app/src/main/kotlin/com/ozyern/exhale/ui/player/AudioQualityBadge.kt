@@ -1,6 +1,7 @@
 package com.ozyern.exhale.ui.player
 
 import com.ozyern.exhale.ui.ios.foundation.iosMenuSurface
+import android.animation.ValueAnimator
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -32,6 +33,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import com.ozyern.exhale.R
+import com.ozyern.exhale.constants.ReduceDynamicBlurKey
 import com.ozyern.exhale.constants.ShowAudioQualityBadgeKey
 import com.ozyern.exhale.playback.PlayerConnection
 import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
@@ -111,6 +113,11 @@ fun AudioQualityBadge(
     // carries a band of light sweeping across it on a loop; plain Lossless holds still, so the two
     // tiers are told apart at a glance.
     val ink = if (chrome) VibrantChromeInk else tint
+    // The sweep never ends, so it keeps the whole player drawing every frame: run it only while
+    // the song plays, and not at all when motion is reduced.
+    val isPlaying by playerConnection.isPlaying.collectAsState()
+    val (reduceMotion) = rememberPreference(ReduceDynamicBlurKey, false)
+    val sweeping = quality.hiRes && isPlaying && !reduceMotion && ValueAnimator.areAnimatorsEnabled()
     Box(
         modifier = modifier
             .clickable(
@@ -119,8 +126,8 @@ fun AudioQualityBadge(
             ) { showCard = true }
             .padding(horizontal = 6.dp, vertical = 2.dp),
     ) {
-        AudioQualityMark(quality, ink = if (quality.hiRes) ink.copy(alpha = ink.alpha * 0.62f) else ink, chrome = chrome)
-        if (quality.hiRes) {
+        AudioQualityMark(quality, ink = if (sweeping) ink.copy(alpha = ink.alpha * 0.62f) else ink, chrome = chrome)
+        if (sweeping) {
             // The light: a white copy of the mark, shown only under a moving band. A copy over the
             // mark rather than a mask on it, so the mark's own chrome blending is left alone.
             val sweep = rememberInfiniteTransition(label = "hiResSweep").animateFloat(

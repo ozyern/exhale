@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.isSpecified
 import com.ozyern.exhale.ui.ios.foundation.IosTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -179,8 +180,13 @@ fun DownloadRingIcon(
     val color = if (tint.isSpecified) tint else IosTheme.tint
     val target = download?.takeIf { it.percentDownloaded >= 0f }?.let { it.percentDownloaded / 100f }
     val progress by animateFloatAsState(target ?: 0f, label = "downloadProgress")
-    val spin = androidx.compose.animation.core.rememberInfiniteTransition(label = "downloadSpin")
-        .animateFloat(0f, 360f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(1000, easing = androidx.compose.animation.core.LinearEasing)), label = "spin")
+    // Spins only while the progress is unknown: a running infinite transition redraws every frame.
+    val spin: State<Float> = if (target == null) {
+        androidx.compose.animation.core.rememberInfiniteTransition(label = "downloadSpin")
+            .animateFloat(0f, 360f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(1000, easing = androidx.compose.animation.core.LinearEasing)), label = "spin")
+    } else {
+        StillSpin
+    }
     androidx.compose.foundation.layout.Box(modifier.size(size), contentAlignment = Alignment.Center) {
         androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
             val stroke = 2.dp.toPx()
@@ -198,6 +204,10 @@ fun DownloadRingIcon(
         }
         SymbolIcon(symbol = sf("arrow.down"), contentDescription = null, size = size * 0.5f, tint = color, bounceOnTouch = false)
     }
+}
+
+private object StillSpin : State<Float> {
+    override val value: Float = 0f
 }
 
 /** Chrome strengths at or below this are the light menu variant. */
