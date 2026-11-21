@@ -120,7 +120,14 @@ fun FoldingTabBar(
             Box(
                 Modifier
                     .graphicsLayer {
-                        alpha = (1f - fold.value.coerceIn(0f, 1f) * 3f).coerceIn(0f, 1f) * (1f - search.value.coerceIn(0f, 1f))
+                        val p = fold.value.coerceIn(0f, 1f)
+                        alpha = (1f - p * 3f).coerceIn(0f, 1f) * (1f - search.value.coerceIn(0f, 1f))
+                        // The icons shrink into the circle as the bar folds, as on master's dock,
+                        // rather than only fading where they stand.
+                        val shrink = 1f - (1f - GLYPH_FOLD_SCALE) * (p * 3f).coerceIn(0f, 1f)
+                        scaleX = shrink
+                        scaleY = shrink
+                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f)
                     }
                     .drawWithContent {
                         val p = fold.value.coerceIn(0f, 1f)
@@ -143,7 +150,14 @@ fun FoldingTabBar(
             Box(
                 Modifier
                     .graphicsLayer(elasticStretchLayerBlock(selectedGlow))
-                    .graphicsLayer { alpha = maxOf(fold.value, search.value).coerceIn(0f, 1f) }
+                    .graphicsLayer {
+                        val shown = maxOf(fold.value, search.value).coerceIn(0f, 1f)
+                        alpha = shown
+                        // And the circle's icon grows into place from the same size.
+                        val grow = GLYPH_FOLD_SCALE + (1f - GLYPH_FOLD_SCALE) * shown
+                        scaleX = grow
+                        scaleY = grow
+                    }
                     .then(
                         if (foldedOrSearching) {
                             Modifier.then(selectedGlow.gestureModifier).clickable(noTap, null) {
@@ -178,6 +192,9 @@ fun FoldingTabBar(
                         val p = fold.value.coerceIn(0f, 1f)
                         val s = search.value.coerceIn(0f, 1f)
                         alpha = maxOf(p, s) * (1f - s * (1f - p))
+                        val grow = GLYPH_FOLD_SCALE + (1f - GLYPH_FOLD_SCALE) * maxOf(p, s)
+                        scaleX = grow
+                        scaleY = grow
                     }
                     .then(
                         if (foldedOrSearching && (!inSearch || isInline)) {
@@ -272,7 +289,14 @@ private val InlineRowHeight = 48.dp
 private val SearchRowHeight = 48.dp
 
 /** Collapse lands with a deeper overshoot than the expand. */
-private val FoldCollapseSpring = SpringEasing(zeta = 0.55f)
+/**
+ * Folding lands without overshooting, as Exhale master's dock folds, so the song's pill is never
+ * re-cut to a new width just after it arrives; opening keeps its gentle swing.
+ */
+private val FoldCollapseSpring = CriticalEasing()
+
+/** How small a tab's icon gets as it goes into, or comes out of, a circle (master's dock). */
+private const val GLYPH_FOLD_SCALE = 0.6f
 private val FoldingIconSize = 32.dp
 
 @Composable

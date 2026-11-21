@@ -330,6 +330,9 @@ internal fun RowScope.FoldingTabCell(
 ) {
     val scale = LocalLiquidBottomTabScale.current
     var bounds by remember { androidx.compose.runtime.mutableStateOf(Rect.Zero) }
+    // Master's dock: a tapped icon squeezes and springs back.
+    val bounce = remember { Animatable(1f) }
+    val bounceScope = rememberCoroutineScope()
     androidx.compose.foundation.layout.Column(
         Modifier
             .clip(ContinuousCapsule)
@@ -338,13 +341,19 @@ internal fun RowScope.FoldingTabCell(
                 interactionSource = null,
                 indication = null,
                 role = Role.Tab,
-                onClick = onClick,
+                onClick = {
+                    bounceScope.launch {
+                        bounce.animateTo(0.80f, tween(90, easing = androidx.compose.animation.core.FastOutLinearInEasing))
+                        bounce.animateTo(1f, spring(dampingRatio = 0.42f, stiffness = 520f))
+                    }
+                    onClick()
+                },
                 onLongClick = onLongClick?.let { { it(bounds) } },
             )
             .fillMaxHeight()
             .weight(1f)
             .graphicsLayer {
-                val s = scale()
+                val s = scale() * bounce.value
                 scaleX = s
                 scaleY = s
             },
