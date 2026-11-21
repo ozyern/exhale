@@ -9,13 +9,10 @@
 </p>
 
 <p align="center">
-  <a href="https://android.com"><img src="https://img.shields.io/badge/Platform-Android%2013%2B-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Platform"></a>
-  <a href="https://github.com/ozyern/exhale/releases/latest"><img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows"></a>
-  <a href="https://kotlinlang.org"><img src="https://img.shields.io/badge/Kotlin-100%25-7F52FF?style=flat-square&logo=kotlin&logoColor=white" alt="Kotlin"></a>
-  <a href="https://developer.android.com/jetpack/compose"><img src="https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4?style=flat-square&logo=android&logoColor=white" alt="Jetpack Compose"></a>
-  <a href="https://github.com/ozyern/Exhale/releases"><img src="https://img.shields.io/github/v/release/ozyern/Exhale?style=flat-square&color=F5B700" alt="Latest release"></a>
-  <a href="https://github.com/ozyern/exhale/releases"><img src="assets/downloads.svg" alt="Total downloads"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL%20v3-blue.svg?style=flat-square" alt="License"></a>
+  <a href="https://github.com/ozyern/exhale/releases/latest"><img src="https://img.shields.io/github/v/release/ozyern/exhale?label=release&style=for-the-badge&labelColor=0d1117&color=F5B700" alt="Latest release"></a>
+  <a href="https://github.com/ozyern/exhale/releases"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fozyern%2Fexhale%2Fmaster%2Fassets%2Fdownloads.json&style=for-the-badge&labelColor=0d1117" alt="Total downloads (GitHub and SourceForge)"></a>
+  <a href="https://github.com/ozyern/exhale/releases/latest"><img src="https://img.shields.io/badge/platform-Android%2013%2B%20%C2%B7%20Windows%2010%2F11-F5B700?style=for-the-badge&labelColor=0d1117" alt="Android 13+ and Windows 10/11"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-F5B700?style=for-the-badge&labelColor=0d1117" alt="License: GPL-3.0"></a>
 </p>
 
 ---

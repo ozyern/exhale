@@ -14,40 +14,45 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Calculate release downloads
+      - name: Count downloads (GitHub releases + SourceForge)
         id: count
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          total=$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate --jq '[.[].assets[] | .download_count] | add // 0')
+          github=$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate --jq '[.[].assets[] | .download_count] | add // 0')
+          # SourceForge's all-time file downloads for the project.
+          sourceforge=$(curl -fsSL --retry 3 \
+            "https://sourceforge.net/projects/exhale-music/files/stats/json?start_date=2000-01-01&end_date=$(date -u +%F)" \
+            | jq -r '.total // 0') || sourceforge=""
+          if ! [[ "$sourceforge" =~ ^[0-9]+$ ]]; then
+            # SourceForge unreachable: keep the published number rather than drop its share.
+            echo "SourceForge count unavailable; leaving the badge as it is"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          total=$((github + sourceforge))
           formatted=$(printf '%s' "$total" | rev | sed 's/[0-9][0-9][0-9]/&,/g' | rev | sed 's/^,//')
-          echo "total=$total" >> "$GITHUB_OUTPUT"
+          echo "GitHub: $github, SourceForge: $sourceforge, total: $total"
           echo "formatted=$formatted" >> "$GITHUB_OUTPUT"
 
-      - name: Render badge
+      - name: Write badge data
+        if: steps.count.outputs.skip != 'true'
         env:
           DOWNLOADS: ${{ steps.count.outputs.formatted }}
         run: |
-          cat > assets/downloads.svg <<SVG
-          <svg xmlns="http://www.w3.org/2000/svg" width="132" height="20" role="img" aria-label="Total downloads: $DOWNLOADS">
-            <title>Total downloads: $DOWNLOADS</title>
-            <rect width="96" height="20" fill="#555"/>
-            <rect x="96" width="36" height="20" fill="#2EA44F"/>
-            <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
-              <text x="48" y="14">downloads</text>
-              <text x="114" y="14">$DOWNLOADS</text>
-            </g>
-          </svg>
-          SVG
+          # Drawn by shields.io (endpoint badge) in the README's for-the-badge style.
+          jq -n --arg m "$DOWNLOADS" \
+            '{schemaVersion: 1, label: "downloads", message: $m, color: "F5B700"}' > assets/downloads.json
 
       - name: Publish badge when changed
+        if: steps.count.outputs.skip != 'true'
         run: |
-          if git diff --quiet -- assets/downloads.svg; then
+          if git diff --quiet -- assets/downloads.json; then
             echo "Downloads unchanged at ${{ steps.count.outputs.formatted }}"
             exit 0
           fi
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add assets/downloads.svg
+          git add assets/downloads.json
           git commit -m "chore: update downloads badge"
           git push
