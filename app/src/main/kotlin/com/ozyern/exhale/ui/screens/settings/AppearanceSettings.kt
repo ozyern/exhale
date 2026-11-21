@@ -140,7 +140,6 @@ import com.ozyern.exhale.constants.AppFont
 import com.ozyern.exhale.constants.SelectedFontKey
 import com.ozyern.exhale.constants.DockStyle
 import com.ozyern.exhale.constants.DockStyleKey
-import com.ozyern.exhale.constants.DefaultDockStyle
 import com.ozyern.exhale.ui.component.SymbolIcon
 import com.ozyern.exhale.ui.component.sf
 
@@ -456,7 +455,7 @@ fun AppearanceSettings(
         Spacer(modifier = Modifier.height(27.dp))
 
         run {
-            val (dockStyle, onDockStyleChange) = rememberEnumPreference(DockStyleKey, DefaultDockStyle)
+            val (dockStyle, onDockStyleChange) = rememberEnumPreference(DockStyleKey, DockStyle.FOLDING)
             val dockIcon = rememberVectorPainter(SfSymbols.Monochrome.SFSliderHorizontal3)
             fun dockOption(style: DockStyle, title: String, description: String) = IosSettingsItem(
                 icon = dockIcon,

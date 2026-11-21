@@ -1,5 +1,5 @@
-// The classic dock, ported from master's FoldingDock (Convx 2.0.4's fold): one number folds the
-// whole bar, another opens the search row, and on the search page the page circle gives way.
+// The classic dock, kept as it was before the Convx 2.0.4 port so it stays selectable in
+// Settings > Appearance > Dock style. Only the package moved.
 /*
  * Exhale Project Original (2026)
  * ozyern (github.com/ozyern)
@@ -12,6 +12,7 @@
  */
 
 package com.ozyern.exhale.ui.component.classicdock
+
 
 import android.os.Build
 import androidx.annotation.DrawableRes
@@ -64,9 +65,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -120,8 +119,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -135,22 +132,17 @@ class FoldingDockTab(
     val onClick: () -> Unit,
     /** Glyphs that fill their whole viewbox are drawn smaller so every tab reads the same size. */
     val glyphSize: Dp = 32.dp,
-    /** An SF Symbol name; drawn bold in place of [icon] when set. */
-    val symbol: String? = null,
 )
 
 private val DockShape = RoundedCornerShape(percent = 50)
 
-// Open tab row, Convx 2.0.4's NavBarRowHeight: 32dp glyph, label and the selector's inset.
-private val OpenRowHeight = 68.dp
+// Open tab row: 32dp glyph, label and the selector's inset.
+private val OpenRowHeight = 64.dp
 // The folded row with a song in it, and the search row.
 private val InlineRowHeight = 48.dp
 private val SearchRowHeight = 48.dp
 private val ComponentSpacing = 8.dp
 private val FoldingIconSize = 32.dp
-
-/** How many times faster than the fold the search field fades: gone by 40% of the way. */
-private const val FieldFadeRate = 2.5f
 
 /** Where the dock is parked while the typing field has taken over: well below the screen. */
 private const val OFF_SCREEN_PX = 100_000
@@ -168,65 +160,31 @@ private const val OFF_SCREEN_PX = 100_000
 @Composable
 fun Modifier.foldingDockGlass(
     shape: Shape = DockShape,
+    surfaceOpacity: Float = 0.56f,
+    highlightAlpha: Float = 0.3f,
     backdrop: Backdrop = LocalAppBackdrop.current,
 ): Modifier {
-    // Convx 1.5's liquidGlass at its defaults (GlassEffect.kt, v1.5.2): clear glass under a dark
-    // film. The page stays visible through it, bent hard at the rim, and the film is what keeps a
-    // title readable over it: 2.0.4's 15% white lift left the mini player's text sitting on
-    // whatever scrolled beneath, and frosting it hid the page the glass is there to show.
     val dark = isSystemInDarkTheme()
-    // Convx 1.5's adaptive glass grey, light enough to read as glass: see [ClearGlassFilm].
-    val film = if (dark) ClearGlassFilmDark.copy(alpha = ClearGlassFilmDarkAlpha) else Color(0xFFF5F5F7).copy(alpha = 0.5f)
-    // The specular rim: white, 0.8dp, lit from 45 degrees; Convx dims it to 30% on the nav bar.
-    val rim = Color.White.copy(alpha = if (dark) 0.30f else 0.40f)
+    val tint = (if (dark) Color(0xFF4A4A4E) else Color(0xFFFAFAFA)).copy(alpha = surfaceOpacity)
+    val rim = Color.White.copy(alpha = highlightAlpha)
     return drawBackdrop(
         backdrop = backdrop,
         shape = { shape },
         effects = { dockGlassEffects() },
         highlight = { Highlight(width = 0.8.dp, style = HighlightStyle.Default(color = rim, angle = 45f)) },
         shadow = { Shadow.Default },
-        onDrawSurface = { drawRect(film) },
-    // A faint dark edge, enough to hold the pane's shape over a bright page without shading it.
-    ).outerDarkRim(shape, alpha = 0.14f)
+        onDrawSurface = { drawRect(tint) },
+    )
 }
 
-/**
- * Convx's dark outer rim, paired with the light one: 1.6dp at 32%, strongest on the two corners
- * the light doesn't reach, so the glass keeps an edge over a bright or busy page.
- */
-internal fun Modifier.outerDarkRim(shape: Shape, width: Dp = 1.6.dp, alpha: Float = 0.32f, angle: Float = 45f): Modifier =
-    drawWithCache {
-        val outline = shape.createOutline(size, layoutDirection, this)
-        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = width.toPx())
-        val center = Offset(size.width / 2f, size.height / 2f)
-        fun flank(axisDeg: Float): androidx.compose.ui.graphics.Brush {
-            val a = Math.toRadians(axisDeg.toDouble()).toFloat()
-            val dir = Offset(kotlin.math.cos(a), kotlin.math.sin(a))
-            val reach = dir * ((abs(dir.x) * size.width + abs(dir.y) * size.height) / 2f)
-            return androidx.compose.ui.graphics.Brush.linearGradient(
-                0f to Color.Black.copy(alpha = alpha),
-                0.5f to Color.Transparent,
-                1f to Color.Black.copy(alpha = alpha),
-                start = center - reach,
-                end = center + reach,
-            )
-        }
-        val first = flank(angle)
-        val second = flank(angle + 90f)
-        onDrawWithContent {
-            drawContent()
-            drawOutline(outline, first, style = stroke)
-            drawOutline(outline, second, style = stroke)
-        }
-    }
-
 internal fun BackdropEffectScope.dockGlassEffects() {
-    // Convx 1.5's glass: vibrancy 1.2 (saturation x1.6), a 2dp blur, and a lens 0.4 x 48dp high
-    // bending 0.6 x 48dp at the rim; no depth, no colour fringing.
+    // Vibrancy 1.6 and an 8dp frost, sampled live every frame, on the search circle as much as on
+    // the pill. At 2.0 and 3dp a bright cover behind the folded circles turned them neon purple
+    // or orange; iOS's tab bar takes the colour of what is under it, softened, not amplified.
     colorControls(saturation = 1.6f)
-    blur(2f.dp.toPx())
+    blur(8f.dp.toPx())
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        lens(refractionHeight = (0.4f * 48f).dp.toPx(), refractionAmount = (0.6f * 48f).dp.toPx())
+        lens(refractionHeight = 19.2f.dp.toPx(), refractionAmount = 28.8f.dp.toPx())
     }
 }
 
@@ -238,9 +196,8 @@ internal fun BackdropEffectScope.dockGlassEffects() {
 // above it, the folded row with the player inline, and the search row.
 private enum class DockVisual { Inline, Expanded, Search, Typing }
 
-// What a tab's label adds under its glyph: 2dp of gap and one line of 10sp text.
-private val TabLabelGap = 2.dp
-private val TabLabelLineHeight = 13.sp
+// What a tab's label adds under its glyph: 2dp of gap and one line of 10sp.
+private val TabLabelBlock = 16.dp
 
 /** Where every piece of the bar sits in one shape, y measured up from the bar's bottom edge. */
 private class DockRects(val pill: Rect, val search: Rect, val player: Rect, val glyph: Rect)
@@ -311,9 +268,6 @@ fun FoldingDock(
     val selected = live ?: contentTabs.firstOrNull { it.key == sticky[0] } ?: contentTabs.firstOrNull()
     val selectedIndex = contentTabs.indexOf(selected).coerceAtLeast(0)
     val tabsCount = contentTabs.size.coerceAtLeast(1)
-    // Search rides in the open bar as its last tab unless a bar of the caller's own replaces the group.
-    val searchInBar = searchTab != null && openBar == null
-    val cellCount = if (searchInBar) tabs.size.coerceAtLeast(1) else tabsCount
 
     val visual = when {
         inSearch && typing -> DockVisual.Typing
@@ -328,136 +282,188 @@ fun FoldingDock(
     var bandPx by remember { mutableIntStateOf(-1) }
 
     val labels = showLabels
-
-    // Convx 2.0.4's FoldingTabBar: the whole bar folded by one number, [fold], and opened into the
-    // search row by another, [search]. Every piece's place is worked out from the two each frame
-    // (its foldGeometry), so a reversed fold retraces the same path and nothing ever disagrees.
-    // [fold] overshoots under its spring easing; sizes are clamped, positions are not — the overshoot
-    // is the glass swinging past its place and back, which is the bounce.
-    val fold = remember { Animatable(if (visual == DockVisual.Inline) 1f else 0f) }
-    val search = remember { Animatable(if (visual == DockVisual.Search || visual == DockVisual.Typing) 1f else 0f) }
-    val handOver = remember { Animatable(if (visual == DockVisual.Typing) 0f else 1f) }
-    val typingGlyph = remember { Animatable(if (visual == DockVisual.Typing) 1f else 0f) }
-    // On the search page, folded or not, as Convx 1.5 lays it out: no page circle. Open, the field
-    // runs the whole row with its back arrow inside it; folded, the player takes the circle's room
-    // and only search's circle stays. [search] alone can't say this: folding sets it back to 0.
-    val searchPage = remember { Animatable(if (inSearch) 1f else 0f) }
-    LaunchedEffect(inSearch) {
-        searchPage.animateTo(if (inSearch) 1f else 0f, spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow))
-    }
-
-    val rectsAt: (Float, Float) -> DockRects = { p, sRaw ->
+    val targets: (DockVisual) -> DockRects = { v ->
         with(density) {
-            fun mix(a: Float, b: Float, t: Float) = a + (b - a) * t
             val w = widthPx.toFloat()
-            val s = sRaw.coerceIn(0f, 1f)
-            val spacing = ComponentSpacing.toPx()
-            val open = mix(OpenRowHeight.toPx(), SearchRowHeight.toPx(), s)
-            val compact = InlineRowHeight.toPx()
-            val rowH = mix(open, compact, p).coerceAtLeast(1f)
-            val circle = rowH.coerceAtMost(w)
-            val inset = 4.dp.toPx()
+            val s = ComponentSpacing.toPx()
+            val open = OpenRowHeight.toPx()
+            val row = InlineRowHeight.toPx()
+            val gap = (if (bandPx >= 0) (bandPx - open).coerceAtLeast(0f) else openPlayerGap.toPx()) + openPlayerLift.toPx()
+            val playerH = openPlayerHeight.toPx()
             val icon = FoldingIconSize.toPx()
-
-            // The tab group: full width open, the page circle folded or searching.
-            val openRight = if (searchTab != null && !searchInBar) w - OpenRowHeight.toPx() - openGap.toPx() else w
-            val navWidth = mix(mix(openRight, circle, s), circle, p).coerceIn(circle, maxOf(circle, w))
-            val pill = Rect(0f, -rowH, navWidth, 0f)
-
-            // Search: unseen over its own cell while open, out to the right edge folded, and wide as
-            // the field in the search row.
-            val tabW = (openRight - 2 * inset) / cellCount
-            val searchCenter = if (searchInBar) inset + tabW * (cellCount - 0.5f) else w - OpenRowHeight.toPx() / 2f
-            val searchWidth = mix(circle, (w - circle - spacing).coerceAtLeast(circle), s * (1f - p)).coerceAtLeast(circle)
-            val detachedSearchX = mix(searchCenter - circle / 2f, w - circle, p)
-            val searchX = mix(detachedSearchX, w - searchWidth, s)
-            // Typing, or open on the search page, the field takes the whole row where the page
-            // circle would be.
-            val hp = searchPage.value.coerceIn(0f, 1f)
-            val t = maxOf(typingGlyph.value, s * (1f - p.coerceIn(0f, 1f)))
-            val searchRect = when {
-                searchTab == null -> Rect(w, -rowH, w, 0f)
-                else -> Rect(mix(searchX, 0f, t), -rowH, searchX + searchWidth, 0f)
+            val abovePlayer = Rect(0f, -open - gap - playerH, w, -open - gap)
+            fun glyphIn(r: Rect) = Rect(r.center.x - icon / 2f, r.center.y - icon / 2f, r.center.x + icon / 2f, r.center.y + icon / 2f)
+            when (v) {
+                DockVisual.Expanded -> {
+                    val pillRight = if (searchTab != null) w - open - openGap.toPx() else w
+                    val pill = Rect(0f, -open, pillRight, 0f)
+                    val search = if (searchTab != null) Rect(w - open, -open, w, 0f) else Rect(w, -open, w, 0f)
+                    val inset = 4.dp.toPx()
+                    val cell = (pill.width - 2 * inset) / tabsCount
+                    val cx = inset + cell * (selectedIndex + 0.5f)
+                    val block = icon + if (labels) TabLabelBlock.toPx() else 0f
+                    val cy = -open + (open - block) / 2f + icon / 2f
+                    DockRects(pill, search, abovePlayer, Rect(cx - icon / 2f, cy - icon / 2f, cx + icon / 2f, cy + icon / 2f))
+                }
+                DockVisual.Inline -> {
+                    // The pill folds into the page circle at the left edge and search steps down in
+                    // place at the right — playing or not. With nothing playing the two used to meet
+                    // in the middle: the whole bar slid half the screen while it shrank and search
+                    // crossed the dock to join it, a lot of travel for a fold with nothing to make
+                    // room for. Now nothing moves sideways; the song, when there is one, drops into
+                    // the gap.
+                    val pill = Rect(0f, -row, row, 0f)
+                    val search = if (searchTab != null) Rect(w - row, -row, w, 0f) else Rect(w, -row, w, 0f)
+                    val playerRight = if (searchTab != null) w - row - s else w
+                    val player = if (hasPlayer) Rect(row + s, -row, playerRight, 0f) else abovePlayer
+                    DockRects(pill, search, player, glyphIn(pill))
+                }
+                DockVisual.Search -> {
+                    val pill = Rect(0f, -row, row, 0f)
+                    DockRects(pill, Rect(row + s, -row, w, 0f), abovePlayer, glyphIn(pill))
+                }
+                // Typing: the field takes the whole row, over the page circle, as the reference's does.
+                DockVisual.Typing -> {
+                    val pill = Rect(0f, -row, row, 0f)
+                    DockRects(pill, Rect(0f, -row, w, 0f), abovePlayer, glyphIn(pill))
+                }
             }
-
-            // The page glyph: from its cell, label under it, into the circle.
-            val ps = maxOf(p, s)
-            val selectedX = mix(inset + tabW * (selectedIndex + 0.5f) - circle / 2f, 0f, ps)
-            val titleFraction = (1f - p.coerceIn(0f, 1f)) * (1f - s)
-            val block = icon + if (labels) TabLabelGap.toPx() + TabLabelLineHeight.toPx() else 0f
-            val cy = mix(-rowH / 2f, -rowH + (rowH - block) / 2f + icon / 2f, titleFraction)
-            val gx = selectedX + circle / 2f
-            val glyph = Rect(gx - icon / 2f, cy - icon / 2f, gx + icon / 2f, cy + icon / 2f)
-
-            // The player: full width above the bar, inline between the two circles folded.
-            val gap = (if (bandPx >= 0) (bandPx - OpenRowHeight.toPx()).coerceAtLeast(0f) else openPlayerGap.toPx()) + openPlayerLift.toPx()
-            val openPlayerH = openPlayerHeight.toPx()
-            val playerH = mix(openPlayerH, compact, p.coerceIn(0f, 1f))
-            // On the search page there is no page circle for the folded player to leave room for.
-            val inlineWidth = if (searchTab != null) w - (2f - hp) * (compact + spacing) else w - compact - spacing
-            val playerW = mix(w, inlineWidth.coerceAtLeast(0f), p).coerceIn(0f, w)
-            val playerX = mix(0f, (circle + spacing) * (1f - hp), p)
-            val playerTop = -rowH - mix(openPlayerH + gap, (playerH - rowH) / 2f, p)
-            val player = Rect(playerX, playerTop, playerX + playerW, playerTop + playerH)
-
-            DockRects(pill, searchRect, player, glyph)
         }
     }
-    val current: () -> DockRects = { rectsAt(fold.value, search.value) }
 
+    val pillRect = remember { Animatable(Rect.Zero, Rect.VectorConverter, Rect.VisibilityThreshold) }
+    val searchRect = remember { Animatable(Rect.Zero, Rect.VectorConverter, Rect.VisibilityThreshold) }
+    // The player's two axes ride separate springs, so one can start a beat after the other:
+    // left/right packed in one Offset, top/bottom in the other.
+    val playerX = remember { Animatable(Offset.Zero, Offset.VectorConverter, Offset.VisibilityThreshold) }
+    val playerY = remember { Animatable(Offset.Zero, Offset.VectorConverter, Offset.VisibilityThreshold) }
+    val glyphRect = remember { Animatable(Rect.Zero, Rect.VectorConverter, Rect.VisibilityThreshold) }
+    var placed by remember { mutableStateOf(false) }
+    // The shape the player last came to rest in; while it differs from [visual] the player is moving.
+    var restVisual by remember { mutableStateOf(visual) }
+    val shownVisual = remember { arrayOf(visual) }
+    // The springs run here, not in the effect below. Restarting an effect cancels what it launched,
+    // and a cancelled Animatable drops its velocity and stops reporting itself running: folded and
+    // unfolded quickly, the next shape saw a dock "at rest", staggered it from a standstill and
+    // froze pieces for a beat mid-flight. Out here a reversal finds them still moving.
+    val morphScope = rememberCoroutineScope()
+    val morphJob = remember { arrayOfNulls<Job>(1) }
+
+    LaunchedEffect(visual, widthPx, bandPx, hasPlayer, selectedIndex, tabsCount, labels, searchTab != null) {
+        if (widthPx <= 0) return@LaunchedEffect
+        val t = targets(visual)
+        val switched = visual != shownVisual[0]
+        shownVisual[0] = visual
+        val running = morphJob[0]?.isActive == true
+        val px = Offset(t.player.left, t.player.right)
+        val py = Offset(t.player.top, t.player.bottom)
+        if (!placed || (!switched && !running)) {
+            // First frame, or at rest with the room changed (rotation, insets): follow, don't animate.
+            morphJob[0]?.cancel()
+            pillRect.snapTo(t.pill)
+            searchRect.snapTo(t.search)
+            playerX.snapTo(px)
+            playerY.snapTo(py)
+            glyphRect.snapTo(t.glyph)
+            placed = true
+            restVisual = visual
+            return@LaunchedEffect
+        }
+        // A change of shape from rest usually lands with a page change whose first frame is a long
+        // one. The springs start after it, so the opening of the morph is drawn instead of skipped.
+        // Caught mid-motion there is nothing to skip, and waiting would let it run on the wrong way.
+        if (!running) withFrameNanos { }
+        val collapsing = visual == DockVisual.Inline
+        val surface = BarMotion.surface(collapsing, hasPlayer)
+        // Only a fold or unfold from rest is staggered. Caught mid-motion, every piece turns round
+        // at once and keeps its speed: a delay there would freeze it for a beat.
+        val stagger = switched && !running
+        // Read before the old morph is cancelled, which zeroes them.
+        val pillV = pillRect.velocity
+        val searchV = searchRect.velocity
+        val glyphV = glyphRect.velocity
+        val playerXV = playerX.velocity
+        val playerYV = playerY.velocity
+        morphJob[0]?.cancel()
+        morphJob[0] = morphScope.launch {
+            launch {
+                if (stagger && !collapsing) delay(BarMotion.ExpandBarDelayMs)
+                pillRect.animateTo(t.pill, surface, pillV)
+            }
+            launch {
+                if (stagger && !collapsing) delay(BarMotion.ExpandBarDelayMs)
+                searchRect.animateTo(t.search, surface, searchV)
+            }
+            launch { glyphRect.animateTo(t.glyph, BarMotion.item(collapsing, hasPlayer), glyphV) }
+            launch {
+                if (stagger && !collapsing) delay(BarMotion.ExpandPlayerWidenDelayMs)
+                playerX.animateTo(px, BarMotion.player, playerXV)
+            }
+            launch {
+                if (stagger && collapsing) delay(BarMotion.CollapsePlayerDropDelayMs)
+                playerY.animateTo(py, BarMotion.player, playerYV)
+            }
+        }.also { job ->
+            // Only the morph that finished says where the player came to rest.
+            job.invokeOnCompletion { cause -> if (cause == null) restVisual = visual }
+        }
+    }
+
+    // The contents of each shape: the outgoing ones clear while their plate is still wide, the
+    // incoming ones arrive once it has opened far enough to hold them.
+    // The open tabs' opacity is read off the plate itself rather than run on a clock of its own.
+    // It was a tween with a delay: flip the dock back before a fold finished and the plate turned
+    // round on its spring while the tabs sat out their delay, so for a beat the bar reopened empty,
+    // or the labels came back inside a plate that was still closing. Tied to the plate's width,
+    // the two cannot disagree however fast the dock is folded and unfolded.
+    val tabsAlpha = object {
+        val value: Float
+            get() {
+                if (!placed) return if (visual == DockVisual.Expanded) 1f else 0f
+                val row = with(density) { InlineRowHeight.toPx() }
+                val open = targets(DockVisual.Expanded).pill.width
+                if (open - row < 1f) return 0f
+                val openness = ((pillRect.value.width - row) / (open - row)).coerceIn(0f, 1f)
+                // Gone by the time the plate is half shut; back only once it is nearly open.
+                val t = ((openness - 0.55f) / 0.37f).coerceIn(0f, 1f)
+                return t * t * (3f - 2f * t)
+            }
+    }
+    val fieldAlpha = remember { Animatable(if (visual == DockVisual.Search || visual == DockVisual.Typing) 1f else 0f) }
+    val handOver = remember { Animatable(if (visual == DockVisual.Typing) 0f else 1f) }
+    val typingGlyph = remember { Animatable(if (visual == DockVisual.Typing) 1f else 0f) }
     val firstShape = remember { booleanArrayOf(true) }
-    val inSearchShape = visual == DockVisual.Search || visual == DockVisual.Typing
-    LaunchedEffect(visual == DockVisual.Inline) {
-        val target = if (visual == DockVisual.Inline) 1f else 0f
-        if (fold.targetValue == target && !fold.isRunning) return@LaunchedEffect
-        // The fold, on Convx 2.0.4's clock: collapse 560ms landing with a deep overshoot, expand
-        // 470ms with a gentler one.
-        fold.animateTo(
-            target,
-            if (target == 1f) tween(BarMotion.CollapseMorphMs, easing = BarMotion.FoldCollapseSpring)
-            else tween(BarMotion.ExpandMorphMs, easing = BarMotion.FoldExpandSpring),
-        )
-    }
-    LaunchedEffect(inSearchShape) {
-        val target = if (inSearchShape) 1f else 0f
-        if (search.targetValue == target && !search.isRunning) return@LaunchedEffect
-        search.animateTo(target, spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow))
-    }
     LaunchedEffect(visual) {
         if (firstShape[0]) {
             firstShape[0] = false
             return@LaunchedEffect
         }
-        // Typing, the field that rides the keyboard takes over once this one has widened.
-        if (visual == DockVisual.Typing) {
-            launch { typingGlyph.animateTo(1f, tween(120, easing = LinearEasing)) }
-            handOver.animateTo(0f, tween(180, delayMillis = 260, easing = LinearEasing))
-        } else {
-            launch { typingGlyph.animateTo(0f, tween(120, easing = LinearEasing)) }
-            handOver.animateTo(1f, tween(120, easing = LinearEasing))
+        withFrameNanos { }
+        launch {
+            val on = visual == DockVisual.Search || visual == DockVisual.Typing
+            fieldAlpha.animateTo(if (on) 1f else 0f, if (on) BarMotion.contentIn else BarMotion.contentOut)
         }
+        launch {
+            // Typing, the field that rides the keyboard takes over once this one has widened.
+            if (visual == DockVisual.Typing) {
+                launch { typingGlyph.animateTo(1f, tween(120, easing = LinearEasing)) }
+                handOver.animateTo(0f, tween(180, delayMillis = 260, easing = LinearEasing))
+            } else {
+                launch { typingGlyph.animateTo(0f, tween(120, easing = LinearEasing)) }
+                handOver.animateTo(1f, tween(120, easing = LinearEasing))
+            }
+        }
+        // No gooey melt any more. Its blur ran over the fading tabs, glass and all, and the
+        // threshold that was meant to snap them back to a crisp edge could not with semi-clear
+        // glass in the layer: the open bar folded as a smeared ghost of itself.
     }
 
-    // Convx's opacities, all read off the two numbers.
-    val foldC = { fold.value.coerceIn(0f, 1f) }
-    val searchC = { search.value.coerceIn(0f, 1f) }
-    val tabsAlpha = object {
-        val value: Float get() = (1f - foldC() * 3f).coerceIn(0f, 1f) * (1f - searchC())
-    }
-    val circlesAlpha = { maxOf(foldC(), searchC()) }
-    val fieldAlpha = object {
-        // Gone in the first part of the fold: the player comes down into this row, and a field
-        // still half there had its text and back arrow showing through the song's cover.
-        val value: Float get() = (searchC() * (1f - foldC() * FieldFadeRate)).coerceIn(0f, 1f)
-    }
-
-    // The dock draws the player whenever it is not resting open: folded, or on its way. Typing, the
-    // player is away altogether.
-    val ownsPlayer = hasPlayer && visual != DockVisual.Typing && (fold.targetValue == 1f || fold.isRunning || fold.value > 0.001f)
+    // The dock draws the player whenever it is not resting open: folded, or on its way.
+    // Typing, the player is away altogether.
+    val ownsPlayer = hasPlayer && visual != DockVisual.Typing && (visual == DockVisual.Inline || restVisual != visual || restVisual == DockVisual.Inline)
     SideEffect {
         FoldingDockMotion.fold = if (ownsPlayer) 1f else 0f
         FoldingDockMotion.inline = visual == DockVisual.Inline
-        FoldingDockMotion.rowDrop = if (visual == DockVisual.Search) OpenRowHeight - SearchRowHeight else 0.dp
     }
     DisposableEffect(Unit) { onDispose { FoldingDockMotion.fold = 0f } }
     val ownsPlayerState = rememberUpdatedState(ownsPlayer)
@@ -470,64 +476,16 @@ fun FoldingDock(
     val appBackdrop = LocalAppBackdrop.current
 
     val ink = if (isSystemInDarkTheme()) Color.White else Color.Black
-    // Apple Music's tab bar: the tabs not chosen in full ink, the chosen one in the accent.
-    val inactiveInk = ink
+    val inactiveInk = ink.copy(alpha = 0.82f)
 
-    // The whole row bounces as the bar folds or opens, and a tab bounces as it is selected.
-    val foldKey = visual == DockVisual.Inline
     val icon: @Composable (FoldingDockTab, Boolean) -> Unit = { tab, isSelected ->
-        // Headroom: the bounce scales the glyph up, so it is drawn at 80% inside its slot.
         Box(Modifier.size(tab.glyphSize), contentAlignment = Alignment.Center) {
-            val name = tab.symbol
-            val sf = remember(name) { name?.let { com.composables.sfsymbols.SfSymbol.named(it) } }
-            // A bounce when the tab is chosen, and across the row as the bar folds or opens: the
-            // symbol library's own for its symbols, the same motion by hand for drawn glyphs.
-            var taps by remember { mutableIntStateOf(0) }
-            var seenSelected by remember { mutableStateOf(isSelected) }
-            LaunchedEffect(isSelected) {
-                if (isSelected && !seenSelected) taps++
-                seenSelected = isSelected
-            }
-            var seenFold by remember { mutableStateOf(foldKey) }
-            LaunchedEffect(foldKey) {
-                if (foldKey != seenFold) taps++
-                seenFold = foldKey
-            }
-            if (sf != null) {
-                com.composables.sfsymbols.SfSymbolIcon(
-                    symbol = sf,
-                    size = tab.glyphSize * 0.8f,
-                    // Apple Music's tab bar draws its symbols filled and firm: semibold.
-                    weight = com.composables.sfsymbols.SfWeight.Semibold,
-                    mode = com.composables.sfsymbols.SfRenderingMode.Monochrome,
-                    tint = if (isSelected) accentColor else inactiveInk,
-                    effect = DockSymbolBounce,
-                    trigger = taps,
-                    contentDescription = tab.title,
-                )
-            } else {
-                val bounce = remember { androidx.compose.animation.core.Animatable(1f) }
-                LaunchedEffect(taps) {
-                    if (taps == 0) return@LaunchedEffect
-                    // Pressed in, then sprung back up past where it rests and settling: the
-                    // symbol bounce.
-                    bounce.animateTo(0.80f, tween(90, easing = androidx.compose.animation.core.FastOutLinearInEasing))
-                    bounce.animateTo(1f, spring(dampingRatio = 0.42f, stiffness = 520f))
-                }
-                Icon(
-                    painter = painterResource(tab.icon),
-                    contentDescription = tab.title,
-                    tint = if (isSelected) accentColor else inactiveInk,
-                    modifier = Modifier
-                        .size(tab.glyphSize * 0.8f)
-                        .graphicsLayer {
-                            val k = bounce.value
-                            scaleX = k
-                            scaleY = k
-                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.75f)
-                        },
-                )
-            }
+            Icon(
+                painter = painterResource(tab.icon),
+                contentDescription = tab.title,
+                tint = if (isSelected) accentColor else inactiveInk,
+                modifier = Modifier.size(tab.glyphSize * 0.8f),
+            )
         }
     }
     val title: @Composable (FoldingDockTab, Boolean) -> Unit = { tab, isSelected ->
@@ -537,12 +495,8 @@ fun FoldingDock(
                 color = if (isSelected) accentColor else inactiveInk,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                fontSize = 11.sp,
-                // One line of its own height, not the body style's 22sp, so it sits 2dp under the glyph.
-                lineHeight = TabLabelLineHeight,
-                letterSpacing = 0.sp,
-                // As Apple Music's tab bar: one weight, the tint alone marks the selected tab.
-                fontWeight = FontWeight.SemiBold,
+                fontSize = 10.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
             )
         }
     }
@@ -552,9 +506,10 @@ fun FoldingDock(
         modifier = modifier
             .fillMaxWidth()
             .graphicsLayer { alpha = handOver.value }
-            // Faded out while typing (the field riding the keyboard has taken over) but still laid
-            // over it and still taking its touches, so it is parked off screen once it has handed
-            // over rather than removed: its size, and the room it holds, stay the same.
+            // Faded out while typing — the field riding the keyboard has taken over — but still
+            // laid over it, and still taking its touches: the typing field's back arrow sat under
+            // this invisible row and never received a tap. Out of the way once it has handed over.
+            // Placed off screen rather than removed, so its size (and the room it holds) is unchanged.
             .layout { measurable, constraints ->
                 val placeable = measurable.measure(constraints)
                 layout(placeable.width, placeable.height) {
@@ -563,29 +518,29 @@ fun FoldingDock(
                 }
             },
         content = {
-            // 0: the tab bar's glass, which is also the folded page circle.
+            // 0: the tab pill's glass, which is also the folded page circle. Under a bar with glass
+            // of its own, it only shows as that bar fades.
             Box(
                 Modifier
-                    // Gone on the search page, where the field and the player have its room.
-                    .graphicsLayer { alpha = 1f - searchPage.value.coerceIn(0f, 1f) }
+                    .graphicsLayer { if (openBar != null) alpha = 1f - tabsAlpha.value }
                     .graphicsLayer(elasticStretchLayerBlock(selectedGlow))
                     .layerBackdrop(surfaceBackdrop)
                     .clip(DockShape)
                     .foldingDockGlass(DockShape)
                     .then(selectedGlow.modifier),
             )
-            // 1: the open tabs at the open bar's size, clipped to the bar as it folds.
+            // 1: the open tabs, at the open pill's size, clipped to the pill as it retracts.
             Box(
                 Modifier
                     .graphicsLayer { alpha = tabsAlpha.value }
                     .drawWithContent {
                         // At rest and open the bar draws whole: its pressed capsule swells past its
-                        // own edges, and clipping it would cut that swell off mid-swipe.
-                        if (expanded && !fold.isRunning && !search.isRunning) {
+                        // own edges, and clipping it to the pill cut that swell off mid-swipe.
+                        if (expanded && !pillRect.isRunning) {
                             drawContent()
                             return@drawWithContent
                         }
-                        val r = current().pill
+                        val r = pillRect.value
                         // The group's own coordinates: its bottom is the bar's bottom edge.
                         val top = size.height + r.top
                         val bottom = size.height + r.bottom
@@ -596,55 +551,36 @@ fun FoldingDock(
                     }
                     .then(if (!expanded) Modifier.clearAndSetSemantics {} else Modifier),
             ) {
-                val groupTabs = if (searchInBar) tabs else contentTabs
-                // The group's own idea of the selected cell. Search rides in it as its last cell, so
-                // on Search it is Search — not the page before it, which [selectedIndex] keeps for
-                // the folded circle. Reported as that page, coming back to it changed nothing the
-                // group could see, and its slot stayed parked on Search, lighting two tabs at once.
-                val groupSelected = if (searchInBar && searchTab != null && selectedKey == searchTab.key) {
-                    groupTabs.lastIndex
-                } else {
-                    selectedIndex
-                }
-                val selectedState = rememberUpdatedState(groupSelected)
+                val selectedState = rememberUpdatedState(selectedIndex)
                 if (openBar != null) openBar(Modifier.fillMaxSize()) else FoldingTabGroup(
                     selectedTabIndex = { selectedState.value },
-                    onTabSelected = { index -> groupTabs.getOrNull(index)?.onClick?.invoke() },
+                    onTabSelected = { index -> contentTabs.getOrNull(index)?.onClick?.invoke() },
                     backdrop = appBackdrop,
                     surfaceBackdrop = surfaceBackdrop,
-                    tabsCount = groupTabs.size,
+                    tabsCount = contentTabs.size,
                     accentColor = accentColor,
                     height = OpenRowHeight,
                     indicatorVisible = contentTabs.any { it.key == selectedKey },
                 ) {
-                    groupTabs.forEachIndexed { cell, tab ->
+                    contentTabs.forEach { tab ->
                         val isSelected = tab.key == selectedKey
-                        val tap = LocalTabTap.current
-                        FoldingTabCell(onClick = { if (tap != null) tap(cell) else tab.onClick() }) {
+                        FoldingTabCell(onClick = tab.onClick) {
                             icon(tab, isSelected)
                             title(tab, isSelected)
                         }
                     }
                 }
             }
-            // 2: search's own glass, with its glyph: detached only while folded or searching.
+            // 2: search's own glass, with its glyph; a circle open and folded, the field in search.
             Box(
                 Modifier
                     .graphicsLayer(elasticStretchLayerBlock(searchGlow))
-                    .graphicsLayer {
-                        alpha = when {
-                            searchTab == null -> 0f
-                            searchInBar -> circlesAlpha()
-                            else -> 1f
-                        }
-                    }
+                    .graphicsLayer { alpha = if (searchTab == null) 0f else 1f }
                     .clip(DockShape)
                     .then(if (searchTab != null) Modifier.foldingDockGlass(DockShape) else Modifier)
                     .then(searchGlow.modifier)
                     .then(
-                        if (searchTab != null && visual != DockVisual.Search && visual != DockVisual.Typing &&
-                            !(searchInBar && expanded)
-                        ) {
+                        if (searchTab != null && visual != DockVisual.Search && visual != DockVisual.Typing) {
                             Modifier.then(searchGlow.gestureModifier).clickable(noTap, null) { searchTab.onClick() }
                         } else {
                             Modifier.clearAndSetSemantics {}
@@ -653,14 +589,8 @@ fun FoldingDock(
                 contentAlignment = Alignment.Center,
             ) {
                 if (searchTab != null) {
-                    // Convx: the detached glyph gives way to the field as the search row opens.
-                    // In once the field's text has gone, so the two are never read together.
-                    Box(Modifier.graphicsLayer {
-                        alpha = 1f - searchC() * (1f - ((foldC() - 1f / FieldFadeRate) / (1f - 1f / FieldFadeRate)).coerceIn(0f, 1f))
-                    }) {
-                        // Never lit on the search page itself, as Convx draws it: there the circle is
-                        // the way back to the field, not a tab saying where you are.
-                        icon(searchTab, selectedKey == searchTab.key && !inSearch)
+                    Box(Modifier.graphicsLayer { alpha = 1f - fieldAlpha.value }) {
+                        icon(searchTab, selectedKey == searchTab.key)
                     }
                 }
             }
@@ -678,12 +608,10 @@ fun FoldingDock(
             Box(
                 // Typing, the field has grown over the circle and the glyph goes with it.
                 Modifier
-                    .graphicsLayer {
-                        alpha = circlesAlpha() * (1f - typingGlyph.value) * (1f - searchPage.value.coerceIn(0f, 1f))
-                    }
+                    .graphicsLayer { alpha = (1f - tabsAlpha.value) * (1f - typingGlyph.value) }
                     // Pressed, the circle swells and leans; its glyph is a separate node, so it is
                     // stretched by the circle's own measure and goes with it, as search's does.
-                    .graphicsLayer(elasticStretchLayerBlock(selectedGlow, frame = { current().pill.size })),
+                    .graphicsLayer(elasticStretchLayerBlock(selectedGlow, frame = { pillRect.value.size })),
                 contentAlignment = Alignment.Center,
             ) {
                 selected?.let { icon(it, true) }
@@ -699,7 +627,9 @@ fun FoldingDock(
                     Modifier
                         .fillMaxSize()
                         .clip(DockShape)
-                        .then(Modifier.foldingDockGlass(DockShape)),
+                        // The mini player's own glass — the dark slab the sheet's pill is — not the dock's
+                        // light grey film, which washed the song out over bright pages.
+                        .then(Modifier.dockGlass(DockShape)),
                     visual == DockVisual.Inline,
                 )
             }
@@ -717,18 +647,17 @@ fun FoldingDock(
         if (widthPx != width) widthPx = width
         val band = if (constraints.hasBoundedHeight) constraints.maxHeight else -1
         if (bandPx != band) bandPx = band
-        // Read here, in measure, so a running fold only relayouts the bar, never recomposes it.
-        val now = current()
-        val pill = now.pill
-        val search = now.search
-        val player = now.player
-        val glyph = now.glyph
+        val settled = if (placed) null else targets(visual)
+        val pill = settled?.pill ?: pillRect.value
+        val search = settled?.search ?: searchRect.value
+        val player = settled?.player ?: Rect(playerX.value.x, playerY.value.x, playerX.value.y, playerY.value.y)
+        val glyph = settled?.glyph ?: glyphRect.value
         val openPx = OpenRowHeight.roundToPx()
         val height = maxOf(-pill.top, -search.top, 1f).roundToInt()
 
         fun fixed(r: Rect) = Constraints.fixed(r.width.roundToInt().coerceAtLeast(0), r.height.roundToInt().coerceAtLeast(0))
         val surface = children[0].measure(fixed(pill))
-        val openPillWidth = rectsAt(0f, 0f).pill.width.roundToInt().coerceAtLeast(0)
+        val openPillWidth = targets(DockVisual.Expanded).pill.width.roundToInt().coerceAtLeast(0)
         val group = children[1].measure(Constraints.fixed(openPillWidth, openPx))
         val searchSurface = children[2].measure(fixed(search))
         val field = children[3].measure(fixed(search))
@@ -744,9 +673,7 @@ fun FoldingDock(
             if (visual == DockVisual.Search || visual == DockVisual.Typing || fieldAlpha.value > 0f) field.place(at(search))
             glyphBox.place(at(glyph))
             if (hasPlayer) playerBox.place(at(player))
-            // Not on the search page: the circle it would answer for is gone, and it would sit over
-            // the field's back arrow.
-            if (!expanded && searchPage.value < 0.5f) pillTap.place(at(pill))
+            if (!expanded) pillTap.place(at(pill))
         }
     }
 }
@@ -756,13 +683,6 @@ fun FoldingDock(
 /* ------------------------------------------------------------------ */
 
 private val LocalTabPressScale = compositionLocalOf<() -> Float> { { 1f } }
-
-/** The tab group's own way of selecting a cell by index, so its slot can lead the page; null outside one. */
-private val LocalTabTap = compositionLocalOf<((Int) -> Unit)?> { null }
-
-/** How long a page change waits for the slot to arrive, and how near counts as arrived (in tabs). */
-private const val TabNavigateMaxWaitMs = 180L
-private const val TabNavigateArrival = 0.15f
 
 /**
  * The open bar's tabs with a draggable glass slot under the selected one. Press-and-drag moves
@@ -798,12 +718,10 @@ private fun FoldingTabGroup(
         }
 
         val offsetAnimation = remember { Animatable(0f) }
-        // The finger's pull on the panel, set straight from each pointer event (see DockDragAnimation).
-        val pull = remember { mutableFloatStateOf(0f) }
         val panelOffset by remember(density) {
             derivedStateOf {
                 val width = widthPx.floatValue
-                val fraction = if (width > 0f) ((offsetAnimation.value + pull.floatValue) / width).fastCoerceIn(-1f, 1f) else 0f
+                val fraction = if (width > 0f) (offsetAnimation.value / width).fastCoerceIn(-1f, 1f) else 0f
                 with(density) { 4.dp.toPx() * fraction.sign * EaseOut.transform(abs(fraction)) }
             }
         }
@@ -826,48 +744,26 @@ private fun FoldingTabGroup(
                     if (targetIndex == currentIndex) onSelected(targetIndex)
                     currentIndex = targetIndex
                     animateToValue(targetIndex.toFloat())
-                    animationScope.launch {
-                        offsetAnimation.snapTo(offsetAnimation.value + pull.floatValue)
-                        pull.floatValue = 0f
-                        offsetAnimation.animateTo(0f, spring(1f, 300f, 0.5f))
-                    }
+                    animationScope.launch { offsetAnimation.animateTo(0f, spring(1f, 300f, 0.5f)) }
                 },
                 onDrag = { _, dragAmount ->
                     updateValue(
                         (targetValue + dragAmount.x / tabWidth() * if (isLtr) 1f else -1f)
                             .fastCoerceIn(0f, (tabsCount - 1).toFloat()),
                     )
-                    pull.floatValue += dragAmount.x
+                    animationScope.launch { offsetAnimation.snapTo(offsetAnimation.value + dragAmount.x) }
                 },
             )
         }
-        // A tap on a tab moves the slot there first, like a drag let go on it; a tap on the tab
-        // already selected goes straight through (it is how a page gets back to its top).
-        val tapTab: (Int) -> Unit = { index ->
-            if (index == currentIndex || index == selectedTabIndex()) onSelected(index) else currentIndex = index
-        }
         LaunchedEffect(Unit) {
-            // No tab at all (-1) leaves the slot where it was: sent to -1 it was clamped onto the
-            // first tab, so a page off the tabs lit Home whichever tab it was opened from.
-            snapshotFlow { selectedTabIndex() }.collectLatest { if (it >= 0) currentIndex = it }
+            snapshotFlow { selectedTabIndex() }.collectLatest { currentIndex = it }
         }
         LaunchedEffect(dragAnimation) {
             snapshotFlow { currentIndex }
                 .drop(1)
                 .collectLatest { index ->
                     dragAnimation.animateToValue(index.toFloat())
-                    if (index != selectedTabIndex()) {
-                        // The slot travels first, then the page changes. Building the next page
-                        // holds the main thread for a couple of hundred milliseconds and no spring
-                        // advances while it does: navigating at once froze the slot on the old tab
-                        // and then cut it to the new one, which is the swipe that never felt as
-                        // fluid as the liquid bar's (it has always waited). Capped, so a slow frame
-                        // never makes a tap feel ignored.
-                        withTimeoutOrNull(TabNavigateMaxWaitMs) {
-                            snapshotFlow { abs(dragAnimation.value - index) < TabNavigateArrival }.first { it }
-                        }
-                        if (index != selectedTabIndex()) onSelected(index)
-                    }
+                    if (index != selectedTabIndex()) onSelected(index)
                 }
         }
 
@@ -884,19 +780,17 @@ private fun FoldingTabGroup(
             )
         }
 
-        CompositionLocalProvider(LocalTabTap provides tapTab) {
-            Row(
-                Modifier
-                    .graphicsLayer { translationX = panelOffset }
-                    .clip(DockShape)
-                    .then(interactiveHighlight.modifier)
-                    .height(height)
-                    .fillMaxWidth()
-                    .padding(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                content = content,
-            )
-        }
+        Row(
+            Modifier
+                .graphicsLayer { translationX = panelOffset }
+                .clip(DockShape)
+                .then(interactiveHighlight.modifier)
+                .height(height)
+                .fillMaxWidth()
+                .padding(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            content = content,
+        )
 
         // The tabs again, tinted and invisible: what the slot shows the selected tab through.
         CompositionLocalProvider(
@@ -930,13 +824,18 @@ private fun FoldingTabGroup(
                     if (isLtr) dragAnimation.value * tabWidth() + panelOffset
                     else size.width - (dragAnimation.value + 1f) * tabWidth() + panelOffset
             }
-        // The swell and the stretch, on the glass's own layer: read when it is drawn. They used
-        // to be a new size laid out on every frame of a press or a slide, so each frame measured
-        // the slot again and the glass rebuilt its buffers at the new size before drawing.
-        val slotGrowth: GraphicsLayerScope.() -> Unit = {
+        val slotGrowth = Modifier.layout { measurable, constraints ->
             val velocity = dragAnimation.velocity / 10f
-            scaleX = dragAnimation.scaleX / (1f - (velocity * 0.75f).fastCoerceIn(-0.2f, 0.2f))
-            scaleY = dragAnimation.scaleY * (1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f))
+            val scaleX = dragAnimation.scaleX / (1f - (velocity * 0.75f).fastCoerceIn(-0.2f, 0.2f))
+            val scaleY = dragAnimation.scaleY * (1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f))
+            val width = constraints.maxWidth
+            val slotHeight = constraints.maxHeight
+            val grownWidth = (width * scaleX).roundToInt().coerceAtLeast(1)
+            val grownHeight = (slotHeight * scaleY).roundToInt().coerceAtLeast(1)
+            val child = measurable.measure(Constraints.fixed(grownWidth, grownHeight))
+            layout(width, slotHeight) {
+                child.placeRelative((width - grownWidth) / 2, (slotHeight - grownHeight) / 2)
+            }
         }
         val slotLens: BackdropEffectScope.() -> Unit = {
             val progress = dragAnimation.pressProgress
@@ -976,10 +875,10 @@ private fun FoldingTabGroup(
                 .then(dragAnimation.modifier)
                 .height(height - 8.dp)
                 .fillMaxWidth(1f / tabsCount)
+                .then(slotGrowth)
                 .drawBackdrop(
                     backdrop = pressedBackdrop,
                     shape = { DockShape },
-                    layerBlock = slotGrowth,
                     effects = {
                         vibrancy()
                         blur(8.dp.toPx() * (1f - dragAnimation.pressProgress.coerceIn(0f, 1f)))
@@ -1005,10 +904,10 @@ private fun FoldingTabGroup(
             slotPlacement
                 .height(height - 8.dp)
                 .fillMaxWidth(1f / tabsCount)
+                .then(slotGrowth)
                 .drawBackdrop(
                     backdrop = tabsBackdrop,
                     shape = { DockShape },
-                    layerBlock = slotGrowth,
                     effects = slotLens,
                     highlight = null,
                     shadow = null,
@@ -1045,6 +944,3 @@ private fun RowScope.FoldingTabCell(
         content = content,
     )
 }
-
-/** One shared bounce, by layer, as SF Symbols bounce on iOS: a fresh object each recomposition would restart it. */
-private val DockSymbolBounce = com.composables.sfsymbols.SfSymbolEffect.Bounce(scope = com.composables.sfsymbols.SfEffectScope.ByLayer)

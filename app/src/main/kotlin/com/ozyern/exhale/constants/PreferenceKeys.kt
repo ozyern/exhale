@@ -729,18 +729,12 @@ val MiniBarTabStyleKey = booleanPreferencesKey("miniBarTabStyle")
 val DockStyleKey = stringPreferencesKey("dockStyle")
 
 enum class DockStyle {
-    /** This branch's folding tab bar. */
+    /** This branch's folding tab bar. The default. */
     FOLDING,
 
-    /**
-     * Master's dock: one fold between the open bar and the row of circles, the page circle
-     * stepping aside on Search. The default.
-     */
+    /** Master's classic dock: its own fold, and a glass capsule riding on the selected tab. */
     CLASSIC,
 }
-
-/** The dock a fresh install draws, and the one an unset preference reads as. */
-val DefaultDockStyle = DockStyle.CLASSIC
 
 /** Shows the sound-search and shuffle buttons on Home. On by default. */
 val ShowHomeFabKey = booleanPreferencesKey("showHomeFab")

@@ -7,9 +7,6 @@
 package com.ozyern.exhale.playback
 
 import com.ozyern.exhale.BuildConfig
-import android.net.Uri
-import android.os.Bundle
-import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import com.ozyern.exhale.lyrics.LyricsEntry
 import com.ozyern.exhale.lyrics.LyricsUtils
@@ -28,9 +25,8 @@ import org.json.JSONObject
  * This is a *published third-party protocol*, not an entry in the Android SDK: the schema below
  * comes from the ColorOS Live Lyrics Bridge integration spec, which documents the payload OPlus's
  * own players use. The reader hooks `MediaSession#setMetadata`, so what matters is not that the
- * payload exists on our [MediaItem] but that a `setMetadata` call carrying it actually reaches the
- * platform session — see [MusicService.publishLiveLyrics] for why that is the hard part under
- * Media3. Being a private SystemUI surface, the key can also change between OPlus releases.
+ * payload exists but that a `setMetadata` call carrying it actually reaches the platform session —
+ * see [SessionLyricPlayer] for how it gets past Media3. Being a private SystemUI surface, the key can also change between OPlus releases.
  *
  * See `docs/PLAYER_INTEGRATION.md` of Andrea-lyz/ColorOS-Live-Lyrics-Bridge.
  */
@@ -148,7 +144,7 @@ object OplusLiveLyrics {
     }.getOrDefault(false)
 
     /** A line-level LRC timestamp: `[m:ss]`, `[mm:ss.xx]`, `[mm:ss:xxx]`. */
-    private val LineTimeRegex = Regex("""\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?]""")
+    private val LineTimeRegex = Regex("""\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]""")
 
     /** A word-level timestamp inside an enhanced-LRC line: `<mm:ss.xx>`. */
     /** Any inline timing tag, including the `<start|end>` form word-synced sources use. */
@@ -370,38 +366,6 @@ object OplusLiveLyrics {
         return sequenceOf(true, false).map(::document).firstOrNull { it.length <= MAX_PAYLOAD_CHARS }
     }
 
-    /** The payload currently attached to this item, if any. */
-    fun MediaItem.lyricInfo(): String? = mediaMetadata.extras?.getString(METADATA_KEY)
-
-    /**
-     * Returns a copy of this item carrying [payload], and optionally [signal].
-     *
-     * `buildUpon` is what makes this safe: it preserves the local configuration, and with it the
-     * `tag` that the whole app reads its own [com.ozyern.exhale.models.MediaMetadata] out of via
-     * `Player.currentMetadata`. Rebuilding the item from scratch here would strip that tag and
-     * quietly break every screen that asks the player what is playing.
-     */
-    fun MediaItem.withLyricInfo(payload: String, signal: Uri? = null): MediaItem {
-        val extras = mediaMetadata.extras?.let { Bundle(it) } ?: Bundle()
-        METADATA_KEY_ALIASES.forEach { key -> extras.putString(key, payload) }
-        return buildUpon()
-            .setMediaMetadata(
-                mediaMetadata.buildUpon()
-                    .setExtras(extras)
-                    .build()
-            )
-            .apply {
-                if (signal != null) {
-                    setRequestMetadata(
-                        requestMetadata.buildUpon()
-                            .setMediaUri(signal)
-                            .build()
-                    )
-                }
-            }
-            .build()
-    }
-
     /**
      * Returns a copy of this item whose displayed subtitle is [line], or [fallbackArtist] again
      * when [line] is null.
@@ -411,7 +375,7 @@ object OplusLiveLyrics {
      * `METADATA_KEY_DISPLAY_SUBTITLE`, and the platform media control prefers the display key
      * when it is present but falls back to the artist when it is not.
      *
-     * `buildUpon` again, for the same reason as [withLyricInfo]: it keeps the local configuration
+     * `buildUpon`: it keeps the local configuration
      * and with it the `tag` that the whole app reads its own metadata from. The app therefore
      * still shows the real artist everywhere — only the *session's* subtitle changes, which is
      * exactly the field the lock screen renders.
@@ -425,14 +389,6 @@ object OplusLiveLyrics {
                     .build()
             )
             .build()
-
-    /**
-     * The value written to `requestMetadata.mediaUri` to make a lyrics-only change visible to
-     * Media3's session layer. See [MusicService.publishLiveLyrics] for why this is needed;
-     * [revision] must differ from the previous publication for the same track.
-     */
-    fun signalUri(songId: String, revision: Int): Uri =
-        "exhale://live-lyrics/$songId/$revision".toUri()
 
     /**
      * Renders Convx's parsed lyrics as LRC. [line] renders one cue's body and may return null to drop it, which

@@ -513,6 +513,9 @@ class MusicService :
     private var duckVolumeRestoreJob: Job? = null
 
     private lateinit var mediaSession: MediaLibrarySession
+
+    /** The lock-screen lyric document, added at the session boundary; see [SessionLyricPlayer]. */
+    private val sessionLyricInfo = SessionLyricInfo()
     private var liveLyricsPublisher: LiveLyricsPublisher? = null
 
     private val playerInitialized = MutableStateFlow(false)
@@ -1372,7 +1375,7 @@ class MusicService :
         }
         mediaSession =
             MediaLibrarySession
-                .Builder(this, player, mediaLibrarySessionCallback)
+                .Builder(this, SessionLyricPlayer(player, sessionLyricInfo), mediaLibrarySessionCallback)
                 .setSessionActivity(
                     PendingIntent.getActivity(
                         this,
@@ -1402,6 +1405,7 @@ class MusicService :
             scope = scope,
             player = { player },
             session = { if (::mediaSession.isInitialized) mediaSession else null },
+            lyricInfo = sessionLyricInfo,
             current = currentMediaMetadata,
             lyricsFor = { id -> database.lyrics(id).map { it?.lyrics } },
             preferences = dataStore.data,
@@ -4496,7 +4500,7 @@ class MusicService :
         _playerFlow.value = player
 
         try {
-            (mediaSession as MediaSession).player = player
+            (mediaSession as MediaSession).player = SessionLyricPlayer(player, sessionLyricInfo)
         } catch (e: Exception) {
             timber.log.Timber.e(e, "Failed to swap player in MediaSession")
         }

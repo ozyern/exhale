@@ -10,7 +10,6 @@
 package com.ozyern.exhale.ui.component.classicdock
 
 
-import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.SpringSpec
@@ -20,8 +19,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import com.ozyern.exhale.ui.component.floatingtabbar.CriticalEasing
-import com.ozyern.exhale.ui.component.floatingtabbar.SpringEasing
 
 /**
  * The bar's choreography, on real springs.
@@ -41,17 +38,6 @@ import com.ozyern.exhale.ui.component.floatingtabbar.SpringEasing
  * slid over each other for most of the motion.
  */
 internal object BarMotion {
-    /** The single fold's clock, as master's dock runs it (Convx 2.0.4): collapse, then expand. */
-    const val CollapseMorphMs = 560
-    const val ExpandMorphMs = 470
-
-    /**
-     * Folding lands without overshooting, so the song's pill is never re-cut to a new width just
-     * after it arrives; opening keeps a gentle swing.
-     */
-    val FoldCollapseSpring: Easing = CriticalEasing()
-    val FoldExpandSpring: Easing = SpringEasing(zeta = 0.74f)
-
     /** Each body's response: ~0.5 s, settling with no visible overshoot. */
     private const val BodyDamping = 0.86f
     private const val BodyStiffness = 150f
