@@ -88,14 +88,17 @@ jobs:
         with:
           java-version: '21'
           distribution: temurin
-      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: true
       - name: Prepare Android SDK
         run: |
           chmod +x gradlew
-          sdkmanager "platforms;android-37" "build-tools;36.0.0" "ndk;27.0.12077973"
+          # The runner's own SDK: setup-android@v3 asks for the retired `tools` package and fails.
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMANAGER" ] || SDKMANAGER="$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | tail -1)"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-37" "build-tools;36.0.0" "ndk;27.0.12077973"
       - name: Prepare signing
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE }}
