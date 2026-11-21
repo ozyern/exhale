@@ -98,7 +98,8 @@ jobs:
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           [ -x "$SDKMANAGER" ] || SDKMANAGER="$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | tail -1)"
           yes | "$SDKMANAGER" --licenses > /dev/null || true
-          "$SDKMANAGER" "platforms;android-37" "build-tools;36.0.0" "ndk;27.0.12077973"
+          # Platform 37 is fetched by Gradle itself, as in the debug job; sdkmanager does not list it by that name.
+          "$SDKMANAGER" "build-tools;36.0.0" "ndk;27.0.12077973"
       - name: Prepare signing
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE }}
