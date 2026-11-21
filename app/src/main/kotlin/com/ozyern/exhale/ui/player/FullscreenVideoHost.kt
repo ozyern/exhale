@@ -89,16 +89,19 @@ internal fun FullscreenVideoOverlay(state: FullscreenVideoState) {
         exit = fadeOut(Motion.gate(reduced, Motion.swapExit())),
         modifier = Modifier.fillMaxSize().zIndex(100f),
     ) {
-        YouTubeVideoPane(
-            stream = session.stream,
-            connection = session.connection,
-            videoController = session.videoController,
-            visible = true,
-            fullscreenOnly = true,
-            modifier = Modifier.fillMaxSize(),
-            onClose = { state.close() },
-            onLeaveVideo = { state.close(session.onLeaveVideo) },
-        )
+        // Full screen outranks the inline video still mounted under it.
+        androidx.compose.runtime.CompositionLocalProvider(LocalCanvasSurfacePriority provides 2) {
+            YouTubeVideoPane(
+                stream = session.stream,
+                connection = session.connection,
+                videoController = session.videoController,
+                visible = true,
+                fullscreenOnly = true,
+                modifier = Modifier.fillMaxSize(),
+                onClose = { state.close() },
+                onLeaveVideo = { state.close(session.onLeaveVideo) },
+            )
+        }
     }
 }
 

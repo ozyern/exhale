@@ -474,28 +474,34 @@ fun FloatingMiniPlayer(
                             onClick = tryOpenPlayer,
                         ),
                 ) {
-                    AsyncImage(
-                        // Same URL AND decode size as PlayerArtworkMorphOverlay and the
-                        // full player's own artwork -- one shared Coil cache entry for
-                        // all three, so the pill, the flying cover, and the handoff
-                        // target are pixel-identical (no re-decode pop between them).
-                        model = ImageRequest.Builder(context)
-                            .data(mediaMetadata?.thumbnailUrl?.resize(1200, 1200))
-                            .size(CoilSize.ORIGINAL)
-                            // A fresh AsyncImage mounts on every bar state change (inline and
-                            // expanded are separate trees); without this its first frame can be
-                            // the empty placeholder -- the thumbnail "vanishing" mid-transition.
-                            .placeholderMemoryCacheKey(mediaMetadata?.thumbnailUrl?.resize(1200, 1200))
-                            .build(),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        placeholder = rememberNoArtworkPainter(),
-                        error = rememberNoArtworkPainter(),
-                        modifier = Modifier
+                    Box(
+                        Modifier
                             .size(artSize)
                             .miniArtworkMorphSource(with(density) { artCornerRadius.toPx() })
                             .clip(RoundedCornerShape(artCornerRadius)),
-                    )
+                    ) {
+                        AsyncImage(
+                            // Same URL AND decode size as PlayerArtworkMorphOverlay and the
+                            // full player's own artwork -- one shared Coil cache entry for
+                            // all three, so the pill, the flying cover, and the handoff
+                            // target are pixel-identical (no re-decode pop between them).
+                            model = ImageRequest.Builder(context)
+                                .data(mediaMetadata?.thumbnailUrl?.resize(1200, 1200))
+                                .size(CoilSize.ORIGINAL)
+                                // A fresh AsyncImage mounts on every bar state change (inline and
+                                // expanded are separate trees); without this its first frame can be
+                                // the empty placeholder -- the thumbnail "vanishing" mid-transition.
+                                .placeholderMemoryCacheKey(mediaMetadata?.thumbnailUrl?.resize(1200, 1200))
+                                .build(),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            placeholder = rememberNoArtworkPainter(),
+                            error = rememberNoArtworkPainter(),
+                            modifier = Modifier.matchParentSize(),
+                        )
+                        // The music video, carried on in the dock while the player is closed.
+                        DockVideoOverArtwork(mediaMetadata?.id, Modifier.matchParentSize())
+                    }
 
                     Spacer(Modifier.width(10.dp))
 
@@ -654,28 +660,34 @@ fun FloatingMiniPlayer(
                             onClick = tryOpenPlayer,
                         ),
                 ) {
-                    AsyncImage(
-                        // Same URL AND decode size as PlayerArtworkMorphOverlay and the
-                        // full player's own artwork -- one shared Coil cache entry for
-                        // all three, so the pill, the flying cover, and the handoff
-                        // target are pixel-identical (no re-decode pop between them).
-                        model = ImageRequest.Builder(context)
-                            .data(mediaMetadata?.thumbnailUrl?.resize(1200, 1200))
-                            .size(CoilSize.ORIGINAL)
-                            // A fresh AsyncImage mounts on every bar state change (inline and
-                            // expanded are separate trees); without this its first frame can be
-                            // the empty placeholder -- the thumbnail "vanishing" mid-transition.
-                            .placeholderMemoryCacheKey(mediaMetadata?.thumbnailUrl?.resize(1200, 1200))
-                            .build(),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        placeholder = rememberNoArtworkPainter(),
-                        error = rememberNoArtworkPainter(),
-                        modifier = Modifier
+                    Box(
+                        Modifier
                             .size(artSize)
                             .miniArtworkMorphSource(with(density) { artCornerRadius.toPx() })
                             .clip(RoundedCornerShape(artCornerRadius)),
-                    )
+                    ) {
+                        AsyncImage(
+                            // Same URL AND decode size as PlayerArtworkMorphOverlay and the
+                            // full player's own artwork -- one shared Coil cache entry for
+                            // all three, so the pill, the flying cover, and the handoff
+                            // target are pixel-identical (no re-decode pop between them).
+                            model = ImageRequest.Builder(context)
+                                .data(mediaMetadata?.thumbnailUrl?.resize(1200, 1200))
+                                .size(CoilSize.ORIGINAL)
+                                // A fresh AsyncImage mounts on every bar state change (inline and
+                                // expanded are separate trees); without this its first frame can be
+                                // the empty placeholder -- the thumbnail "vanishing" mid-transition.
+                                .placeholderMemoryCacheKey(mediaMetadata?.thumbnailUrl?.resize(1200, 1200))
+                                .build(),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            placeholder = rememberNoArtworkPainter(),
+                            error = rememberNoArtworkPainter(),
+                            modifier = Modifier.matchParentSize(),
+                        )
+                        // The music video, carried on in the dock while the player is closed.
+                        DockVideoOverArtwork(mediaMetadata?.id, Modifier.matchParentSize())
+                    }
 
                     Spacer(Modifier.width(12.dp))
 

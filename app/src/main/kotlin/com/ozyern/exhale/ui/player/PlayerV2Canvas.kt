@@ -173,6 +173,12 @@ internal suspend fun sampleLiveCanvasVideoLook(mediaId: String, texture: () -> T
  */
 internal object CanvasPosterSource {
     @JvmField var controller: CanvasVideoController? = null
+
+    /**
+     * The song whose music video is on, so the dock can carry on showing it while the player is
+     * closed, as Exhale master's dock does. Null when no video is being watched.
+     */
+    var dockedVideoFor by androidx.compose.runtime.mutableStateOf<String?>(null)
     // Called from composition at flight start; reads nothing into the caller's snapshot
     // scope, so the overlay does not recompose along with the video's fades.
     fun capture(mediaId: String?): Bitmap? =
@@ -199,7 +205,8 @@ class CanvasVideoController internal constructor(
     private var loadingVideoStream: com.ozyern.exhale.utils.YTPlayerUtils.VideoStream? = null
     private var frameMediaId: String? = null
     private var boundTexture: TextureView? = null
-    private val attached = ArrayList<Pair<Any, TextureView>>()
+    /** Every surface that wants the picture, with its rank: the player over the dock. */
+    private val attached = ArrayList<Triple<Any, TextureView, Int>>()
     private var fadeInJob: Job? = null
     private var liveSampleJob: Job? = null
     internal var videoReady by mutableStateOf(false)
@@ -209,17 +216,30 @@ class CanvasVideoController internal constructor(
     internal var videoLoading by mutableStateOf(false)
         private set
 
-    internal fun attach(token: Any, view: TextureView) {
-        attached.removeAll { it.first === token }
-        attached.add(token to view)
-        bind(view)
+    /**
+     * Shows the picture on the highest-ranked surface, the newest among equals (Exhale master's
+     * SharedMusicVideo). Ranked, not newest-wins: the open player stays composed under the dock
+     * when it closes, and the dock has to take the picture over from it, and give it back.
+     */
+    internal fun attach(token: Any, view: TextureView, priority: Int = 0) {
+        val index = attached.indexOfFirst { it.first === token }
+        if (index >= 0 && attached[index].second === view && attached[index].third == priority) return
+        if (index >= 0 && attached[index].second === view) {
+            attached[index] = Triple(token, view, priority)
+        } else {
+            attached.removeAll { it.first === token }
+            attached.add(Triple(token, view, priority))
+        }
+        bind(best())
     }
 
     internal fun detach(token: Any) {
-        val wasTop = attached.lastOrNull()?.first === token
         attached.removeAll { it.first === token }
-        if (wasTop) bind(attached.lastOrNull()?.second)
+        bind(best())
     }
+
+    private fun best(): TextureView? =
+        attached.withIndex().maxWithOrNull(compareBy({ it.value.third }, { it.index }))?.value?.second
 
     internal fun onSurfaceFrame(view: TextureView) {
         if (boundTexture === view && surfaceWithFrame !== view) surfaceWithFrame = view
@@ -326,7 +346,9 @@ class CanvasVideoController internal constructor(
                 .setMimeType(stream.mimeType)
                 .setCustomCacheKey("exhale-video-picture:${stream.videoId}")
                 .build(),
-            startPositionMs.coerceAtLeast(0L),
+            // A little past the song: fetching from a new place takes about this long, and the picture
+            // then waits there for the song instead of starting late and chasing it (master).
+            (startPositionMs + CATCH_UP_LEAD_MS).coerceAtLeast(0L),
         )
         exoPlayer.prepare()
     }
@@ -335,15 +357,32 @@ class CanvasVideoController internal constructor(
         if (loadingVideoStream != null) exoPlayer.seekTo(positionMs.coerceAtLeast(0L))
     }
 
+    /**
+     * Keeps the picture with the song, as Exhale master's MusicVideoSurface does. The old rule
+     * seeked whenever the two drifted half a second apart; ordinary jitter between two clocks crosses
+     * that, and every seek on a video stream is a stall back to a keyframe, which was the stutter.
+     * Now a small drift is closed by running the picture a little fast or slow, a picture ahead of
+     * the song holds its frame until the song arrives, and only a real gap (a stall, a seek in the
+     * song) seeks, to just past the song so it waits there rather than chasing. Called every 100 ms.
+     */
     internal fun synchronizeTo(audioPlayer: Player) {
         if (loadingVideoStream == null || videoFailed) return
-        exoPlayer.playWhenReady = audioPlayer.isPlaying
-        if (exoPlayer.playbackParameters.speed != audioPlayer.playbackParameters.speed) {
-            exoPlayer.setPlaybackSpeed(audioPlayer.playbackParameters.speed)
-        }
-        if (exoPlayer.playbackState == Player.STATE_READY || exoPlayer.playbackState == Player.STATE_ENDED) {
-            if (kotlin.math.abs(exoPlayer.currentPosition - audioPlayer.currentPosition) > 500L) {
-                exoPlayer.seekTo(audioPlayer.currentPosition.coerceAtLeast(0L))
+        val songSpeed = audioPlayer.playbackParameters.speed.takeIf { it > 0f } ?: 1f
+        val target = audioPlayer.currentPosition
+        val drift = target - exoPlayer.currentPosition
+        when {
+            !audioPlayer.isPlaying -> exoPlayer.playWhenReady = false
+            exoPlayer.playbackState == Player.STATE_ENDED -> exoPlayer.playWhenReady = false
+            // Still fetching: start as soon as it can, unless it would then be ahead of the song.
+            exoPlayer.playbackState != Player.STATE_READY -> exoPlayer.playWhenReady = drift >= -HOLD_AHEAD_MS
+            drift > RESEEK_MS -> exoPlayer.seekTo(target + CATCH_UP_LEAD_MS)
+            drift < -RESEEK_MS -> exoPlayer.seekTo(target.coerceAtLeast(0L))
+            drift < -HOLD_AHEAD_MS -> exoPlayer.playWhenReady = false
+            else -> {
+                exoPlayer.playWhenReady = true
+                val nudge = if (kotlin.math.abs(drift) < IN_STEP_MS) 1f else 1f + (drift / 4_000f).coerceIn(-MAX_NUDGE, MAX_NUDGE)
+                val speed = songSpeed * nudge
+                if (kotlin.math.abs(exoPlayer.playbackParameters.speed - speed) > 0.005f) exoPlayer.setPlaybackSpeed(speed)
             }
         }
     }
@@ -389,6 +428,18 @@ class CanvasVideoController internal constructor(
 }
 
 private const val VIDEO_FADE_IN_MS = 750
+
+// Music video sync, from Exhale master's MusicVideoSurface.
+/** Drift the picture is left with: below this it plays at the song's speed. */
+private const val IN_STEP_MS = 60L
+/** Drift past which the picture seeks instead of catching up. */
+private const val RESEEK_MS = 1_500L
+/** The most the picture is sped up or slowed to close a drift, as a fraction of the song's speed. */
+private const val MAX_NUDGE = 0.08f
+/** Ahead of the song by more than this, the picture holds still until the song catches it up. */
+private const val HOLD_AHEAD_MS = 200L
+/** How far past the song a seek lands, so the picture is waiting when the song arrives. */
+private const val CATCH_UP_LEAD_MS = 900L
 private const val VIDEO_FADE_OUT_MAX_MS = 1_400
 private const val POSTER_MAX_PX = 720f
 
@@ -410,6 +461,15 @@ fun rememberCanvasVideoController(
     val controller = remember {
         val player = ExoPlayer.Builder(context)
             .setMediaSourceFactory(mediaSourceFactory)
+            // Exhale master's music-video buffering: start on half a second of picture (the song is
+            // already playing; the video only has to join it), and after a stall wait for two
+            // seconds rather than one, which ran straight into the next stall on a slow connection.
+            .setLoadControl(
+                androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(8_000, 30_000, 500, 2_000)
+                    .setTargetBufferBytes(24 * 1024 * 1024)
+                    .build(),
+            )
             .build()
             .apply {
                 trackSelectionParameters = trackSelectionParameters
@@ -494,6 +554,8 @@ fun CanvasVideoSurface(
     modifier: Modifier = Modifier,
     crop: Boolean = true,
     onFrame: (() -> Unit)? = null,
+    /** Which surface gets the picture when several are up: full screen 2, the open player 1, the dock 0. */
+    priority: Int = LocalCanvasSurfacePriority.current,
 ) {
     if (controller == null) return
     val token = remember { Any() }
@@ -506,6 +568,8 @@ fun CanvasVideoSurface(
         if (hasFrame) surfaceAlpha.animateTo(1f, tween(SURFACE_FADE_IN_MS, easing = SeamlessEasing))
     }
     DisposableEffect(token) { onDispose { controller.detach(token) } }
+    // Re-ranked in place when the sheet opens or closes, so the picture moves without a rebind.
+    LaunchedEffect(priority, texture) { texture?.let { controller.attach(token, it, priority) } }
     val aspect = controller.videoAspect
     AndroidView(
         factory = { viewContext ->
@@ -525,7 +589,7 @@ fun CanvasVideoSurface(
                     }
                     addView(view)
                     texture = view
-                    controller.attach(token, view)
+                    controller.attach(token, view, priority)
                 }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER))
             }
         },
@@ -549,6 +613,21 @@ fun CanvasVideoSurface(
 }
 
 private const val SURFACE_FADE_IN_MS = 420
+
+/**
+ * The music video over the dock's cover while that song's video is on (Exhale master's docked
+ * video): the same warm decoder as the player, so closing the player hands the picture straight
+ * over instead of starting it again.
+ */
+@Composable
+internal fun DockVideoOverArtwork(mediaId: String?, modifier: Modifier = Modifier) {
+    if (mediaId == null || CanvasPosterSource.dockedVideoFor != mediaId) return
+    val controller = CanvasPosterSource.controller ?: return
+    CanvasVideoSurface(controller, modifier, crop = true, priority = 0)
+}
+
+/** The rank of the video surfaces drawn below: see [CanvasVideoController.attach]. */
+val LocalCanvasSurfacePriority = androidx.compose.runtime.compositionLocalOf { 1 }
 
 private suspend fun fetchCanvasArtwork(context: Context, metadata: MediaMetadata, canvasSource: CanvasSource): CanvasArtwork? {
     val cacheKey = "${metadata.id}:${canvasSource.name}"

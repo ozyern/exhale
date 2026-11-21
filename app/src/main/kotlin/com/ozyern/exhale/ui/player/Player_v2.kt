@@ -254,10 +254,10 @@ private fun PlayerV2Content(
         mediaMetadata?.id != null && videoPresentation.selectedVideoId == mediaMetadata?.id
     val selectVideo: (Boolean) -> Unit = { selected ->
         if (isPreviewOnly || videoPresentation == null) previewWatchVideo = selected
-        else {
-            videoPresentation.selectVideo(mediaMetadata?.id, selected)
-            mediaMetadata?.id?.let { playerConnection.service.setVideoPlaybackMode(it, selected) }
-        }
+        // Picture only, as on Exhale master: the song keeps playing from its own stream (lossless
+        // included). Switching used to stop it and restart it on standard audio, which was the
+        // glitch every time Video was turned on or off.
+        else videoPresentation.selectVideo(mediaMetadata?.id, selected)
     }
     LaunchedEffect(mediaMetadata?.id, state.isCollapsed, isPreviewOnly) {
         if (auxiliaryPageState != null) return@LaunchedEffect
@@ -287,20 +287,27 @@ private fun PlayerV2Content(
     val paneArtworkStore = remember { com.ozyern.artwork.ArtworkBitmapStore() }
     val textMetadata = trackChoreography.text.value
     val detailMetadata = trackChoreography.detail.value
+    // Watching the video, it carries on in the dock while the player is closed (Exhale master).
+    val videoInDock = watchVideo && videoStream != null && !isPreviewOnly
+    DisposableEffect(videoInDock, mediaMetadata?.id) {
+        CanvasPosterSource.dockedVideoFor = mediaMetadata?.id.takeIf { videoInDock }
+        onDispose { if (videoInDock) CanvasPosterSource.dockedVideoFor = null }
+    }
     val canvasVideo = rememberCanvasVideoController(
         mediaMetadata = trackChoreography.ambient.value,
-        isPlaying = isPlaying && !state.isCollapsed,
+        isPlaying = isPlaying && (!state.isCollapsed || videoInDock),
         trackFadeMillis = ambientTransitionMillis(v2CrossfadeMs),
         videoStream = videoStream.takeIf { watchVideo },
         videoStartPositionMs = playerConnection.player.currentPosition,
     )
     val videoLifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    LaunchedEffect(canvasVideo, watchVideo, videoStream?.videoId, state.isCollapsed, videoLifecycleOwner) {
-        if (!watchVideo || videoStream == null || state.isCollapsed) return@LaunchedEffect
+    LaunchedEffect(canvasVideo, watchVideo, videoStream?.videoId, videoLifecycleOwner) {
+        if (!watchVideo || videoStream == null) return@LaunchedEffect
         videoLifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            // Every 100 ms, as master checks it: small corrections often rather than large late ones.
             while (isActive) {
                 canvasVideo.synchronizeTo(playerConnection.player)
-                delay(500L)
+                delay(100L)
             }
         }
     }
@@ -688,12 +695,12 @@ private fun PlayerV2Content(
     // The hero's artist is a softer grey under a larger title, as BitChord sets them.
     val artistLabelColor = if (additiveChrome) adaptivePrimary.copy(alpha = if (isHeroLook) 0.55f else 0.78f) else adaptiveSecondary
     // The quieter icons (volume, lyrics, output, queue) in the cover's colour on the hero.
-    val heroAccent by animateColorAsState(
-        targetValue = referenceGradient?.takeIf { isHeroLook && additiveChrome }?.let { nowPlayingAccent(it.top) }
-            ?: adaptivePrimary.copy(alpha = 0.62f),
-        animationSpec = tween(600),
-        label = "heroAccent",
-    )
+    // Not animated: read up here, an animated colour recomposed the whole player on every frame of
+    // a track change, which is when the artwork crossfade needs those frames most.
+    val heroAccent = remember(referenceGradient, isHeroLook, additiveChrome, adaptivePrimary) {
+        referenceGradient?.takeIf { isHeroLook && additiveChrome }?.let { nowPlayingAccent(it.top) }
+            ?: adaptivePrimary.copy(alpha = 0.62f)
+    }
     // The hero's title and artist, larger (BitChord's size); the square keeps Apple Music's 17.
     val trackMetaStyle = AppTheme.typography.bodyLarge.copy(
         fontSize = if (isHeroLook) 22.sp else 17.sp,
@@ -742,6 +749,8 @@ private fun PlayerV2Content(
     ) {
         CompositionLocalProvider(
             LocalPooledGlass provides null,
+            // Open, the player's video surfaces outrank the dock's; closed, the dock takes the picture.
+            LocalCanvasSurfacePriority provides if (state.isCollapsed) -1 else 1,
         ) {
         val systemBarsTopPadding = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
         val wideLyrics = isWidePlayerLayout && playerState == PlayerInternalState.LYRICS
