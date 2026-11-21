@@ -12,6 +12,11 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import com.ozyern.exhale.ui.utils.containerBackdrop
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
@@ -897,7 +902,24 @@ internal fun AppRootContent(
                     ) {
                     // Blurs the pages behind a card growing out of a tile; the card itself is
                     // drawn in the layout's overlay, above this, and stays sharp.
-                    Box(Modifier.fillMaxSize().containerBackdrop()) {
+                    // Where each finger goes down, in the window: which tile opened a page, when that
+                    // tile didn't record the touch itself (see NavigationArtworkState.select).
+                    var rootOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .onGloballyPositioned { rootOrigin = it.positionInWindow() }
+                            .pointerInput(navigationArtwork) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(
+                                        requireUnconsumed = false,
+                                        pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial,
+                                    )
+                                    navigationArtwork.lastTouch = rootOrigin + down.position
+                                }
+                            }
+                            .containerBackdrop(),
+                    ) {
                         val onRailItemClick = onNavItemClick
                         com.ozyern.exhale.ui.component.AnalysisBanner(
                             Modifier.align(Alignment.TopCenter).zIndex(10f),

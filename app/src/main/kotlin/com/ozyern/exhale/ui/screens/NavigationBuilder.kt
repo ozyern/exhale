@@ -114,6 +114,7 @@ import com.ozyern.exhale.ui.screens.equalizer.axion.AxionEqScreen
 import com.ozyern.exhale.ui.component.shapes.ContinuousRoundedRectangle
 import com.ozyern.exhale.ui.utils.PageMotion
 import com.ozyern.exhale.ui.utils.sharedPageTarget
+import com.ozyern.exhale.ui.utils.containerReturnPage
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 fun NavGraphBuilder.navigationBuilder(
@@ -773,7 +774,7 @@ private fun NavGraphBuilder.sharedComposable(
             LocalMorphArtworkId provides entry.morphArtworkId(),
         ) {
           // The whole page is the large end of the card it grows out of, when a tile was tapped.
-          androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().sharedPageTarget()) {
+          androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().sharedPageTarget().containerReturnPage()) {
             if (collection) {
                 val corner = com.ozyern.exhale.ui.player.rememberScreenCornerRadius()
                 val shape = remember(corner) { ContinuousRoundedRectangle(corner) }

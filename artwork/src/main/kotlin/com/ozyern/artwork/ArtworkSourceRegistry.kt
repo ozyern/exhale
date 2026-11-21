@@ -46,12 +46,17 @@ class ArtworkSourceRegistry<T> {
         }
         val touched = sources[touchedOwner]?.takeIf { it.id == id }
         val preferred = preferredOwner?.let(sources::get)?.takeIf { it.id == id }
-        selected = touched ?: preferred ?: sources.values.lastOrNull { it.id == id }
+        // Opening, only the tile that was tapped: any other tile with the same artwork (a song row
+        // from the same album) is somewhere else on the screen, and the page grew out of that.
+        selected = touched ?: preferred ?: if (returning) sources.values.lastOrNull { it.id == id } else null
         touchedOwner = null
         return selected
     }
 
     fun isRegistered(owner: Any?): Boolean = owner != null && sources.containsKey(owner)
+
+    /** The artwork id [owner] registered with, if it is registered. */
+    fun idOf(owner: Any?): String? = owner?.let { sources[it]?.id }
 
     fun source(id: String): Source<T>? = selected?.takeIf { it.id == id }
         ?: sources.values.lastOrNull { it.id == id }

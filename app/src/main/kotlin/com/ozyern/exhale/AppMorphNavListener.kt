@@ -31,13 +31,22 @@ import com.ozyern.exhale.ui.utils.morphArtworkId
 fun InstallMorphNavListener(navController: NavHostController, artworkState: com.ozyern.exhale.ui.utils.NavigationArtworkState) {
     val context = LocalContext.current
     DisposableEffect(navController, artworkState) {
-        var previousBackStackSize = -1
         var previousRoute: String? = null
+        // The entries seen, bottom to top. currentBackStack lags a change behind inside this
+        // listener (home -> search read 0 -> 2, and a back press read 4 -> 5), so a pop was taken
+        // for a push and the page flew in instead of home: a return to an entry already on our
+        // stack is the pop.
+        val seenEntries = ArrayList<String>()
         @SuppressLint("RestrictedApi")
         val listener = NavController.OnDestinationChangedListener { controller, destination, args ->
-            val currentSize = controller.currentBackStack.value.size
-            val isPop = previousBackStackSize != -1 && currentSize < previousBackStackSize
-            previousBackStackSize = currentSize
+            val entryId = controller.currentBackStackEntry?.id
+            val seenAt = entryId?.let(seenEntries::indexOf) ?: -1
+            val isPop = seenAt >= 0 && seenAt < seenEntries.lastIndex
+            if (seenAt >= 0) {
+                while (seenEntries.size > seenAt + 1) seenEntries.removeAt(seenEntries.lastIndex)
+            } else if (entryId != null) {
+                seenEntries.add(entryId)
+            }
             markMorphDirection(isPop)
 
             val artworkId = if (isPop && isMorphRoute(previousRoute)) {
@@ -46,6 +55,14 @@ fun InstallMorphNavListener(navController: NavHostController, artworkState: com.
                 args.morphArtworkId()
             }
             val thumbnailUrl = markSharedArtworkSource(artworkState, artworkId, isPop)
+            // The way back shrinks the page into the tile it was opened from (ContainerReturn).
+            if (isPop && isMorphRoute(previousRoute)) {
+                com.ozyern.exhale.ui.utils.ContainerReturn.closed()
+            } else if (!isPop && isMorphRoute(destination.route)) {
+                com.ozyern.exhale.ui.utils.ContainerReturn.opened(
+                    artworkState.selected?.owner?.let { artworkState.tileBounds[it] },
+                )
+            }
             previousRoute = destination.route
             val collection = destination.route?.let { it.startsWith("album/") || it.contains("playlist/") } == true
             if (!collection) {

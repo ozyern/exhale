@@ -12,12 +12,15 @@ import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope.ResizeMode.Companion.scaleToBounds
 import android.os.Build
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -72,16 +75,93 @@ private val TileOut = fadeOut(tween(100))
 /** How far everything behind the card is blurred while it moves. */
 private val BackdropBlur = 28.dp
 
+/**
+ * Where each open page's tile was when it was tapped, so the way back can shrink the page into it
+ * without waiting for that tile to be laid out again. On the way back the page under the card is
+ * rebuilt, and its list restores its scroll a frame or two late: a shared element aimed at the tile
+ * then aimed at nothing, and the card flew to the top-left corner or simply vanished.
+ */
+object ContainerReturn {
+    data class Target(val tile: Rect, val window: androidx.compose.ui.unit.IntSize)
+
+    private val stack = ArrayList<Target?>()
+
+    /** The target of the page closing now, read by [PageMotion]'s exit. */
+    @Volatile var current: Target? = null
+        private set
+
+    /** When the latest card began to grow: the backdrop blurs for its length. */
+    var openedAt by androidx.compose.runtime.mutableLongStateOf(0L)
+        private set
+
+    fun opened(target: Target?) {
+        stack.add(target)
+        if (target != null) openedAt = android.os.SystemClock.uptimeMillis()
+        if (stack.size > 32) stack.removeAt(0)
+    }
+
+    fun closed() {
+        current = stack.removeLastOrNull()
+    }
+}
+
+/**
+ * The page shrinking into its tile on the way back, as ColorOS returns a page to its widget.
+ *
+ * Drawn by the page itself, in the shared-transition overlay. As an exit transition it ran, but
+ * underneath the page coming back, which navigation draws on top, so it was never seen: the page
+ * just vanished. Its exit only holds it on screen for this long (see PageMotion).
+ */
+@Composable
+fun Modifier.containerReturnPage(): Modifier {
+    val sharedScope = LocalSharedTransitionScope.current ?: return this
+    val animatedScope = LocalNavAnimatedVisibilityScope.current ?: return this
+    val transition = animatedScope.transition
+    val closing = lastNavWasPop() && ContainerReturn.current != null &&
+        transition.targetState == androidx.compose.animation.EnterExitState.PostExit
+    if (!closing) return this
+    val target = ContainerReturn.current ?: return this
+    val progress = transition.animateFloat(
+        transitionSpec = { tween(ContainerMillis, easing = androidx.compose.animation.core.FastOutSlowInEasing) },
+        label = "containerReturn",
+    ) { if (it == androidx.compose.animation.EnterExitState.PostExit) 1f else 0f }
+    val screenCorner = com.ozyern.exhale.ui.player.rememberScreenCornerRadius().coerceAtLeast(24.dp)
+    return with(sharedScope) {
+        this@containerReturnPage
+            .renderInSharedTransitionScopeOverlay(renderInOverlay = { true }, zIndexInOverlay = 1f)
+            .graphicsLayer {
+                val p = progress.value.coerceIn(0f, 1f)
+                val w = size.width
+                val h = size.height
+                if (w <= 0f || h <= 0f) return@graphicsLayer
+                // The page's width comes down to the tile's, top-left onto the tile's, its height
+                // clipped to the tile's own so it lands as the tile, not as a tall strip.
+                val endScale = (target.tile.width / w).coerceIn(0.05f, 1f)
+                val scale = 1f + (endScale - 1f) * p
+                scaleX = scale
+                scaleY = scale
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                translationX = target.tile.left * p
+                translationY = target.tile.top * p
+                val clipH = h + (target.tile.height / endScale - h) * p
+                shape = GrowingCornerShape(screenCorner, clipHeightFraction = (clipH / h).coerceIn(0f, 1f))
+                clip = true
+                alpha = 1f - ((p - 0.78f) / 0.22f).coerceIn(0f, 1f)
+            }
+    }
+}
+
 private data class ContainerKey(val id: String)
 
 /**
  * Corners in proportion to the card: a tile's at a tile's size, opening out as it grows until they
  * meet the screen's own at full size, so the card never looks like a box on its way.
  */
-private class GrowingCornerShape(private val maxRadius: Dp) : Shape {
+private class GrowingCornerShape(private val maxRadius: Dp, private val clipHeightFraction: Float = 1f) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
-        val radius = minOf(with(density) { maxRadius.toPx() }, size.minDimension * 0.12f)
-        return Outline.Rounded(RoundRect(Rect(0f, 0f, size.width, size.height), CornerRadius(radius)))
+        val height = size.height * clipHeightFraction
+        val radius = minOf(with(density) { maxRadius.toPx() }, minOf(size.width, height) * 0.12f)
+        return Outline.Rounded(RoundRect(Rect(0f, 0f, size.width, height), CornerRadius(radius)))
     }
 }
 
@@ -95,6 +175,8 @@ internal fun Modifier.containerTransformElement(
 ): Modifier {
     val sharedScope = LocalSharedTransitionScope.current ?: return this
     val animatedScope = LocalNavAnimatedVisibilityScope.current ?: return this
+    // Only on the way in. The way back is the page's own exit (containerReturnExit).
+    if (lastNavWasPop()) return this
     val screenCorner = com.ozyern.exhale.ui.player.rememberScreenCornerRadius().coerceAtLeast(24.dp)
     return with(sharedScope) {
         this@containerTransformElement.sharedBounds(
@@ -127,12 +209,23 @@ fun Modifier.sharedPageTarget(): Modifier {
  */
 @Composable
 fun Modifier.containerBackdrop(): Modifier {
-    val sharedScope = LocalSharedTransitionScope.current ?: return this
-    val moving = sharedScope.isTransitionActive && isArtworkMorph()
+    if (LocalSharedTransitionScope.current == null) return this
+    // For the length of a card's growth, timed from the tap rather than read off "a shared
+    // transition is running": anything else that ran one (a page's own header) flashed the landed
+    // page blurred. Only opening: closing, the page shrinks in the layer this blurs, so it would
+    // blur the page away; Home brightening back under it is the close's backdrop.
+    var moving by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val openedAt = ContainerReturn.openedAt
+    androidx.compose.runtime.LaunchedEffect(openedAt) {
+        if (openedAt == 0L) return@LaunchedEffect
+        moving = true
+        kotlinx.coroutines.delay(ContainerMillis.toLong())
+        moving = false
+    }
     val amount = animateFloatAsState(
         targetValue = if (moving) 1f else 0f,
-        // In quickly, so the trip home starts on a blurred page; out as the card lands.
-        animationSpec = tween(if (moving) 140 else 220),
+        // In quickly; off at once when the card lands, or the landed page was drawn blurred.
+        animationSpec = if (moving) tween(140) else androidx.compose.animation.core.snap(),
         label = "containerBackdrop",
     )
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return this

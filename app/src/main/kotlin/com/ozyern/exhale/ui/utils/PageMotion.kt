@@ -47,14 +47,17 @@ object PageMotion {
 
     fun popEnter(from: String?, to: String?): EnterTransition = when {
         isTabSwap(from, to) -> EnterTransition.None
+        isMorphRoute(from) && ContainerReturn.current != null -> fadeIn(tween(ContainerMillis), initialAlpha = ContainerDim)
         grows(from) -> fadeIn(tween(ContainerMillis), initialAlpha = ContainerDim)
         else -> fadeIn(tween(FadeMillis))
     }
 
     fun popExit(from: String?, to: String?): ExitTransition = when {
         isTabSwap(from, to) -> ExitTransition.None
-        // Held on screen for the card's trip home; the card draws the page as it shrinks.
-        grows(from) -> fadeOut(tween(ContainerMillis), targetAlpha = 0.999f)
+        // Shrinks into the tile it came out of, wherever that tile was when it was tapped.
+        // Held on screen while the page shrinks into its tile (containerReturnPage draws it).
+        // Held on screen for the trip (containerReturnPage draws it, shrinking, in the overlay).
+        isMorphRoute(from) && ContainerReturn.current != null -> fadeOut(tween(ContainerMillis), targetAlpha = 0.999f)
         else -> fadeOut(tween(FadeMillis))
     }
 

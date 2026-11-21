@@ -33,6 +33,7 @@ import coil3.compose.AsyncImagePainter
 import com.ozyern.artwork.ArtworkSourceRegistry
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.findRootCoordinates
 import androidx.navigation.NavBackStackEntry
 import androidx.compose.ui.Alignment
 
@@ -75,6 +76,12 @@ class NavigationArtworkState {
     var selected by mutableStateOf<ArtworkSourceRegistry.Source<Image>?>(null)
         private set
 
+    /** Each tile's last bounds in the window, and the window's size, for the way back. */
+    val tileBounds = HashMap<Any, ContainerReturn.Target>()
+
+    /** Where the last finger went down, in the window: which tile opened a page. */
+    var lastTouch: androidx.compose.ui.geometry.Offset? = null
+
     fun select(id: String?, returning: Boolean): String? {
         val selectedId = if (returning) selected?.id ?: id else id
         if (selectedId.isNullOrBlank()) {
@@ -83,7 +90,13 @@ class NavigationArtworkState {
             return null
         }
         pendingReturnId = selectedId.takeIf { returning }
-        selected = sources.select(selectedId, returning)
+        // The tile under the finger that opened this, when the tile itself didn't record the touch.
+        val underFinger = if (returning) null else lastTouch?.let { point ->
+            tileBounds.entries.firstOrNull { (owner, target) ->
+                sources.idOf(owner) == selectedId && target.tile.contains(point)
+            }?.key
+        }
+        selected = sources.select(selectedId, returning, preferredOwner = underFinger)
         if (!returning) libraryOrigins[selectedId] = selected?.owner in librarySourceOwners
         libraryMorph.value = libraryOrigins[selectedId] == true
         artworkMorph.value = selected != null
@@ -306,7 +319,14 @@ fun Modifier.sharedArtworkSource(id: String?, thumbnailUrl: String? = null, owne
 
     DisposableEffect(state, owner, id) { onDispose { state.sources.unregister(owner) } }
     val track = remember(state, owner, id, thumbnailUrl) {
-        Modifier.onPlaced { state.registerSource(owner, id, thumbnailUrl) }
+        Modifier.onPlaced { coordinates ->
+            state.registerSource(owner, id, thumbnailUrl)
+            val root = coordinates.findRootCoordinates()
+            state.tileBounds[owner] = ContainerReturn.Target(
+                root.localBoundingBoxOf(coordinates, clipBounds = false),
+                root.size,
+            )
+        }
     }
 
     return if (state.selected?.owner != owner || state.selected?.id != id) {
