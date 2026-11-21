@@ -176,12 +176,18 @@ object OpenFlac {
      * and the artist has to be named.
      */
     private val albumTrackRegistry = ConcurrentHashMap<String, Track>()
+    /** Sabrina Carpenter's whole catalogue in lossless, one upload per album. */
     private val SABRINA_ITEMS = listOf(
-        "short-n-sweet_202608",
-        "emails-i-cant-send-2022-flac",
-        "sabrina-carpenter-such-a-funny-way",
         "mansbestfriend_202611",
+        "shortnsweetdelux_20261121",
+        "emailsicantsendfwd",
+        "singularactii",
+        "singularacti",
         "fruitcakesabrina",
+        "evolution_202611",
+        "eyeswideopen_202611",
+        // The 16-bit Short n' Sweet: the 24-bit upload above is preferred where both hold a song.
+        "short-n-sweet_202608",
     )
     @Volatile private var sabrinaLoaded = false
     private val sabrinaLoading = kotlinx.coroutines.sync.Mutex()
@@ -461,11 +467,17 @@ object OpenFlac {
     private fun bestRegistered(title: String, artist: String, durationSeconds: Int): Track? =
         closest(albumTrackRegistry.values.filter { isSameRecording(title, artist, durationSeconds, it) }, durationSeconds)
 
-    /** The candidate nearest [durationSeconds], then the finest; edits seconds apart are different cuts. */
-    private fun closest(candidates: Collection<Track>, durationSeconds: Int): Track? =
+    /**
+     * The candidate nearest [durationSeconds], then the finest; edits seconds apart are different cuts.
+     * Within [CloseRuntimeGapSeconds] every candidate is the song's own cut, and the finest wins:
+     * a 16-bit upload half a second closer no longer beats the 24-bit one.
+     */
+    internal fun closest(candidates: Collection<Track>, durationSeconds: Int): Track? =
         candidates.minWithOrNull(
-            compareBy<Track> { kotlin.math.abs((it.durationSeconds ?: Int.MAX_VALUE) - durationSeconds) }
-                .thenByDescending { (it.bitDepth ?: 16) * (it.sampleRate ?: 44_100) },
+            compareBy<Track> {
+                val gap = kotlin.math.abs((it.durationSeconds ?: Int.MAX_VALUE).toLong() - durationSeconds)
+                if (gap <= CloseRuntimeGapSeconds) 0L else gap
+            }.thenByDescending { (it.bitDepth ?: 16) * (it.sampleRate ?: 44_100) },
         )
 
     private const val MaxRuntimeGapSeconds = 12
@@ -502,6 +514,17 @@ object OpenFlac {
         val server = archiveServers[path.substringBefore('/')] ?: return url
         return server + "/" + path.substringAfter('/')
     }
+
+    /** Item servers' own addresses: `https://ia800300.us.archive.org/12/items/<identifier>/<file>`. */
+    private val archiveServerFile = Regex("""^https://[^/]+\.archive\.org/\d+/items/(.+)$""")
+
+    /**
+     * The lasting address of a file. Earlier builds kept the item server's address, and items move
+     * between servers: a copy remembered that way stopped playing the day its item moved, was taken
+     * for a bad copy and dropped, and the song went back to its lossy stream for good.
+     */
+    fun canonicalUrl(url: String): String =
+        archiveServerFile.matchEntire(url)?.let { ArchiveDownload + it.groupValues[1] } ?: url
 
     /** That server wouldn't play it: go back to asking archive.org where the file is. */
     fun forgetServerFor(url: String) {
@@ -569,11 +592,8 @@ object OpenFlac {
             .mapNotNull { file ->
                 val name = file.text("name") ?: return@mapNotNull null
                 val encodedPath = name.split('/').joinToString("/") { it.encodeURLPathPart() }
-                val downloadUrl = if (!server.isNullOrBlank() && !dir.isNullOrBlank()) {
-                    "https://$server$dir/$encodedPath"
-                } else {
-                    "https://archive.org/download/${identifier.encodeURLPathPart()}/$encodedPath"
-                }
+                // The lasting address; [fastUrl] turns it into the item server's while it is known.
+                val downloadUrl = "$ArchiveDownload${identifier.encodeURLPathPart()}/$encodedPath"
                 Track(
                     // A taper's file name — "gd77-05-08d2t05" — says little; the file's own title says more.
                     title = file.text("title")?.takeIf { it.isNotBlank() } ?: titleFromFileName(name),
@@ -587,8 +607,9 @@ object OpenFlac {
                     credit = credit,
                     releaseKey = releaseKey,
                 ).also { parsed ->
-                    val k = "${plain(parsed.artist)}::${plain(parsed.title)}"
-                    albumTrackRegistry.putIfAbsent(k, parsed)
+                    // Every copy is kept, by file: keyed by artist and title, the first upload read
+                    // held the song and a finer upload of it read later was never weighed.
+                    albumTrackRegistry[parsed.url] = parsed
                 }
             }
     }

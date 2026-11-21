@@ -22,11 +22,11 @@ object FlacSongs {
 
     /** The FLAC file [id] stands for, through the fastest server known for it, or null. */
     fun uriFor(id: String): Uri? =
-        if (isFlacId(id)) Uri.parse(OpenFlac.fastUrl(id.removePrefix(PREFIX))) else null
+        if (isFlacId(id)) Uri.parse(OpenFlac.fastUrl(OpenFlac.canonicalUrl(id.removePrefix(PREFIX)))) else null
 
     /** The fast server for this song failed; the next try goes through the ordinary address. */
     fun forgetServer(id: String) {
-        if (isFlacId(id)) OpenFlac.forgetServerFor(id.removePrefix(PREFIX))
+        if (isFlacId(id)) OpenFlac.forgetServerFor(OpenFlac.canonicalUrl(id.removePrefix(PREFIX)))
     }
 
     fun metadataFor(track: OpenFlac.Track) = MediaMetadata(

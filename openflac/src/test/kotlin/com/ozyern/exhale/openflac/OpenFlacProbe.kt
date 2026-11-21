@@ -31,7 +31,14 @@ class OpenFlacProbe {
     @Test
     fun albumSongsFoundTogether() = runBlocking {
         assumeTrue(System.getenv("EXHALE_SMOKE") == "1")
-        val songs = listOf("Manchild" to 214, "Tears" to 160, "My Man on Willpower" to 198, "buy me presents" to 177)
+        // A song from every album on the list, as YouTube Music names them: straight apostrophes,
+        // and albums whose files carry no title of their own.
+        val songs = listOf(
+            "Manchild" to 214, "Tears" to 160, "My Man on Willpower" to 198, "buy me presents" to 177,
+            "Bed Chem" to 172, "Couldn't Make It Any Harder" to 180, "Feather" to 186, "Nonsense" to 164,
+            "Bad Time" to 185, "Exhale" to 165, "Thumbs" to 216, "Eyes Wide Open" to 193,
+            "Can't Blame a Girl for Trying" to 169, "Don't Worry I'll Make You Worry" to 222,
+        )
         val started = System.currentTimeMillis()
         val found = songs.map { (title, length) ->
             async { title to OpenFlac.findCopy(title, "Sabrina Carpenter", length) }

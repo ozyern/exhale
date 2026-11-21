@@ -3163,8 +3163,20 @@ class MusicService :
             return
         }
 
-        // The song's Archive FLAC copy would not play: drop it and start the song again from its
-        // ordinary sources.
+        // The song's Archive FLAC copy failed: once, go back through archive.org, which redirects
+        // to wherever the file is now, as FLAC page songs do. A slow or moved item server is the
+        // usual cause, and dropping the copy on the first error is what left songs lossy.
+        if (mediaId != null && ArchiveFlac.retryThroughArchive(mediaId)) {
+            Timber.tag(TAG).w("Archive FLAC copy failed for $mediaId, retrying through archive.org")
+            val index = player.currentMediaItemIndex
+            val position = player.currentPosition
+            player.currentMediaItem?.let { player.replaceMediaItem(index, it.buildUpon().build()) }
+            player.seekTo(index, position)
+            player.prepare()
+            return
+        }
+
+        // It failed again: start the song again from its ordinary sources.
         if (mediaId != null && ArchiveFlac.known(mediaId) != null) {
             Timber.tag(TAG).w("Archive FLAC copy failed for $mediaId, falling back")
             ArchiveFlac.reject(mediaId)

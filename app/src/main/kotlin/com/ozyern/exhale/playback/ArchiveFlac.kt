@@ -43,6 +43,7 @@ object ArchiveFlac {
     private val found = ConcurrentHashMap<String, Copy>()
     private val missAt = ConcurrentHashMap<String, Long>()
     private val rejected = ConcurrentHashMap.newKeySet<String>()
+    private val retried = ConcurrentHashMap.newKeySet<String>()
     private val lookups = ConcurrentHashMap<String, Deferred<Copy?>>()
     @Volatile private var store: SharedPreferences? = null
 
@@ -69,7 +70,8 @@ object ArchiveFlac {
         found[mediaId]?.let { return it }
         val stored = runCatching { store?.getString(mediaId, null) }.getOrNull()?.takeIf { it.isNotBlank() } ?: return null
         val parts = stored.split('\t')
-        return Copy(parts[0], parts.getOrNull(1)?.toIntOrNull(), parts.getOrNull(2)?.toIntOrNull()).also { found[mediaId] = it }
+        // Earlier builds saved the item server's address, which stops working when the item moves.
+        return Copy(OpenFlac.canonicalUrl(parts[0]), parts.getOrNull(1)?.toIntOrNull(), parts.getOrNull(2)?.toIntOrNull()).also { found[mediaId] = it }
     }
 
     /** The address to stream [mediaId]'s copy from right now, or null when it has none. */
@@ -115,11 +117,27 @@ object ArchiveFlac {
         return withTimeoutOrNull(LOOKUP_TIMEOUT_MS) { search.await() }
     }
 
-    /** The copy would not play: forget it, and leave the song to its ordinary sources this session. */
+    /**
+     * The copy failed for the first time this session: the item server it was read from is
+     * forgotten, so the next try goes through archive.org, which redirects to wherever the file is
+     * now. True when that retry is worth making; false once it has been made.
+     */
+    fun retryThroughArchive(mediaId: String): Boolean {
+        val copy = known(mediaId) ?: return false
+        if (!retried.add(mediaId)) return false
+        OpenFlac.forgetServerFor(copy.url)
+        return true
+    }
+
+    /**
+     * The copy would not play: the song goes to its ordinary sources for the rest of the session.
+     * The copy stays remembered on the phone. A failure is far more often a bad moment on the
+     * network or a slow archive server than a missing file, and deleting it on the first one left
+     * the song lossy for good.
+     */
     fun reject(mediaId: String) {
-        found.remove(mediaId)?.let { OpenFlac.forgetServerFor(it.url) }
+        found[mediaId]?.let { OpenFlac.forgetServerFor(it.url) }
         rejected.add(mediaId)
-        runCatching { store?.edit()?.remove(mediaId)?.apply() }
     }
 
     fun cacheKey(mediaId: String) = "flac-copy:$mediaId"

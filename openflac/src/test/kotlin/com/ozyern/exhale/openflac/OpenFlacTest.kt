@@ -89,4 +89,25 @@ class OpenFlacTest {
         assertEquals(274, OpenFlac.parseLength("4:34"))
         assertNull(OpenFlac.parseLength(""))
     }
+
+    @Test
+    fun itemServerAddressesBecomeLastingOnes() {
+        assertEquals(
+            "https://archive.org/download/singularacti/Bad%20Time.flac",
+            OpenFlac.canonicalUrl("https://ia800300.us.archive.org/12/items/singularacti/Bad%20Time.flac"),
+        )
+        val lasting = "https://archive.org/download/fruitcakesabrina/white%20xmas.flac"
+        assertEquals(lasting, OpenFlac.canonicalUrl(lasting))
+        assertEquals("https://example.com/a.flac", OpenFlac.canonicalUrl("https://example.com/a.flac"))
+    }
+
+    @Test
+    fun theFinerCopyWinsWhenBothAreTheSongsOwnCut() {
+        val cd = track("Espresso", "Sabrina Carpenter", 175).copy(url = "cd", bitDepth = 16)
+        val hiRes = track("Espresso", "Sabrina Carpenter", 176).copy(url = "hires", bitDepth = 24)
+        assertEquals("hires", OpenFlac.closest(listOf(cd, hiRes), 175)?.url)
+        // Seconds apart it is another cut, and the nearer length still wins.
+        val edit = track("Espresso", "Sabrina Carpenter", 190).copy(url = "edit", bitDepth = 24)
+        assertEquals("cd", OpenFlac.closest(listOf(cd, edit), 175)?.url)
+    }
 }
