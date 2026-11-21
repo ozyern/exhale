@@ -186,6 +186,12 @@ fun AppleLibraryScreen(
     ) {
         // Reference: 13pt between the large title and the first row.
         item(key = "top_gap", contentType = "gap") { Spacer(Modifier.height(firstItemGap)) }
+        // Your Music Chem: this month's headline facts as a row of cards (BitChord's Replay cards).
+        if (!localOnly) {
+            item(key = "music_chem_cards", contentType = "music_chem") {
+                com.ozyern.exhale.ui.screens.musicchem.MusicChemCards(navController)
+            }
+        }
         if (!needsAccess && pinned.isNotEmpty()) {
             item(key = "pinned", contentType = "pinned") {
                 PinnedGrid(pinned, onOpen = open, onReorder = viewModel::reorderPinned)
