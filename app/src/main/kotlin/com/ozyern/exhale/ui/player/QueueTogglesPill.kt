@@ -37,12 +37,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ozyern.exhale.R
 import com.ozyern.exhale.constants.AutoLoadMoreKey
 import com.ozyern.exhale.constants.CrossfadeEnabledKey
+import com.ozyern.exhale.constants.EightDEnabledKey
 import com.ozyern.exhale.playback.PlaybackRepeatMode
 import com.ozyern.exhale.playback.PlayerConnection
 import com.ozyern.exhale.utils.rememberPreference
 
 /**
- * The queue's playback toggles (shuffle, repeat, keep playing, crossfade) as one pill in the player's bottom
+ * The queue's playback toggles (shuffle, repeat, keep playing, crossfade, 8D) as one pill in the player's bottom
  * bar, where the speaker button sits while the queue is closed. The queue page itself no longer
  * carries a row of them under its header.
  */
@@ -56,6 +57,7 @@ internal fun QueueTogglesPill(
     val snapshot by playerConnection.playbackSnapshot.collectAsStateWithLifecycle()
     var keepPlaying by rememberPreference(AutoLoadMoreKey, defaultValue = true)
     var crossfadeOn by rememberPreference(CrossfadeEnabledKey, defaultValue = false)
+    var eightD by rememberPreference(EightDEnabledKey, defaultValue = false)
     val lightInk = tint.luminance() > 0.5f
     Row(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -95,6 +97,14 @@ internal fun QueueTogglesPill(
             enabled = enabled,
             tint = tint,
         ) { crossfadeOn = !crossfadeOn }
+        // 8D, a tap from the song it is for; its speed and width live in Settings > Player & audio.
+        QueueToggle(
+            icon = R.drawable.ic_queue_8d,
+            description = stringResource(R.string.queue_8d_audio),
+            active = eightD,
+            enabled = true,
+            tint = tint,
+        ) { eightD = !eightD }
     }
 }
 

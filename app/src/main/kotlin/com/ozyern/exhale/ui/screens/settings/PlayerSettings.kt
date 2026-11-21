@@ -72,6 +72,16 @@ fun PlayerSettings(
         SkipSilenceKey,
         defaultValue = false
     )
+    // 8D, from Exhale master: on/off here and in the queue's toggles, with its speed and width.
+    val (eightD, onEightDChange) = rememberPreference(com.ozyern.exhale.constants.EightDEnabledKey, false)
+    val (eightDSpeed, onEightDSpeedChange) = rememberPreference(
+        com.ozyern.exhale.constants.EightDRotationHzKey,
+        com.ozyern.exhale.playback.EightDAudioProcessor.DEFAULT_ROTATION_HZ,
+    )
+    val (eightDDepth, onEightDDepthChange) = rememberPreference(
+        com.ozyern.exhale.constants.EightDDepthKey,
+        com.ozyern.exhale.playback.EightDAudioProcessor.DEFAULT_DEPTH,
+    )
     val (audioNormalization, onAudioNormalizationChange) = rememberPreference(
         AudioNormalizationKey,
         defaultValue = true
@@ -189,6 +199,45 @@ fun PlayerSettings(
                             },
                             onClick = { onSkipSilenceChange(!skipSilence) }
                         ))
+                        add(IosSettingsItem(
+                            icon = painterResource(R.drawable.ic_queue_8d),
+                            title = { Text(stringResource(R.string.queue_8d_audio)) },
+                            description = { Text(stringResource(R.string.eight_d_audio_desc)) },
+                            trailingContent = {
+                                Switch(checked = eightD, onCheckedChange = onEightDChange)
+                            },
+                            onClick = { onEightDChange(!eightD) }
+                        ))
+                        if (eightD) {
+                            val lap = 1f / eightDSpeed.coerceAtLeast(0.01f)
+                            add(IosSettingsItem(
+                                title = { Text("Speed") },
+                                description = {
+                                    Column {
+                                        Text("One lap every ${"%.0f".format(lap)} s")
+                                        androidx.compose.material3.Slider(
+                                            value = eightDSpeed,
+                                            onValueChange = onEightDSpeedChange,
+                                            valueRange = com.ozyern.exhale.playback.EightDAudioProcessor.MIN_ROTATION_HZ..
+                                                com.ozyern.exhale.playback.EightDAudioProcessor.MAX_ROTATION_HZ,
+                                        )
+                                    }
+                                },
+                            ))
+                            add(IosSettingsItem(
+                                title = { Text("Width") },
+                                description = {
+                                    Column {
+                                        Text("${(eightDDepth * 100).toInt()}%")
+                                        androidx.compose.material3.Slider(
+                                            value = eightDDepth,
+                                            onValueChange = onEightDDepthChange,
+                                            valueRange = 0.3f..1f,
+                                        )
+                                    }
+                                },
+                            ))
+                        }
                         add(IosSettingsItem(
                             icon = painterResource(R.drawable.exhale_equalizer_icon),
                             title = { Text(stringResource(R.string.exhale_equalizer)) },

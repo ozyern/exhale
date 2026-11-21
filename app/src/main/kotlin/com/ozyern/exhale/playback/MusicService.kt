@@ -954,6 +954,22 @@ class MusicService :
                 }
             }
 
+        // 8D, read by the processor once per buffer, like the spatial toggle below (Exhale master).
+        dataStore.data
+            .map {
+                Triple(
+                    it[com.ozyern.exhale.constants.EightDEnabledKey] ?: false,
+                    it[com.ozyern.exhale.constants.EightDRotationHzKey] ?: EightDAudioProcessor.DEFAULT_ROTATION_HZ,
+                    it[com.ozyern.exhale.constants.EightDDepthKey] ?: EightDAudioProcessor.DEFAULT_DEPTH,
+                )
+            }
+            .distinctUntilChanged()
+            .collectLatest(scope) { (on, rotation, depth) ->
+                EightDAudioProcessor.enabled = on
+                EightDAudioProcessor.rotationHz = rotation
+                EightDAudioProcessor.depth = depth
+            }
+
         dataStore.data
             .map { it[SpatialAudioKey] ?: false }
             .distinctUntilChanged()
@@ -4050,6 +4066,8 @@ class MusicService :
                                 // low end isn't fed back in by the widener's crossfeed.
                                 spatialProcessor,
                                 vocalSuppressionProcessor,
+                                // After the stage is built: 8D moves the whole of it round the head.
+                                EightDAudioProcessor(),
                                 djFilter,
                                 djTail,
                                 djDelay,

@@ -1,0 +1,372 @@
+/*
+ * Exhale Project Original (2026)
+ * ozyern (github.com/ozyern)
+ * Licensed Under GPL-3.0 | see git history for contributors
+ *
+ * The panning and interaural-delay core follows the reference dock's EightDAudioProcessor
+ * (github.com/vortexapps67/the reference dock, GPL-3.0); the rear shadow, float path and continuous orbit
+ * are Exhale's.
+ */
+
+package com.ozyern.exhale.playback
+
+import androidx.media3.common.C
+import androidx.media3.common.audio.AudioProcessor
+import androidx.media3.common.audio.BaseAudioProcessor
+import androidx.media3.common.util.UnstableApi
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.exp
+import kotlin.math.roundToInt
+import kotlin.math.sin
+
+/**
+ * "8D audio": the song circles your head instead of sitting between the two ears.
+ *
+ * Three cues, because the ear needs all three to hear a position going *round* rather than a
+ * volume swinging side to side:
+ *
+ *  - **Equal-power panning.** Gains follow the cosine and sine of the pan angle, so the total
+ *    power stays flat as the image sweeps. A linear pan dips through the middle, which is what
+ *    makes a cheap autopan sound like the volume pumping.
+ *  - **Interaural time difference.** The far ear hears it up to [MAX_ITD_US] later — the delay a
+ *    head actually puts between the ears, and the cue the brain trusts most below 1.5 kHz.
+ *    Without it the sound stays inside your head and is merely louder on one side.
+ *  - **The rear shadow.** On the half of the orbit behind you the highs are softened and the level
+ *    drops a little, the way the outer ear shades a sound from behind. Without it the sound only
+ *    swings left and right through the front; with it, it goes *behind* you on the way round.
+ *
+ * Around those: the bass below [BASS_CENTRE_HZ] stays centred, as real 8D mixes keep it; the far
+ * ear is shaded as well as delayed (the head blocks highs); and two faint early reflections put a
+ * room round the listener, so the orbit is heard outside the head rather than between the ears.
+ *
+ * Headphones only, really: on speakers both ears hear both channels and the delay cue collapses.
+ *
+ * Stereo, 16-bit or float, at any rate. Always active for stereo and a straight copy while off, so
+ * switching it never reconfigures the sink mid-song; the orbit keeps going across seeks and songs
+ * rather than snapping back to the middle each time. Driven from DataStore by MusicService
+ * through the volatile fields below, read once per buffer.
+ */
+@UnstableApi
+class EightDAudioProcessor : BaseAudioProcessor() {
+
+    companion object {
+        @Volatile var enabled: Boolean = false
+
+        /** Full orbits a second. 0.125 is one lap every eight seconds. */
+        @Volatile var rotationHz: Float = DEFAULT_ROTATION_HZ
+
+        /** How far toward each ear the image travels, 0..1. */
+        @Volatile var depth: Float = DEFAULT_DEPTH
+
+        const val MIN_ROTATION_HZ = 0.05f
+        const val MAX_ROTATION_HZ = 0.40f
+        const val DEFAULT_ROTATION_HZ = 0.125f
+
+        /**
+         * Not 1: at full depth the far ear's gain reaches zero and the song drops out of it
+         * entirely, which is more dramatic than musical.
+         */
+        const val DEFAULT_DEPTH = 0.85f
+
+        /** About 23 cm of head at the speed of sound. Wider only smears transients into an echo. */
+        private const val MAX_ITD_US = 660.0
+
+        /** Toggling ramps over this long, so neither the gains nor the delay step and click. */
+        private const val RAMP_MS = 120f
+
+        /** Where the rear shadow starts rolling the highs off. */
+        private const val REAR_CUTOFF_HZ = 3_200f
+
+        /** How much of the shadowed signal replaces the direct one, fully behind. */
+        private const val REAR_SHADOW = 0.55f
+
+        /** And how much quieter fully behind: about 1.5 dB. */
+        private const val REAR_DIP = 0.16f
+
+        /** The limiter's ceiling: just under full scale. */
+        private const val LIMIT = 0.97f
+
+        /** Below this the song stays centred while the rest goes round. */
+        private const val BASS_CENTRE_HZ = 150f
+
+        /** Where the head starts shading the far ear's highs. */
+        private const val HEAD_SHADOW_HZ = 1_800f
+
+        /** How much of the far ear is shaded with the image fully to one side. */
+        private const val HEAD_SHADOW = 0.6f
+
+        /** The two reflections' delays: different, so the two ears never hear the same echo. */
+        private const val ROOM_LEFT_MS = 11.3f
+        private const val ROOM_RIGHT_MS = 17.1f
+
+        /** Their level: about -18 dB, heard as space rather than as an echo. */
+        private const val ROOM_LEVEL = 0.12f
+
+        /** The second, farther pair of reflections: later and fainter, about -23 dB. */
+        private const val ROOM_LEFT_LATE_MS = 23.7f
+        private const val ROOM_RIGHT_LATE_MS = 29.3f
+        private const val ROOM_LATE_LEVEL = 0.07f
+
+        /** Reflections lose their top end to the walls and the air: rolled off from here. */
+        private const val ROOM_DAMP_HZ = 5_000f
+
+        /** The presence lift, fully in front: about +1.5 dB above [REAR_CUTOFF_HZ]. */
+        private const val FRONT_PRESENCE = 0.18f
+
+        private const val QUARTER_PI = (PI / 4.0).toFloat()
+
+        private const val TWO_PI = 2.0 * PI
+
+        /** Where the orbit is, shared so a new sink (a new song, a seek) picks up where it was. */
+        @Volatile private var phase = 0.0
+    }
+
+    private var isFloat = false
+    private var sampleRate = 0
+    private var maxItdSamples = 1
+    private var capacity = 2
+    private var ringL = FloatArray(0)
+    private var ringR = FloatArray(0)
+    private var write = 0
+    private var applied = 0f
+    private var shadowAlpha = 0f
+    private var shadowL = 0f
+    private var shadowR = 0f
+    private var bassAlpha = 0f
+    private var bass = 0f
+    private var farAlpha = 0f
+    private var farShade = 0f
+    private var room = FloatArray(1)
+    private var roomWrite = 0
+    private var roomTapL = 1
+    private var roomTapR = 1
+    private var roomTapL2 = 1
+    private var roomTapR2 = 1
+    private var roomDamp = 0f
+    private var roomDampAlpha = 0f
+
+    override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
+        isFloat = when (inputAudioFormat.encoding) {
+            C.ENCODING_PCM_16BIT -> false
+            C.ENCODING_PCM_FLOAT -> true
+            else -> return AudioProcessor.AudioFormat.NOT_SET
+        }
+        if (inputAudioFormat.channelCount != 2 || inputAudioFormat.sampleRate <= 0) {
+            return AudioProcessor.AudioFormat.NOT_SET
+        }
+        sampleRate = inputAudioFormat.sampleRate
+        maxItdSamples = ((sampleRate * MAX_ITD_US) / 1_000_000.0).roundToInt().coerceAtLeast(1)
+        // One more than the longest delay, and one more again for reading between two samples.
+        capacity = maxItdSamples + 2
+        limiterGain = 1f
+        // Lets go over about 80 ms.
+        limiterRelease = 1f - exp(-1f / (0.08f * sampleRate))
+        ringL = FloatArray(capacity)
+        ringR = FloatArray(capacity)
+        write = 0
+        applied = 0f
+        shadowAlpha = 1f - exp(-2f * PI.toFloat() * REAR_CUTOFF_HZ / sampleRate)
+        shadowL = 0f
+        shadowR = 0f
+        val twoPi = 2f * PI.toFloat()
+        bassAlpha = 1f - exp(-twoPi * BASS_CENTRE_HZ / sampleRate)
+        farAlpha = 1f - exp(-twoPi * HEAD_SHADOW_HZ / sampleRate)
+        bass = 0f
+        farShade = 0f
+        roomTapL = (sampleRate * ROOM_LEFT_MS / 1000f).roundToInt().coerceAtLeast(1)
+        roomTapR = (sampleRate * ROOM_RIGHT_MS / 1000f).roundToInt().coerceAtLeast(1)
+        roomTapL2 = (sampleRate * ROOM_LEFT_LATE_MS / 1000f).roundToInt().coerceAtLeast(1)
+        roomTapR2 = (sampleRate * ROOM_RIGHT_LATE_MS / 1000f).roundToInt().coerceAtLeast(1)
+        room = FloatArray(maxOf(roomTapL, roomTapR, roomTapL2, roomTapR2) + 1)
+        roomDampAlpha = 1f - exp(-twoPi * ROOM_DAMP_HZ / sampleRate)
+        roomDamp = 0f
+        roomWrite = 0
+        return inputAudioFormat
+    }
+
+    override fun queueInput(inputBuffer: ByteBuffer) {
+        val size = inputBuffer.remaining()
+        if (size == 0) return
+        val out = replaceOutputBuffer(size)
+        val target = if (enabled) depth.coerceIn(0f, 1f) else 0f
+
+        // Off and already ramped out: the bytes go through untouched.
+        if (target == 0f && applied == 0f) {
+            out.put(inputBuffer).flip()
+            return
+        }
+
+        val input = inputBuffer.order(ByteOrder.nativeOrder())
+        val bytesPerSample = if (isFloat) 4 else 2
+        val frames = size / (bytesPerSample * 2)
+        var position = input.position()
+        val phaseStep = TWO_PI * rotationHz.coerceIn(MIN_ROTATION_HZ, MAX_ROTATION_HZ) / sampleRate
+        val rampStep = 1f / (sampleRate * RAMP_MS / 1000f).coerceAtLeast(1f)
+        var orbit = phase
+        // The orbit as a unit phasor, turned by a fixed rotation each frame: the same sine and
+        // cosine as calling sin() and cos() per sample, for four multiplies. At 192 kHz the trig
+        // alone was most of this processor's cost.
+        var orbitSin = sin(orbit).toFloat()
+        var orbitCos = cos(orbit).toFloat()
+        val stepSin = sin(phaseStep).toFloat()
+        val stepCos = cos(phaseStep).toFloat()
+
+        repeat(frames) {
+            applied = when {
+                applied < target -> (applied + rampStep).coerceAtMost(target)
+                applied > target -> (applied - rampStep).coerceAtLeast(target)
+                else -> applied
+            }
+            val left: Float
+            val right: Float
+            if (isFloat) {
+                left = input.getFloat(position)
+                right = input.getFloat(position + 4)
+            } else {
+                left = input.getShort(position) / 32768f
+                right = input.getShort(position + 2) / 32768f
+            }
+            position += bytesPerSample * 2
+
+            // What travels round the head is the *middle* of the mix — vocal, kick, bass, lead —
+            // and the stereo width stays where the mix put it. Panning the two channels themselves
+            // made a part mixed hard to one side all but vanish whenever the orbit swung the other
+            // way: that was the "sounds worse on some songs", on any wide mix.
+            val mid = (left + right) * 0.5f
+            val side = (left - right) * 0.5f
+            // The bass stays in the middle, as a real 8D mix keeps it. Sent round the head with the
+            // rest, the kick and the bass line swung into one ear and out of the other: the low end
+            // pumped, and lost its weight whenever the orbit was at the side.
+            bass += bassAlpha * (mid - bass)
+            val moving = mid - bass
+            ringL[write] = moving
+            ringR[write] = side
+
+            // Round the head: sine is left/right, cosine is front/back.
+            val pan = (orbitSin * applied).coerceIn(-1f, 1f)
+            val behind = (-orbitCos).coerceAtLeast(0f) * applied
+            val ahead = orbitCos.coerceAtLeast(0f) * applied
+
+            // The far ear hears it later, by a *fractional* delay: whole-sample steps clicked as
+            // the delay grew and shrank through the orbit.
+            val delay = abs(pan) * maxItdSamples
+            val near = moving
+            var far = delayedMid(delay)
+            // The head shadow: the ear turned away hears it later *and* duller, because the head is
+            // in the way of the highs. Only delayed, the far ear was as bright as the near one and
+            // the image sat inside the head rather than at one side of it.
+            farShade += farAlpha * (far - farShade)
+            far += (farShade - far) * (abs(pan) * HEAD_SHADOW)
+            var l = if (pan > 0f) far else near
+            var r = if (pan < 0f) far else near
+
+            // The rear shadow: a gentle low-pass, blended in as the image goes behind.
+            shadowL += shadowAlpha * (l - shadowL)
+            shadowR += shadowAlpha * (r - shadowR)
+            // In front, the outer ear does the opposite and lifts the presence band a little. With
+            // only the rear cue, the front half of the orbit sounded like the sides; with both, the
+            // ear can tell the sound passing in front from the sound passing behind.
+            val shade = behind * REAR_SHADOW - ahead * FRONT_PRESENCE
+            l += (shadowL - l) * shade
+            r += (shadowR - r) * shade
+            val level = 1f - behind * REAR_DIP
+
+            // Equal power, centred at unity, on the middle only; the sides keep most of their
+            // width, a little narrowed so the moving image stands out from the room.
+            // √2·cos(π/4 + x) = cos x − sin x and √2·sin(π/4 + x) = cos x + sin x, with x = pan·π/4.
+            // |x| ≤ π/4, where these short series are within 0.003 dB of the real functions.
+            val x = pan * QUARTER_PI
+            val x2 = x * x
+            val sinX = x * (1f - x2 / 6f * (1f - x2 / 20f))
+            val cosX = 1f - x2 / 2f * (1f - x2 / 12f)
+            val keepSide = 1f - 0.35f * applied
+            l = l * (cosX - sinX) * level + side * keepSide
+            r = r * (cosX + sinX) * level - side * keepSide
+
+            // Early reflections from a room around you, two each side at different distances, so
+            // the ears never hear the same echo. They are what puts the sound outside the head:
+            // dry, the orbit circled between the ears. Fed from the moving part only, dulled the
+            // way air and walls dull a reflection, faint, and faded with the effect.
+            roomDamp += roomDampAlpha * (moving - roomDamp)
+            room[roomWrite] = roomDamp
+            val echo = ROOM_LEVEL * applied
+            val late = ROOM_LATE_LEVEL * applied
+            val n = room.size
+            l += echo * room[(roomWrite - roomTapL + n) % n] + late * room[(roomWrite - roomTapL2 + n) % n]
+            r += echo * room[(roomWrite - roomTapR + n) % n] + late * room[(roomWrite - roomTapR2 + n) % n]
+            roomWrite = (roomWrite + 1) % n
+
+            // And the bass, the same in both ears.
+            l += bass
+            r += bass
+
+            // A clean peak limiter instead of a clipper: the ear the sound turns toward gets up to
+            // +3 dB, and on a loud master the old soft clip turned that into audible distortion.
+            // This turns the whole frame down just enough, and lets go slowly.
+            val peak = maxOf(abs(l), abs(r)) * limiterGain
+            if (peak > LIMIT) limiterGain *= LIMIT / peak
+            else limiterGain += (1f - limiterGain) * limiterRelease
+            l *= limiterGain
+            r *= limiterGain
+
+            if (isFloat) {
+                out.putFloat(l)
+                out.putFloat(r)
+            } else {
+                out.putShort((l * 32767f).roundToInt().coerceIn(-32768, 32767).toShort())
+                out.putShort((r * 32767f).roundToInt().coerceIn(-32768, 32767).toShort())
+            }
+
+            write = (write + 1) % capacity
+            orbit += phaseStep
+            if (orbit >= TWO_PI) orbit -= TWO_PI
+            val turnedSin = orbitSin * stepCos + orbitCos * stepSin
+            orbitCos = orbitCos * stepCos - orbitSin * stepSin
+            orbitSin = turnedSin
+        }
+        phase = orbit
+        // Consumed: the reads above are absolute, and the pipeline judges acceptance by what is left.
+        inputBuffer.position(inputBuffer.limit())
+        out.flip()
+    }
+
+    /** The middle of the mix [delay] samples ago, read between samples. */
+    private fun delayedMid(delay: Float): Float {
+        val whole = delay.toInt()
+        val frac = delay - whole
+        val a = ringL[(write - whole + capacity) % capacity]
+        val b = ringL[(write - whole - 1 + capacity * 2) % capacity]
+        return a + (b - a) * frac
+    }
+
+    private var limiterGain = 1f
+    private var limiterRelease = 0f
+
+    override fun onFlush() {
+        ringL.fill(0f)
+        ringR.fill(0f)
+        write = 0
+        shadowL = 0f
+        shadowR = 0f
+        bass = 0f
+        farShade = 0f
+        room.fill(0f)
+        roomDamp = 0f
+        roomWrite = 0
+        limiterGain = 1f
+        // The ramp restarts from the middle so a seek never jumps the image; the orbit itself
+        // carries on from where it was.
+        applied = 0f
+    }
+
+    override fun onReset() {
+        ringL = FloatArray(0)
+        ringR = FloatArray(0)
+        room = FloatArray(1)
+        sampleRate = 0
+    }
+}

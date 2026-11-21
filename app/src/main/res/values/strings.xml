@@ -768,6 +768,8 @@
     <string name="local_empty_scan">Scan device</string>
     <string name="queue_keep_playing">Keep playing</string>
     <string name="queue_crossfade">Crossfade</string>
+    <string name="queue_8d_audio">8D audio</string>
+    <string name="eight_d_audio_desc">The song circles your head, passing behind you on the way round. Best on headphones</string>
     <string name="song_transitions">Song transitions</string>
     <string name="song_transitions_desc">Beginnings and endings of songs blend together. Albums and some genres still play without transitions.</string>
     <string name="transition_style">Transition style</string>

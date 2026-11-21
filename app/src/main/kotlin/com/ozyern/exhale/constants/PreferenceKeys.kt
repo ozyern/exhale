@@ -205,6 +205,10 @@ val BitPerfectKey = booleanPreferencesKey("bitPerfect")
  *  chain ([com.ozyern.exhale.playback.audio.SpatialAudioProcessor]). Bypassed while
  *  Bit Perfect is on — it rewrites every sample, same as the EQ. */
 val SpatialAudioKey = booleanPreferencesKey("spatialAudio")
+/** 8D: the song circling the listener's head. See EightDAudioProcessor. From Exhale master. */
+val EightDEnabledKey = booleanPreferencesKey("eightDEnabled")
+val EightDRotationHzKey = floatPreferencesKey("eightDRotationHz")
+val EightDDepthKey = floatPreferencesKey("eightDDepth")
 
 /** Center-channel reduction for a stereo karaoke mix. */
 val VocalSuppressionKey = floatPreferencesKey("vocalSuppression")
