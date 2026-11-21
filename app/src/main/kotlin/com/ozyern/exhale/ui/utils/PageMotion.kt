@@ -58,6 +58,6 @@ object PageMotion {
         else -> fadeOut(tween(FadeMillis))
     }
 
-    /** How dark the page under a growing card gets. */
-    private const val ContainerDim = 0.35f
+    /** How dark the page under a growing card gets; the blur behind it does the rest (ContainerTransform). */
+    private const val ContainerDim = 0.6f
 }

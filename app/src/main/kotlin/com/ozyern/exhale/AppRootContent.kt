@@ -11,6 +11,7 @@ import android.os.Build
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
+import com.ozyern.exhale.ui.utils.containerBackdrop
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
@@ -894,7 +895,9 @@ internal fun AppRootContent(
                         LocalSharedTransitionScope provides this@SharedTransitionLayout,
                         com.ozyern.exhale.ui.utils.LocalNavigationArtwork provides navigationArtwork,
                     ) {
-                    Box(Modifier.fillMaxSize()) {
+                    // Blurs the pages behind a card growing out of a tile; the card itself is
+                    // drawn in the layout's overlay, above this, and stays sharp.
+                    Box(Modifier.fillMaxSize().containerBackdrop()) {
                         val onRailItemClick = onNavItemClick
                         com.ozyern.exhale.ui.component.AnalysisBanner(
                             Modifier.align(Alignment.TopCenter).zIndex(10f),
