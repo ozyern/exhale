@@ -9,7 +9,7 @@ class AudioQualityLabelTest {
     fun `apple wording for lossless, hi-res and atmos`() {
         assertEquals(AudioQuality("Lossless", true), audioQualityLabel("audio/flac", null, 900_000, 44_100))
         assertEquals(AudioQuality("Hi-Res Lossless", true, hiRes = true), audioQualityLabel("audio/flac", null, null, 96_000))
-        assertEquals(AudioQuality("Dolby Atmos", false), audioQualityLabel("audio/mp4", "ec-3", 768_000, 48_000))
+        assertEquals(AudioQuality("Dolby Atmos", false, atmos = true), audioQualityLabel("audio/mp4", "ec-3", 768_000, 48_000))
     }
 
     @Test
@@ -29,14 +29,18 @@ class AudioQualityLabelTest {
     }
 
     @Test
-    fun `24-bit at 48 kHz is lossless, not hi-res`() {
+    fun `16-bit up to 48 kHz is lossless, 24-bit is hi-res at any rate`() {
         assertEquals(AudioQuality("Lossless", true), audioQualityLabel("audio/flac", null, null, 48_000))
+        assertEquals(AudioQuality("Lossless", true), audioQualityLabel("audio/flac", null, null, 44_100, bitDepth = 16))
+        val hiRes = AudioQuality("Hi-Res Lossless", true, hiRes = true)
+        assertEquals(hiRes, audioQualityLabel("audio/flac", null, null, 44_100, bitDepth = 24))
+        assertEquals(hiRes, audioQualityLabel("audio/flac", null, null, 48_000, bitDepth = 24))
     }
 
     @Test
     fun `spec sheet lists every known fact and derives lossless bitrate`() {
         val specs = audioQualitySpecs("audio/flac", null, null, 96_000, 24, 2, "Internet Archive").toMap()
-        assertEquals("Hi-Res Lossless (above 48 kHz)", specs[AudioSpec.QUALITY])
+        assertEquals("Hi-Res Lossless (above 16-bit or 48 kHz)", specs[AudioSpec.QUALITY])
         assertEquals("FLAC", specs[AudioSpec.CODEC])
         assertEquals("24-bit", specs[AudioSpec.BIT_DEPTH])
         assertEquals("96 kHz", specs[AudioSpec.SAMPLE_RATE])

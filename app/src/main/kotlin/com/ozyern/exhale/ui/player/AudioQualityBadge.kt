@@ -5,6 +5,7 @@ import android.animation.ValueAnimator
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
@@ -80,8 +81,10 @@ fun AudioQualityBadge(
         ?: playerFormat?.bitrate?.takeIf { it > 0 }
     val detailBitrate = currentFormat?.bitrate?.takeIf { it > 0 }
         ?: playerFormat?.averageBitrate?.takeIf { it > 0 }
-    val sampleRate = currentFormat?.sampleRate?.takeIf { it > 0 }
-        ?: playerFormat?.sampleRate?.takeIf { it > 0 }
+    // What the decoder reports first: an Archive copy is saved with 44.1 kHz when the archive
+    // names no rate, and preferring that kept a 96 kHz file on "Lossless".
+    val sampleRate = playerFormat?.sampleRate?.takeIf { it > 0 }
+        ?: currentFormat?.sampleRate?.takeIf { it > 0 }
     val bitDepth = pcmBitDepth(playerFormat?.pcmEncoding) ?: currentFormat?.archiveBitDepth()
     val channels = playerFormat?.channelCount?.takeIf { it > 0 }
     val quality = audioQualityLabel(
@@ -89,7 +92,10 @@ fun AudioQualityBadge(
         codecs = codecs,
         bitrate = bitrate,
         sampleRate = sampleRate,
+        bitDepth = bitDepth,
     ) ?: return
+    // Only a lossless stream is worth announcing; a lossy codec shows nothing there.
+    if (!quality.lossless) return
 
     if (showCard) {
         AudioQualityCard(
@@ -109,16 +115,18 @@ fun AudioQualityBadge(
         )
     }
 
-    // As Apple Music sets it: no plate, just the glyph and the words in the player's ink. Hi-Res
-    // carries a band of light sweeping across it on a loop; plain Lossless holds still, so the two
-    // tiers are told apart at a glance.
+    // As BitChord draws it: the glyph held steady and the words with a band of light sweeping
+    // through them, for Lossless and Hi-Res alike (the tier is in the words); lossy holds still,
+    // quieter. The sweep never ends, so it keeps the player drawing every frame: only while the
+    // song plays, and not at all when motion is reduced.
     val ink = if (chrome) VibrantChromeInk else tint
-    // The sweep never ends, so it keeps the whole player drawing every frame: run it only while
-    // the song plays, and not at all when motion is reduced.
     val isPlaying by playerConnection.isPlaying.collectAsState()
     val (reduceMotion) = rememberPreference(ReduceDynamicBlurKey, false)
-    val sweeping = quality.hiRes && isPlaying && !reduceMotion && ValueAnimator.areAnimatorsEnabled()
-    Box(
+    val confirmed = quality.lossless || quality.atmos
+    val shimmering = confirmed && isPlaying && !reduceMotion && ValueAnimator.areAnimatorsEnabled()
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
         modifier = modifier
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -126,76 +134,74 @@ fun AudioQualityBadge(
             ) { showCard = true }
             .padding(horizontal = 6.dp, vertical = 2.dp),
     ) {
-        AudioQualityMark(quality, ink = if (sweeping) ink.copy(alpha = ink.alpha * 0.62f) else ink, chrome = chrome)
-        if (sweeping) {
-            // The light: a white copy of the mark, shown only under a moving band. A copy over the
-            // mark rather than a mask on it, so the mark's own chrome blending is left alone.
-            val sweep = rememberInfiniteTransition(label = "hiResSweep").animateFloat(
-                initialValue = -0.6f,
-                targetValue = 1.6f,
-                animationSpec = infiniteRepeatable(tween(durationMillis = 2200, easing = LinearEasing)),
-                label = "hiResSweepX",
-            )
-            AudioQualityMark(
-                quality,
-                ink = Color.White,
-                chrome = false,
-                modifier = Modifier
-                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                    .drawWithContent {
-                        drawContent()
-                        val center = sweep.value * size.width
-                        val half = size.width * 0.3f
-                        drawRect(
-                            brush = Brush.horizontalGradient(
-                                0f to Color.Transparent,
-                                0.5f to Color.White.copy(alpha = 0.95f),
-                                1f to Color.Transparent,
-                                startX = center - half,
-                                endX = center + half,
-                            ),
-                            blendMode = BlendMode.DstIn,
-                        )
-                    },
-            )
-        }
-    }
-}
-
-/** The waveform glyph (lossless tiers only) and the tier's name. */
-@Composable
-private fun AudioQualityMark(quality: AudioQuality, ink: Color, chrome: Boolean, modifier: Modifier = Modifier) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = modifier,
-    ) {
         if (quality.lossless) {
             Icon(
                 painter = painterResource(R.drawable.ic_lossless),
                 contentDescription = null,
-                tint = ink,
+                tint = ink.copy(alpha = ink.alpha * if (confirmed) 0.7f else 0.45f),
                 modifier = Modifier
                     .size(width = 15.dp, height = 8.dp)
                     .vibrantChrome(chrome),
             )
+            Spacer(Modifier.width(4.dp))
         }
-        Text(
+        QualityText(
             text = quality.label,
-            style = TextStyle(
-                fontSize = 11.sp,
-                lineHeight = 14.sp,
-                fontWeight = if (quality.hiRes) FontWeight.Medium else FontWeight.Normal,
-            ),
-            color = ink,
-            maxLines = 1,
-            modifier = Modifier.vibrantChrome(chrome),
+            ink = ink,
+            chrome = chrome,
+            base = if (confirmed) 0.55f else 0.45f,
+            shimmering = shimmering,
         )
     }
 }
 
+/**
+ * The tier's name; with [shimmering], a highlight band sweeps across it every three seconds
+ * (BitChord's ShimmerText, kushagrasinghx/BitChord, GPL-3.0). The words are laid out once and the
+ * band is painted over them in the draw phase with SrcIn, so a frame of the sweep is a redraw of
+ * this line only, never a recomposition.
+ */
+@Composable
+private fun QualityText(text: String, ink: Color, chrome: Boolean, base: Float, shimmering: Boolean) {
+    val style = TextStyle(fontSize = 12.sp, lineHeight = 15.sp, fontWeight = FontWeight.Medium)
+    val baseColor = ink.copy(alpha = ink.alpha * base)
+    if (!shimmering) {
+        Text(text, style = style, color = baseColor, maxLines = 1, modifier = Modifier.vibrantChrome(chrome))
+        return
+    }
+    val progress = rememberInfiniteTransition(label = "qualityShimmer").animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(durationMillis = 3_000, easing = LinearEasing)),
+        label = "qualityShimmerProgress",
+    )
+    Text(
+        text = text,
+        style = style,
+        color = ink,
+        maxLines = 1,
+        modifier = Modifier
+            .vibrantChrome(chrome)
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                val width = size.width
+                val band = width * 0.6f
+                val center = -band + progress.value * (width + 2 * band)
+                drawRect(
+                    brush = Brush.linearGradient(
+                        colorStops = arrayOf(0f to baseColor, 0.5f to ink, 1f to baseColor),
+                        start = androidx.compose.ui.geometry.Offset(center - band, 0f),
+                        end = androidx.compose.ui.geometry.Offset(center + band, 0f),
+                    ),
+                    blendMode = BlendMode.SrcIn,
+                )
+            },
+    )
+}
+
 /** What the badge says. [lossless] adds the waveform glyph; [hiRes] marks the above-48 kHz tier. */
-data class AudioQuality(val label: String, val lossless: Boolean, val hiRes: Boolean = false)
+data class AudioQuality(val label: String, val lossless: Boolean, val hiRes: Boolean = false, val atmos: Boolean = false)
 
 /** `itag` [com.ozyern.exhale.playback.MusicService] stores for an Internet Archive FLAC copy. */
 internal const val ARCHIVE_FLAC_ITAG = 9998
@@ -206,7 +212,7 @@ internal const val ARCHIVE_FLAC_ITAG = 9998
  * useful (Apple shows nothing there; YouTube/Opus is the common case here). Null = no
  * format known yet, badge hidden rather than guessing.
  */
-fun audioQualityLabel(mime: String?, codecs: String?, bitrate: Int?, sampleRate: Int?): AudioQuality? {
+fun audioQualityLabel(mime: String?, codecs: String?, bitrate: Int?, sampleRate: Int?, bitDepth: Int? = null): AudioQuality? {
     val normalizedMime = mime.orEmpty().lowercase()
     val normalizedCodecs = codecs.orEmpty().lowercase()
     if (normalizedMime.isEmpty() && normalizedCodecs.isEmpty()) return null
@@ -216,9 +222,11 @@ fun audioQualityLabel(mime: String?, codecs: String?, bitrate: Int?, sampleRate:
 
     return when {
         containsFormat("ec-3") || containsFormat("eac3") || containsFormat("joc") || containsFormat("atmos") ->
-            AudioQuality("Dolby Atmos", lossless = false)
+            AudioQuality("Dolby Atmos", lossless = false, atmos = true)
         containsFormat("flac") || containsFormat("alac") -> {
-            val hiRes = (sampleRate ?: 0) > 48_000
+            // Past 16-bit or past 48 kHz, the line Tidal, Qobuz and BitChord draw: a 24-bit
+            // FLAC is Hi-Res whatever its rate.
+            val hiRes = isHiRes(sampleRate, bitDepth)
             AudioQuality(if (hiRes) "Hi-Res Lossless" else "Lossless", lossless = true, hiRes = hiRes)
         }
         else -> {
@@ -233,6 +241,9 @@ fun audioQualityLabel(mime: String?, codecs: String?, bitrate: Int?, sampleRate:
         }
     }
 }
+
+internal fun isHiRes(sampleRate: Int?, bitDepth: Int?): Boolean =
+    (bitDepth ?: 0) > 16 || (sampleRate ?: 0) > 48_000
 
 /** Card detail line, Apple's style: "24-bit/96 kHz FLAC", "Opus · 151 kbps · 48 kHz". */
 fun audioQualityDetail(
@@ -282,8 +293,8 @@ fun audioQualitySpecs(
     val shownBitrate = bitrate
         ?: if (lossless && sampleRate != null && bitDepth != null) sampleRate * bitDepth * (channels ?: 2) else null
     val tier = when {
-        lossless && (sampleRate ?: 0) > 48_000 -> "Hi-Res Lossless (above 48 kHz)"
-        lossless -> "Lossless (up to 48 kHz)"
+        lossless && isHiRes(sampleRate, bitDepth) -> "Hi-Res Lossless (above 16-bit or 48 kHz)"
+        lossless -> "Lossless (16-bit, up to 48 kHz)"
         else -> "Lossy (compressed)"
     }
     return listOfNotNull(
