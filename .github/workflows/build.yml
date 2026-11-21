@@ -102,8 +102,8 @@ jobs:
           "$SDKMANAGER" "build-tools;36.0.0" "ndk;27.0.12077973"
       - name: Prepare signing
         env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE }}
-          STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE || secrets.KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || secrets.STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
@@ -125,7 +125,7 @@ jobs:
           ./gradlew :app:testUniversalFossDebugUnitTest --tests com.ozyern.exhale.playback.NetworkPlaybackRoutingTest --no-configuration-cache --console=plain
       - name: Build release APK
         env:
-          STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || secrets.STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
