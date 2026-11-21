@@ -26,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -59,7 +61,7 @@ object SabrinaPalette {
     val Navy = Color(0xFF1E3350)
 }
 
-/** What applying the theme sets, so the screen can write each one and the card stays a view. */
+/** What applying a look sets, so the screen can write each one and the card stays a view. */
 data class SabrinaThemeSettings(
     val accent: Color = SabrinaPalette.Blue,
     val background: Color = SabrinaPalette.Butter,
@@ -67,68 +69,135 @@ data class SabrinaThemeSettings(
     val darkMode: DarkMode = DarkMode.OFF,
 )
 
+/**
+ * One of the Sabrina looks: the theme it applies, the swatches its card shows (front last), and
+ * a small mark of what it is about.
+ */
+data class SabrinaLook(
+    val id: String,
+    val name: String,
+    val description: String,
+    val mark: String,
+    val settings: SabrinaThemeSettings,
+    val swatches: List<Color>,
+)
+
+/**
+ * Her looks, each from something of hers: her favourite colours first, then the Short n' Sweet
+ * sky, Espresso's coffee and cream, and fruitcake's Christmas.
+ */
+val SabrinaLooks: List<SabrinaLook> = listOf(
+    SabrinaLook(
+        id = "sabrina",
+        name = "Sabrina Carpenter",
+        description = "Her favourite colours: yellow and blue, with Short n' Sweet sky",
+        mark = "♡",
+        settings = SabrinaThemeSettings(),
+        swatches = listOf(SabrinaPalette.SkyBlue, SabrinaPalette.Blue, SabrinaPalette.Yellow),
+    ),
+    SabrinaLook(
+        id = "short_n_sweet",
+        name = "Short n' Sweet",
+        description = "The cover's pale sky, with a deep blue for the controls",
+        mark = "☁",
+        settings = SabrinaThemeSettings(
+            accent = Color(0xFF2F6FB8),
+            background = Color(0xFFE8F4FD),
+            text = Color(0xFF16304F),
+        ),
+        swatches = listOf(Color(0xFFFFFFFF), Color(0xFF8EC9F2), Color(0xFF2F6FB8)),
+    ),
+    SabrinaLook(
+        id = "espresso",
+        name = "Espresso",
+        description = "That's that me espresso: cream, crema and a dark roast",
+        mark = "☕",
+        settings = SabrinaThemeSettings(
+            accent = Color(0xFF7A4B2A),
+            background = Color(0xFFF6EBDD),
+            text = Color(0xFF33200F),
+        ),
+        swatches = listOf(Color(0xFFF6EBDD), Color(0xFFC89B6D), Color(0xFF7A4B2A)),
+    ),
+    SabrinaLook(
+        id = "fruitcake",
+        name = "fruitcake",
+        description = "Her Christmas: holly red and cream on a winter green night",
+        mark = "❄",
+        settings = SabrinaThemeSettings(
+            accent = Color(0xFFE0474C),
+            background = Color(0xFF10241A),
+            text = Color(0xFFFFF4E4),
+            darkMode = DarkMode.ON,
+        ),
+        swatches = listOf(Color(0xFF2E5A3F), Color(0xFFFFF4E4), Color(0xFFE0474C)),
+    ),
+)
+
+/** The look whose settings match what is applied now, if any. */
+fun SabrinaLook.isApplied(accent: Int, background: Int, text: Int, darkMode: DarkMode): Boolean =
+    accent == settings.accent.toArgbInt() && background == settings.background.toArgbInt() &&
+        text == settings.text.toArgbInt() && darkMode == settings.darkMode
+
+private fun Color.toArgbInt(): Int = toArgb()
+
 /** A one-tap theme card: its palette as overlapping swatches, its name, and what it is made of. */
 @Composable
 fun SabrinaThemeCard(
+    look: SabrinaLook,
     selected: Boolean,
     onApply: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val shape = ContinuousRoundedRectangle(24.dp)
+    val page = look.settings.background
+    val ink = look.settings.text
+    val accent = look.settings.accent
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .clip(shape)
             .background(
                 Brush.linearGradient(
-                    listOf(
-                        SabrinaPalette.Butter,
-                        SabrinaPalette.Yellow.copy(alpha = 0.45f),
-                        SabrinaPalette.SkyBlue.copy(alpha = 0.45f),
-                    ),
+                    listOf(page, look.swatches[1].copy(alpha = 0.40f), look.swatches[0].copy(alpha = 0.40f)),
                 ),
             )
             .border(
                 width = if (selected) 2.dp else 1.dp,
-                color = if (selected) SabrinaPalette.Blue else SabrinaPalette.Navy.copy(alpha = 0.12f),
+                color = if (selected) accent else ink.copy(alpha = 0.12f),
                 shape = shape,
             )
             .bounceClick(onClick = onApply)
             .padding(horizontal = 18.dp, vertical = 16.dp),
     ) {
-        // The three colours overlapping, her two favourites in front.
+        // The colours overlapping, the look's own in front, and its mark on the last.
         Box(Modifier.width(72.dp).height(40.dp)) {
-            listOf(SabrinaPalette.SkyBlue, SabrinaPalette.Blue, SabrinaPalette.Yellow).forEachIndexed { index, color ->
+            look.swatches.forEachIndexed { index, color ->
                 Box(
-                    Modifier
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
                         .offset(x = (index * 16).dp)
                         .size(40.dp)
                         .clip(CircleShape)
                         .background(color)
-                        .border(2.dp, SabrinaPalette.Butter, CircleShape),
-                )
+                        .border(2.dp, page, CircleShape),
+                ) {
+                    if (index == look.swatches.lastIndex) {
+                        Text(look.mark, color = if (color.luminanceOf() > 0.5f) ink else page, fontSize = 15.sp)
+                    }
+                }
             }
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = stringResource(R.string.theme_sabrina_name),
-                color = SabrinaPalette.Navy,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = stringResource(R.string.theme_sabrina_description),
-                color = SabrinaPalette.Navy.copy(alpha = 0.7f),
-                fontSize = 13.sp,
-                lineHeight = 17.sp,
-            )
+            Text(text = look.name, color = ink, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+            Text(text = look.description, color = ink.copy(alpha = 0.7f), fontSize = 13.sp, lineHeight = 17.sp)
         }
         if (selected) {
             Spacer(Modifier.width(10.dp))
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = Modifier.size(24.dp).clip(CircleShape).background(SabrinaPalette.Blue),
+                modifier = Modifier.size(24.dp).clip(CircleShape).background(accent),
             ) {
                 Text("✓", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
@@ -136,11 +205,13 @@ fun SabrinaThemeCard(
     }
 }
 
-/** The themes section of Theme settings: its title and the cards. */
+private fun Color.luminanceOf(): Float = luminance()
+
+/** The themes section of Theme settings: its title and a card for each of her looks. */
 @Composable
 fun ThemePresetsSection(
-    sabrinaSelected: Boolean,
-    onApplySabrina: () -> Unit,
+    selectedLookId: String?,
+    onApply: (SabrinaLook) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -150,6 +221,13 @@ fun ThemePresetsSection(
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 4.dp),
         )
-        SabrinaThemeCard(selected = sabrinaSelected, onApply = onApplySabrina, modifier = Modifier.fillMaxWidth())
+        SabrinaLooks.forEach { look ->
+            SabrinaThemeCard(
+                look = look,
+                selected = look.id == selectedLookId,
+                onApply = { onApply(look) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }

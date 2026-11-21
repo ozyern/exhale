@@ -140,31 +140,31 @@ fun ThemeScreen(
 
     // Reset theme colors without deleting the selected home background image. A theme's page
     // and text colours go too, or resetting after one left its page colour behind.
-    val sabrina = SabrinaThemeSettings()
+    // Which of the Sabrina looks is applied now, if any.
+    val appliedLook = SabrinaLooks.firstOrNull {
+        it.isApplied(selectedThemeColorInt, appBackgroundColorInt, appTextColorInt, darkMode)
+    }
     val onReset: () -> Unit = {
         onDarkModeChange(DarkMode.AUTO)
         onSelectedThemeColorChange(DefaultThemeColor.toArgb())
         onDynamicThemeChange(true)
-        if (appBackgroundColorInt == sabrina.background.toArgb()) onAppBackgroundColorChange(0)
-        if (appTextColorInt == sabrina.text.toArgb()) onAppTextColorChange(0)
+        if (SabrinaLooks.any { appBackgroundColorInt == it.settings.background.toArgb() }) onAppBackgroundColorChange(0)
+        if (SabrinaLooks.any { appTextColorInt == it.settings.text.toArgb() }) onAppTextColorChange(0)
     }
 
-    val sabrinaSelected = selectedThemeColorInt == sabrina.accent.toArgb() &&
-        appBackgroundColorInt == sabrina.background.toArgb() &&
-        appTextColorInt == sabrina.text.toArgb() &&
-        darkMode == sabrina.darkMode
-    val applySabrina: () -> Unit = {
-        onSelectedThemeColorChange(sabrina.accent.toArgb())
+    val applyLook: (SabrinaLook) -> Unit = { look ->
+        val theme = look.settings
+        onSelectedThemeColorChange(theme.accent.toArgb())
         onDynamicThemeChange(false)
-        onAppBackgroundColorChange(sabrina.background.toArgb())
-        onAppTextColorChange(sabrina.text.toArgb())
+        onAppBackgroundColorChange(theme.background.toArgb())
+        onAppTextColorChange(theme.text.toArgb())
         onPureBlackChange(false)
-        onDarkModeChange(sabrina.darkMode)
+        onDarkModeChange(theme.darkMode)
     }
     val presets: @Composable (Modifier) -> Unit = { presetsModifier ->
         ThemePresetsSection(
-            sabrinaSelected = sabrinaSelected,
-            onApplySabrina = applySabrina,
+            selectedLookId = appliedLook?.id,
+            onApply = applyLook,
             modifier = presetsModifier,
         )
     }
