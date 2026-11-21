@@ -6,6 +6,7 @@
 
 package com.ozyern.exhale.ui.player
 
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.lifecycle.repeatOnLifecycle
 
 import com.ozyern.exhale.ui.component.sf
@@ -757,28 +758,39 @@ private fun PlayerV2Content(
         val trackMetaRow: @Composable RowScope.(Modifier, Modifier, Modifier) -> Unit =
             { titleModifier, artistModifier, actionsModifier ->
         Column(modifier = Modifier.weight(1f)) {
-            FadeSwapText(
-                textMetadata?.title ?: "Unknown",
-                style = trackMetaStyle,
-                color = adaptivePrimary,
-                fontWeight = FontWeight.SemiBold,
-                scroll = !state.isCollapsed,
-                modifier = titleModifier.clickable {
-                    state.collapseSoft()
-                    mediaMetadata?.album?.id?.let { navController.navigate("album/$it") }
+            // BitChord's credits: the title in white, the artist at 55%, both 20sp, each scrolling
+            // when it overflows, the artist a beat after the title. Cross-faded on a track change.
+            androidx.compose.animation.Crossfade(
+                targetState = (textMetadata?.title ?: "Unknown") to textMetadata?.artists?.joinToString { it.name }.orEmpty(),
+                animationSpec = tween(300),
+                label = "bitchordCredits",
+            ) { (title, artist) ->
+                var titleOverflowing by remember { mutableStateOf(false) }
+                Column {
+                    com.ozyern.exhale.ui.player.bitchord.MarqueeText(
+                        text = title,
+                        style = AppTheme.typography.titleLarge.copy(fontSize = 20.sp, fontWeight = FontWeight.SemiBold),
+                        color = Color.White,
+                        enabled = !state.isCollapsed,
+                        onOverflowChange = { titleOverflowing = it },
+                        modifier = titleModifier.clickable {
+                            state.collapseSoft()
+                            mediaMetadata?.album?.id?.let { navController.navigate("album/$it") }
+                        },
+                    )
+                    com.ozyern.exhale.ui.player.bitchord.MarqueeText(
+                        text = artist,
+                        style = AppTheme.typography.titleLarge.copy(fontSize = 20.sp, fontWeight = FontWeight.W500),
+                        color = Color.White.copy(alpha = 0.55f),
+                        enabled = !state.isCollapsed,
+                        startDelayMillis = if (titleOverflowing) com.ozyern.exhale.ui.player.bitchord.MARQUEE_ARTIST_STAGGER_MS else 0L,
+                        modifier = artistModifier.clickable {
+                            state.collapseSoft()
+                            mediaMetadata?.artists?.firstOrNull()?.id?.let { navController.navigate("artist/$it") }
+                        },
+                    )
                 }
-            )
-            FadeSwapText(
-                textMetadata?.artists?.joinToString { it.name }.orEmpty(),
-                style = trackMetaStyle,
-                color = artistLabelColor,
-                fontWeight = FontWeight.Normal,
-                scroll = !state.isCollapsed,
-                modifier = artistModifier.clickable {
-                    state.collapseSoft()
-                    mediaMetadata?.artists?.firstOrNull()?.id?.let { navController.navigate("artist/$it") }
-                }
-            )
+            }
             DjReadout(
                 modifier = Modifier.padding(top = 2.dp)
                     .flamingoChrome(additiveChrome)
@@ -789,32 +801,20 @@ private fun PlayerV2Content(
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = actionsModifier
-                .flamingoChrome(additiveChrome)
-                .graphicsLayer { if (additiveChrome) alpha = AdditiveChromeContentAlpha }
+            modifier = actionsModifier,
         ) {
-            IconButton(
+            Spacer(Modifier.width(10.dp))
+            // BitChord's like and menu circles. The menu is still Exhale's popover, anchored here.
+            val liked = shownLike?.second == true
+            com.ozyern.exhale.ui.player.bitchord.CircleGlyph(
+                icon = if (liked) com.ozyern.exhale.ui.player.bitchord.BitChordIcons.StarFilled
+                    else com.ozyern.exhale.ui.player.bitchord.BitChordIcons.Star,
+                contentDescription = if (liked) "Remove from liked" else "Like",
                 onClick = playerConnection::toggleLike,
-                modifier = Modifier.size(40.dp),
-            ) {
-                LikeGlyphSwap(shownLike) { isLiked, songId ->
-                    PlayerGlyph(
-                        slot = if (isLiked) PlayerIconSlot.V2_LIKED else PlayerIconSlot.V2_LIKE,
-                        fallback = if (isLiked) R.drawable.flamingo_favorited else R.drawable.flamingo_favorite,
-                        // Show like state with the filled or outline glyph, not a color change.
-                        tint = adaptivePrimary,
-                        modifier = Modifier.size(28.dp).likePop(isLiked, songId),
-                        contentDescription = "Like",
-                    )
-                }
-            }
-
-
-            IconButton(
-                modifier = Modifier.size(40.dp),
-                // Keep the player visible by using a popover instead of a sheet.
-                onClick = { showV2Options = true }
-            ) {
+                active = liked,
+            )
+            Spacer(Modifier.width(8.dp))
+            Box {
                 mediaMetadata?.let {
                     V2OptionsMenuHost(
                         expanded = showV2Options,
@@ -846,12 +846,10 @@ private fun PlayerV2Content(
                         },
                     )
                 }
-                PlayerGlyph(
-                    slot = PlayerIconSlot.V2_MORE,
-                    fallback = R.drawable.flamingo_more,
-                    tint = adaptivePrimary,
-                    modifier = Modifier.size(28.dp),
-                    contentDescription = "Options",
+                com.ozyern.exhale.ui.player.bitchord.CircleGlyph(
+                    icon = androidx.compose.material.icons.Icons.Filled.MoreHoriz,
+                    contentDescription = "More",
+                    onClick = { showV2Options = true },
                 )
             }
         }
@@ -1712,27 +1710,37 @@ private fun PlayerV2Content(
                         // Apple Music Timeline Slider -- its own composable so the 20Hz position ticker
                     // recomposes only the bar and the two time labels, not the whole controls
                     // column (transport, volume, bottom row) on every tick. 120Hz panels.
-                    V2SeekSection(
-                        positionProvider = { sliderPosition ?: position },
-                        durationProvider = { duration },
-                        enabled = !isListenTogetherGuest,
-                        onScrub = { sliderPosition = it },
-                        onScrubEnd = {
+                    // BitChord's scrubber, with the quality badge between the two times.
+                    com.ozyern.exhale.ui.player.bitchord.PlayerScrubber(
+                        shown = {
+                            val d = duration
+                            if (d > 0) ((sliderPosition ?: position).toFloat() / d).coerceIn(0f, 1f) else 0f
+                        },
+                        durationMs = duration,
+                        loading = false,
+                        mixing = false,
+                        transitionWindow = null,
+                        onScrub = { fraction ->
+                            if (!isListenTogetherGuest) sliderPosition = (fraction * duration).toLong()
+                        },
+                        onScrubFinished = {
                             sliderPosition?.let { pos ->
                                 playerConnection.player.seekTo(pos)
                                 position = pos
                                 sliderPosition = null
                             }
                         },
-                        additiveChrome = vibrantTimeline,
-                        activeColor = adaptivePrimary,
-                        timeColor = if (vibrantTimeline) adaptiveTime else adaptivePrimary.copy(alpha = 0.65f),
-                        playerConnection = playerConnection,
-                        onOpenQualitySettings = {
-                            state.collapseSoft()
-                            navController.navigate("settings/player")
-                        },
-                    )
+                    ) {
+                        AudioQualityBadge(
+                            playerConnection = playerConnection,
+                            tint = Color.White,
+                            modifier = Modifier.align(Alignment.Center).padding(horizontal = 8.dp),
+                            onOpenQualitySettings = {
+                                state.collapseSoft()
+                                navController.navigate("settings/player")
+                            },
+                        )
+                    }
 
                     if (showUpNext) {
                         UpNextSong(
@@ -1744,93 +1752,21 @@ private fun PlayerV2Content(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(30.dp)) // Space between the timeline and transport controls.
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.CenterHorizontally)
-                            .widthIn(max = 302.dp) // 292pt glyph frame + 2x5: 61pt targets centred on 51pt glyphs
-                            .fillMaxWidth()
-                            .flamingoChrome(additiveChrome)
-                            .graphicsLayer { if (additiveChrome) alpha = AdditiveChromeContentAlpha },
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        val previousInteraction = remember { MutableInteractionSource() }
-                        IconButton(
-                            onClick = { if (!isListenTogetherGuest && canSkipPrevious) playerConnection.requestSkip(forward = false) },
-                            enabled = !isListenTogetherGuest && canSkipPrevious,
-                            interactionSource = previousInteraction,
-                            modifier = Modifier
-                                .size(61.dp)
-                                .transportPressDisc(previousInteraction, adaptivePrimary.copy(alpha = 0.16f))
-                                .alpha(if (isListenTogetherGuest || !canSkipPrevious) 0.4f else 1f)
-                        ) {
-                            PlayerGlyph(
-                                slot = PlayerIconSlot.V2_PREVIOUS,
-                                fallback = R.drawable.flamingo_rewind,
-                                tint = adaptivePrimary,
-                                modifier = Modifier.size(44.dp).skipGlyphPress(previousInteraction, direction = -1f),
-                                contentDescription = "Previous",
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.weight(1f))
-
-                        val playInteraction = remember { MutableInteractionSource() }
-                        IconButton(
-                            onClick = {
-                                if (isListenTogetherGuest) {
-                                    playerConnection.toggleMute()
-                                } else {
-                                    playerConnection.player.togglePlayPause()
-                                }
-                            },
-                            interactionSource = playInteraction,
-                            modifier = Modifier
-                                .size(72.dp)
-                                .transportPressDisc(playInteraction, adaptivePrimary.copy(alpha = 0.16f))
-                        ) {
-                            if (isListenTogetherGuest) {
-                                SymbolIcon(symbol = if (isMuted) sf("speaker.slash.fill") else sf("speaker.wave.3.fill"), contentDescription = if (isMuted) "Unmute" else "Mute", size = 38.5.dp, tint = adaptivePrimary)
-                            } else {
-                                AnimatedPlayerGlyph(
-                                    modifier = Modifier.playGlyphPress(playInteraction),
-                                    isPlaying = glyphPlaying,
-                                    playSlot = PlayerIconSlot.V2_PLAY,
-                                    pauseSlot = PlayerIconSlot.V2_PAUSE,
-                                    playFallback = R.drawable.flamingo_play,
-                                    pauseFallback = R.drawable.flamingo_pause,
-                                    tint = adaptivePrimary,
-                                    playSize = 44.dp,
-                                    pauseSize = 44.dp,
-                                    playDescription = "Play",
-                                    pauseDescription = "Pause",
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.weight(1f))
-
-                        val nextInteraction = remember { MutableInteractionSource() }
-                        IconButton(
-                            onClick = { if (!isListenTogetherGuest && canSkipNext) playerConnection.requestSkip(forward = true) },
-                            enabled = !isListenTogetherGuest && canSkipNext,
-                            interactionSource = nextInteraction,
-                            modifier = Modifier
-                                .size(61.dp)
-                                .transportPressDisc(nextInteraction, adaptivePrimary.copy(alpha = 0.16f))
-                                .alpha(if (isListenTogetherGuest || !canSkipNext) 0.4f else 1f)
-                        ) {
-                            PlayerGlyph(
-                                slot = PlayerIconSlot.V2_NEXT,
-                                fallback = R.drawable.flamingo_fforward,
-                                tint = adaptivePrimary,
-                                modifier = Modifier.size(44.dp).skipGlyphPress(nextInteraction, direction = 1f),
-                                contentDescription = "Next",
-                            )
-                        }
-                    }
+                    // BitChord's transport. A Listen Together guest's middle button mutes, as before.
+                    com.ozyern.exhale.ui.player.bitchord.TransportRow(
+                        isPlaying = if (isListenTogetherGuest) !isMuted else glyphPlaying,
+                        isLoading = false,
+                        previousEnabled = !isListenTogetherGuest && canSkipPrevious,
+                        nextEnabled = !isListenTogetherGuest && canSkipNext,
+                        onPrevious = { playerConnection.requestSkip(forward = false) },
+                        onPlayPause = {
+                            if (isListenTogetherGuest) playerConnection.toggleMute()
+                            else playerConnection.player.togglePlayPause()
+                        },
+                        onNext = { playerConnection.requestSkip(forward = true) },
+                    )
 
                     Spacer(modifier = Modifier.height(23.dp)) // Leave room for the volume control's touch target.
 
@@ -1839,67 +1775,28 @@ private fun PlayerV2Content(
                     val volumeAlpha by androidx.compose.animation.core.animateFloatAsState(
                         if (volumeCovered) 0f else 1f, label = "volumeCovered",
                     )
-                    Row(
-                        modifier = Modifier
-                            // 28dp of speaker + gap on each side leaves a 285dp track matching
-                            // the visible edges of the previous/next transport glyphs.
-                            .widthIn(max = 341.dp)
+                    // BitChord's volume bar.
+                    Box(
+                        Modifier
                             .fillMaxWidth()
-                            .align(Alignment.CenterHorizontally)
                             .graphicsLayer { alpha = volumeAlpha }
                             // Keep the row's layout space when hidden so DIY stickers do not jump.
                             .alpha(if (hideVolumeBar) 0f else 1f)
-                            .then(if (hideVolumeBar) Modifier.clearAndSetSemantics {} else Modifier)
-                            .flamingoChrome(additiveChrome, bleed = 8.dp)
-                            .graphicsLayer { if (additiveChrome) alpha = AdditiveChromeContentAlpha },
-                        verticalAlignment = Alignment.CenterVertically
+                            .then(if (hideVolumeBar) Modifier.clearAndSetSemantics {} else Modifier),
                     ) {
-                        val volumeInteraction = remember { MutableInteractionSource() }
-                        val volumeDragged by volumeInteraction.collectIsDraggedAsState()
-                        val volumePressed by volumeInteraction.collectIsPressedAsState()
-                        val volumeActive = volumeDragged || volumePressed
-                        var dragVolume by remember { mutableFloatStateOf(animatedVolume) }
-                        LaunchedEffect(animatedVolume) { if (!volumeActive) dragVolume = animatedVolume }
-                        val shownVolume = if (volumeActive) dragVolume else animatedVolume
-                        val volumeTrackHeight by animateDpAsState(
-                            targetValue = if (volumeActive) 14.dp else 10.dp,
-                            animationSpec = spring(dampingRatio = 0.7f, stiffness = 600f),
-                            label = "v2VolumeTrackHeight",
-                        )
-                        // The glyphs keep their slot size while the track grows; scaling them clipped the row edges.
-                        PlayerQuietVolumeGlyph(
-                            level = shownVolume,
-                            tint = if (isHeroLook && additiveChrome) heroAccent else adaptivePrimary,
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Slider(
-                            value = shownVolume,
+                        com.ozyern.exhale.ui.player.bitchord.VolumeRow(
+                            value = { animatedVolume },
                             onValueChange = { newValue ->
-                                dragVolume = newValue
-                                systemVolume = newValue
-                                val targetVolume = (newValue * maxSystemVolume).toInt()
-                                audioManager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, targetVolume, 0)
+                                if (!hideVolumeBar) {
+                                    systemVolume = newValue
+                                    audioManager.setStreamVolume(
+                                        android.media.AudioManager.STREAM_MUSIC,
+                                        (newValue * maxSystemVolume).toInt(),
+                                        0,
+                                    )
+                                }
                             },
-                            modifier = Modifier.weight(1f),
-                            enabled = !hideVolumeBar,
-                            interactionSource = volumeInteraction,
-                            thumb = { Spacer(Modifier.size(0.dp)) },
-                            track = { sliderState ->
-                                PlayerSliderTrack(
-                                    sliderState = sliderState,
-                                    colors = SliderDefaults.colors(
-                                        activeTrackColor = adaptivePrimary.copy(alpha = 0.7f),
-                                        inactiveTrackColor = adaptivePrimary.copy(alpha = 0.15f),
-                                    ),
-                                    trackHeight = volumeTrackHeight,
-                                    showAutomix = false,
-                                )
-                            },
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        PlayerVolumeGlyph(
-                            level = shownVolume,
-                            tint = if (isHeroLook && additiveChrome) heroAccent else adaptivePrimary,
+                            onValueChangeFinished = {},
                         )
                     }
                     }
@@ -1920,50 +1817,26 @@ private fun PlayerV2Content(
                        slideOutVertically(animationSpec = ControlsHideSpec()) { it / 2 } +
                        androidx.compose.animation.shrinkVertically(animationSpec = ControlsHideSpec())
             ) {
-                Row(
-                    modifier = Modifier
+                // BitChord's bottom row: lyrics, the capsule, the queue. The capsule is Exhale's output
+                // glyph (it follows the device: earbuds, speaker...) and, with the queue up, the queue's
+                // modes with 8D beside them.
+                val snapshot by playerConnection.playbackSnapshot.collectAsStateWithLifecycle()
+                var keepPlaying by rememberPreference(com.ozyern.exhale.constants.AutoLoadMoreKey, defaultValue = true)
+                var eightD by rememberPreference(com.ozyern.exhale.constants.EightDEnabledKey, defaultValue = false)
+                val isLyricsActive = playerState == PlayerInternalState.LYRICS
+                val isQueueActive = playerState == PlayerInternalState.QUEUE
+                Box(
+                    Modifier
                         .fillMaxWidth()
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                            onClick = {}
+                            onClick = {},
                         )
-                        // Account for the volume row's touch target and the bottom navigation inset.
-                        // The utility icons sit on the screen's thirds; only the volume
-                        // slider uses the 32dp content gutter above.
+                        .padding(horizontal = 16.dp)
                         .padding(top = 12.dp, bottom = bottomBarPad),
-                    verticalAlignment = Alignment.CenterVertically
+                    contentAlignment = Alignment.Center,
                 ) {
-                // Use a lighter tint for icons over the vibrant artwork.
-                val bottomTint = if (additiveChrome) heroAccent else adaptiveSecondary
-                // Chrome is applied per tab, not on the whole row: an additive layer would turn the selected
-                // tab's dark glyph into a hole.
-                val tabChrome = Modifier
-                    .flamingoChrome(additiveChrome)
-                    .graphicsLayer { if (additiveChrome) alpha = AdditiveChromeContentAlpha }
-                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                val isLyricsActive = playerState == PlayerInternalState.LYRICS
-                IconButton(
-                    onClick = { playerState = if (isLyricsActive) PlayerInternalState.COVER else PlayerInternalState.LYRICS }
-                ) {
-                    V2TabGlyph(active = isLyricsActive, tint = bottomTint, chrome = tabChrome) { m, c ->
-                        PlayerGlyph(
-                            slot = PlayerIconSlot.V2_LYRICS,
-                            fallbackSymbol = sf("quote.bubble"),
-                            size = 24.dp,
-                            bounce = true,
-                            tint = c,
-                            modifier = m,
-                            contentDescription = "Lyrics",
-                        )
-                    }
-                }
-                }
-
-                val isQueueActive = playerState == PlayerInternalState.QUEUE
-                // With the queue open, the speaker's place holds the queue's toggles as one pill,
-                // growing out of the slot as the queue arrives.
-                Box(Modifier.weight(if (isQueueActive) 2.2f else 1f).then(if (isQueueActive) Modifier else tabChrome), contentAlignment = Alignment.Center) {
                     if (showRoutePopover) V2RoutePopover(
                         onDismiss = { showRoutePopover = false },
                         title = textMetadata?.title.orEmpty(),
@@ -1971,82 +1844,28 @@ private fun PlayerV2Content(
                         artworkUrl = artworkMetadata?.thumbnailUrl,
                         onMore = { showAudioDeviceBottomSheet = true },
                     )
-                    AnimatedContent(
-                        targetState = isQueueActive,
-                        transitionSpec = {
-                            (fadeIn(tween(220, delayMillis = 60)) + scaleIn(tween(320, easing = FastOutSlowInEasing), initialScale = 0.8f))
-                                .togetherWith(fadeOut(tween(120)) + scaleOut(tween(200), targetScale = 0.9f))
-                                .using(SizeTransform(clip = false))
+                    com.ozyern.exhale.ui.player.bitchord.PlayerActionRow(
+                        lyricsOpen = isLyricsActive,
+                        queueOpen = isQueueActive,
+                        shuffleEnabled = snapshot.shuffleEnabled,
+                        repeatMode = when (snapshot.repeatMode) {
+                            com.ozyern.exhale.playback.PlaybackRepeatMode.ONE -> androidx.media3.common.Player.REPEAT_MODE_ONE
+                            com.ozyern.exhale.playback.PlaybackRepeatMode.ALL -> androidx.media3.common.Player.REPEAT_MODE_ALL
+                            else -> androidx.media3.common.Player.REPEAT_MODE_OFF
                         },
-                        contentAlignment = Alignment.Center,
-                        label = "bottomBarMiddle",
-                    ) { queueShown ->
-                    if (queueShown) {
-                        QueueTogglesPill(
-                            playerConnection = playerConnection,
-                            tint = bottomTint,
-                            enabled = !isListenTogetherGuest,
-                        )
-                    } else {
-                        if (audioOutput != null) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                IconButton(
-                                    onClick = { showRoutePopover = true },
-                                    modifier = Modifier.background(Color.Transparent, RoundedCornerShape(12.dp))
-                                ) {
-                                    SymbolIcon(symbol = sf(audioDeviceIcons.symbol(audioOutput?.name, audioOutput?.type)), bounceOnEnter = true, bounceOnChange = true, bounceOnTouch = true, contentDescription = "Audio Device", size = 22.dp, tint = bottomTint)
-                                }
-                                Text(
-                                    text = audioDeviceNames.displayName(audioOutput?.name),
-                                    style = AppTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Medium),
-                                    color = bottomTint,
-                                    maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                    modifier = Modifier.widthIn(max = 110.dp)
-                                )
-                            }
-                        } else if (BuildConfig.CAST_AVAILABLE && enableGoogleCast) {
-                            CastButton(
-                                modifier = Modifier.size(48.dp),
-                                tintColor = bottomTint,
-                            )
-                        } else {
-                            IconButton(
-                                onClick = { showRoutePopover = true },
-                                modifier = Modifier.background(Color.Transparent, RoundedCornerShape(12.dp))
-                            ) {
-                                PlayerGlyph(
-                                    slot = PlayerIconSlot.V2_VOLUME_DOWN,
-                                    fallbackSymbol = sf("airplayaudio"),
-                                    tint = bottomTint,
-                                    modifier = Modifier.size(22.dp),
-                                    size = 20.dp,
-                                    contentDescription = "Speaker",
-                                )
-                            }
-                        }
-                    }
-                    }
-                }
-
-                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                IconButton(
-                    onClick = { playerState = if (isQueueActive) PlayerInternalState.COVER else PlayerInternalState.QUEUE }
-                ) {
-                    V2TabGlyph(active = isQueueActive, tint = bottomTint, chrome = tabChrome) { m, c ->
-                        PlayerGlyph(
-                            slot = PlayerIconSlot.V2_QUEUE,
-                            fallbackSymbol = sf("list.bullet"),
-                            size = 24.dp,
-                            bounce = true,
-                            tint = c,
-                            modifier = m,
-                            contentDescription = "Queue",
-                        )
-                    }
-                }
-                }
+                        autoplayEnabled = keepPlaying,
+                        onToggleLyrics = { playerState = if (isLyricsActive) PlayerInternalState.COVER else PlayerInternalState.LYRICS },
+                        onToggleQueue = { playerState = if (isQueueActive) PlayerInternalState.COVER else PlayerInternalState.QUEUE },
+                        onToggleShuffle = { if (!isListenTogetherGuest) playerConnection.setShuffleEnabled(!snapshot.shuffleEnabled) },
+                        onCycleRepeat = { if (!isListenTogetherGuest) playerConnection.cycleRepeatMode() },
+                        onToggleAutoplay = { keepPlaying = !keepPlaying },
+                        onOpenOutput = { showRoutePopover = true },
+                        onListenTogether = {},
+                        onOpenListenTogetherMembers = {},
+                        eightDEnabled = eightD,
+                        onToggleEightD = { eightD = !eightD },
+                        outputSymbol = audioOutput?.let { audioDeviceIcons.symbol(it.name, it.type) },
+                    )
                 }
             }
             },
