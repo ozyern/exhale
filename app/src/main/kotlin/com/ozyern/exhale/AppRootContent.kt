@@ -304,9 +304,12 @@ internal fun AppRootContent(
             val (slimNav) = rememberPreference(SlimNavBarKey, defaultValue = false)
             val (appleMusicUi) = rememberPreference(AppleMusicUiKey, defaultValue = true)
             val floatingNavigationItems = navItems.floatingNavigationItems
-            // Expand only at the list top; collapse as soon as the list scrolls away.
+            // As on master: fold after a real scroll down, open again after a short scroll up
+            // anywhere on the page (or on reaching the top), not only back at the top.
             val floatingNavBarScrollConnection = rememberFloatingTabBarScrollConnection(
-                inlineBehavior = FloatingTabBarInlineBehavior.ExpandedAtTopOnly,
+                inlineBehavior = FloatingTabBarInlineBehavior.OnScrollDown,
+                scrollThreshold = 40.dp,
+                expandThreshold = 64.dp,
                 // The search input page keeps its search field: the dock never merges with the player
                 // there (it stayed merged, and the field never came). Its result pages may merge.
                 inlineAllowed = { navBackStackEntry?.destination?.route != Screens.Search.route },

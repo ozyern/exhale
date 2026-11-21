@@ -75,6 +75,9 @@ private val TileOut = fadeOut(tween(100))
 /** How far everything behind the card is blurred while it moves. */
 private val BackdropBlur = 28.dp
 
+/** After the blur's [ContainerMillis], how long the card's spring may still be landing. */
+private const val CardSettleMillis = 400L
+
 /**
  * Where each open page's tile was when it was tapped, so the way back can shrink the page into it
  * without waiting for that tile to be laid out again. On the way back the page under the card is
@@ -84,25 +87,37 @@ private val BackdropBlur = 28.dp
 object ContainerReturn {
     data class Target(val tile: Rect, val window: androidx.compose.ui.unit.IntSize)
 
-    private val stack = ArrayList<Target?>()
+    /** Each open page's tile, by its back-stack entry id. */
+    private val targets = object : LinkedHashMap<String, Target>() {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Target>?) = size > 32
+    }
 
-    /** The target of the page closing now, read by [PageMotion]'s exit. */
-    @Volatile var current: Target? = null
-        private set
+    /**
+     * The entry closing now. Set by navigation's pop transition ([PageMotion.popExit]), which is
+     * chosen when the pop starts: for the back gesture that is before the page is popped and before
+     * the destination listener runs, so anything keyed on the listener missed it and the page
+     * vanished in a plain fade.
+     */
+    var closingEntry by androidx.compose.runtime.mutableStateOf<String?>(null)
 
     /** When the latest card began to grow: the backdrop blurs for its length. */
     var openedAt by androidx.compose.runtime.mutableLongStateOf(0L)
         private set
 
-    fun opened(target: Target?) {
-        stack.add(target)
-        if (target != null) openedAt = android.os.SystemClock.uptimeMillis()
-        if (stack.size > 32) stack.removeAt(0)
+    /**
+     * True only while a card is growing out of its tile. The shared bounds between tile and page
+     * exist only then, so no way back (button or gesture) can start a second, competing card.
+     */
+    var opening by androidx.compose.runtime.mutableStateOf(false)
+
+    fun opened(entryId: String, target: Target?) {
+        if (target == null) return
+        targets[entryId] = target
+        openedAt = android.os.SystemClock.uptimeMillis()
+        opening = true
     }
 
-    fun closed() {
-        current = stack.removeLastOrNull()
-    }
+    fun targetFor(entryId: String?): Target? = entryId?.let { targets[it] }
 }
 
 /**
@@ -113,14 +128,19 @@ object ContainerReturn {
  * just vanished. Its exit only holds it on screen for this long (see PageMotion).
  */
 @Composable
-fun Modifier.containerReturnPage(): Modifier {
+fun Modifier.containerReturnPage(entryId: String): Modifier {
     val sharedScope = LocalSharedTransitionScope.current ?: return this
     val animatedScope = LocalNavAnimatedVisibilityScope.current ?: return this
     val transition = animatedScope.transition
-    val closing = lastNavWasPop() && ContainerReturn.current != null &&
-        transition.targetState == androidx.compose.animation.EnterExitState.PostExit
-    if (!closing) return this
-    val target = ContainerReturn.current ?: return this
+    val target = ContainerReturn.targetFor(entryId) ?: return this
+    val popping = ContainerReturn.closingEntry == entryId
+    // Kept for the rest of a running transition, so a back gesture let go of early springs the
+    // page back to full size instead of jumping there.
+    val held = androidx.compose.runtime.remember { booleanArrayOf(false) }
+    val closingNow = popping && transition.targetState == androidx.compose.animation.EnterExitState.PostExit
+    if (closingNow) held[0] = true
+    else if (!transition.isRunning || !popping) held[0] = false
+    if (!held[0]) return this
     val progress = transition.animateFloat(
         transitionSpec = { tween(ContainerMillis, easing = androidx.compose.animation.core.FastOutSlowInEasing) },
         label = "containerReturn",
@@ -175,8 +195,9 @@ internal fun Modifier.containerTransformElement(
 ): Modifier {
     val sharedScope = LocalSharedTransitionScope.current ?: return this
     val animatedScope = LocalNavAnimatedVisibilityScope.current ?: return this
-    // Only on the way in. The way back is the page's own exit (containerReturnExit).
-    if (lastNavWasPop()) return this
+    // Only while a card grows. The way back is the page's own exit (containerReturnPage); a shared
+    // bounds left in place there ran a second card on a back gesture, which the listener sees late.
+    if (!ContainerReturn.opening || lastNavWasPop()) return this
     val screenCorner = com.ozyern.exhale.ui.player.rememberScreenCornerRadius().coerceAtLeast(24.dp)
     return with(sharedScope) {
         this@containerTransformElement.sharedBounds(
@@ -221,6 +242,9 @@ fun Modifier.containerBackdrop(): Modifier {
         moving = true
         kotlinx.coroutines.delay(ContainerMillis.toLong())
         moving = false
+        // The card's spring has settled by now: tile and page let go of each other.
+        kotlinx.coroutines.delay(CardSettleMillis)
+        ContainerReturn.opening = false
     }
     val amount = animateFloatAsState(
         targetValue = if (moving) 1f else 0f,

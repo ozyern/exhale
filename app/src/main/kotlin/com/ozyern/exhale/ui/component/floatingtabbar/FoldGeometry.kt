@@ -21,6 +21,7 @@ internal data class FoldGeometry(
 /**
  * Every position of the folding bar from two progress values, so a reversed fold retraces
  * the same path. [fold] may overshoot 0..1 under a spring; sizes are clamped, positions are not.
+ * [searchPage] is 1 on the search pages, where the folded bar drops its page circle.
  */
 internal fun foldGeometry(
     width: Int,
@@ -34,6 +35,7 @@ internal fun foldGeometry(
     tabsCount: Int,
     selectedIndex: Int,
     inset: Float,
+    searchPage: Float = 0f,
 ): FoldGeometry {
     fun mix(a: Float, b: Float, t: Float) = a + (b - a) * t
     val p = fold
@@ -53,7 +55,8 @@ internal fun foldGeometry(
         searchWidth = searchWidth,
         searchX = mix(detachedSearchX, (width - searchWidth).toFloat(), s).roundToInt(),
         selectedX = mix(inset + tabWidth * (selectedIndex + 0.5f) - circle / 2f, 0f, maxOf(p, s)).roundToInt(),
-        playerX = mix(0f, (circle + spacing).toFloat(), p).roundToInt(),
+        // On the search pages the folded bar has no page circle, as on master: the player starts at the edge.
+        playerX = (mix(0f, (circle + spacing).toFloat(), p) * (1f - searchPage.coerceIn(0f, 1f))).roundToInt(),
         playerY = (rowY - mix((playerHeight + spacing).toFloat(), (playerHeight - rowHeight) / 2f, p)).roundToInt(),
     )
 }

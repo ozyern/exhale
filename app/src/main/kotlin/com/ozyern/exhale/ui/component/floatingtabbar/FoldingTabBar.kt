@@ -92,6 +92,18 @@ fun FoldingTabBar(
         )
     }
 
+    // On the search pages the folded bar is song | search only, as on master: no page circle.
+    // Kept apart from [search], which the fold itself winds back to 0.
+    val searchPage = remember { Animatable(if (inSearch) 1f else 0f) }
+    LaunchedEffect(inSearch) {
+        searchPage.animateTo(
+            if (inSearch) 1f else 0f,
+            spring(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow),
+        )
+    }
+    // How far the page circle is gone: only folded, and only on the search pages.
+    val circleGone = { (searchPage.value * fold.value).coerceIn(0f, 1f) }
+
     val selected = scope.getInlineTab(selectedTabKey)
     val searchTab = scope.tabs.lastOrNull()
     val selectedIndex = scope.tabs.indexOf(selected).coerceAtLeast(0)
@@ -110,6 +122,7 @@ fun FoldingTabBar(
             Box(
                 Modifier
                     .graphicsLayer(elasticStretchLayerBlock(selectedGlow))
+                    .graphicsLayer { alpha = 1f - circleGone() }
                     .layerBackdrop(surfaceBackdrop)
                     .background(colors.backgroundColor, shapes.tabBarShape)
                     .clip(shapes.tabBarShape)
@@ -152,14 +165,14 @@ fun FoldingTabBar(
                     .graphicsLayer(elasticStretchLayerBlock(selectedGlow))
                     .graphicsLayer {
                         val shown = maxOf(fold.value, search.value).coerceIn(0f, 1f)
-                        alpha = shown
+                        alpha = shown * (1f - circleGone())
                         // And the circle's icon grows into place from the same size.
                         val grow = GLYPH_FOLD_SCALE + (1f - GLYPH_FOLD_SCALE) * shown
                         scaleX = grow
                         scaleY = grow
                     }
                     .then(
-                        if (foldedOrSearching) {
+                        if (foldedOrSearching && !(isInline && inSearch)) {
                             Modifier.then(selectedGlow.gestureModifier).clickable(noTap, null) {
                                 if (isInline) scrollConnection.expand() else selected?.onClick?.invoke()
                             }
@@ -241,7 +254,9 @@ fun FoldingTabBar(
         val openHeight = lerp(expandedHeight.toFloat(), SearchRowHeight.toPx(), search.value.coerceIn(0f, 1f))
         val height = lerp(openHeight, compactHeight.toFloat(), p).roundToInt().coerceAtLeast(1)
         val circle = height.coerceAtMost(width)
-        val playerWidth = lerp(width.toFloat(), (width - 2 * (compactHeight + spacing)).coerceAtLeast(0).toFloat(), p)
+        val hp = searchPage.value.coerceIn(0f, 1f)
+        // On the search pages the player also takes the page circle's room.
+        val playerWidth = lerp(width.toFloat(), (width - (2f - hp) * (compactHeight + spacing)).coerceAtLeast(0f), p)
             .roundToInt().coerceIn(0, width)
         val player = children[6].measure(Constraints(minWidth = playerWidth, maxWidth = playerWidth))
         val geometry = foldGeometry(
@@ -256,6 +271,7 @@ fun FoldingTabBar(
             tabsCount = tabsCount,
             selectedIndex = selectedIndex,
             inset = 4.dp.toPx(),
+            searchPage = hp,
         )
         val surface = children[0].measure(Constraints.fixed(geometry.navWidth, height))
         val tabs = children[1].measure(Constraints.fixed(width, height))

@@ -38,26 +38,39 @@ object PageMotion {
         else -> fadeIn(tween(FadeMillis))
     }
 
-    fun exit(from: String?, to: String?): ExitTransition = when {
+    fun exit(from: String?, to: String?): ExitTransition {
+        // Going forward: no page is closing, so a page left under the new one never shrinks.
+        ContainerReturn.closingEntry = null
+        return exitFor(from, to)
+    }
+
+    private fun exitFor(from: String?, to: String?): ExitTransition = when {
         isTabSwap(from, to) -> ExitTransition.None
         // The page the card grows over dims behind it.
         grows(to) -> fadeOut(tween(ContainerMillis), targetAlpha = ContainerDim)
         else -> fadeOut(tween(FadeMillis))
     }
 
-    fun popEnter(from: String?, to: String?): EnterTransition = when {
+    /** [closing] is the back-stack id of the page being popped. */
+    fun popEnter(from: String?, to: String?, closing: String? = null): EnterTransition = when {
         isTabSwap(from, to) -> EnterTransition.None
-        isMorphRoute(from) && ContainerReturn.current != null -> fadeIn(tween(ContainerMillis), initialAlpha = ContainerDim)
+        isMorphRoute(from) && ContainerReturn.targetFor(closing) != null -> fadeIn(tween(ContainerMillis), initialAlpha = ContainerDim)
         grows(from) -> fadeIn(tween(ContainerMillis), initialAlpha = ContainerDim)
         else -> fadeIn(tween(FadeMillis))
     }
 
-    fun popExit(from: String?, to: String?): ExitTransition = when {
+    /**
+     * [closing] is the back-stack id of the page being popped. Chosen as the pop starts, button or
+     * gesture, so this is where the page learns it is closing (see ContainerReturn.closingEntry).
+     */
+    fun popExit(from: String?, to: String?, closing: String? = null): ExitTransition = when {
         isTabSwap(from, to) -> ExitTransition.None
-        // Shrinks into the tile it came out of, wherever that tile was when it was tapped.
-        // Held on screen while the page shrinks into its tile (containerReturnPage draws it).
-        // Held on screen for the trip (containerReturnPage draws it, shrinking, in the overlay).
-        isMorphRoute(from) && ContainerReturn.current != null -> fadeOut(tween(ContainerMillis), targetAlpha = 0.999f)
+        // Held on screen while the page shrinks into its tile (containerReturnPage draws it, in the
+        // overlay), wherever that tile was when it was tapped.
+        isMorphRoute(from) && ContainerReturn.targetFor(closing) != null -> {
+            ContainerReturn.closingEntry = closing
+            fadeOut(tween(ContainerMillis), targetAlpha = 0.999f)
+        }
         else -> fadeOut(tween(FadeMillis))
     }
 

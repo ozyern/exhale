@@ -499,6 +499,14 @@ class FloatingTabBarScrollConnection(
         available: Offset,
         source: NestedScrollSource,
     ): Offset {
+        if (inlineBehavior == FloatingTabBarInlineBehavior.OnScrollDown) {
+            // Pulling past the top opens the bar however short the way back up was.
+            if (available.y > AtTopSlopPx && isInline) {
+                isInline = false
+                accumulatedScroll = 0f
+            }
+            return Offset.Zero
+        }
         if (inlineBehavior != FloatingTabBarInlineBehavior.ExpandedAtTopOnly) return Offset.Zero
 
         if (available.y > AtTopSlopPx) {

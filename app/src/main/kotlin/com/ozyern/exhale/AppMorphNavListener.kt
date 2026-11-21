@@ -56,10 +56,10 @@ fun InstallMorphNavListener(navController: NavHostController, artworkState: com.
             }
             val thumbnailUrl = markSharedArtworkSource(artworkState, artworkId, isPop)
             // The way back shrinks the page into the tile it was opened from (ContainerReturn).
-            if (isPop && isMorphRoute(previousRoute)) {
-                com.ozyern.exhale.ui.utils.ContainerReturn.closed()
-            } else if (!isPop && isMorphRoute(destination.route)) {
+            // Kept by entry, so the pop transition can find it before this listener hears of the pop.
+            if (!isPop && entryId != null && isMorphRoute(destination.route)) {
                 com.ozyern.exhale.ui.utils.ContainerReturn.opened(
+                    entryId,
                     artworkState.selected?.owner?.let { artworkState.tileBounds[it] },
                 )
             }

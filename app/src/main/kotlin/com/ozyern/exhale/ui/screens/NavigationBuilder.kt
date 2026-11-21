@@ -252,8 +252,8 @@ fun NavGraphBuilder.navigationBuilder(
         ),
         enterTransition = { PageMotion.enter(initialState.destination.route, targetState.destination.route) },
         exitTransition = { PageMotion.exit(initialState.destination.route, targetState.destination.route) },
-        popEnterTransition = { PageMotion.popEnter(initialState.destination.route, targetState.destination.route) },
-        popExitTransition = { PageMotion.popExit(initialState.destination.route, targetState.destination.route) },
+        popEnterTransition = { PageMotion.popEnter(initialState.destination.route, targetState.destination.route, initialState.id) },
+        popExitTransition = { PageMotion.popExit(initialState.destination.route, targetState.destination.route, initialState.id) },
     ) {
         com.ozyern.exhale.ui.theme.ForcedDarkScope { OnlineSearchResult(navController) }
     }
@@ -766,15 +766,15 @@ private fun NavGraphBuilder.sharedComposable(
         arguments = arguments,
         enterTransition = { PageMotion.enter(initialState.destination.route, targetState.destination.route) },
         exitTransition = { PageMotion.exit(initialState.destination.route, targetState.destination.route) },
-        popEnterTransition = { PageMotion.popEnter(initialState.destination.route, targetState.destination.route) },
-        popExitTransition = { PageMotion.popExit(initialState.destination.route, targetState.destination.route) },
+        popEnterTransition = { PageMotion.popEnter(initialState.destination.route, targetState.destination.route, initialState.id) },
+        popExitTransition = { PageMotion.popExit(initialState.destination.route, targetState.destination.route, initialState.id) },
     ) { entry ->
         CompositionLocalProvider(
             LocalNavAnimatedVisibilityScope provides this,
             LocalMorphArtworkId provides entry.morphArtworkId(),
         ) {
           // The whole page is the large end of the card it grows out of, when a tile was tapped.
-          androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().sharedPageTarget().containerReturnPage()) {
+          androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().sharedPageTarget().containerReturnPage(entry.id)) {
             if (collection) {
                 val corner = com.ozyern.exhale.ui.player.rememberScreenCornerRadius()
                 val shape = remember(corner) { ContinuousRoundedRectangle(corner) }
