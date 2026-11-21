@@ -58,7 +58,6 @@ class LiveLyricsPublisher(
     private val scope: CoroutineScope,
     private val player: () -> ExoPlayer,
     private val session: () -> MediaSession?,
-    private val lyricInfo: SessionLyricInfo,
     private val current: StateFlow<MediaMetadata?>,
     private val lyricsFor: (String) -> Flow<String?>,
     private val preferences: Flow<Preferences>,
@@ -68,6 +67,7 @@ class LiveLyricsPublisher(
     private var lines: List<LyricsEntry> = emptyList()
     private var lineIndex = -1
     private var cardLine: String? = null
+    private var revision = 0
 
     @Volatile private var onMediaCard = true
     @Volatile private var liveSpace = true
@@ -82,7 +82,6 @@ class LiveLyricsPublisher(
             liveSpace = space
             LockScreenLyrics.enabled = overlay
             if (!card) publishCardLine(null)
-            if (!space) publishDocument(null, null)
         }.launchIn(scope)
 
         current.flatMapLatest { metadata ->
@@ -118,21 +117,30 @@ class LiveLyricsPublisher(
             }
             payload to parsed
         }
-        // The document goes first, so the card line sees it when deciding whether to stand down.
-        publishDocument(metadata?.id, payload)
         startTicker(parsed)
+        if (metadata == null || !liveSpace || payload == null) return
+        if (carries(metadata.id, payload)) return
+        forceDocument(metadata.id, payload)
+        // One retry, only if the first did not stick: OPlus debounces updates that arrive close
+        // together, so an unconditional second write is what gets the first one discarded.
+        delay(REPUBLISH_DELAY_MS)
+        if (!carries(metadata.id, payload)) forceDocument(metadata.id, payload)
     }
 
-    /**
-     * Hands the document to the session player, which adds it to the session's metadata and
-     * republishes once, as Echo Music does (EchoMusicApp/Echo-Music#881). The media item is never
-     * rewritten: SystemUI takes progress from the playback state, and metadata rewritten while
-     * the song plays is what the ColorOS contract names as the thing that empties its lyric page.
-     */
-    private fun publishDocument(songId: String?, payload: String?) {
-        if (!lyricInfo.set(songId, payload)) return
-        (session()?.player as? SessionLyricPlayer)?.onLyricInfoChanged()
-        Log.i(TAG, if (payload == null) "lyric document cleared" else "$songId: lyric document published")
+    private fun carries(songId: String, payload: String): Boolean = with(OplusLiveLyrics) {
+        val item = player().currentMediaItem ?: return false
+        item.mediaId == songId && item.lyricInfo() == payload
+    }
+
+    /** Republishes the current item with [payload] and a fresh signal so the session passes it on. */
+    private fun forceDocument(songId: String, payload: String) {
+        val p = player()
+        val item = p.currentMediaItem ?: return
+        if (item.mediaId != songId) return
+        revision++
+        val updated = with(OplusLiveLyrics) { item.withLyricInfo(payload, signalUri(songId, revision)) }
+        p.replaceMediaItem(p.currentMediaItemIndex, updated)
+        Log.i(TAG, "$songId: lyric document published (#$revision)")
     }
 
     private fun startTicker(parsed: List<LyricsEntry>) {
@@ -210,15 +218,19 @@ class LiveLyricsPublisher(
     }
 
     /**
-     * On ColorOS / OxygenOS the lyric page draws the document, and rewriting the subtitle every
-     * line is what breaks it, so while a document is published the card line stands down there.
-     * Everywhere else the subtitle is the only lyric anyone will see.
+     * Where the ColorOS lyric page really draws the document (the Live Lyrics Bridge, or a system
+     * that unlocks the page), rewriting the subtitle every line is what breaks it, so the card
+     * line stands down there. Everywhere else the subtitle is the only lyric anyone will see.
      */
     private val cardLineWouldFightDocument: Boolean
-        get() = liveSpace && isOplus && lyricInfo.current(player().currentMediaItem?.mediaId) != null
+        get() = liveSpace && isOplus && (bridgeInstalled || OplusLiveLyrics.lyricPageUnlockedBySystem())
 
     private val isOplus: Boolean by lazy {
         Build.MANUFACTURER.lowercase().let { it == "oppo" || it == "oneplus" || it == "realme" }
+    }
+
+    private val bridgeInstalled: Boolean by lazy {
+        runCatching { context.packageManager.getPackageInfo(OplusLiveLyrics.BRIDGE_PACKAGE, 0) }.isSuccess
     }
 
     private companion object {
@@ -227,5 +239,6 @@ class LiveLyricsPublisher(
         const val MIN_TICK_MS = 40L
         const val IDLE_TICK_MS = 1_000L
         const val PUBLISH_LEAD_MS = 150L
+        const val REPUBLISH_DELAY_MS = 1_500L
     }
 }
