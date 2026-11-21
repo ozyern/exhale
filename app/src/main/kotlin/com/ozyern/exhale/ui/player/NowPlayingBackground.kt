@@ -56,7 +56,9 @@ fun nowPlayingGradient(pixels: IntArray, w: Int, h: Int, hero: Boolean): NowPlay
     val topEdge = averageRows(pixels, w, 0, band)
     val bottomEdge = averageRows(pixels, w, h - band, h)
     return if (hero) {
-        NowPlayingGradient(shade(bottomEdge, maxValue = 0.47f, scale = 0.85f), shade(bottomEdge, maxValue = 0.28f, scale = 0.45f))
+        // Carried on from the cover rather than sunk under it, as BitChord's player does: the ground
+        // under the transport stays this cover's colour, only a little deeper.
+        NowPlayingGradient(shade(bottomEdge, maxValue = 0.58f, scale = 0.95f), shade(bottomEdge, maxValue = 0.46f, scale = 0.80f))
     } else {
         // Keep the gradient dark enough for white controls to stay readable on pale covers.
         NowPlayingGradient(shade(topEdge, maxValue = 0.47f, scale = 0.80f), shade(bottomEdge, maxValue = 0.28f, scale = 0.50f))
@@ -238,26 +240,12 @@ fun NowPlayingBackground(
                         } else {
                             1f
                         }
-                        BleedingArtwork(url, heroFraction = heroFraction)
+                        BleedingArtwork(url, heroFraction = heroFraction, hero = hero)
                     }
                 }
             }
-            if (hero && liveGround) {
-                // Only as dark as the controls need: clear under the cover, deepening to the transport.
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = bleedAlpha }
-                        .background(
-                            Brush.verticalGradient(
-                                0f to Color.Black.copy(alpha = 0.06f),
-                                0.45f to Color.Black.copy(alpha = 0.16f),
-                                0.75f to Color.Black.copy(alpha = 0.30f),
-                                1f to Color.Black.copy(alpha = 0.46f),
-                            ),
-                        ),
-                )
-            }
+            // The bleed carries its own scrim. A second one here, over the hero, put the transport on
+            // a near-black ground whatever the cover's colours were.
         }
         val pageBlur = rememberFullArtworkBlur(artworkUrl)
         val showPageBlur by remember { androidx.compose.runtime.derivedStateOf(pageShowing) }
@@ -296,7 +284,7 @@ private const val HERO_FRACTION = 0.65f
  * into a flat colour sampled from it.
  */
 @Composable
-private fun BleedingArtwork(url: String, heroFraction: Float) {
+private fun BleedingArtwork(url: String, heroFraction: Float, hero: Boolean = false) {
     val context = LocalContext.current
     val decoded by produceState(bleedCache.get(url), url) {
         if (value != null) return@produceState
@@ -366,8 +354,8 @@ private fun BleedingArtwork(url: String, heroFraction: Float) {
             drawRect(
                 brush = Brush.verticalGradient(
                     0f to foot.copy(alpha = 0f),
-                    0.55f to foot.copy(alpha = 0.62f),
-                    1f to foot.copy(alpha = 0.86f),
+                    0.55f to foot.copy(alpha = if (hero) 0.45f else 0.62f),
+                    1f to foot.copy(alpha = if (hero) 0.65f else 0.86f),
                     startY = bannerH,
                     endY = size.height,
                 ),
@@ -376,18 +364,40 @@ private fun BleedingArtwork(url: String, heroFraction: Float) {
             )
         }
         // Only as dark as the controls need: clear under the cover, deepening towards the transport.
-        drawRect(
-            Brush.verticalGradient(
-                0f to Color.Black.copy(alpha = 0.06f),
-                0.45f to Color.Black.copy(alpha = 0.16f),
-                0.75f to Color.Black.copy(alpha = 0.30f),
-                1f to Color.Black.copy(alpha = 0.46f),
-            ),
-        )
+        // The hero's ground keeps the cover's colour (BitChord's player): a lighter hand there.
+        drawRect(if (hero) HeroScrim else SquareScrim)
     }
 }
 
 private const val BLEED_SIZE = 40
+
+private val SquareScrim = Brush.verticalGradient(
+    0f to Color.Black.copy(alpha = 0.06f),
+    0.45f to Color.Black.copy(alpha = 0.16f),
+    0.75f to Color.Black.copy(alpha = 0.30f),
+    1f to Color.Black.copy(alpha = 0.46f),
+)
+
+private val HeroScrim = Brush.verticalGradient(
+    0f to Color.Black.copy(alpha = 0.02f),
+    0.45f to Color.Black.copy(alpha = 0.08f),
+    0.75f to Color.Black.copy(alpha = 0.16f),
+    1f to Color.Black.copy(alpha = 0.24f),
+)
+
+/**
+ * The cover's colour as a light tint for the player's quieter icons (volume, lyrics, output,
+ * queue), as BitChord tints them: the hue kept, softened and lifted so it reads on the cover's
+ * own ground. A colourless cover gives soft white.
+ */
+internal fun nowPlayingAccent(argb: Int): Color {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(argb, hsv)
+    if (hsv[1] < 0.12f) return Color.White.copy(alpha = 0.78f)
+    hsv[1] = hsv[1].coerceIn(0.32f, 0.52f)
+    hsv[2] = 0.96f
+    return Color(android.graphics.Color.HSVToColor(hsv))
+}
 
 /** [bitmap] box-blurred a few times: with the smooth stretch at draw time, a heavy blur for free. */
 private fun softened(bitmap: android.graphics.Bitmap): android.graphics.Bitmap {

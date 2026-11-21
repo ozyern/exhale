@@ -685,7 +685,21 @@ private fun PlayerV2Content(
     }
     // Artist text is real metadata, not decorative chrome: color-dodge on the
     // grey ink disappears over dark artwork. Keep a strong contrast-safe tier.
-    val artistLabelColor = if (additiveChrome) adaptivePrimary.copy(alpha = 0.78f) else adaptiveSecondary
+    // The hero's artist is a softer grey under a larger title, as BitChord sets them.
+    val artistLabelColor = if (additiveChrome) adaptivePrimary.copy(alpha = if (isHeroLook) 0.55f else 0.78f) else adaptiveSecondary
+    // The quieter icons (volume, lyrics, output, queue) in the cover's colour on the hero.
+    val heroAccent by animateColorAsState(
+        targetValue = referenceGradient?.takeIf { isHeroLook && additiveChrome }?.let { nowPlayingAccent(it.top) }
+            ?: adaptivePrimary.copy(alpha = 0.62f),
+        animationSpec = tween(600),
+        label = "heroAccent",
+    )
+    // The hero's title and artist, larger (BitChord's size); the square keeps Apple Music's 17.
+    val trackMetaStyle = AppTheme.typography.bodyLarge.copy(
+        fontSize = if (isHeroLook) 22.sp else 17.sp,
+        lineHeight = if (isHeroLook) 27.sp else 22.sp,
+        letterSpacing = if (isHeroLook) (-0.35).sp else (-0.43).sp,
+    )
     val adaptiveSurface by animateColorAsState(
         targetValue = when (playerBackground) {
             PlayerBackgroundStyle.DEFAULT -> AppTheme.colorScheme.surfaceVariant
@@ -736,7 +750,7 @@ private fun PlayerV2Content(
         Column(modifier = Modifier.weight(1f)) {
             FadeSwapText(
                 textMetadata?.title ?: "Unknown",
-                style = AppTheme.typography.bodyLarge.copy(fontSize = 17.sp, lineHeight = 22.sp, letterSpacing = (-0.43).sp),
+                style = trackMetaStyle,
                 color = adaptivePrimary,
                 fontWeight = FontWeight.SemiBold,
                 scroll = !state.isCollapsed,
@@ -747,7 +761,7 @@ private fun PlayerV2Content(
             )
             FadeSwapText(
                 textMetadata?.artists?.joinToString { it.name }.orEmpty(),
-                style = AppTheme.typography.bodyLarge.copy(fontSize = 17.sp, lineHeight = 22.sp, letterSpacing = (-0.43).sp),
+                style = trackMetaStyle,
                 color = artistLabelColor,
                 fontWeight = FontWeight.Normal,
                 scroll = !state.isCollapsed,
@@ -1846,7 +1860,7 @@ private fun PlayerV2Content(
                         // The glyphs keep their slot size while the track grows; scaling them clipped the row edges.
                         PlayerQuietVolumeGlyph(
                             level = shownVolume,
-                            tint = adaptivePrimary,
+                            tint = if (isHeroLook && additiveChrome) heroAccent else adaptivePrimary,
                         )
                         Spacer(Modifier.width(8.dp))
                         Slider(
@@ -1876,7 +1890,7 @@ private fun PlayerV2Content(
                         Spacer(Modifier.width(8.dp))
                         PlayerVolumeGlyph(
                             level = shownVolume,
-                            tint = adaptivePrimary,
+                            tint = if (isHeroLook && additiveChrome) heroAccent else adaptivePrimary,
                         )
                     }
                     }
@@ -1912,7 +1926,7 @@ private fun PlayerV2Content(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                 // Use a lighter tint for icons over the vibrant artwork.
-                val bottomTint = if (additiveChrome) adaptivePrimary.copy(alpha = 0.62f) else adaptiveSecondary
+                val bottomTint = if (additiveChrome) heroAccent else adaptiveSecondary
                 // Chrome is applied per tab, not on the whole row: an additive layer would turn the selected
                 // tab's dark glyph into a hole.
                 val tabChrome = Modifier
