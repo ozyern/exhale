@@ -38,12 +38,12 @@ internal fun rememberFlowPosition(player: Player, sliderPositionProvider: () -> 
                 reason: Int,
             ) {
                 position.seeks++
-                position.report(player.currentPosition)
+                position.report(player.currentPosition, isPlaying = player.isPlaying)
             }
 
             // Paused or resumed: the reading at that moment, not up to half a second later.
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                position.report(player.currentPosition)
+                position.report(player.currentPosition, isPlaying = player.isPlaying)
             }
         }
         player.addListener(listener)
@@ -55,7 +55,7 @@ internal fun rememberFlowPosition(player: Player, sliderPositionProvider: () -> 
             val dragged = slider()
             if (dragged != null && dragged != lastSlider) position.seeks++
             lastSlider = dragged
-            position.report(dragged ?: player.currentPosition)
+            position.report(dragged ?: player.currentPosition, isPlaying = dragged == null && player.isPlaying)
             // Ten times a second while it plays: the clock runs the frames in between and is
             // steered by these readings.
             delay(if (dragged != null) 50L else if (player.isPlaying) 100L else 500L)
@@ -74,17 +74,39 @@ internal fun toFlowLines(lyrics: String): List<LyricLine> {
     val entries: List<LyricsEntry> = LyricsUtils.parseLyrics(lyrics)
     val timed = entries.filter { it.time >= 0 && !it.isBackground }
     val backing = entries.filter { it.time >= 0 && it.isBackground }
-    return timed.mapIndexed { index, entry ->
-        val nextMs = timed.getOrNull(index + 1)?.time
+
+    // Each backing vocal either rides under the lead line it is sung against, or, when it comes
+    // after that line has finished (or before the first one), stands as a line of its own, so the
+    // panel moves on to it instead of holding the line above. A lead line carries one at most;
+    // any more are lines of their own rather than dropped.
+    val riding = HashMap<Int, LyricsEntry>()
+    val standalone = ArrayList<LyricsEntry>()
+    for (back in backing) {
+        val owner = timed.indexOfLast { it.time <= back.time }
+        val lead = timed.getOrNull(owner)
+        if (lead == null || owner in riding) {
+            standalone += back
+            continue
+        }
+        val nextMs = timed.getOrNull(owner + 1)?.time
+        val leadEnd = voice(lead.words.orEmpty())?.second?.maxOfOrNull { it.endMs }
+            ?: estimatedWords(lead.text.trim(), lead.time, nextMs).lastOrNull()?.endMs
+            ?: lead.time
+        if (back.time < leadEnd + BACKING_JOIN_SLACK_MS) riding[owner] = back else standalone += back
+    }
+    // Where each line's sweep must have finished: the next line of either kind.
+    val starts = (timed.map { it.time } + standalone.map { it.time }).sorted()
+    fun nextAfter(ms: Long): Long? = starts.firstOrNull { it > ms }
+
+    val leads = timed.mapIndexed { index, entry ->
+        val nextMs = nextAfter(entry.time)
         val lead = voice(entry.words.orEmpty())
         val text = lead?.first ?: entry.text.trim()
-        // A backing vocal stored as its own entry belongs to the lead line it falls inside.
-        val behind = backing.firstOrNull { it.time >= entry.time && (nextMs == null || it.time < nextMs) }
         LyricLine(
             timeMs = entry.time,
             text = text,
             words = lead?.second ?: estimatedWords(text, entry.time, nextMs),
-            background = behind?.let { back ->
+            background = riding[index]?.let { back ->
                 val voiced = voice(back.words.orEmpty())
                 val backText = voiced?.first ?: back.text.trim()
                 LyricLine(
@@ -96,7 +118,22 @@ internal fun toFlowLines(lyrics: String): List<LyricLine> {
             alignment = if (entry.agent?.lowercase() == "v2") LyricAlignment.End else LyricAlignment.Start,
         )
     }
+    val own = standalone.map { back ->
+        val nextMs = nextAfter(back.time)
+        val voiced = voice(back.words.orEmpty())
+        val text = voiced?.first ?: back.text.trim()
+        LyricLine(
+            timeMs = back.time,
+            text = text,
+            words = voiced?.second ?: estimatedWords(text, back.time, nextMs),
+            alignment = if (back.agent?.lowercase() == "v2") LyricAlignment.End else LyricAlignment.Start,
+        )
+    }
+    return (leads + own).sortedBy { it.timeMs }
 }
+
+/** A backing vocal starting this soon after its lead line's last word still belongs to that line. */
+private const val BACKING_JOIN_SLACK_MS = 250L
 
 /**
  * Word timings for a line that only has a start time, so it sweeps word by word like a word-timed

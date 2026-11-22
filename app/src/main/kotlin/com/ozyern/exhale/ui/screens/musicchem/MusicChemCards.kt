@@ -3,7 +3,7 @@
  * ozyern (github.com/ozyern)
  * Licensed Under GPL-3.0 | see git history for contributors
  *
- * The card follows BitChord's ReplayCreditCard (github.com/kushagrasinghx/BitChord, GPL-3.0):
+ * The card follows the reference design's ReplayCreditCard:
  * its proportions, embossed lines and layout. The data is Music Chem's.
  */
 
@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -37,6 +38,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -66,6 +68,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.ozyern.exhale.R
+import com.ozyern.exhale.ui.component.filmGrain
+import com.ozyern.exhale.ui.player.rememberFullArtworkBlur
 import com.ozyern.exhale.ui.player.rememberNowPlayingGradient
 import com.ozyern.exhale.ui.screens.OptionStats
 import com.ozyern.exhale.viewmodels.StatsViewModel
@@ -143,21 +147,63 @@ fun MusicChemCards(
     // A little narrower than the screen, so the next card shows at the edge and says "swipe".
     val cardWidth = (LocalConfiguration.current.screenWidthDp.dp - 48.dp).coerceAtMost(360.dp)
     val listState = rememberLazyListState()
-    LazyRow(
-        state = listState,
-        modifier = modifier,
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        // One card per swipe, each coming to rest at the start edge.
-        flingBehavior = rememberSnapFlingBehavior(listState, SnapPosition.Start),
-    ) {
-        items(facts, key = { it.label }) { fact ->
-            MusicChemCard(
-                fact = fact,
-                month = month,
-                memberSince = memberSince,
-                onClick = { navController.navigate("music_chem") },
-                modifier = Modifier.width(cardWidth),
+    // Which card is resting at the start edge, for the dots under the row.
+    val current by remember(listState) {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val last = info.totalItemsCount - 1
+            if (last > 0 && !listState.canScrollForward) last else listState.firstVisibleItemIndex
+        }
+    }
+    Column(modifier) {
+        LazyRow(
+            state = listState,
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            // One card per swipe, each coming to rest at the start edge.
+            flingBehavior = rememberSnapFlingBehavior(listState, SnapPosition.Start),
+        ) {
+            items(facts, key = { it.label }) { fact ->
+                MusicChemCard(
+                    fact = fact,
+                    month = month,
+                    memberSince = memberSince,
+                    onClick = { navController.navigate("music_chem") },
+                    // Where the card sits across the row, -1 (gone off the start) to 1 (coming in
+                    // at the end): read in the draw phase, so the foil moves without recomposing.
+                    travel = {
+                        val info = listState.layoutInfo
+                        val item = info.visibleItemsInfo.firstOrNull { it.key == fact.label }
+                        if (item == null || item.size == 0) 0f
+                        else ((item.offset - info.viewportStartOffset).toFloat() / item.size).coerceIn(-1f, 1f)
+                    },
+                    modifier = Modifier.width(cardWidth),
+                )
+            }
+        }
+        if (facts.size > 1) {
+            PageDots(count = facts.size, current = current, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp))
+        }
+    }
+}
+
+/** A dot per card, the resting one drawn as a short bar. */
+@Composable
+private fun PageDots(count: Int, current: Int, modifier: Modifier = Modifier) {
+    Row(modifier, horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+        repeat(count) { index ->
+            val selected = index == current
+            val width by animateFloatAsState(
+                targetValue = if (selected) 16f else 6f,
+                animationSpec = spring(dampingRatio = 0.75f, stiffness = 500f),
+                label = "chemDot",
+            )
+            Box(
+                Modifier
+                    .padding(horizontal = 3.dp)
+                    .size(width = width.dp, height = 6.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = if (selected) 0.85f else 0.28f)),
             )
         }
     }
@@ -168,17 +214,21 @@ private fun plays(count: Int) = if (count == 1) "1 play" else "$count plays"
 private fun minutes(millis: Long?): String? =
     millis?.takeIf { it > 0L }?.let { "${(it / 60_000L).coerceAtLeast(1)} min" }
 
-/** One headline fact as a card you could keep in a wallet (after BitChord's ReplayCreditCard). */
+/** One headline fact as a card you could keep in a wallet (after the reference design's ReplayCreditCard). */
 @Composable
 private fun MusicChemCard(
     fact: ChemFact,
     month: String,
     memberSince: String?,
     onClick: () -> Unit,
+    /** Where the card sits across the row, -1..1; moves the foil. */
+    travel: () -> Float,
     modifier: Modifier = Modifier,
 ) {
     // Lit by the artwork the card is about: the cover's own gradient, as the player draws it.
     val gradient by rememberNowPlayingGradient(fact.artworkUrl, hero = false)
+    // The cover itself, blurred once off the main thread and cached: the card's surface.
+    val surface = rememberFullArtworkBlur(fact.artworkUrl)
     val top = gradient?.let { Color(it.top) } ?: Color(0xFF4A2A6E)
     val bottom = gradient?.let { Color(it.bottom) } ?: Color(0xFF1E1030)
     val interaction = remember { MutableInteractionSource() }
@@ -199,6 +249,9 @@ private fun MusicChemCard(
             .clip(CardShape)
             .background(Brush.linearGradient(listOf(lift(top), top, bottom)))
             .drawWithCache {
+                // The blurred cover laid across the card, cropped to fill it, toned into the
+                // gradient so the type keeps its contrast whatever the cover is.
+                val image = surface
                 // Deepened towards the foot, where the embossed lines are.
                 val depth = Brush.verticalGradient(
                     0.0f to Color.Black.copy(alpha = 0.06f),
@@ -218,6 +271,19 @@ private fun MusicChemCard(
                     end = Offset(size.width, size.height),
                 )
                 onDrawBehind {
+                    if (image != null) {
+                        val scale = maxOf(size.width / image.width, size.height / image.height)
+                        val srcW = (size.width / scale).toInt().coerceIn(1, image.width)
+                        val srcH = (size.height / scale).toInt().coerceIn(1, image.height)
+                        drawImage(
+                            image = image,
+                            srcOffset = androidx.compose.ui.unit.IntOffset((image.width - srcW) / 2, (image.height - srcH) / 2),
+                            srcSize = androidx.compose.ui.unit.IntSize(srcW, srcH),
+                            dstSize = androidx.compose.ui.unit.IntSize(size.width.toInt(), size.height.toInt()),
+                            alpha = SURFACE_ALPHA,
+                            filterQuality = androidx.compose.ui.graphics.FilterQuality.Low,
+                        )
+                    }
                     drawRect(depth)
                     for (i in 1..9) {
                         val r = waveStep * i
@@ -232,6 +298,27 @@ private fun MusicChemCard(
                         )
                     }
                     drawRect(sheen)
+                }
+            }
+            .filmGrain(0.05f)
+            // Foil: a soft band of iridescence that slides across the card as the row moves, as
+            // a holographic card catches the light when it is turned.
+            .drawWithCache {
+                val band = size.width * 0.9f
+                onDrawWithContent {
+                    drawContent()
+                    val x = size.width * (0.5f - travel() * 1.1f)
+                    drawRect(
+                        brush = Brush.linearGradient(
+                            0.0f to Color.Transparent,
+                            0.35f to Color(0x14FF9AD5),
+                            0.5f to Color(0x24FFFFFF),
+                            0.65f to Color(0x149AD8FF),
+                            1.0f to Color.Transparent,
+                            start = Offset(x - band / 2f, 0f),
+                            end = Offset(x + band / 2f, size.height),
+                        ),
+                    )
                 }
             }
             .border(0.75.dp, EdgeLight, CardShape)
@@ -397,6 +484,9 @@ private val ArtShape = RoundedCornerShape(12.dp)
 
 /** The card's edge catching the light: bright along the top, almost gone at the foot. */
 private val EdgeLight = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.32f), Color.White.copy(alpha = 0.06f)))
+
+/** How much of the blurred cover shows through the gradient. */
+private const val SURFACE_ALPHA = 0.55f
 
 /** 85.6mm × 54mm: what makes the shape read as a card. */
 private const val CARD_RATIO = 1.586f

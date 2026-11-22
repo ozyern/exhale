@@ -8,7 +8,7 @@ Convx bundles source vendored from third-party open-source projects.
 
 ## Lyrics providers
 
-The provider clients and lyric parsers in lyrics/.../lyrics/bitchord are
+The provider clients and lyric parsers in feature/lyrics/.../lyrics/providers are
 adapted from BitChord (https://github.com/kushagrasinghx/BitChord),
 Copyright its contributors, licensed under GPL-3.0. See LICENSE.
 
@@ -43,6 +43,14 @@ SMB transport retry behavior in network-storage is adapted from BitChord
 (https://github.com/kushagrasinghx/BitChord), Copyright its contributors,
 licensed under GPL-3.0. See LICENSE. Convx retains separate saved-server
 sessions and adds connection ownership checks for concurrent readers.
+
+## Player controls, lyric panel and Best Part
+
+The player controls in app/.../ui/player/controls, the lyric panel in
+app/.../ui/lyricsflow and the Best Part logic in app/.../bestpart are adapted
+from BitChord (https://github.com/kushagrasinghx/BitChord), Copyright its
+contributors, licensed under GPL-3.0. See LICENSE. Exhale's source files carry
+no third-party names; this file is where that attribution lives.
 
 ## Base project
 

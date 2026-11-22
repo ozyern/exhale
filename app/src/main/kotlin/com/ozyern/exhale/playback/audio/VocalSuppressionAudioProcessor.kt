@@ -57,7 +57,7 @@ class VocalSuppressionAudioProcessor : BaseAudioProcessor() {
         if (byteCount == 0) return
         borrowedOutput = AudioProcessor.EMPTY_BUFFER
         val strength = amount
-        if (strength <= 0f || inputAudioFormat.encoding != C.ENCODING_PCM_16BIT ||
+        if (strength <= 0f || DolbyHandoff.active || inputAudioFormat.encoding != C.ENCODING_PCM_16BIT ||
             inputAudioFormat.channelCount != 2 || inputAudioFormat.sampleRate <= 0
         ) {
             reducer.bypass()

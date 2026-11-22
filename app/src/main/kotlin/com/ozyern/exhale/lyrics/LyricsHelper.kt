@@ -70,8 +70,20 @@ class LyricsHelper(
     ): LyricsWithProvider {
         currentLyricsJob?.cancel()
 
+        // A file on the phone may carry its own lyrics. Timed ones end the lookup there; plain
+        // ones are kept for when no source has anything better, and still work offline.
+        val embedded = if (isLocalSong(mediaMetadata.id)) {
+            EmbeddedLyrics.forUri(context, mediaMetadata.id)
+        } else {
+            null
+        }
+        if (embedded != null && EmbeddedLyrics.isSynced(embedded)) {
+            return LyricsWithProvider(embedded, EMBEDDED_PROVIDER)
+        }
+
         if (!hasNetworkConnection()) {
-            return LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")
+            return embedded?.let { LyricsWithProvider(it, EMBEDDED_PROVIDER) }
+                ?: LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")
         }
 
         val providers = resolveLyricsProviders().usableFor(isLocalSong(mediaMetadata.id))
@@ -123,6 +135,7 @@ class LyricsHelper(
                     fillWindow()
                 }
                 policy.best?.let { LyricsWithProvider(it.lyrics, it.provider) }
+                    ?: embedded?.let { LyricsWithProvider(it, EMBEDDED_PROVIDER) }
                     ?: LyricsWithProvider(LYRICS_NOT_FOUND, "Unknown")
             } finally {
                 jobs.forEach { it.cancel() }
@@ -200,6 +213,9 @@ class LyricsHelper(
 
     companion object {
         private const val MAX_CACHE_SIZE = 3
+
+        /** Shown as the lyrics' source when they came out of the file itself. */
+        const val EMBEDDED_PROVIDER = "Embedded"
     }
 }
 

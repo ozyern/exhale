@@ -2,8 +2,8 @@ package com.ozyern.exhale.playback.presentation
 
 import com.ozyern.exhale.lyrics.LyricsQuery
 import com.ozyern.exhale.lyrics.SharedLyricsSource
-import com.ozyern.exhale.lyrics.bitchord.LyricLine
-import com.ozyern.exhale.lyrics.bitchord.LyricWord
+import com.ozyern.exhale.lyrics.providers.LyricLine
+import com.ozyern.exhale.lyrics.providers.LyricWord
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.StandardTestDispatcher

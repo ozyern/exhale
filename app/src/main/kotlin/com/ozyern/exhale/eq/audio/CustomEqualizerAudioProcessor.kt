@@ -137,7 +137,7 @@ class CustomEqualizerAudioProcessor : AudioProcessor {
         inputBuffer.order(ByteOrder.nativeOrder())
         val inputSize = inputBuffer.remaining()
         if (inputSize == 0) return
-        if (forceBypass || !equalizerEnabled || channelCount !in 1..2 ||
+        if (forceBypass || com.ozyern.exhale.playback.audio.DolbyHandoff.active || !equalizerEnabled || channelCount !in 1..2 ||
             encoding != C.ENCODING_PCM_16BIT || (filters.isEmpty() && preampGain == 1.0)
         ) {
             outputBuffer = inputBuffer.slice().order(ByteOrder.nativeOrder())

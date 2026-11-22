@@ -14,7 +14,6 @@ import java.net.InetSocketAddress.createUnresolved
 internal val legacyEnumNames = mapOf(
     "VIVIMUSIC_1" to "EXHALE_1",
     "VIVIMUSIC" to "EXHALE",
-    "BITCHORD_MESH" to "FLUID_MESH",
 )
 
 inline fun <reified T : Enum<T>> String?.toEnum(defaultValue: T): T =

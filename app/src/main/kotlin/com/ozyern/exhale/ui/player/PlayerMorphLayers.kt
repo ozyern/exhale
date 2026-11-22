@@ -38,7 +38,7 @@ object PlayerMorph {
     @JvmField var stayInPlace: Boolean = false
 
     /**
-     * BitChord's dock (Apple Music v2 full bleed, Espresso): instead of a card growing out of the
+     * The reference design's dock (Apple Music v2 full bleed, Espresso): instead of a card growing out of the
      * pill with the player scaled inside it, the sheet slides up out of the dock at its own size,
      * fading in a little behind, over a mini player that stays where it is -- and the artwork
      * travels on its own between the mini player's cover and the player's. No pill landing on

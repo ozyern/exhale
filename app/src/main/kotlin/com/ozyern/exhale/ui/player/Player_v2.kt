@@ -294,8 +294,10 @@ private fun PlayerV2Content(
         CanvasPosterSource.dockedVideoFor = mediaMetadata?.id.takeIf { videoInDock }
         onDispose { if (videoInDock) CanvasPosterSource.dockedVideoFor = null }
     }
+    val motionCovers by rememberPreference(com.ozyern.exhale.constants.MotionCoversKey, defaultValue = true)
     val canvasVideo = rememberCanvasVideoController(
-        mediaMetadata = trackChoreography.ambient.value,
+        // With motion covers off the still artwork stays; a music video asked for still plays.
+        mediaMetadata = trackChoreography.ambient.value.takeIf { motionCovers || watchVideo },
         isPlaying = isPlaying && (!state.isCollapsed || videoInDock),
         trackFadeMillis = ambientTransitionMillis(v2CrossfadeMs),
         videoStream = videoStream.takeIf { watchVideo },
@@ -337,6 +339,13 @@ private fun PlayerV2Content(
     val currentLyrics by ui.currentLyrics
     val menuState = LocalMenuState.current
     var showV2Options by remember { mutableStateOf(false) }
+    // Where the finger opened the ⋯ pop-out. "More…" opens the full menu from there, so it unfolds
+    // where the pop-out was; grown from the "More…" row itself, at the pop-out's left, it was
+    // pinned against the left edge of the screen.
+    var optionsAnchor by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Unspecified) }
+    LaunchedEffect(showV2Options) {
+        if (showV2Options) optionsAnchor = com.ozyern.exhale.ui.component.MenuAnchor.lastDown
+    }
     var showRoutePopover by remember { mutableStateOf(false) }
     // Same condition as LyricsMenu's "Translate with AI" entry.
     val lyricsAiProvider by rememberPreference(com.ozyern.exhale.constants.AiProviderKey, com.ozyern.exhale.ai.AiDefaults.PROVIDER)
@@ -434,11 +443,19 @@ private fun PlayerV2Content(
 
     var controlsVisible by remember { mutableStateOf(true) }
     var lastInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    // The default lyrics put the controls away as the reader scrolls on through the lines and
+    // bring them back on a scroll back or a tap low on the page; the other styles hide them on a timer.
+    val lyricsStyle by com.ozyern.exhale.utils.rememberEnumPreference(
+        com.ozyern.exhale.constants.LyricsAnimationStyleKey,
+        com.ozyern.exhale.constants.DefaultLyricsAnimationStyle,
+    )
+    val lyricsDriveControls = lyricsStyle == com.ozyern.exhale.constants.LyricsAnimationStyle.STANDARD
 
     LaunchedEffect(playerState, lastInteractionTime, showV2Options, menuState.isVisible, bottomSheetPageState.isVisible) {
         if (playerState == PlayerInternalState.LYRICS) {
             controlsVisible = true
             if (showV2Options || menuState.isVisible || bottomSheetPageState.isVisible) return@LaunchedEffect
+            if (lyricsDriveControls) return@LaunchedEffect
             delay(3000)
             controlsVisible = false
         } else if (playerState != PlayerInternalState.QUEUE) {
@@ -529,7 +546,7 @@ private fun PlayerV2Content(
     val heroSelected = selectedLook == PlayerLook.HERO
     androidx.compose.runtime.DisposableEffect(heroSelected) {
         PlayerMorph.stayInPlace = false
-        // Full bleed docks as BitChord's player does: the sheet slides up out of the dock fading in,
+        // Full bleed docks as the reference design's player does: the sheet slides up out of the dock fading in,
         // and the mini player's cover flies into the hero (see PlayerMorph.rise). Square artwork
         // keeps Convx's card. Keyed on the choice, not on what is on screen: left on lyrics or the
         // queue, the player still rises out of the dock with the cover flying into the page's
@@ -546,6 +563,9 @@ private fun PlayerV2Content(
     // as Player.kt, including contrast on static and custom gradient backgrounds.
     val playerBackground = if (isHeroLook) PlayerBackgroundStyle.GRADIENT else selectedBackground
     val showPlayerThumbnailShadow by rememberPreference(ShowPlayerThumbnailShadowKey, defaultValue = true)
+    val showTotalDuration by rememberPreference(com.ozyern.exhale.constants.ShowTotalDurationKey, defaultValue = false)
+    val showBestPart by rememberPreference(com.ozyern.exhale.constants.ShowBestPartKey, defaultValue = true)
+    val showLyricPreview by rememberPreference(com.ozyern.exhale.constants.ShowLyricPreviewKey, defaultValue = true)
     val playerThumbnailShadowElevation by rememberPreference(PlayerThumbnailShadowElevationKey, defaultValue = 8f)
     val enableGoogleCast by rememberPreference(EnableGoogleCastKey, defaultValue = true)
     val (showUpNext) = rememberPreference(ShowUpNextKey, defaultValue = false)
@@ -693,7 +713,7 @@ private fun PlayerV2Content(
     }
     // Artist text is real metadata, not decorative chrome: color-dodge on the
     // grey ink disappears over dark artwork. Keep a strong contrast-safe tier.
-    // The hero's artist is a softer grey under a larger title, as BitChord sets them.
+    // The hero's artist is a softer grey under a larger title, as the reference design sets them.
     val artistLabelColor = if (additiveChrome) adaptivePrimary.copy(alpha = if (isHeroLook) 0.55f else 0.78f) else adaptiveSecondary
     // The quieter icons (volume, lyrics, output, queue) in the cover's colour on the hero.
     // Not animated: read up here, an animated colour recomposed the whole player on every frame of
@@ -702,7 +722,7 @@ private fun PlayerV2Content(
         referenceGradient?.takeIf { isHeroLook && additiveChrome }?.let { nowPlayingAccent(it.top) }
             ?: adaptivePrimary.copy(alpha = 0.62f)
     }
-    // The hero's title and artist, larger (BitChord's size); the square keeps Apple Music's 17.
+    // The hero's title and artist, larger (the reference design's size); the square keeps Apple Music's 17.
     val trackMetaStyle = AppTheme.typography.bodyLarge.copy(
         fontSize = if (isHeroLook) 22.sp else 17.sp,
         lineHeight = if (isHeroLook) 27.sp else 22.sp,
@@ -758,16 +778,16 @@ private fun PlayerV2Content(
         val trackMetaRow: @Composable RowScope.(Modifier, Modifier, Modifier) -> Unit =
             { titleModifier, artistModifier, actionsModifier ->
         Column(modifier = Modifier.weight(1f)) {
-            // BitChord's credits: the title in white, the artist at 55%, both 20sp, each scrolling
+            // The reference design's credits: the title in white, the artist at 55%, both 20sp, each scrolling
             // when it overflows, the artist a beat after the title. Cross-faded on a track change.
             androidx.compose.animation.Crossfade(
                 targetState = (textMetadata?.title ?: "Unknown") to textMetadata?.artists?.joinToString { it.name }.orEmpty(),
                 animationSpec = tween(300),
-                label = "bitchordCredits",
+                label = "playerCredits",
             ) { (title, artist) ->
                 var titleOverflowing by remember { mutableStateOf(false) }
                 Column {
-                    com.ozyern.exhale.ui.player.bitchord.MarqueeText(
+                    com.ozyern.exhale.ui.player.controls.MarqueeText(
                         text = title,
                         style = AppTheme.typography.titleLarge.copy(fontSize = 20.sp, fontWeight = FontWeight.SemiBold),
                         color = Color.White,
@@ -778,12 +798,12 @@ private fun PlayerV2Content(
                             mediaMetadata?.album?.id?.let { navController.navigate("album/$it") }
                         },
                     )
-                    com.ozyern.exhale.ui.player.bitchord.MarqueeText(
+                    com.ozyern.exhale.ui.player.controls.MarqueeText(
                         text = artist,
                         style = AppTheme.typography.titleLarge.copy(fontSize = 20.sp, fontWeight = FontWeight.W500),
                         color = Color.White.copy(alpha = 0.55f),
                         enabled = !state.isCollapsed,
-                        startDelayMillis = if (titleOverflowing) com.ozyern.exhale.ui.player.bitchord.MARQUEE_ARTIST_STAGGER_MS else 0L,
+                        startDelayMillis = if (titleOverflowing) com.ozyern.exhale.ui.player.controls.MARQUEE_ARTIST_STAGGER_MS else 0L,
                         modifier = artistModifier.clickable {
                             state.collapseSoft()
                             mediaMetadata?.artists?.firstOrNull()?.id?.let { navController.navigate("artist/$it") }
@@ -804,11 +824,11 @@ private fun PlayerV2Content(
             modifier = actionsModifier,
         ) {
             Spacer(Modifier.width(10.dp))
-            // BitChord's like and menu circles. The menu is still Exhale's popover, anchored here.
+            // The reference design's like and menu circles. The menu is still Exhale's popover, anchored here.
             val liked = shownLike?.second == true
-            com.ozyern.exhale.ui.player.bitchord.CircleGlyph(
-                icon = if (liked) com.ozyern.exhale.ui.player.bitchord.BitChordIcons.StarFilled
-                    else com.ozyern.exhale.ui.player.bitchord.BitChordIcons.Star,
+            com.ozyern.exhale.ui.player.controls.CircleGlyph(
+                icon = if (liked) com.ozyern.exhale.ui.player.controls.PlayerIcons.StarFilled
+                    else com.ozyern.exhale.ui.player.controls.PlayerIcons.Star,
                 contentDescription = if (liked) "Remove from liked" else "Like",
                 onClick = playerConnection::toggleLike,
                 active = liked,
@@ -832,6 +852,7 @@ private fun PlayerV2Content(
                         onOpenSleepTimer = { sleepTimer.showDialog.value = true },
                         onOpenAudioDevices = { showAudioDeviceBottomSheet = true },
                         onMore = {
+                            com.ozyern.exhale.ui.component.MenuAnchor.lastDown = optionsAnchor
                             menuState.show {
                                 PlayerMenu(
                                     mediaMetadata = mediaMetadata,
@@ -846,7 +867,7 @@ private fun PlayerV2Content(
                         },
                     )
                 }
-                com.ozyern.exhale.ui.player.bitchord.CircleGlyph(
+                com.ozyern.exhale.ui.player.controls.CircleGlyph(
                     icon = androidx.compose.material.icons.Icons.Filled.MoreHoriz,
                     contentDescription = "More",
                     onClick = { showV2Options = true },
@@ -854,6 +875,12 @@ private fun PlayerV2Content(
             }
         }
             }
+        // The controls' colour-dodge ink: dodged into the cover behind them, brighter on the bottom
+        // row, the bars tinted with the cover. Off over a near-black cover, where a dodge shows nothing.
+        androidx.compose.runtime.CompositionLocalProvider(
+            com.ozyern.exhale.ui.player.controls.LocalPlayerChrome provides vibrantTimeline,
+            com.ozyern.exhale.ui.player.controls.LocalChromeSoftened provides false,
+        ) {
         PlayerV2Frame(
             isWide = isWidePlayerLayout,
             // Hero Blend reaches the top edge, so the handle floats over artwork instead of reserving an inset.
@@ -1241,7 +1268,36 @@ private fun PlayerV2Content(
                                 }
 
                                 // Keep leftover pane height above the title to prevent overlap with the timeline.
-                                Spacer(modifier = Modifier.weight(1f))
+                                // The reference design's Best Part pill sits at the top of it, at the foot of the cover,
+                                // so it never moves the title or the controls when it comes and goes.
+                                Box(
+                                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                                    contentAlignment = Alignment.TopCenter,
+                                ) {
+                                    if (showBestPart && !isWidePlayerLayout) {
+                                        val bestPartLines = remember(currentLyrics?.lyrics) {
+                                            val raw = currentLyrics?.lyrics.orEmpty()
+                                            if (!raw.trimStart().startsWith("[")) emptyList() else runCatching {
+                                                com.ozyern.exhale.lyrics.LyricsUtils.parseLyrics(raw)
+                                                    .map { com.ozyern.exhale.bestpart.LyricLine(it.time, it.text) }
+                                            }.getOrDefault(emptyList())
+                                        }
+                                        com.ozyern.exhale.ui.player.controls.BestPartPill(
+                                            videoId = mediaMetadata?.id,
+                                            durationMs = duration,
+                                            lines = bestPartLines,
+                                            positionMs = { position },
+                                            mixing = false,
+                                            onSeek = { target ->
+                                                if (!isListenTogetherGuest) {
+                                                    playerConnection.player.seekTo(target)
+                                                    position = target
+                                                }
+                                            },
+                                            modifier = Modifier.wrapContentHeight(align = Alignment.Top, unbounded = true),
+                                        )
+                                    }
+                                }
 
                                 if (!isWidePlayerLayout) Row(
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp)
@@ -1471,6 +1527,7 @@ private fun PlayerV2Content(
                         onOpenSleepTimer = { sleepTimer.showDialog.value = true },
                         onOpenAudioDevices = { showAudioDeviceBottomSheet = true },
                                                     onMore = {
+                                                        com.ozyern.exhale.ui.component.MenuAnchor.lastDown = optionsAnchor
                                                         menuState.show {
                                                             PlayerMenu(
                                                                 mediaMetadata = mediaMetadata,
@@ -1534,6 +1591,9 @@ private fun PlayerV2Content(
                                                 sliderPositionProvider = { sliderPosition ?: position },
                                                 showLyrics = true,
                                                 introKey = lyricsIntroKey,
+                                                controlsOpen = controlsVisible,
+                                                onRevealControls = { controlsVisible = true },
+                                                onHideControls = { controlsVisible = false },
                                                 modifier = Modifier.fillMaxSize()
                                             )
                                             // Shares the lyrics menu setting; shown only when an AI provider is configured.
@@ -1698,11 +1758,10 @@ private fun PlayerV2Content(
                                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                     )
                                 }
-                            } else {
+                            } else if (showLyricPreview) {
                                 com.ozyern.exhale.ui.lyricsflow.CurrentLyricStrip(
                                     sliderPositionProvider = { sliderPosition ?: position },
                                     onClick = { playerState = PlayerInternalState.LYRICS },
-                                    color = adaptivePrimary,
                                 )
                             }
                         }
@@ -1710,13 +1769,14 @@ private fun PlayerV2Content(
                         // Apple Music Timeline Slider -- its own composable so the 20Hz position ticker
                     // recomposes only the bar and the two time labels, not the whole controls
                     // column (transport, volume, bottom row) on every tick. 120Hz panels.
-                    // BitChord's scrubber, with the quality badge between the two times.
-                    com.ozyern.exhale.ui.player.bitchord.PlayerScrubber(
+                    // The reference design's scrubber, with the quality badge between the two times.
+                    com.ozyern.exhale.ui.player.controls.PlayerScrubber(
                         shown = {
                             val d = duration
                             if (d > 0) ((sliderPosition ?: position).toFloat() / d).coerceIn(0f, 1f) else 0f
                         },
                         durationMs = duration,
+                        showTotalDuration = showTotalDuration,
                         loading = false,
                         mixing = false,
                         transitionWindow = null,
@@ -1754,8 +1814,8 @@ private fun PlayerV2Content(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // BitChord's transport. A Listen Together guest's middle button mutes, as before.
-                    com.ozyern.exhale.ui.player.bitchord.TransportRow(
+                    // The reference design's transport. A Listen Together guest's middle button mutes, as before.
+                    com.ozyern.exhale.ui.player.controls.TransportRow(
                         isPlaying = if (isListenTogetherGuest) !isMuted else glyphPlaying,
                         isLoading = false,
                         previousEnabled = !isListenTogetherGuest && canSkipPrevious,
@@ -1775,7 +1835,7 @@ private fun PlayerV2Content(
                     val volumeAlpha by androidx.compose.animation.core.animateFloatAsState(
                         if (volumeCovered) 0f else 1f, label = "volumeCovered",
                     )
-                    // BitChord's volume bar.
+                    // The reference design's volume bar.
                     Box(
                         Modifier
                             .fillMaxWidth()
@@ -1784,7 +1844,7 @@ private fun PlayerV2Content(
                             .alpha(if (hideVolumeBar) 0f else 1f)
                             .then(if (hideVolumeBar) Modifier.clearAndSetSemantics {} else Modifier),
                     ) {
-                        com.ozyern.exhale.ui.player.bitchord.VolumeRow(
+                        com.ozyern.exhale.ui.player.controls.VolumeRow(
                             value = { animatedVolume },
                             onValueChange = { newValue ->
                                 if (!hideVolumeBar) {
@@ -1817,7 +1877,7 @@ private fun PlayerV2Content(
                        slideOutVertically(animationSpec = ControlsHideSpec()) { it / 2 } +
                        androidx.compose.animation.shrinkVertically(animationSpec = ControlsHideSpec())
             ) {
-                // BitChord's bottom row: lyrics, the capsule, the queue. The capsule is Exhale's output
+                // The reference design's bottom row: lyrics, the capsule, the queue. The capsule is Exhale's output
                 // glyph (it follows the device: earbuds, speaker...) and, with the queue up, the queue's
                 // modes with 8D beside them.
                 val snapshot by playerConnection.playbackSnapshot.collectAsStateWithLifecycle()
@@ -1844,7 +1904,7 @@ private fun PlayerV2Content(
                         artworkUrl = artworkMetadata?.thumbnailUrl,
                         onMore = { showAudioDeviceBottomSheet = true },
                     )
-                    com.ozyern.exhale.ui.player.bitchord.PlayerActionRow(
+                    com.ozyern.exhale.ui.player.controls.PlayerActionRow(
                         lyricsOpen = isLyricsActive,
                         queueOpen = isQueueActive,
                         shuffleEnabled = snapshot.shuffleEnabled,
@@ -1870,6 +1930,7 @@ private fun PlayerV2Content(
             }
             },
         )
+        }
 
         if (showAudioDeviceBottomSheet) {
             AudioDeviceMenu(onDismiss = { showAudioDeviceBottomSheet = false })

@@ -3,7 +3,7 @@ package com.ozyern.exhale.playback.presentation
 import com.ozyern.exhale.lyrics.LyricsQuery
 import com.ozyern.exhale.lyrics.LyricsDocument
 import com.ozyern.exhale.lyrics.SharedLyricsSource
-import com.ozyern.exhale.lyrics.bitchord.LyricLine
+import com.ozyern.exhale.lyrics.providers.LyricLine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope

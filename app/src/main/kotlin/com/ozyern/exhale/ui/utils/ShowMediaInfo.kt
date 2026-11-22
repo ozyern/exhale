@@ -85,6 +85,11 @@ fun ShowMediaInfo(videoId: String) {
     LaunchedEffect(Unit, videoId) {
         info = YouTube.getMediaInfo(videoId).getOrNull()
     }
+    // Who performed, wrote and produced it, from YouTube Music's credits page for the track.
+    var credits by remember { mutableStateOf<List<com.ozyern.exhale.credits.SongCredit>>(emptyList()) }
+    LaunchedEffect(videoId) {
+        credits = com.ozyern.exhale.credits.SongCredits.fetch(videoId)
+    }
     LaunchedEffect(Unit, videoId) {
         database.song(videoId).collect { song = it }
     }
@@ -379,6 +384,24 @@ fun ShowMediaInfo(videoId: String) {
                             style = AppTheme.typography.bodyMedium,
                             color = AppTheme.colorScheme.onBackground
                         )
+                    }
+                }
+            }
+
+            if (credits.isNotEmpty()) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text(
+                            text = stringResource(R.string.song_credits),
+                            style = AppTheme.typography.labelMedium.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = AppTheme.colorScheme.onSurfaceVariant
+                        )
+                        credits.forEach { credit ->
+                            InfoItem(label = credit.role, value = credit.text)
+                        }
                     }
                 }
             }

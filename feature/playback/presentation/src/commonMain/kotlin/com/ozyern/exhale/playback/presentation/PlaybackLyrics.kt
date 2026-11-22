@@ -37,8 +37,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ozyern.exhale.lyrics.LyricsDocument
-import com.ozyern.exhale.lyrics.bitchord.LyricAlignment
-import com.ozyern.exhale.lyrics.bitchord.LyricLine
+import com.ozyern.exhale.lyrics.providers.LyricAlignment
+import com.ozyern.exhale.lyrics.providers.LyricLine
 import kotlinx.coroutines.flow.first
 import kotlin.math.floor
 

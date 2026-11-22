@@ -178,7 +178,10 @@ fun AppleLibraryScreen(
     val firstItemGap = if (tabletLayout) 8.dp else {
         maxOf(pageInsets.calculateTopPadding(), 115.dp) - pageInsets.calculateTopPadding()
     }
+    val libraryListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    com.ozyern.exhale.ui.utils.ScrollToTopOnReselect(navController) { libraryListState.animateScrollToItem(0) }
     LazyColumn(
+        state = libraryListState,
         modifier = Modifier
             .fillMaxSize()
             .background(colors.systemBackground),
@@ -186,7 +189,7 @@ fun AppleLibraryScreen(
     ) {
         // Reference: 13pt between the large title and the first row.
         item(key = "top_gap", contentType = "gap") { Spacer(Modifier.height(firstItemGap)) }
-        // Your Music Chem: this month's headline facts as a row of cards (BitChord's Replay cards).
+        // Your Music Chem: this month's headline facts as a row of cards (the reference design's Replay cards).
         if (!localOnly) {
             item(key = "music_chem_cards", contentType = "music_chem") {
                 com.ozyern.exhale.ui.screens.musicchem.MusicChemCards(navController)

@@ -558,7 +558,7 @@
     <string name="karaoke">Karaoké</string>
     <string name="apple_music_style">Apple Music</string>
     <string name="apple_music_style_letter">Apple Music V2 (Lettre par lettre)</string>
-    <string name="lyrics_animation_bitchord">Synchro d\'accords</string>
+    <string name="lyrics_animation_standard">Standard</string>
     <string name="exhale_1">Exhale (Fluide)</string>
     <string name="apple_music_lyrics_blur">Flou des paroles Apple Music</string>
     <string name="apple_music_lyrics_blur_desc">Appliquer un flou sur les lignes de paroles inactives pour un effet de mise au point de qualité</string>

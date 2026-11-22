@@ -13,6 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.IntOffset
@@ -56,7 +57,7 @@ fun nowPlayingGradient(pixels: IntArray, w: Int, h: Int, hero: Boolean): NowPlay
     val topEdge = averageRows(pixels, w, 0, band)
     val bottomEdge = averageRows(pixels, w, h - band, h)
     return if (hero) {
-        // Carried on from the cover rather than sunk under it, as BitChord's player does: the ground
+        // Carried on from the cover rather than sunk under it, as the reference design's player does: the ground
         // under the transport stays this cover's colour, only a little deeper.
         NowPlayingGradient(shade(bottomEdge, maxValue = 0.58f, scale = 0.95f), shade(bottomEdge, maxValue = 0.46f, scale = 0.80f))
     } else {
@@ -290,7 +291,7 @@ private fun BleedingArtwork(url: String, heroFraction: Float, hero: Boolean = fa
         if (value != null) return@produceState
         value = withContext(Dispatchers.IO) {
             val request = coil3.request.ImageRequest.Builder(context)
-                .data(url.resize(120, 120))
+                .data(url.resize(226, 226))
                 // Tiny on purpose: softened once here and stretched smoothly when drawn, so the
                 // ground costs one plain image. A live blur layer under the dock-to-player morph
                 // would be re-rendered on every frame of it.
@@ -336,19 +337,26 @@ private fun BleedingArtwork(url: String, heroFraction: Float, hero: Boolean = fa
             colorFilter = saturate,
             filterQuality = androidx.compose.ui.graphics.FilterQuality.Low,
         )
-        // Edge extension: the bottom 6% of the picture, stretched down to the foot of the screen.
-        val stripH = (srcH * 0.06f).roundToInt().coerceAtLeast(1)
+        // Below the banner the softened cover carries on as its own reflection: the row either side
+        // of the join is the same row, so there is no edge where the banner stops, and nothing is
+        // stretched into streaks the way extending its last rows was.
         val rest = (size.height - bannerH).roundToInt()
         if (rest > 0) {
-            drawImage(
-                image = image,
-                srcOffset = IntOffset(srcX, srcY + srcH.roundToInt() - stripH),
-                srcSize = IntSize(srcW.roundToInt(), stripH),
-                dstOffset = IntOffset(0, bannerH.roundToInt()),
-                dstSize = IntSize(size.width.roundToInt(), rest),
-                colorFilter = saturate,
-                filterQuality = androidx.compose.ui.graphics.FilterQuality.Low,
-            )
+            withTransform({ scale(1f, -1f, pivot = Offset(0f, bannerH)) }) {
+                drawImage(
+                    image = image,
+                    srcOffset = IntOffset(srcX, srcY),
+                    srcSize = IntSize(srcW.roundToInt(), srcH.roundToInt()),
+                    dstOffset = IntOffset.Zero,
+                    dstSize = IntSize(size.width.roundToInt(), bannerH.roundToInt()),
+                    colorFilter = saturate,
+                    filterQuality = androidx.compose.ui.graphics.FilterQuality.Low,
+                )
+            }
+            // A very short screen reaches past the reflection: the foot's colour holds the rest.
+            if (size.height > bannerH * 2f) {
+                drawRect(foot, topLeft = Offset(0f, bannerH * 2f), size = Size(size.width, size.height - bannerH * 2f))
+            }
             // The stretched columns run together on the way down into the colour the cover's foot
             // averages to, so the ground under the transport is calm and still this cover's.
             drawRect(
@@ -364,12 +372,20 @@ private fun BleedingArtwork(url: String, heroFraction: Float, hero: Boolean = fa
             )
         }
         // Only as dark as the controls need: clear under the cover, deepening towards the transport.
-        // The hero's ground keeps the cover's colour (BitChord's player): a lighter hand there.
+        // The hero's ground keeps the cover's colour (the reference design's player): a lighter hand there.
         drawRect(if (hero) HeroScrim else SquareScrim)
     }
 }
 
-private const val BLEED_SIZE = 40
+/**
+ * The bleed's source size. Large enough that the bilinear stretch over a whole screen shows no
+ * blocks or diamonds, small enough that the blur below costs a few milliseconds once per cover.
+ */
+private const val BLEED_SIZE = 96
+
+/** Box radius and passes for the bleed: three passes approach a gaussian of about 5% of the cover. */
+private const val BLEED_BLUR_RADIUS = 4
+private const val BLEED_BLUR_PASSES = 3
 
 private val SquareScrim = Brush.verticalGradient(
     0f to Color.Black.copy(alpha = 0.06f),
@@ -387,7 +403,7 @@ private val HeroScrim = Brush.verticalGradient(
 
 /**
  * The cover's colour as a light tint for the player's quieter icons (volume, lyrics, output,
- * queue), as BitChord tints them: the hue kept, softened and lifted so it reads on the cover's
+ * queue), as the reference design tints them: the hue kept, softened and lifted so it reads on the cover's
  * own ground. A colourless cover gives soft white.
  */
 internal fun nowPlayingAccent(argb: Int): Color {
@@ -399,24 +415,51 @@ internal fun nowPlayingAccent(argb: Int): Color {
     return Color(android.graphics.Color.HSVToColor(hsv))
 }
 
-/** [bitmap] box-blurred a few times: with the smooth stretch at draw time, a heavy blur for free. */
-private fun softened(bitmap: android.graphics.Bitmap): android.graphics.Bitmap {
+/**
+ * [bitmap] blurred by separable box passes: three of them approach a gaussian, so with the smooth
+ * stretch at draw time the ground is soft all over with no blocky edges. Edges clamp, so the
+ * cover's border colours run on rather than darkening.
+ */
+internal fun softened(
+    bitmap: android.graphics.Bitmap,
+    radius: Int = BLEED_BLUR_RADIUS,
+    passes: Int = BLEED_BLUR_PASSES,
+): android.graphics.Bitmap {
     val w = bitmap.width
     val h = bitmap.height
-    if (w < 3 || h < 3) return bitmap
+    if (w < 3 || h < 3 || radius < 1) return bitmap
     var src = IntArray(w * h)
     bitmap.getPixels(src, 0, w, 0, 0, w, h)
     var dst = IntArray(w * h)
-    repeat(3) {
-        for (y in 0 until h) for (x in 0 until w) {
-            var r = 0; var g = 0; var b = 0; var n = 0
-            for (dy in -1..1) for (dx in -1..1) {
-                val c = src[(y + dy).coerceIn(0, h - 1) * w + (x + dx).coerceIn(0, w - 1)]
-                r += (c shr 16) and 0xFF; g += (c shr 8) and 0xFF; b += c and 0xFF; n++
+    val span = 2 * radius + 1
+    repeat(passes) {
+        // Horizontal, then vertical: each a running sum, so the cost doesn't grow with the radius.
+        for (pass in 0..1) {
+            val horizontal = pass == 0
+            val lines = if (horizontal) h else w
+            val length = if (horizontal) w else h
+            for (line in 0 until lines) {
+                fun at(i: Int): Int {
+                    val c = i.coerceIn(0, length - 1)
+                    return if (horizontal) src[line * w + c] else src[c * w + line]
+                }
+                var r = 0; var g = 0; var b = 0
+                for (k in -radius..radius) {
+                    val c = at(k)
+                    r += (c shr 16) and 0xFF; g += (c shr 8) and 0xFF; b += c and 0xFF
+                }
+                for (i in 0 until length) {
+                    val out = (0xFF shl 24) or ((r / span) shl 16) or ((g / span) shl 8) or (b / span)
+                    if (horizontal) dst[line * w + i] = out else dst[i * w + line] = out
+                    val add = at(i + radius + 1)
+                    val drop = at(i - radius)
+                    r += ((add shr 16) and 0xFF) - ((drop shr 16) and 0xFF)
+                    g += ((add shr 8) and 0xFF) - ((drop shr 8) and 0xFF)
+                    b += (add and 0xFF) - (drop and 0xFF)
+                }
             }
-            dst[y * w + x] = (0xFF shl 24) or ((r / n) shl 16) or ((g / n) shl 8) or (b / n)
+            val t = src; src = dst; dst = t
         }
-        val t = src; src = dst; dst = t
     }
     return android.graphics.Bitmap.createBitmap(src, w, h, android.graphics.Bitmap.Config.ARGB_8888)
 }

@@ -128,6 +128,27 @@ fun PlayerSettings(
         KeepScreenOn,
         defaultValue = false
     )
+    val (premiumAudio, onPremiumAudioChange) = rememberPreference(
+        com.ozyern.exhale.constants.PremiumAudioKey,
+        defaultValue = false
+    )
+    val (innerTubeCookie) = rememberPreference(com.ozyern.exhale.constants.InnerTubeCookieKey, "")
+    val (showLyricPreview, onShowLyricPreviewChange) = rememberPreference(
+        com.ozyern.exhale.constants.ShowLyricPreviewKey,
+        defaultValue = true
+    )
+    val (motionCovers, onMotionCoversChange) = rememberPreference(
+        com.ozyern.exhale.constants.MotionCoversKey,
+        defaultValue = true
+    )
+    val (showBestPart, onShowBestPartChange) = rememberPreference(
+        com.ozyern.exhale.constants.ShowBestPartKey,
+        defaultValue = true
+    )
+    val (showTotalDuration, onShowTotalDurationChange) = rememberPreference(
+        com.ozyern.exhale.constants.ShowTotalDurationKey,
+        defaultValue = false
+    )
     var showAudioQualityDialog by remember {
         mutableStateOf(false)
     }
@@ -176,6 +197,21 @@ fun PlayerSettings(
                             },
                             onClick = { showAudioQualityDialog = true }
                         ))
+                        // Only a signed-in account can be offered Premium's stream.
+                        if (innerTubeCookie.isNotBlank()) {
+                            add(IosSettingsItem(
+                                icon = painterResource(R.drawable.graphic_eq),
+                                title = { Text(stringResource(R.string.premium_audio)) },
+                                description = { Text(stringResource(R.string.premium_audio_desc)) },
+                                trailingContent = {
+                                    Switch(
+                                        checked = premiumAudio,
+                                        onCheckedChange = onPremiumAudioChange
+                                    )
+                                },
+                                onClick = { onPremiumAudioChange(!premiumAudio) }
+                            ))
+                        }
                         add(IosSettingsItem(
                             icon = painterResource(R.drawable.volume_up),
                             title = { Text(stringResource(R.string.audio_normalization)) },
@@ -437,6 +473,54 @@ fun PlayerSettings(
                                 )
                             },
                             onClick = { onKeepScreenOnChange(!keepScreenOn) }
+                        ),
+                        IosSettingsItem(
+                            icon = painterResource(R.drawable.timer),
+                            title = { Text(stringResource(R.string.show_total_duration)) },
+                            description = { Text(stringResource(R.string.show_total_duration_desc)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = showTotalDuration,
+                                    onCheckedChange = onShowTotalDurationChange
+                                )
+                            },
+                            onClick = { onShowTotalDurationChange(!showTotalDuration) }
+                        ),
+                        IosSettingsItem(
+                            icon = painterResource(R.drawable.music_note),
+                            title = { Text(stringResource(R.string.show_best_part)) },
+                            description = { Text(stringResource(R.string.show_best_part_desc)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = showBestPart,
+                                    onCheckedChange = onShowBestPartChange
+                                )
+                            },
+                            onClick = { onShowBestPartChange(!showBestPart) }
+                        ),
+                        IosSettingsItem(
+                            icon = painterResource(R.drawable.lyrics),
+                            title = { Text(stringResource(R.string.show_lyric_preview)) },
+                            description = { Text(stringResource(R.string.show_lyric_preview_desc)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = showLyricPreview,
+                                    onCheckedChange = onShowLyricPreviewChange
+                                )
+                            },
+                            onClick = { onShowLyricPreviewChange(!showLyricPreview) }
+                        ),
+                        IosSettingsItem(
+                            icon = painterResource(R.drawable.slow_motion_video),
+                            title = { Text(stringResource(R.string.motion_covers)) },
+                            description = { Text(stringResource(R.string.motion_covers_desc)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = motionCovers,
+                                    onCheckedChange = onMotionCoversChange
+                                )
+                            },
+                            onClick = { onMotionCoversChange(!motionCovers) }
                         )
                     )
                 )

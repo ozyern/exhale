@@ -558,7 +558,7 @@
     <string name="karaoke">Karaoke</string>
     <string name="apple_music_style">Apple Music</string>
     <string name="apple_music_style_letter">Apple Music V2 (Letter by Letter)</string>
-    <string name="lyrics_animation_bitchord">BitChord</string>
+    <string name="lyrics_animation_standard">Standard</string>
     <string name="exhale_1">Exhale (Fluid)</string>
     <string name="apple_music_lyrics_blur">Apple Music Lyrics Blur</string>
     <string name="apple_music_lyrics_blur_desc">Apply blur to inactive lyrics lines for a premium focus effect</string>
@@ -1612,4 +1612,21 @@
 
     <!-- What the quality card calls the lossless (FLAC) source -->
     <string name="lossless_source_name">Sabrina\'s Basement</string>
+    <!-- Player options -->
+    <string name="show_total_duration">Show total duration</string>
+    <string name="show_total_duration_desc">The scrubber shows how long the song is instead of the time left</string>
+    <string name="show_best_part">Best Part button</string>
+    <string name="show_best_part_desc">Skip to the part of the song people replay most</string>
+    <string name="show_lyric_preview">Lyric preview</string>
+    <string name="show_lyric_preview_desc">The line being sung, above the scrubber</string>
+    <string name="motion_covers">Motion covers</string>
+    <string name="motion_covers_desc">Looping clips in place of the artwork, where a song has one</string>
+    <string name="playback_tile_label">Exhale</string>
+    <string name="song_credits">Credits</string>
+    <string name="remove_from_queue_short">Remove</string>
+    <string name="share_as_video">Share as video</string>
+    <string name="making_lyrics_video">Making the lyrics video</string>
+    <string name="lyrics_video_failed">Couldn\'t make the lyrics video</string>
+    <string name="premium_audio">YouTube Premium audio</string>
+    <string name="premium_audio_desc">Stream the higher-quality 256 kbps Opus. Needs a Premium account</string>
 </resources>

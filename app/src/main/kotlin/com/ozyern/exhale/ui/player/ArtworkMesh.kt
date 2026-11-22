@@ -2,8 +2,8 @@
  * Convx Project (C) 2026
  * Licensed under GPL-3.0 | See git history for contributors
  *
- * The mesh and the blurred cover follow BitChord's ArtworkMeshBackdrop
- * (github.com/kushagrasinghx/BitChord, GPL-3.0).
+ * The mesh and the blurred cover follow the reference design's ArtworkMeshBackdrop
+ *.
  */
 
 package com.ozyern.exhale.ui.player

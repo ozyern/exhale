@@ -1,7 +1,7 @@
 /*
  * Exhale Project Original (2026)
  * ozyern (github.com/ozyern)
- * Licensed Under GPL-3.0 | see git history for contributors
+ * Licensed Under GPL-3.0 | see git history and NOTICE for contributors
  */
 
 package com.ozyern.exhale.ui.lyricsflow
@@ -9,7 +9,7 @@ package com.ozyern.exhale.ui.lyricsflow
 /**
  * One word of a line, with the stretch of the song it is sung over.
  *
- * iOS's TTML splits long words into syllables. The word is still the unit
+ * Apple's TTML splits long words into syllables. The word is still the unit
  * the line is laid out, lifted and lit in — "e" and "nough" are one word on
  * screen — so [startMs] is the first syllable's start and [endMs] the last
  * one's end. But the syllables keep their own timing in [syllables], and the
@@ -238,7 +238,7 @@ data class LyricLine(
     /**
      * How far the word covering [positionMs] has lifted, 0..1.
      *
-     * the iOS music app's words don't only light up, they rise as they land and
+     * Apple Music's words don't only light up, they rise as they land and
      * settle back once they are past — the lift travelling along the line is
      * most of what separates singing from a bar sliding across the text.
      *

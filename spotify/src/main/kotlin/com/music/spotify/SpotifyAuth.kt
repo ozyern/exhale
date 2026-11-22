@@ -21,7 +21,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 
-/** Web player token capture adapted from BitChord's Android SpotifyToken, GPL-3.0. */
+/** Web player token capture adapted from the reference design's Android SpotifyToken, GPL-3.0. */
 object SpotifyAuth {
     const val LOGIN_URL = "https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2F"
     private const val ORIGIN = "https://open.spotify.com"

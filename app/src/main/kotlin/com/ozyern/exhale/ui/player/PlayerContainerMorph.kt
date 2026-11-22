@@ -309,8 +309,8 @@ fun PlayerContainerMorphOverlay(
 }
 
 /**
- * BitChord's dock (PlayerMorph.rise), after its PlayerSheetMotion and NowPlayingScreen
- * (github.com/kushagrasinghx/BitChord, GPL-3.0).
+ * The reference design's dock (PlayerMorph.rise), after its PlayerSheetMotion and NowPlayingScreen
+ *.
  *
  * Where the sheet's top edge is at [fraction]: the sheet slides the whole height of the screen,
  * linear with its own progress so a finger on it stays under the finger.

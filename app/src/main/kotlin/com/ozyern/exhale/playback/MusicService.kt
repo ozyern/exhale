@@ -1400,6 +1400,11 @@ class MusicService :
                 .build()
         player.repeatMode = dataStore.get(RepeatModeKey, REPEAT_MODE_OFF)
 
+        // YouTube Premium audio, read by the stream lookup as it resolves each song.
+        dataStore.data
+            .map { it[com.ozyern.exhale.constants.PremiumAudioKey] ?: false }
+            .distinctUntilChanged()
+            .collectLatest(scope) { on -> YTPlayerUtils.premiumAudioSetting = { on } }
         ArchiveFlac.init(this)
         dataStore.data
             .map { it[com.ozyern.exhale.constants.PreferArchiveFlacKey] ?: true }
@@ -1526,6 +1531,22 @@ class MusicService :
         player.setOffloadEnabled(cachedOffloadEnabled && !analysisOnly)
         player.skipSilenceEnabled = cachedSkipSilence && !cachedBitPerfect && !roomPlaybackBridge.jamActive.value
         if (!analysisOnly) player.addAnalyticsListener(crashSafe(PlaybackStatsListener(false, this@MusicService)))
+        if (!analysisOnly) {
+            // A Dolby track goes to the phone's own Dolby rendering; Exhale's effects stand aside
+            // for as long as it plays (see DolbyHandoff). Read off the audible player's decoder input.
+            player.addAnalyticsListener(object : AnalyticsListener {
+                override fun onAudioInputFormatChanged(
+                    eventTime: AnalyticsListener.EventTime,
+                    format: androidx.media3.common.Format,
+                    decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?,
+                ) {
+                    if (player.volume > 0f || role == PlayerRole.SESSION) {
+                        com.ozyern.exhale.playback.audio.DolbyHandoff.active =
+                            com.ozyern.exhale.playback.DeviceCodecs.isDolbyRendered(format.sampleMimeType)
+                    }
+                }
+            })
+        }
 
         if (role == PlayerRole.SESSION) _playerFlow.value = player
         return player
@@ -4409,6 +4430,7 @@ class MusicService :
                     val songTitle = song?.title ?: getString(R.string.no_song_playing)
                     val artistName = songData?.artists?.joinToString(", ") { it.name } ?: getString(R.string.tap_to_open)
                     val isLiked = songData?.song?.liked == true
+                    com.ozyern.exhale.widget.PlaybackTile.publish(this@MusicService, isPlaying, song?.title)
 
                     widgetManager.updateWidgets(
                         title = songTitle,

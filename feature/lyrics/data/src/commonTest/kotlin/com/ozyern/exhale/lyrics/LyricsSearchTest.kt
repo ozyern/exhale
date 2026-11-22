@@ -1,6 +1,6 @@
 package com.ozyern.exhale.lyrics
 
-import com.ozyern.exhale.lyrics.bitchord.LyricLine
+import com.ozyern.exhale.lyrics.providers.LyricLine
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

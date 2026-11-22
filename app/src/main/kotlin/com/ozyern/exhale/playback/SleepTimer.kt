@@ -13,7 +13,12 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import com.ozyern.exhale.playback.PlaybackSleepTimer
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 class SleepTimer(
@@ -23,8 +28,15 @@ class SleepTimer(
     private val policy = PlaybackSleepTimer(
         scope = scope,
         nowMillis = System::currentTimeMillis,
-        pausePlayback = { player.pause() },
+        pausePlayback = {
+            player.pause()
+            // Back to full for whenever playback is started again.
+            restoreVolume()
+        },
     )
+
+    /** The volume the fade started from, while one is under way. */
+    private var fadeFrom: Float? = null
     val sharedPolicy: PlaybackSleepTimer get() = policy
 
     var triggerTime by mutableLongStateOf(-1L)
@@ -41,6 +53,35 @@ class SleepTimer(
                 pauseWhenSongEnd = state.pauseWhenTrackEnds
             }
         }
+        // The last stretch of a timed sleep fades the music out rather than cutting it: the
+        // volume eases down over [FADE_MS] and the pause lands on silence. Cleared or
+        // restarted, the fade lets go and the volume comes back.
+        scope.launch {
+            policy.state.map { it.triggerTimeMs }.distinctUntilChanged().collectLatest { trigger ->
+                if (trigger < 0L) {
+                    restoreVolume()
+                    return@collectLatest
+                }
+                val fadeStart = trigger - FADE_MS
+                delay((fadeStart - System.currentTimeMillis()).coerceAtLeast(0L))
+                val from = player.volume.takeIf { it > 0f } ?: return@collectLatest
+                fadeFrom = from
+                while (true) {
+                    val left = trigger - System.currentTimeMillis()
+                    if (left <= 0L) break
+                    val t = (left.toFloat() / FADE_MS).coerceIn(0f, 1f)
+                    // Eased: loudness falls evenly to the ear rather than dropping off late.
+                    player.volume = from * t * t
+                    delay(FADE_STEP_MS)
+                }
+                player.volume = 0f
+            }
+        }
+    }
+
+    private fun restoreVolume() {
+        fadeFrom?.let { player.volume = it }
+        fadeFrom = null
     }
 
     fun start(minute: Int) {
@@ -67,5 +108,11 @@ class SleepTimer(
 
     private fun pauseAtSongEnd() {
         policy.onTrackEnded()
+    }
+
+    private companion object {
+        /** The fade before a timed sleep pauses. */
+        const val FADE_MS = 30_000L
+        const val FADE_STEP_MS = 50L
     }
 }

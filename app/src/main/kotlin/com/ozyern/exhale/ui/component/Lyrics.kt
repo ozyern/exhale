@@ -286,6 +286,8 @@ private fun ShareLyricsDialog(
     onDismiss: () -> Unit,
     onShareText: () -> Unit,
     onShareImage: () -> Unit,
+    /** Null when there is nothing to make a video of. */
+    onShareVideo: (() -> Unit)? = null,
 ) {
     BasicAlertDialog(onDismissRequest = onDismiss) {
         Card(
@@ -310,6 +312,12 @@ private fun ShareLyricsDialog(
                     text = stringResource(R.string.share_as_image),
                     onClick = onShareImage,
                 )
+                if (onShareVideo != null) {
+                    ShareLyricsOption(
+                        text = stringResource(R.string.share_as_video),
+                        onClick = onShareVideo,
+                    )
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
                     horizontalArrangement = Arrangement.End,
@@ -428,6 +436,10 @@ fun Lyrics(
     // Changing this key resets the list and glides to the active line. Zero disables the intro.
     introKey: Int = 0,
     textSizeOverride: Float? = null,
+    /** Whether the player's controls are on screen; the default style hides them as the reader scrolls on. */
+    controlsOpen: Boolean = true,
+    onRevealControls: () -> Unit = {},
+    onHideControls: () -> Unit = {},
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val database = LocalDatabase.current.get()
@@ -675,6 +687,11 @@ fun Lyrics(
     var showProgressDialog by remember { mutableStateOf(false) }
     var showShareDialog by remember { mutableStateOf(false) }
     var shareDialogData by remember { mutableStateOf<Triple<String, String, String>?>(null) }
+    // The picked lines with their timings, for the video share; empty when the lyrics are unsynced.
+    var shareVideoLines by remember { mutableStateOf<List<ShareLine>>(emptyList()) }
+    var exportingVideo by remember { mutableStateOf(false) }
+    // The lines the default lyrics draw, which their picked indices refer to.
+    val defaultPanelLines = remember(lyrics) { com.ozyern.exhale.ui.lyricsflow.panelLines(lyrics) }
 
     var showColorPickerDialog by remember { mutableStateOf(false) }
     var previewBackgroundColor by remember { mutableStateOf(Color(0xFF242424)) }
@@ -691,17 +708,17 @@ fun Lyrics(
     val usesArchiveTuneRenderer = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
         lyricsAnimationStyle == LyricsAnimationStyle.ARCHIVE_TUNE &&
         isSynced && lines.isNotEmpty()
-    // Exhale master's Melody, and BitChord's own lyrics view: both need timed lines, and fall back
+    // Exhale master's Melody, and the reference design's own lyrics view: both need timed lines, and fall back
     // to the Flamingo renderer for lyrics without them.
     val usesMelodyRenderer = lyricsAnimationStyle == LyricsAnimationStyle.MELODY && isSynced && lines.isNotEmpty()
-    val usesBitChordRenderer = lyricsAnimationStyle == LyricsAnimationStyle.BITCHORD && isSynced && lines.isNotEmpty()
+    val usesDefaultRenderer = lyricsAnimationStyle == LyricsAnimationStyle.STANDARD && isSynced && lines.isNotEmpty()
     val usesFlamingoRenderer = (lyricsAnimationStyle == LyricsAnimationStyle.FLAMINGO ||
             lyricsAnimationStyle == LyricsAnimationStyle.EXHALE_1 ||
-            lyricsAnimationStyle == LyricsAnimationStyle.BITCHORD ||
+            lyricsAnimationStyle == LyricsAnimationStyle.STANDARD ||
             lyricsAnimationStyle == LyricsAnimationStyle.MELODY) && lines.isNotEmpty() &&
-        !usesMelodyRenderer && !usesBitChordRenderer
+        !usesMelodyRenderer && !usesDefaultRenderer
     val usesCrawlRenderer = lyricsAnimationStyle == LyricsAnimationStyle.STAR_CRAWL && lines.isNotEmpty()
-    val usesFlowRenderer = usesMelodyRenderer || usesBitChordRenderer
+    val usesFlowRenderer = usesMelodyRenderer || usesDefaultRenderer
     val hasProviderRow = isLyricsProviderShown && !usesArchiveTuneRenderer && !usesFlamingoRenderer && !usesCrawlRenderer && !usesFlowRenderer
 
     val lazyListState = rememberLazyListState()
@@ -862,24 +879,38 @@ fun Lyrics(
                 glowColor = Color(flamingoGlowColor),
                 modifier = Modifier.fillMaxSize(),
             )
-        } else if (usesBitChordRenderer) {
-            val lyricsOffset = currentSong?.song?.lyricsOffset?.toLong() ?: 0L
-            // The song's own lyric offset, on the clock the style runs off.
-            LaunchedEffect(lyricsOffset) {
-                com.ozyern.exhale.ui.lyricsflow.PlayerSettings.lyricsOffsetMs.value = -lyricsOffset.toInt()
-            }
-            com.ozyern.exhale.ui.lyricsflow.ExhaleBitChordLyrics(
+        } else if (usesDefaultRenderer) {
+            com.ozyern.exhale.ui.lyricsflow.ExhaleDefaultLyrics(
                 sliderPositionProvider = sliderPositionProvider,
-                // The chosen lyrics font, or BitChord's own bold sans.
-                fontFamily = lyricsFontFamily.takeIf { lyricsFontSelection != "default" },
-                // Left at the app's defaults, the style keeps its own measure: 34 on 41.
-                textSize = if (textSizeOverride == null && storedLyricsTextSize == 30f) 34f else lyricsTextSize,
-                lineSpacing = if (lyricsLineSpacing == 1.3f) 41f / 34f else lyricsLineSpacing.coerceIn(1.05f, 1.6f),
+                offsetMs = currentSong?.song?.lyricsOffset?.toLong() ?: 0L,
+                // Tapping a line plays from it, unless a Listen Together host holds the song.
                 onSeek = if (changeLyrics && !isGuest) {
-                    { playerConnection.player.seekTo((it - lyricsOffset).coerceAtLeast(0)) }
+                    { target -> playerConnection.player.seekTo(target) }
                 } else {
                     null
                 },
+                controlsOpen = controlsOpen,
+                // A long press on a line starts choosing lines to share; taps then add or drop them.
+                picking = isSelectionModeActive,
+                picked = selectedIndices.toSet(),
+                onPickLine = { index ->
+                    isSelectionModeActive = true
+                    if (index !in selectedIndices) {
+                        if (selectedIndices.size < maxSelectionLimit) selectedIndices.add(index) else showMaxSelectionToast = true
+                    }
+                },
+                onTogglePick = { index ->
+                    if (index in selectedIndices) {
+                        selectedIndices.remove(index)
+                        if (selectedIndices.isEmpty()) isSelectionModeActive = false
+                    } else if (selectedIndices.size < maxSelectionLimit) {
+                        selectedIndices.add(index)
+                    } else {
+                        showMaxSelectionToast = true
+                    }
+                },
+                onRevealControls = onRevealControls,
+                onHideControls = onHideControls,
                 modifier = Modifier.fillMaxSize(),
             )
         } else if (usesCrawlRenderer) {
@@ -1029,7 +1060,7 @@ fun Lyrics(
                     Box(Modifier.lyricRubber(rubber, index + if (hasProviderRow) 1 else 0)) {
                     run {
                     val isSelected = selectedIndices.contains(index)
-                    if ((lyricsAnimationStyle == LyricsAnimationStyle.BITCHORD ||
+                    if ((lyricsAnimationStyle == LyricsAnimationStyle.STANDARD ||
                             lyricsAnimationStyle == LyricsAnimationStyle.EXHALE_1) &&
                         itemWords.isNotEmpty()
                     ) {
@@ -1906,9 +1937,25 @@ fun Lyrics(
         },
         onShareSelection = {
             if (selectedIndices.isNotEmpty()) {
-                val selectedLyricsText = selectedIndices.sorted()
-                    .mapNotNull { lines.getOrNull(it)?.text }
-                    .joinToString("\n")
+                val picked = selectedIndices.sorted()
+                // The default lyrics pick from their own lines; the other styles from the stored ones.
+                shareVideoLines = if (usesDefaultRenderer) {
+                    picked.mapNotNull { defaultPanelLines.getOrNull(it) }.map { line ->
+                        ShareLine(line.text, line.timeMs.takeIf { isSynced }, line.endMs.takeIf { isSynced && it > line.timeMs })
+                    }
+                } else {
+                    picked.mapNotNull { index ->
+                        lines.getOrNull(index)?.let { entry ->
+                            val next = lines.getOrNull(index + 1)?.time
+                            ShareLine(entry.text, entry.time.takeIf { isSynced }, next?.takeIf { isSynced })
+                        }
+                    }
+                }
+                val selectedLyricsText = if (usesDefaultRenderer) {
+                    picked.mapNotNull { defaultPanelLines.getOrNull(it)?.text }.joinToString("\n")
+                } else {
+                    picked.mapNotNull { lines.getOrNull(it)?.text }.joinToString("\n")
+                }
 
                 if (selectedLyricsText.isNotBlank()) {
                     shareDialogData = Triple(
@@ -1962,7 +2009,65 @@ fun Lyrics(
                 showColorPickerDialog = true
                 showShareDialog = false
             },
+            onShareVideo = shareVideoLines.takeIf { it.isNotEmpty() }?.let { videoLines ->
+                {
+                    showShareDialog = false
+                    exportingVideo = true
+                    scope.launch {
+                        try {
+                            val id = mediaMetadata?.id
+                            // The song's own audio, cut to the picked lines; silent when it can't be had.
+                            val audio = id?.takeIf { videoLines.any { it.startMs != null } && !it.startsWith("content://") }?.let { videoId ->
+                                withContext(Dispatchers.IO) {
+                                    com.ozyern.exhale.utils.YTPlayerUtils.playerResponseForPlayback(
+                                        videoId = videoId,
+                                        audioQuality = com.ozyern.exhale.constants.AudioQuality.AUTO,
+                                        connectivityManager = context.getSystemService(android.net.ConnectivityManager::class.java)!!,
+                                        context = context,
+                                        allowLossless = false,
+                                        requireYouTube = true,
+                                        preferAac = true,
+                                    ).getOrNull()?.streamUrl
+                                }
+                            } ?: id?.takeIf { it.startsWith("content://") }
+                            val video = exportLyricsVideo(
+                                context = context,
+                                lines = videoLines,
+                                title = songTitle,
+                                artist = artists,
+                                coverUrl = mediaMetadata?.thumbnailUrl,
+                                audioUrl = audio,
+                            )
+                            val intent = video?.let { shareVideoIntent(context, it) }
+                            if (intent != null) {
+                                context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_lyrics)))
+                            } else {
+                                Toast.makeText(context, context.getString(R.string.lyrics_video_failed), Toast.LENGTH_SHORT).show()
+                            }
+                        } finally {
+                            exportingVideo = false
+                        }
+                    }
+                }
+            },
         )
+    }
+
+    if (exportingVideo) {
+        BasicAlertDialog(onDismissRequest = { }) {
+            Card(
+                shape = AppTheme.shapes.medium,
+                colors = CardDefaults.cardColors(containerColor = AppTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            ) {
+                Box(modifier = Modifier.padding(32.dp)) {
+                    Text(
+                        text = stringResource(R.string.making_lyrics_video) + "\n" + stringResource(R.string.please_wait),
+                        color = AppTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
     }
 
     val colorPickerData = shareDialogData

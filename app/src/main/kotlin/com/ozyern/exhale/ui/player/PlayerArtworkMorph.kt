@@ -252,7 +252,7 @@ fun PlayerArtworkMorphOverlay(
                     return@graphicsLayer
                 }
                 val rise = PlayerMorph.rise
-                // BitChord's dock: one straight blend between the mini cover and the cover's
+                // The reference design's dock: one straight blend between the mini cover and the cover's
                 // place, that place carried part of the way with the sheet -- as far as it can
                 // ride and still never pass the mini cover, so the artwork follows the finger
                 // most of the way and lands on the cover with its speed run down to nothing.

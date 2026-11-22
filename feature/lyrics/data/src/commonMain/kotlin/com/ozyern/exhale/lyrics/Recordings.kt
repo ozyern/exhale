@@ -6,7 +6,7 @@
 
 package com.ozyern.exhale.lyrics
 
-import com.ozyern.exhale.lyrics.bitchord.BiniLyrics
+import com.ozyern.exhale.lyrics.providers.BiniLyrics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock

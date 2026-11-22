@@ -477,6 +477,21 @@
             android:exported="false"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
+        <!-- Quick Settings: play or pause the last queue. -->
+        <service
+            android:name=".widget.PlaybackTile"
+            android:exported="true"
+            android:icon="@drawable/play"
+            android:label="@string/playback_tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="false" />
+        </service>
+
         <service
             android:name=".playback.MusicService"
             android:exported="true"

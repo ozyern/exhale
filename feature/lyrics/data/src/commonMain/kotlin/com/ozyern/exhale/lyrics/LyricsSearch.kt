@@ -6,9 +6,9 @@
 
 package com.ozyern.exhale.lyrics
 
-import com.ozyern.exhale.lyrics.bitchord.LyricLine
-import com.ozyern.exhale.lyrics.bitchord.artistForLyricsSearch
-import com.ozyern.exhale.lyrics.bitchord.forLyricsSearch
+import com.ozyern.exhale.lyrics.providers.LyricLine
+import com.ozyern.exhale.lyrics.providers.artistForLyricsSearch
+import com.ozyern.exhale.lyrics.providers.forLyricsSearch
 
 /**
  * What the lyrics sites are asked for, and whether what they answer can be this recording: the same

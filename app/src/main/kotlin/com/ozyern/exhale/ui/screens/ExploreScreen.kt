@@ -201,7 +201,10 @@ fun ExploreScreen(
 
     // The activity owns the shared title and frosted top bar.
     Box(Modifier.fillMaxSize().background(colors.systemBackground)) {
+    val exploreListState = rememberLazyListState()
+    com.ozyern.exhale.ui.utils.ScrollToTopOnReselect(navController) { exploreListState.animateScrollToItem(0) }
     androidx.compose.foundation.lazy.LazyColumn(
+        state = exploreListState,
         modifier = Modifier
             .fillMaxSize(),
         contentPadding = PaddingValues(

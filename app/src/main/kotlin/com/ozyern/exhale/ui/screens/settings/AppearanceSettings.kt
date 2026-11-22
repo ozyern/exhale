@@ -895,7 +895,7 @@ fun ColumnScope.LyricsAnimationSheetContent() {
     }
     val fill = selected == LyricsAnimationStyle.FLAMINGO || selected == LyricsAnimationStyle.KARAOKE || selected == LyricsAnimationStyle.ARCHIVE_TUNE ||
         selected == LyricsAnimationStyle.APPLE || selected == LyricsAnimationStyle.APPLE_V2 ||
-        selected == LyricsAnimationStyle.BITCHORD
+        selected == LyricsAnimationStyle.STANDARD
 
     run {
         Column(

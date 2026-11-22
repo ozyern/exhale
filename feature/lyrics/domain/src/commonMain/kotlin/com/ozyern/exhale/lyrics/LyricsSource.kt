@@ -1,6 +1,6 @@
 package com.ozyern.exhale.lyrics
 
-import com.ozyern.exhale.lyrics.bitchord.LyricLine
+import com.ozyern.exhale.lyrics.providers.LyricLine
 
 data class LyricsQuery(val id: String, val title: String, val artist: String, val durationMs: Long, val album: String? = null)
 

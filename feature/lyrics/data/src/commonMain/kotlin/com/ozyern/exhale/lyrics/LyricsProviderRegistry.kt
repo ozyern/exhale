@@ -9,7 +9,7 @@ object LyricsProviderRegistry {
     private val providers = listOf(
         YouTubeSubtitleLyricsProvider,
         YouTubeLyricsProvider,
-    ).plus(BitChordLyricsProviders.all).associateBy(LyricsProvider::id)
+    ).plus(SyncedLyricsProviders.all).associateBy(LyricsProvider::id)
 
     private val legacyDisplayNames = providers.values.associate { it.displayName to it.id } + mapOf(
         "YouLy+" to "YouLyPlus", "YouLyPlus" to "YouLyPlus", "LrcLib" to "LrcLib", "Kugou" to "Kugou",

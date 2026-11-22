@@ -1119,6 +1119,9 @@ internal fun ThumbnailImage(
                 incoming = currentBitmap,
                 progress = { morph.value },
                 timeSeconds = { timeSeconds },
+                // A crossfade or mix hands over slowly: the next cover comes through the last
+                // one in soft patches, sharpening as it lands. A skip keeps the quicker melt.
+                organic = resolvedCrossfadeMillis >= ORGANIC_REVEAL_MIN_MS,
             )
         }
     }
@@ -1131,7 +1134,17 @@ internal fun ThumbnailImage(
  */
 @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.TIRAMISU)
 @Composable
-private fun MeltMorphOverlay(outgoing: Bitmap, incoming: Bitmap, progress: () -> Float, timeSeconds: () -> Float) {
+private fun MeltMorphOverlay(
+    outgoing: Bitmap,
+    incoming: Bitmap,
+    progress: () -> Float,
+    timeSeconds: () -> Float,
+    organic: Boolean = false,
+) {
+    if (organic) {
+        OrganicRevealOverlay(outgoing, incoming, progress)
+        return
+    }
     val shader = remember { android.graphics.RuntimeShader(MELT_SHADER_SOURCE) }
     val outgoingShader = remember(outgoing) {
         android.graphics.BitmapShader(outgoing, android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP)
@@ -1157,6 +1170,123 @@ private fun MeltMorphOverlay(outgoing: Bitmap, incoming: Bitmap, progress: () ->
         }
     }
 }
+
+/**
+ * The mix's cover handover: the incoming cover shows through a soft, mottled noise field that
+ * spreads over the outgoing one as [progress] runs 0..1, blurred at first and sharpening as it
+ * lands. No displacement and no colour split: during a slow mix the picture should settle, not
+ * churn. The field's seed changes with each pair of covers, so no two handovers look alike.
+ */
+@androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.TIRAMISU)
+@Composable
+private fun OrganicRevealOverlay(outgoing: Bitmap, incoming: Bitmap, progress: () -> Float) {
+    val shader = remember { android.graphics.RuntimeShader(ORGANIC_REVEAL_SOURCE) }
+    val outgoingShader = remember(outgoing) {
+        android.graphics.BitmapShader(outgoing, android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP)
+    }
+    val incomingShader = remember(incoming) {
+        android.graphics.BitmapShader(incoming, android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP)
+    }
+    val seed = remember(outgoing, incoming) {
+        val random = kotlin.random.Random(outgoing.generationId * 31L + incoming.generationId)
+        random.nextFloat() * ORGANIC_SEED_SPAN to random.nextFloat() * ORGANIC_SEED_SPAN
+    }
+    val paint = remember { android.graphics.Paint() }
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        if (size.width <= 0f || size.height <= 0f) return@Canvas
+        val t = progress().coerceIn(0f, 1f)
+        // Eased with a little straight line kept in, so a short window isn't all tails.
+        val smooth = t * t * (3f - 2f * t)
+        val eased = smooth + (t - smooth) * 0.25f
+        shader.setInputShader("tCurrent", outgoingShader)
+        shader.setInputShader("tNext", incomingShader)
+        shader.setFloatUniform("uResolution", size.width, size.height)
+        shader.setFloatUniform("uCurrentSize", outgoing.width.toFloat(), outgoing.height.toFloat())
+        shader.setFloatUniform("uNextSize", incoming.width.toFloat(), incoming.height.toFloat())
+        shader.setFloatUniform("uProgress", eased)
+        shader.setFloatUniform("uSeed", seed.first, seed.second)
+        shader.setFloatUniform("uBlurPx", 20.dp.toPx() * (1f - (eased / 0.85f).coerceIn(0f, 1f)).let { it * it })
+        paint.shader = shader
+        drawIntoCanvas { canvas -> canvas.nativeCanvas.drawRect(0f, 0f, size.width, size.height, paint) }
+    }
+}
+
+/** A handover at least this long is a mix, and gets the organic reveal rather than the melt. */
+private const val ORGANIC_REVEAL_MIN_MS = 1_500
+
+private const val ORGANIC_SEED_SPAN = 32f
+
+private const val ORGANIC_REVEAL_SOURCE = """
+uniform shader tCurrent;
+uniform shader tNext;
+uniform float2 uResolution;
+uniform float2 uCurrentSize;
+uniform float2 uNextSize;
+uniform float uProgress;
+uniform float2 uSeed;
+uniform float uBlurPx;
+
+float hashCell(float2 cell) {
+    // Neighbouring cells must agree on their shared corners: a bounded integer mix,
+    // not an amplified sine, which tears along the lattice on some GPUs.
+    float n = mod(cell.x * 127.0 + cell.y * 197.0, 251.0);
+    n = mod(n * (n + 73.0) + cell.x * 97.0 + cell.y * 53.0, 251.0);
+    n = mod(n * (n + 37.0) + cell.x * 31.0 + cell.y * 109.0, 251.0);
+    return n / 251.0;
+}
+
+float valueNoise(float2 p) {
+    float2 c = floor(p);
+    float2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hashCell(c), hashCell(c + float2(1.0, 0.0)), f.x),
+               mix(hashCell(c + float2(0.0, 1.0)), hashCell(c + float2(1.0)), f.x), f.y);
+}
+
+float coverage(float2 xy) {
+    float2 p = xy / uResolution * 2.6 + uSeed;
+    float noise = 0.0;
+    float weight = 0.5;
+    float total = 0.0;
+    for (int i = 0; i < 3; ++i) {
+        noise += valueNoise(p) * weight;
+        total += weight;
+        p = p * 2.0 + float2(3.9, 5.1);
+        weight *= 0.5;
+    }
+    float soft = 0.20;
+    float threshold = mix(1.0 + soft, -soft, uProgress);
+    float field = clamp((noise / total - 0.18) / (0.82 - 0.18), 0.0, 1.0);
+    return smoothstep(threshold - soft, threshold + soft, field);
+}
+
+float2 coverUV(float2 uv, float2 res, float2 img) {
+    float ratio = (res.x / max(res.y, 1.0)) / max(img.x / max(img.y, 1.0), 0.0001);
+    float2 s = ratio > 1.0 ? float2(1.0, 1.0 / ratio) : float2(ratio, 1.0);
+    return (uv - 0.5) * s + 0.5;
+}
+
+half4 next(float2 xy) {
+    float2 uv = coverUV(xy / uResolution, uResolution, uNextSize);
+    if (uBlurPx < 0.5) return tNext.eval(uv * uNextSize);
+    // A small disc of taps, spread by the blur that is left: soft at first, sharp as it lands.
+    float2 step = uBlurPx / uResolution;
+    half4 sum = half4(0.0);
+    for (int i = -2; i <= 2; ++i) {
+        for (int j = -2; j <= 2; ++j) {
+            float2 o = float2(float(i), float(j)) * 0.5 * step;
+            sum += tNext.eval(clamp(uv + o, 0.0, 1.0) * uNextSize);
+        }
+    }
+    return sum / 25.0;
+}
+
+half4 main(float2 xy) {
+    float2 uvC = coverUV(xy / uResolution, uResolution, uCurrentSize);
+    half4 current = tCurrent.eval(uvC * uCurrentSize);
+    return mix(current, next(xy), half(coverage(xy)));
+}
+"""
 
 /** Displacement strength — how far the melt pushes pixels around. */
 private const val MeltIntensity = 0.55f

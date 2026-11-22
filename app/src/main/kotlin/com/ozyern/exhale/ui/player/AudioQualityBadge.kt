@@ -115,7 +115,7 @@ fun AudioQualityBadge(
         )
     }
 
-    // As BitChord draws it: the glyph held steady and the words with a band of light sweeping
+    // As the reference design draws it: the glyph held steady and the words with a band of light sweeping
     // through them, for Lossless and Hi-Res alike (the tier is in the words); lossy holds still,
     // quieter. The sweep never ends, so it keeps the player drawing every frame: only while the
     // song plays, and not at all when motion is reduced.
@@ -157,7 +157,7 @@ fun AudioQualityBadge(
 
 /**
  * The tier's name; with [shimmering], a highlight band sweeps across it every three seconds
- * (BitChord's ShimmerText, kushagrasinghx/BitChord, GPL-3.0). The words are laid out once and the
+ *. The words are laid out once and the
  * band is painted over them in the draw phase with SrcIn, so a frame of the sweep is a redraw of
  * this line only, never a recomposition.
  */
@@ -224,7 +224,7 @@ fun audioQualityLabel(mime: String?, codecs: String?, bitrate: Int?, sampleRate:
         containsFormat("ec-3") || containsFormat("eac3") || containsFormat("joc") || containsFormat("atmos") ->
             AudioQuality("Dolby Atmos", lossless = false, atmos = true)
         containsFormat("flac") || containsFormat("alac") -> {
-            // Past 16-bit or past 48 kHz, the line Tidal, Qobuz and BitChord draw: a 24-bit
+            // Past 16-bit or past 48 kHz, the line Tidal, Qobuz and the reference design draw: a 24-bit
             // FLAC is Hi-Res whatever its rate.
             val hiRes = isHiRes(sampleRate, bitDepth)
             AudioQuality(if (hiRes) "Hi-Res Lossless" else "Lossless", lossless = true, hiRes = hiRes)

@@ -163,6 +163,7 @@ fun RadioScreen(
     val sideInset = insets.calculateStartPadding(androidx.compose.ui.platform.LocalLayoutDirection.current)
     val recentTitle = stringResource(R.string.radio_recent_tracks)
     val gridState = rememberLazyGridState()
+    com.ozyern.exhale.ui.utils.ScrollToTopOnReselect(navController) { gridState.animateScrollToItem(0) }
 
     Box(
         Modifier

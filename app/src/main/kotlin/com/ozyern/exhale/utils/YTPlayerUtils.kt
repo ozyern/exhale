@@ -794,6 +794,12 @@ object YTPlayerUtils {
         }
     }
 
+    /** Whether the listener has asked for YouTube Premium's higher-bitrate audio. */
+    @Volatile
+    var premiumAudioSetting: () -> Boolean = { false }
+
+    private fun premiumAudioEnabled(): Boolean = runCatching { premiumAudioSetting() }.getOrDefault(false)
+
     private suspend fun resolvePlaybackData(
         videoId: String,
         playlistId: String? = null,
@@ -801,6 +807,7 @@ object YTPlayerUtils {
         connectivityManager: ConnectivityManager,
         preferAac: Boolean = false,
     ): Result<PlaybackData> = runCatching {
+        val premiumAudio = premiumAudioEnabled()
         Timber.tag(logTag).d("Fetching player response for videoId: $videoId, playlistId: $playlistId")
         PlaybackLogManager.log(PlaybackLogLevel.INFO, "Resolving playback data", "Video: $videoId")
         
@@ -908,7 +915,19 @@ object YTPlayerUtils {
             else -> -1
         }
 
-        clientLoop@ for (clientIndex in (startIndex until STREAM_FALLBACK_CLIENTS.size)) {
+        // YouTube Premium audio: only a signed-in client is offered Premium's ~256 kbps Opus (itag
+        // 774), so with it on the signed-in YouTube Music client is asked first. The ranking takes
+        // the highest bitrate it offers; an account without Premium simply gets the usual Opus.
+        val premiumIndex = STREAM_FALLBACK_CLIENTS.indexOf(WEB_REMIX)
+        val clientOrder = (startIndex until STREAM_FALLBACK_CLIENTS.size).toList().let { order ->
+            if (premiumAudio && isLoggedIn && !preferAac && premiumIndex >= 0 && !isPrivateTrack) {
+                listOf(premiumIndex) + order.filter { it != premiumIndex }
+            } else {
+                order
+            }
+        }
+
+        clientLoop@ for (clientIndex in clientOrder) {
             format = null
             streamUrl = null
             streamExpiresInSeconds = null

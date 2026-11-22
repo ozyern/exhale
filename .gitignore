@@ -139,9 +139,7 @@ app/src/main/kotlin/com/designRefrence/
 # Upstream marketing/store assets — not used by the build
 NEW-UI/
 
-# Reference checkouts read during the BitChord/ArchiveTune parity work.
 # Cloned repos with their own .git — never ours to commit.
-/BitChord/
 ArchiveTune/
 /Flamingo/
 News/

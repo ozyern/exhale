@@ -23,6 +23,7 @@ import com.music.innertube.pages.NextPage
 import com.music.innertube.pages.NextResult
 import com.music.innertube.pages.RelatedPage
 import io.ktor.client.call.body
+import io.ktor.client.statement.bodyAsText
 import kotlin.random.Random
 
 internal object PlayerMapper {
@@ -108,6 +109,12 @@ internal object PlayerMapper {
     }
 
     suspend fun lyrics(innerTube: InnerTube, endpoint: BrowseEndpoint): Result<String?> = runCatching {
+        // Timed lyrics first, which only the phone app is given (see TimedLyrics); the plain
+        // sheet the web client gets is the fallback.
+        runCatching {
+            val page = innerTube.browse(TimedLyrics.CLIENT, endpoint.browseId, endpoint.params).bodyAsText()
+            TimedLyrics.lrc(kotlinx.serialization.json.Json.parseToJsonElement(page))
+        }.getOrNull()?.let { return@runCatching it }
         val response = innerTube.browse(WEB_REMIX, endpoint.browseId, endpoint.params).body<BrowseResponse>()
         response.contents?.sectionListRenderer?.contents
             ?.firstOrNull { it.musicDescriptionShelfRenderer != null }

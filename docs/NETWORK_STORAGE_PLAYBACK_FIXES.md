@@ -38,9 +38,9 @@ connection. Configuration and authentication errors are not retried. Each pooled
 connection has its own identity so a failure on an old file handle cannot evict
 a newer connection. Each reader retains its own handle and absolute offset.
 
-## BitChord comparison
+## the reference design comparison
 
-Reference: [BitChord](https://github.com/kushagrasinghx/BitChord), particularly
+Reference: the reference design, particularly
 `playback/SmbDataSource.kt`, `data/smb/SmbConnection.kt`, and its shared HTTP client.
 The repository's NOTICE records the GPL-3.0 attribution.
 

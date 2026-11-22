@@ -70,7 +70,7 @@ class SmbFileSource internal constructor(private val connect: (NetworkServer.Smb
         }
     })
 
-    // BitChord's retry-on-transport-failure policy, adapted for multiple saved servers
+    // The reference design's retry-on-transport-failure policy, adapted for multiple saved servers
     // and concurrent player/read-ahead handles. See NOTICE.
     private fun <T> withSession(server: NetworkServer.Smb, action: (SmbFileSession, Session) -> T): T {
         repeat(2) { attempt ->

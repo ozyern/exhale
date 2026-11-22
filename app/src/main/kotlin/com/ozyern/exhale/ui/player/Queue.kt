@@ -805,9 +805,12 @@ fun Queue(
             }
         }
 
+        // Opens at what is coming up: the playing song is already in the header above the list,
+        // so the list starts on the one after it, with what has played scrolled away above.
         LaunchedEffect(currentWindowIndex) {
             if (currentWindowIndex != -1 && !reorderableState.isAnyItemDragging) {
-                lazyListState.scrollToItem(currentWindowIndex)
+                val upcoming = currentWindowIndex + 1
+                lazyListState.scrollToItem(if (upcoming < queueWindows.size) upcoming else currentWindowIndex)
             }
         }
 
@@ -1193,10 +1196,35 @@ fun Queue(
                             var processedDismiss by remember { mutableStateOf(false) }
                             LaunchedEffect(dismissBoxState.currentValue) {
                                 val dv = dismissBoxState.currentValue
-                                if (!processedDismiss && !isListenTogetherGuest && (
-                                            dv == SwipeToDismissBoxValue.StartToEnd ||
-                                                    dv == SwipeToDismissBoxValue.EndToStart
+                                // Swiped towards the end: play it next, right after the song that is on.
+                                // The row springs back, and the snackbar can put it where it was.
+                                if (!processedDismiss && !isListenTogetherGuest && dv == SwipeToDismissBoxValue.StartToEnd) {
+                                    processedDismiss = true
+                                    val player = playerConnection.player
+                                    val from = currentItem.firstPeriodIndex
+                                    val current = player.currentMediaItemIndex
+                                    if (from != current && from in 0 until player.mediaItemCount) {
+                                        val to = if (from > current) current + 1 else current
+                                        player.moveMediaItem(from, to)
+                                        dismissJob?.cancel()
+                                        dismissJob = coroutineScope.launch {
+                                            val result = snackbarHostState.showSnackbar(
+                                                message = context.getString(R.string.added_to_play_next),
+                                                actionLabel = context.getString(R.string.undo),
+                                                duration = SnackbarDuration.Short,
                                             )
+                                            if (result == SnackbarResult.ActionPerformed &&
+                                                to < player.mediaItemCount && from < player.mediaItemCount
+                                            ) {
+                                                player.moveMediaItem(to, from)
+                                            }
+                                        }
+                                    }
+                                    dismissBoxState.reset()
+                                } else
+                                // Swiped towards the start: taken out of the queue, with an undo.
+                                if (!processedDismiss && !isListenTogetherGuest &&
+                                    dv == SwipeToDismissBoxValue.EndToStart
                                 ) {
                                     processedDismiss = true
                                     playbackQueueController.removeQueueItem(currentItem.firstPeriodIndex)
@@ -1354,7 +1382,27 @@ fun Queue(
                             } else {
                                 SwipeToDismissBox(
                                     state = dismissBoxState,
-                                    backgroundContent = {},
+                                    // The playing song can be taken out but has nowhere "next" to go.
+                                    enableDismissFromStartToEnd = !isActive,
+                                    backgroundContent = {
+                                        val direction = dismissBoxState.dismissDirection
+                                        if (direction != SwipeToDismissBoxValue.Settled) {
+                                            val remove = direction == SwipeToDismissBoxValue.EndToStart
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(horizontal = 28.dp),
+                                                contentAlignment = if (remove) Alignment.CenterEnd else Alignment.CenterStart,
+                                            ) {
+                                                Icon(
+                                                    painter = painterResource(if (remove) R.drawable.delete else R.drawable.playlist_play),
+                                                    contentDescription = if (remove) stringResource(R.string.remove_from_queue_short)
+                                                        else stringResource(R.string.play_next),
+                                                    tint = if (remove) Color(0xFFE35B67) else Color.White,
+                                                )
+                                            }
+                                        }
+                                    },
                                 ) {
                                     content()
                                 }

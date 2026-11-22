@@ -129,6 +129,21 @@ val SeekExtraSeconds = booleanPreferencesKey("seekExtraSeconds")
 val PauseOnMute = booleanPreferencesKey("pauseOnMute")
 val ResumeOnBluetoothConnectKey = booleanPreferencesKey("resumeOnBluetoothConnect")
 val KeepScreenOn = booleanPreferencesKey("keepScreenOn")
+
+/** The reference design 1.10: the scrubber's right-hand label shows the track's length instead of the time left. */
+val ShowTotalDurationKey = booleanPreferencesKey("showTotalDuration")
+
+/** The reference design 1.10: the Best Part button under the artwork, skipping to the most replayed stretch. */
+val ShowBestPartKey = booleanPreferencesKey("showBestPart")
+
+/** The one-line lyric preview above the player's scrubber. */
+val ShowLyricPreviewKey = booleanPreferencesKey("showLyricPreview")
+
+/** Motion covers: the looping clip some songs carry in place of their still artwork. */
+val MotionCoversKey = booleanPreferencesKey("motionCovers")
+
+/** YouTube Premium's higher-bitrate audio (~256 kbps Opus), for a signed-in Premium account. */
+val PremiumAudioKey = booleanPreferencesKey("premiumAudio")
 val DeveloperModeKey = booleanPreferencesKey("developerMode")
 val EnableSettingsPopupKey = booleanPreferencesKey("enableSettingsPopup")
 
@@ -827,7 +842,7 @@ val FetchedModulesKey = stringPreferencesKey("fetchedModules")
 
 val LyricsAnimationStyleKey = stringPreferencesKey("lyricsAnimationStyle")
 /** Big bold lines swept word by word, the stack blurred away either side, until another style is picked. */
-val DefaultLyricsAnimationStyle get() = LyricsAnimationStyle.BITCHORD
+val DefaultLyricsAnimationStyle get() = LyricsAnimationStyle.STANDARD
 enum class LyricsAnimationStyle {
     FLAMINGO,
     NONE,
@@ -837,7 +852,7 @@ enum class LyricsAnimationStyle {
     KARAOKE,
     APPLE,
     APPLE_V2,
-    BITCHORD,
+    STANDARD,
     EXHALE_1,
     LYRICS_V2,
     METRO_LYRICS,

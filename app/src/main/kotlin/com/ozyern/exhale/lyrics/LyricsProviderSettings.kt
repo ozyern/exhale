@@ -12,7 +12,7 @@ import com.ozyern.exhale.constants.EnableSimpMusicKey
 import com.ozyern.exhale.constants.EnableUnisonKey
 import com.ozyern.exhale.constants.EnableYouLyPlusKey
 import com.ozyern.exhale.constants.PreferredLyricsProvider
-import com.ozyern.exhale.lyrics.bitchord.PaxSenix
+import com.ozyern.exhale.lyrics.providers.PaxSenix
 import com.ozyern.exhale.utils.dataStore
 import com.ozyern.exhale.utils.get
 
@@ -42,7 +42,7 @@ object LyricsProviderSettings {
         context.dataStore[enabledKey(provider.id)] ?: true
 
     fun initialize(context: Context, provider: LyricsProvider) {
-        if (provider !is BitChordLyricsProvider) return
+        if (provider !is SyncedLyricsProvider) return
         val credentials = context.applicationContext.getSharedPreferences("lyrics_credentials", Context.MODE_PRIVATE)
         PaxSenix.setApiKey(credentials.getString("paxsenix_api_key", "").orEmpty())
     }

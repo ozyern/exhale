@@ -125,6 +125,8 @@ media3-session = { module = "androidx.media3:media3-session", version.ref = "med
 media3-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "media3" }
 media3-cast = { module = "androidx.media3:media3-cast", version.ref = "media3" }
 media3-ui = { module = "androidx.media3:media3-ui", version.ref = "media3" }
+media3-transformer = { module = "androidx.media3:media3-transformer", version.ref = "media3" }
+media3-effect = { module = "androidx.media3:media3-effect", version.ref = "media3" }
 nextlib-media3ext = { module = "io.github.anilbeesetti:nextlib-media3ext", version = "1.7.1-0.9.0" }
 
 mediarouter = { module = "androidx.mediarouter:mediarouter", version.ref = "mediarouter" }

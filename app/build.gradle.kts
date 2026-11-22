@@ -347,6 +347,9 @@ dependencies {
     implementation(libs.media3.session)
     implementation(libs.media3.hls)
     implementation(libs.media3.ui)
+    // Lyrics share videos: the card and the song's audio, encoded on the device.
+    implementation(libs.media3.transformer)
+    implementation(libs.media3.effect)
     implementation(libs.media3.okhttp)
     // FFmpeg audio decoder fallback for local files the platform MediaCodec can't
     // decode (e.g. ALAC — no AOSP device ships a decoder for it). Only engages when

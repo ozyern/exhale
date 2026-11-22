@@ -176,7 +176,7 @@
     <a href="#exhale-protocol"><i class="dot exhale"></i>Protocol</a>
     <div class="group">Jam</div>
     <a href="#jam-client"><i class="dot jam"></i>Client</a>
-    <a href="#jam-server"><i class="dot jam"></i>BitChord server</a>
+    <a href="#jam-server"><i class="dot jam"></i>the reference design server</a>
     <div class="group">Both</div>
     <a href="#flows"><i class="dot"></i>Flows</a>
     <a href="#files"><i class="dot"></i>Files</a>
@@ -187,12 +187,12 @@
 
 <header class="hero" id="top">
   <h1>Listen Together UML</h1>
-  <p class="lede">Exhale has two group-listening paths that share one player. <strong>Exhale Sync</strong> rooms run on a Cloudflare Worker in <code>listen-together-server/</code>. <strong>Jam</strong> parties run on BitChord's Go server. This page maps the classes, functions and flows on both sides.</p>
+  <p class="lede">Exhale has two group-listening paths that share one player. <strong>Exhale Sync</strong> rooms run on a Cloudflare Worker in <code>listen-together-server/</code>. <strong>Jam</strong> parties run on the reference design's Go server. This page maps the classes, functions and flows on both sides.</p>
   <div class="stats">
     <div class="stat exhale"><b>4,716</b><span>lines · Exhale client, 9 files</span></div>
     <div class="stat exhale"><b>1,099</b><span>lines · Exhale server, 4 files</span></div>
     <div class="stat jam"><b>1,289</b><span>lines · Jam client, 4 files</span></div>
-    <div class="stat jam"><b>2,534</b><span>lines · BitChord server, 5 files</span></div>
+    <div class="stat jam"><b>2,534</b><span>lines · the reference design server, 5 files</span></div>
   </div>
 </header>
 
@@ -244,7 +244,7 @@ flowchart TB
     R["Room DO"]
     G["Guard DO"]
   end
-  subgraph BC["BitChord backend · Go"]
+  subgraph BC["the reference design backend · Go"]
     direction LR
     API["REST handlers"]
     WS["Socket handler"]
@@ -734,11 +734,11 @@ classDiagram
   </details>
 </section>
 
-<!-- ============================================================ BITCHORD SERVER -->
+<!-- ============================================================ JAM SERVER -->
 <section id="jam-server" class="jam-scope">
   <div class="sec-head">
-    <div class="eyebrow jam">Jam · server <code>BitChord/backend</code></div>
-    <h2>BitChord party server</h2>
+    <div class="eyebrow jam">Jam · server <code>the reference design/backend</code></div>
+    <h2>the reference design party server</h2>
     <p>A Go HTTP server that keeps parties in memory. REST calls create, join and leave a party. The socket carries controls in, and state, queue and member frames out.</p>
   </div>
   <div class="card diagram">
@@ -946,7 +946,7 @@ sequenceDiagram
   autonumber
   participant P as Your player
   participant M as JamManager
-  participant S as BitChord
+  participant S as the reference design
   participant O as Other phones
   P->>M: play pressed
   M->>S: control play

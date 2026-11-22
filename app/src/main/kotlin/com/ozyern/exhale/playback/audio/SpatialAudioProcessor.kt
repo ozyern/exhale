@@ -98,7 +98,7 @@ class SpatialAudioProcessor : BaseAudioProcessor() {
         val frameCount = byteCount / BYTES_PER_FRAME
         borrowedOutput = AudioProcessor.EMPTY_BUFFER
 
-        if (!enabled || delayLeft.isEmpty()) {
+        if (!enabled || DolbyHandoff.active || delayLeft.isEmpty()) {
             // Do not replay crossfeed from a previous enabled interval.
             if (processingActive) onFlush()
             borrowedOutput = inputBuffer.slice().order(ByteOrder.nativeOrder())

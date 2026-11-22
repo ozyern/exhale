@@ -1,6 +1,6 @@
 package com.ozyern.exhale.lyrics.data
 
-import com.ozyern.exhale.lyrics.bitchord.*
+import com.ozyern.exhale.lyrics.providers.*
 import com.ozyern.exhale.lyrics.LyricsQuery
 import com.ozyern.exhale.lyrics.SharedLyricsSource
 import com.music.innertube.InnertubeRepository

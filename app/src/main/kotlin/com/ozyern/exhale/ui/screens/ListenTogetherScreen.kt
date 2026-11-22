@@ -278,7 +278,7 @@ fun ListenTogetherScreen(
             HeaderSection(isInRoom = isInRoom)
         }
 
-        // Party mode: a code on a BitChord server, no account or room setup.
+        // Party mode: a code on a the reference design server, no account or room setup.
         item {
             androidx.compose.material3.Surface(
                 onClick = { navController.navigate("listen_together/party") },

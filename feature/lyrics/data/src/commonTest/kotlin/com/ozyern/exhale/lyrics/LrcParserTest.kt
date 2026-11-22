@@ -1,8 +1,8 @@
 package com.ozyern.exhale.lyrics
 
-import com.ozyern.exhale.lyrics.bitchord.LrcLib
-import com.ozyern.exhale.lyrics.bitchord.LrcParser
-import com.ozyern.exhale.lyrics.bitchord.LyricAlignment
+import com.ozyern.exhale.lyrics.providers.LrcLib
+import com.ozyern.exhale.lyrics.providers.LrcParser
+import com.ozyern.exhale.lyrics.providers.LyricAlignment
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue

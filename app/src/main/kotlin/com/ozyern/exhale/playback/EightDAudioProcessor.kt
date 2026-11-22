@@ -192,7 +192,8 @@ class EightDAudioProcessor : BaseAudioProcessor() {
         val size = inputBuffer.remaining()
         if (size == 0) return
         val out = replaceOutputBuffer(size)
-        val target = if (enabled) depth.coerceIn(0f, 1f) else 0f
+        // Off for a Dolby track: the phone's own processing places it, see [DolbyHandoff].
+        val target = if (enabled && !com.ozyern.exhale.playback.audio.DolbyHandoff.active) depth.coerceIn(0f, 1f) else 0f
 
         // Off and already ramped out: the bytes go through untouched.
         if (target == 0f && applied == 0f) {

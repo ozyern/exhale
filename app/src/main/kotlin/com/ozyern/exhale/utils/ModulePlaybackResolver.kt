@@ -45,13 +45,8 @@ internal object ModulePlaybackResolver {
         val forceSelectedQuality: Boolean,
     )
 
-    private val supportsAtmos by lazy {
-        runCatching {
-            MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos.any { codec ->
-                !codec.isEncoder && codec.supportedTypes.any { it.contains("eac3", true) }
-            }
-        }.getOrDefault(false)
-    }
+    /** Whether to ask sources for Dolby Atmos at all: only where the renderer will take it. */
+    private val supportsAtmos: Boolean get() = com.ozyern.exhale.playback.DeviceCodecs.playsDolbyAtmos
     private val gate = Semaphore(3)
 
     suspend fun resolve(

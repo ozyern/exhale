@@ -88,14 +88,14 @@ internal const val PLAYER_GLASS_UNFREEZE_PROGRESS = 0.75f
 private const val PlayerSheetStiffness = MotionTokens.PlayerSheetStiffness
 
 /**
- * BitChord's dock (PlayerMorph.rise) slides on its own spring: critically damped with about 0.45 s
+ * The reference design's dock (PlayerMorph.rise) slides on its own spring: critically damped with about 0.45 s
  * of response, the way Apple Music's player sheet moves. It leaves briskly and spends most of its
  * time settling, which is where the eye is following the artwork home.
  */
 private fun playerSheetStiffness(): Float =
-    if (com.ozyern.exhale.ui.player.PlayerMorph.rise) BITCHORD_DOCK_STIFFNESS else PlayerSheetStiffness
+    if (com.ozyern.exhale.ui.player.PlayerMorph.rise) DOCK_RISE_STIFFNESS else PlayerSheetStiffness
 
-private const val BITCHORD_DOCK_STIFFNESS = 195f
+private const val DOCK_RISE_STIFFNESS = 195f
 
 /**
  * Where the sheet's spring may call itself home. The dock's critically damped spring crawls its
