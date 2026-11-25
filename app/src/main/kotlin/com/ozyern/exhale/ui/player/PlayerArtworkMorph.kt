@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.background
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -203,7 +204,9 @@ fun PlayerArtworkMorphOverlay(
     // Same rule as the container: frozen source while opening, live pill cover while closing.
     val mini = if (PlayerMorph.targetOpen) frozen?.first ?: liveMini else liveMini ?: frozen?.first
     val full = frozen?.second ?: liveFull
-    if (mini == null || full == null || thumbnailUrl == null) return
+    // No artwork URL still flies: the placeholder tile travels in its place (as BitChord's does),
+    // so a song whose cover hasn't loaded opens with the same motion as one whose has.
+    if (mini == null || full == null) return
     val poster = remember(flying, mediaId, full.videoPoster) {
         if (flying && full.videoPoster) CanvasPosterSource.capture(mediaId) else null
     }
@@ -211,7 +214,7 @@ fun PlayerArtworkMorphOverlay(
     // coil3.size.Dimension throws on any px <= 0 (measured crash, Samsung).
     if (mini.rect.width <= 0f || mini.rect.height <= 0f || full.rect.width <= 0f || full.rect.height <= 0f) return
 
-    if (!full.travels) {
+    if (!full.travels && thumbnailUrl != null) {
         FancyArtworkFadeOverlay(
             thumbnailUrl = thumbnailUrl,
             mini = mini,
@@ -316,7 +319,10 @@ fun PlayerArtworkMorphOverlay(
                 },
             ),
     ) {
-        AsyncImage(
+        // Under the art, the generic cover: what flies while the art is still loading, or when
+        // there is none. The image draws over it the moment it decodes.
+        MorphArtworkPlaceholder(Modifier.size(sideDp))
+        if (thumbnailUrl != null) AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
                 // Same URL AND decode size as every real player artwork -- Coil serves the
                 // identical cached bitmap at the handoff, no second decode, no landing pop.
@@ -345,6 +351,24 @@ fun PlayerArtworkMorphOverlay(
         }
     }
 }
+
+/** The generic cover: a dark tile with a music note, sized to whatever square it is given. */
+@Composable
+internal fun MorphArtworkPlaceholder(modifier: Modifier = Modifier) {
+    androidx.compose.foundation.layout.BoxWithConstraints(
+        modifier.background(MorphPlaceholderFill),
+        contentAlignment = Alignment.Center,
+    ) {
+        com.ozyern.exhale.ui.component.SymbolIcon(
+            symbol = com.ozyern.exhale.ui.component.sf("music.note"),
+            contentDescription = null,
+            size = minOf(maxWidth, maxHeight) * 0.22f,
+            tint = Color.White.copy(alpha = 0.38f),
+        )
+    }
+}
+
+internal val MorphPlaceholderFill = Color(0xFF2C2C2E)
 
 /**
  * Still -> video dissolve across the back half of the flight, smoothstepped so neither end

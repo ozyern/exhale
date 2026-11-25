@@ -1049,6 +1049,8 @@ internal fun ThumbnailImage(
                 .background(AppTheme.colorScheme.surfaceVariant)
                 .onSizeChanged { boxSize = it }
         ) {
+            // Until the art decodes, the same generic cover the morph flies, so it lands on itself.
+            if (cropArtwork) MorphArtworkPlaceholder(Modifier.fillMaxSize())
             val outgoingBitmap = outgoingUrl?.let { scaledBitmaps[scaledKeyFor(it)] }
             val currentBitmap = currentUrl?.let { scaledBitmaps[scaledKeyFor(it)] }
             if (currentBitmap != null || outgoingBitmap != null) {
@@ -1089,6 +1091,8 @@ internal fun ThumbnailImage(
             .fillMaxSize()
             .background(AppTheme.colorScheme.surfaceVariant)
     ) {
+        // Until the art decodes, the same generic cover the morph flies, so it lands on itself.
+        if (cropArtwork) MorphArtworkPlaceholder(Modifier.fillMaxSize())
         // The resting frame: a plain image respecting cropArtwork exactly like
         // before. The shader only ever draws on top of this during the brief
         // transition window below, so the steady state pays nothing extra.

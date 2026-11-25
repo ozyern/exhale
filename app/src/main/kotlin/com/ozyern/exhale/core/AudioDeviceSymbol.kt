@@ -91,6 +91,9 @@ fun audioDeviceSymbol(name: String?, type: AudioDeviceType? = null): String {
     val words = n.split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }.toSet()
     fun word(vararg keys: String) = keys.any { it in words }
     return when {
+        // The phone's own speaker: by type, before any name rule ("Phone speaker" says "speaker",
+        // which used to draw it as a hi-fi box).
+        type == AudioDeviceType.PHONE_SPEAKER -> "speaker.wave.2.fill"
         USB_AUDIO.containsMatchIn(n) -> if (has("speaker", "dock")) "hifispeaker.fill" else "headphones"
         has("android auto", "carplay", "vehicle") ||
             word("car", "toyota", "honda", "hyundai", "kia", "tata", "mahindra", "bmw", "audi", "mercedes", "ford") -> "car.fill"
@@ -105,7 +108,7 @@ fun audioDeviceSymbol(name: String?, type: AudioDeviceType? = null): String {
             AudioDeviceType.BLUETOOTH, AudioDeviceType.WIRED_HEADPHONES, AudioDeviceType.USB_HEADSET, null -> "headphones"
             AudioDeviceType.HDMI -> "tv.fill"
             AudioDeviceType.EXTERNAL_SPEAKER -> "hifispeaker.fill"
-            AudioDeviceType.PHONE_SPEAKER -> "iphone"
+            AudioDeviceType.PHONE_SPEAKER -> "speaker.wave.2.fill"
         }
     }
 }

@@ -1935,7 +1935,8 @@ private fun PlayerV2Content(
                         onOpenListenTogetherMembers = {},
                         eightDEnabled = eightD,
                         onToggleEightD = { eightD = !eightD },
-                        outputSymbol = audioOutput?.let { audioDeviceIcons.symbol(it.name, it.type) },
+                        // No routed device is the phone's own speaker: a speaker, not the AirPlay glyph.
+                        outputSymbol = audioOutput?.let { audioDeviceIcons.symbol(it.name, it.type) } ?: "speaker.wave.2.fill",
                     )
                 }
             }
