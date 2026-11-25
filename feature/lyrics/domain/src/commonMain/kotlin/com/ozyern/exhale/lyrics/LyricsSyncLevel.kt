@@ -91,7 +91,9 @@ class LyricsUpgradePolicy(private val title: String? = null) {
     }
 
     private companion object {
-        private val tags = Regex("""\[[^\]]*]|<[^>]*>|\{[^}]*}""")
+        // Closing brackets escaped: Android's ICU engine rejects a bare "}" (a crash on load there),
+        // where the JVM's own engine reads it as a literal.
+        private val tags = Regex("""\[[^\]]*\]|<[^>]*>|\{[^}]*\}""")
         private val split = Regex("""[^\p{L}\p{N}']+""")
         private val masked = Regex("""\p{L}\*{2,}|\*{2,}\p{L}|\p{L}\*+\p{L}|(?<!\S)\*{3,}(?!\S)""")
         private val stopwords = setOf(
