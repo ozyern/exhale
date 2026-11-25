@@ -294,10 +294,15 @@ fun PlayerContainerMorphOverlay(
                                     drawLayer(fullBackgroundLayer)
                                 }
                             }
-                            if (fraction > PLAYER_CONTENT_APPEAR_START && !stay) {
-                                fullContentLayer.alpha = playerSheetPageAlpha(fraction)
+                            // BitChord's dock: the page is not shrunk into the card. It sits at its
+                            // own size and place, the growing card reveals it, and it fades in over
+                            // the back half, while the artwork alone flies (PlayerArtworkMorphOverlay).
+                            // Scaled with the card, the whole player read as a zoomed screenshot.
+                            val pageReveal = ((fraction - CONTENT_REVEAL_START) / (1f - CONTENT_REVEAL_START)).coerceIn(0f, 1f)
+                            if (pageReveal > 0f && !stay) {
+                                fullContentLayer.alpha = pageReveal * pageReveal * (3f - 2f * pageReveal)
                                 fullContentLayer.renderEffect = null
-                                scale(scaleX = scale, scaleY = scale, pivot = Offset.Zero) {
+                                translate(left = -rect.left, top = -rect.top) {
                                     drawLayer(fullContentLayer)
                                 }
                             }
@@ -495,3 +500,6 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTrackedMiniLaye
         }
     }
 }
+
+/** Where in the open the full page starts to show inside the growing card (see the dock morph). */
+private const val CONTENT_REVEAL_START = 0.45f

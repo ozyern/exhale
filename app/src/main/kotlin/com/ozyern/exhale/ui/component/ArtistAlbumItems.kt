@@ -101,6 +101,11 @@ fun ArtistListItem(
             val imageRequest = remember(displayUrl, targetPx) {
                 ImageRequest.Builder(context)
                     .data(displayUrl?.resize(targetPx, targetPx))
+                    // Keep the YouTube photo up while Apple's sharper one downloads (no grey gap).
+                    .apply {
+                        artist.artist.thumbnailUrl?.takeIf { it != displayUrl }
+                            ?.let { placeholderMemoryCacheKey(it.resize(targetPx, targetPx)) }
+                    }
                     .size(targetPx, targetPx)
                     .memoryCachePolicy(coil3.request.CachePolicy.ENABLED)
                     .diskCachePolicy(coil3.request.CachePolicy.ENABLED)
@@ -158,6 +163,11 @@ fun ArtistGridItem(
             val imageRequest = remember(displayUrl, targetPx) {
                 ImageRequest.Builder(context)
                     .data(displayUrl?.resize(targetPx, targetPx))
+                    // Keep the YouTube photo up while Apple's sharper one downloads (no grey gap).
+                    .apply {
+                        artist.artist.thumbnailUrl?.takeIf { it != displayUrl }
+                            ?.let { placeholderMemoryCacheKey(it.resize(targetPx, targetPx)) }
+                    }
                     .size(targetPx, targetPx)
                     .memoryCachePolicy(coil3.request.CachePolicy.ENABLED)
                     .diskCachePolicy(coil3.request.CachePolicy.ENABLED)

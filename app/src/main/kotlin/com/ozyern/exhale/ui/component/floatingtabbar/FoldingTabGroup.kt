@@ -141,8 +141,10 @@ internal fun FoldingTabGroup(
                 // the bar's edges, not a near-round bubble towering over it (it was 78/56 both ways).
                 // A gentle swell, not a bubble: held, the slot grows a little wider than its tab and
                 // only just taller, so it stays inside the bar instead of spilling over its edges.
-                pressedScale = 1.22f,
-                pressedScaleY = 1.06f,
+                // BitChord's lens: held, the slot becomes a round glass about the bar's own height,
+                // standing just past its edges (the width is made round in slotGrowth below).
+                pressedScale = 1f,
+                pressedScaleY = 1.16f,
                 onDragStarted = {},
                 onDragStopped = {
                     val targetIndex = targetValue.fastRoundToInt().fastCoerceIn(0, tabsCount - 1)
@@ -244,8 +246,10 @@ internal fun FoldingTabGroup(
             val scaleY = dampedDragAnimation.scaleY * (1f - (velocity * 0.12f).fastCoerceIn(-0.06f, 0.06f))
             val width = constraints.maxWidth
             val slotHeight = constraints.maxHeight
-            val grownWidth = (width * scaleX).roundToInt().coerceAtLeast(1)
             val grownHeight = (slotHeight * scaleY).roundToInt().coerceAtLeast(1)
+            // Capsule at rest, a circle while held: the lens BitChord's dock drags across the tabs.
+            val press = dampedDragAnimation.pressProgress.fastCoerceIn(0f, 1f)
+            val grownWidth = lerp(width * scaleX, grownHeight.toFloat(), press).roundToInt().coerceAtLeast(1)
             val child = measurable.measure(Constraints.fixed(grownWidth, grownHeight))
             layout(width, slotHeight) {
                 child.placeRelative((width - grownWidth) / 2, (slotHeight - grownHeight) / 2)
@@ -320,6 +324,9 @@ internal fun FoldingTabGroup(
                 .height(height - 8.dp)
                 .fillMaxWidth(1f / tabsCount)
                 .then(slotGrowth)
+                // The accent-tinted tabs show through the slot at rest only. Held, the lens is
+                // clear glass over the tabs as they are, as BitChord's: no red bleeding through it.
+                .graphicsLayer { alpha = 1f - dampedDragAnimation.pressProgress.fastCoerceIn(0f, 1f) }
                 .drawBackdrop(
                     backdrop = tabsBackdrop,
                     shape = { ContinuousCapsule },

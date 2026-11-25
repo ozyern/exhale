@@ -136,8 +136,13 @@ fun ItemThumbnail(
     val imageListener = com.ozyern.exhale.ui.utils.sharedArtworkImageListener(artworkOwner, displayUrl)
     val imageRequest = remember(displayUrl, actualTargetSizePx) {
         val resolvedUrl = displayUrl?.resize(actualTargetSizePx, actualTargetSizePx)
+        // When Apple's sharper artwork replaces the YouTube thumbnail, keep that thumbnail on
+        // screen while the new one downloads. Without it the tile went art -> grey -> art, which
+        // is what made every artist page and search result look slow to load.
+        val shownFirst = thumbnailUrl?.takeIf { it != displayUrl }?.resize(actualTargetSizePx, actualTargetSizePx)
         ImageRequest.Builder(context)
             .data(resolvedUrl)
+            .apply { if (shownFirst != null) placeholderMemoryCacheKey(shownFirst) }
             // Key by the resolved URL so each quality tier caches its own image size.
             // Offline misses are possible when this exact resized URL was never fetched.
             .diskCacheKey(resolvedUrl)
