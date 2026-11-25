@@ -72,3 +72,11 @@ jobs:
           name: Exhale-${{ github.sha }}
           path: app/build/outputs/apk/universalGms/release/*.apk
           retention-days: 1
+
+      # R8's mapping for this exact build: a crash report's obfuscated trace (r8-map-id) is only
+      # readable with the mapping from the build that produced it.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Exhale-mapping-${{ github.sha }}
+          path: app/build/outputs/mapping/universalGmsRelease/mapping.txt
+          retention-days: 30

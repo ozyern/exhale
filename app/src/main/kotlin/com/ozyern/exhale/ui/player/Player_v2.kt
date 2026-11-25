@@ -1284,6 +1284,18 @@ private fun PlayerV2Content(
                                                     .map { com.ozyern.exhale.bestpart.LyricLine(it.time, it.text) }
                                             }.getOrDefault(emptyList())
                                         }
+                                        // Held back until the cover has landed: shown during the flight it sat
+                                        // alone mid-screen, over the lyrics leaving and under the title arriving.
+                                        val pillReveal = this@AnimatedContent.transition.animateFloat(
+                                            transitionSpec = {
+                                                if (this.targetState == EnterExitState.Visible) {
+                                                    tween(260, delayMillis = (PAGE_TRAVEL_MS * 0.8f).toInt(), easing = SeamlessEasing)
+                                                } else {
+                                                    tween(80)
+                                                }
+                                            },
+                                            label = "bestPartReveal",
+                                        ) { if (it == EnterExitState.Visible) 1f else 0f }
                                         com.ozyern.exhale.ui.player.controls.BestPartPill(
                                             videoId = mediaMetadata?.id,
                                             durationMs = duration,
@@ -1296,12 +1308,17 @@ private fun PlayerV2Content(
                                                     position = target
                                                 }
                                             },
-                                            modifier = if (isHeroLook) {
+                                            modifier = (if (isHeroLook) {
                                                 Modifier
                                                     .wrapContentHeight(align = Alignment.Bottom, unbounded = true)
                                                     .padding(bottom = 14.dp)
                                             } else {
                                                 Modifier.wrapContentHeight(align = Alignment.Top, unbounded = true)
+                                            }).graphicsLayer {
+                                                val v = pillReveal.value
+                                                alpha = v
+                                                scaleX = 0.94f + 0.06f * v
+                                                scaleY = 0.94f + 0.06f * v
                                             },
                                         )
                                     }
@@ -1582,17 +1599,21 @@ private fun PlayerV2Content(
                                                 if (this.targetState == EnterExitState.Visible) {
                                                     tween(480, delayMillis = 300, easing = SeamlessEasing)
                                                 } else {
-                                                    tween(180, easing = SeamlessEasing)
+                                                    // Gone before the cover is a third of the way back.
+                                                    tween(120, easing = SeamlessEasing)
                                                 }
                                             },
                                             label = "lyricsReveal",
                                         ) { if (it == EnterExitState.Visible) 1f else 0f }
+                                        // Rising into place on the way in only: on the way out the lines just
+                                        // fade where they are, rather than lurching down as they go.
+                                        val lyricsEntering = this@AnimatedContent.transition.targetState == EnterExitState.Visible
                                         Box(
                                             Modifier
                                                 .fillMaxSize()
                                                 .graphicsLayer {
                                                     alpha = lyricsReveal.value
-                                                    translationY = (1f - lyricsReveal.value) * 18.dp.toPx()
+                                                    translationY = if (lyricsEntering) (1f - lyricsReveal.value) * 18.dp.toPx() else 0f
                                                 },
                                         ) {
                                             Lyrics(
