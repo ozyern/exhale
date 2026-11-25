@@ -15,7 +15,7 @@ import com.ozyern.exhale.WelcomeActivity
 
 /**
  * Launcher icon aliases; one is enabled at a time and the selection is mirrored in DataStore.
- * [previewRes] is the foreground layer shown over [R.color.ic_launcher_tile] in the picker.
+ * [previewRes] is the full 108dp adaptive canvas; the picker zooms it to the 72dp a launcher shows.
  */
 enum class AppIcon(
     val id: String,
@@ -23,34 +23,17 @@ enum class AppIcon(
     @DrawableRes val previewRes: Int,
     @StringRes val labelRes: Int,
 ) {
-    WHITE("white", ".LauncherWhite", R.drawable.ic_launcher_exhale_preview, R.string.app_icon_white),
-    AZURE("azure", ".LauncherAzure", R.drawable.ic_launcher_azure_fg, R.string.app_icon_azure),
-    SKY("sky", ".LauncherSky", R.drawable.ic_launcher_sky_fg, R.string.app_icon_sky),
-    TEAL("teal", ".LauncherTeal", R.drawable.ic_launcher_teal_fg, R.string.app_icon_teal),
-    SLATE("slate", ".LauncherSlate", R.drawable.ic_launcher_slate_fg, R.string.app_icon_slate),
-    SILVER("silver", ".LauncherSilver", R.drawable.ic_launcher_silver_fg, R.string.app_icon_silver),
-    PERIWINKLE(
-        "periwinkle",
-        ".LauncherPeriwinkle",
-        R.drawable.ic_launcher_periwinkle_fg,
-        R.string.app_icon_periwinkle,
-    ),
-    VIOLET("violet", ".LauncherViolet", R.drawable.ic_launcher_violet_fg, R.string.app_icon_violet),
-    MIDNIGHT(
-        "midnight",
-        ".LauncherMidnight",
-        R.drawable.ic_launcher_midnight_fg,
-        R.string.app_icon_midnight,
-    ),
-    MAUVE("mauve", ".LauncherMauve", R.drawable.ic_launcher_mauve_fg, R.string.app_icon_mauve),
-    ROSE("rose", ".LauncherRose", R.drawable.ic_launcher_rose_fg, R.string.app_icon_rose),
-    COPPER("copper", ".LauncherCopper", R.drawable.ic_launcher_copper_fg, R.string.app_icon_copper),
-    RUST("rust", ".LauncherRust", R.drawable.ic_launcher_rust_fg, R.string.app_icon_rust),
+    GTAVI("gtavi", ".LauncherGtavi", R.drawable.ic_launcher_gtavi_preview, R.string.app_icon_gtavi),
+    // The gold icon keeps the "white" id and .LauncherWhite alias it shipped under, so people who
+    // picked it before GTA VI stay on it and pinned shortcuts keep resolving.
+    GOLD("white", ".LauncherWhite", R.drawable.ic_launcher_gold_preview, R.string.app_icon_white),
+    YELLOW("yellow", ".LauncherYellow", R.drawable.ic_launcher_yellow_preview, R.string.app_icon_yellow),
     ;
 
     companion object {
-        val DEFAULT = WHITE
+        val DEFAULT = GTAVI
 
+        /** Unknown ids, including the retired colour variants, fall back to [DEFAULT]. */
         fun fromId(id: String?): AppIcon = entries.firstOrNull { it.id == id } ?: DEFAULT
 
         /** Enables the new alias before disabling the old one, keeping a launcher entry active. */
@@ -69,6 +52,29 @@ enum class AppIcon(
                     PackageManager.DONT_KILL_APP,
                 )
             }
+        }
+
+        /**
+         * Brings the launcher aliases in line with the saved choice. Needed after an update that
+         * changes which alias the manifest enables by default: someone who explicitly chose the
+         * gold icon would otherwise see it next to the new default, and someone on a retired
+         * colour would be left on whatever the manifest enables. Touches nothing when consistent.
+         */
+        fun reconcile(context: Context, savedId: String?) {
+            val wanted = fromId(savedId)
+            val pm = context.packageManager
+            val consistent = entries.all { icon ->
+                val component = componentFor(context, icon)
+                val enabled = when (pm.getComponentEnabledSetting(component)) {
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
+                    PackageManager.COMPONENT_ENABLED_STATE_DEFAULT ->
+                        runCatching { pm.getActivityInfo(component, PackageManager.MATCH_DISABLED_COMPONENTS).enabled }
+                            .getOrDefault(false)
+                    else -> false
+                }
+                enabled == (icon == wanted)
+            }
+            if (!consistent) apply(context, wanted)
         }
 
         /** Aliases resolve against the namespace, which can differ from applicationId in debug builds. */

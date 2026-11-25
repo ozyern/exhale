@@ -963,8 +963,8 @@ private fun PlayerV2Content(
                             // One movement, as the reference player has it: the cover and the title
                             // travel into the header together on a single ease, and the pages only
                             // fade -- scaled as well, the page behind the travelling cover pulsed.
-                            val enter = fadeIn(animationSpec = tween(PAGE_TRAVEL_MS / 2, delayMillis = PAGE_TRAVEL_MS / 3))
-                            val exit = fadeOut(animationSpec = tween(PAGE_TRAVEL_MS / 3))
+                            val enter = fadeIn(animationSpec = tween(PAGE_TRAVEL_MS / 2, delayMillis = PAGE_TRAVEL_MS / 4, easing = SeamlessEasing))
+                            val exit = fadeOut(animationSpec = tween(PAGE_TRAVEL_MS / 2, easing = SeamlessEasing))
                             enter.togetherWith(exit).using(
                                 androidx.compose.animation.SizeTransform(clip = false)
                             ).apply {
@@ -1572,9 +1572,9 @@ private fun PlayerV2Content(
                                         val lyricsReveal = this@AnimatedContent.transition.animateFloat(
                                             transitionSpec = {
                                                 if (this.targetState == EnterExitState.Visible) {
-                                                    tween(360, delayMillis = 280, easing = FastOutSlowInEasing)
+                                                    tween(480, delayMillis = 300, easing = SeamlessEasing)
                                                 } else {
-                                                    tween(120)
+                                                    tween(180, easing = SeamlessEasing)
                                                 }
                                             },
                                             label = "lyricsReveal",
@@ -1594,6 +1594,8 @@ private fun PlayerV2Content(
                                                 controlsOpen = controlsVisible,
                                                 onRevealControls = { controlsVisible = true },
                                                 onHideControls = { controlsVisible = false },
+                                                // Level with the header artwork's left edge, as the reference has it.
+                                                flowGutter = 30.dp,
                                                 modifier = Modifier.fillMaxSize()
                                             )
                                             // Shares the lyrics menu setting; shown only when an AI provider is configured.
@@ -1712,6 +1714,7 @@ private fun PlayerV2Content(
                             sliderPositionProvider = { sliderPosition ?: position },
                             showLyrics = true,
                             introKey = lyricsIntroKey,
+                            flowGutter = 30.dp,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -2580,8 +2583,13 @@ private fun Modifier.heroMorphDissolve(strength: () -> Float): Modifier = this
         }
     }
 
-/** How long the cover takes to travel between the player and a page header, as the reference player. */
-private const val PAGE_TRAVEL_MS = 420
+/** Roughly how long the cover takes to settle between the player and a page header; paces the fades. */
+private const val PAGE_TRAVEL_MS = 560
 
-/** The page change's one curve: cover, title and buttons all ride it, so they arrive together. */
-private fun <T> pageMotion(): FiniteAnimationSpec<T> = tween(PAGE_TRAVEL_MS, easing = FastOutSlowInEasing)
+/**
+ * The page change's one curve: cover, title and buttons all ride it, so they arrive together.
+ * A spring, not a tween: tapping lyrics again mid-flight re-targets with the cover's current
+ * velocity, so it turns round smoothly instead of stopping dead and restarting its curve.
+ * Critically damped and soft, so it glides in and settles without bounce.
+ */
+private fun <T> pageMotion(): FiniteAnimationSpec<T> = spring(dampingRatio = 1f, stiffness = 150f)

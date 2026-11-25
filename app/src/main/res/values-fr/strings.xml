@@ -636,19 +636,9 @@
     <string name="app_icon">Icône de l\'application</string>
     <string name="app_icon_desc">Choisir l\'icône affichée par Exhale sur votre écran d\'accueil</string>
     <string name="app_icon_change_warning">La mise à jour de l\'icône peut prendre quelques secondes, et certains lanceurs suppriment le raccourci de l\'écran d\'accueil jusqu\'à ce que vous le rajoutiez.</string>
-    <string name="app_icon_white">Blanc</string>
-    <string name="app_icon_azure">Azur</string>
-    <string name="app_icon_sky">Ciel</string>
-    <string name="app_icon_teal">Sarcelle</string>
-    <string name="app_icon_slate">Ardoise</string>
-    <string name="app_icon_silver">Argent</string>
-    <string name="app_icon_periwinkle">Pervenche</string>
-    <string name="app_icon_violet">Violet</string>
-    <string name="app_icon_midnight">Minuit</string>
-    <string name="app_icon_mauve">Mauve</string>
-    <string name="app_icon_rose">Rose</string>
-    <string name="app_icon_copper">Cuivre</string>
-    <string name="app_icon_rust">Rouille</string>
+    <string name="app_icon_gtavi">GTA VI</string>
+    <string name="app_icon_white">Or</string>
+    <string name="app_icon_yellow">Jaune</string>
 
     <!-- Presets / DIY -->
     <string name="presets">Préréglages</string>

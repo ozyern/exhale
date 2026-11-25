@@ -231,34 +231,18 @@ object ComposeToImage {
 
         // Footer.
         val logoBoxSize = 22f * scale
-        val logoIconSize = 16f * scale
         val footerY = imageHeight - padding - logoBoxSize
         
-        val logoBgPaint = Paint().apply {
-            color = secondaryTxtColor
-            isAntiAlias = true
-        }
+        // The GTA VI icon, in full colour, as in the LyricsImageCard preview.
         val logoBoxRect = RectF(padding, footerY, padding + logoBoxSize, footerY + logoBoxSize)
-        canvas.drawOval(logoBoxRect, logoBgPaint)
-        
-        val rawLogo = context.getDrawable(R.drawable.exhale_logo)?.toBitmap()
-        rawLogo?.let {
+        context.getDrawable(R.drawable.exhale_gtavi_badge)?.toBitmap()?.let {
             val logoPaint = Paint().apply {
-                // Match the preview by tinting the logo with the selected background color.
-                colorFilter = PorterDuffColorFilter(bgColor, PorterDuff.Mode.SRC_IN)
                 isAntiAlias = true
+                isFilterBitmap = true
             }
-            
-            val logoOffset = (logoBoxSize - logoIconSize) / 2f
-            val logoRect = RectF(
-                padding + logoOffset, 
-                footerY + logoOffset, 
-                padding + logoBoxSize - logoOffset, 
-                footerY + logoBoxSize - logoOffset
-            )
-            canvas.drawBitmap(it, null, logoRect, logoPaint)
+            canvas.drawBitmap(it, null, logoBoxRect, logoPaint)
         }
-        
+
         val appName = context.getString(R.string.app_name)
         val appNamePaint = TextPaint().apply {
             color = secondaryTxtColor

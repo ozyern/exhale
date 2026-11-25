@@ -8,7 +8,6 @@ package com.ozyern.exhale.ui.screens.settings
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -46,7 +45,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -69,7 +67,7 @@ private const val ADAPTIVE_OVERSCAN = 108f / 72f
 
 /**
  * Picker for the launcher icon. Each tile reproduces what the launcher will draw: the variant's
- * adaptive foreground composited over the shared tile colour, clipped to a squircle.
+ * adaptive layers, clipped to a squircle.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -165,14 +163,13 @@ private fun AppIconTile(
                 .fillMaxWidth()
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(28))
-                .background(colorResource(R.color.ic_launcher_tile))
                 .border(borderWidth, borderColor, RoundedCornerShape(28)),
         ) {
             Image(
                 painter = painterResource(icon.previewRes),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                // The foreground is a 108dp canvas whose outer ring is mask overscan; scaling by
+                // The preview is a 108dp canvas whose outer ring is mask overscan; scaling by
                 // 108/72 leaves exactly the part a launcher mask actually reveals.
                 modifier = Modifier
                     .fillMaxSize()

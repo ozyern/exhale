@@ -388,21 +388,14 @@ fun LyricsImageCard(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Box(
+                    // The GTA VI icon, in full colour; ComposeToImage draws the same badge.
+                    Image(
+                        painter = painterResource(id = R.drawable.exhale_gtavi_badge),
+                        contentDescription = null,
                         modifier = Modifier
                             .size(22.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(secondaryColor),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.exhale_logo),
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(16.dp),
-                            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(backgroundSolidColor) // Try to use a contrasting color, fallback to solid bg color
-                        )
-                    }
+                            .clip(RoundedCornerShape(22)),
+                    )
 
                     Spacer(modifier = Modifier.width(8.dp))
 

@@ -440,6 +440,12 @@ fun Lyrics(
     controlsOpen: Boolean = true,
     onRevealControls: () -> Unit = {},
     onHideControls: () -> Unit = {},
+    /**
+     * Inset for the flow renderers (the default and Melody styles). Their list bleeds out over
+     * the page gutter to give the glow room and puts the gutter back as content padding, so a
+     * caller that lays them out edge to edge passes the gutter here or the words touch the screen.
+     */
+    flowGutter: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val database = LocalDatabase.current.get()
@@ -877,7 +883,7 @@ fun Lyrics(
                 sliderPositionProvider = sliderPositionProvider,
                 textScale = (lyricsTextSize / 30f).coerceIn(0.7f, 1.5f),
                 glowColor = Color(flamingoGlowColor),
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().padding(horizontal = flowGutter),
             )
         } else if (usesDefaultRenderer) {
             com.ozyern.exhale.ui.lyricsflow.ExhaleDefaultLyrics(
@@ -911,7 +917,7 @@ fun Lyrics(
                 },
                 onRevealControls = onRevealControls,
                 onHideControls = onHideControls,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().padding(horizontal = flowGutter),
             )
         } else if (usesCrawlRenderer) {
             val lyricsOffset = currentSong?.song?.lyricsOffset?.toLong() ?: 0L

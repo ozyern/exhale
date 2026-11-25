@@ -140,6 +140,12 @@ class App : Application(), SingletonImageLoader.Factory {
 
         // Warm the preference mirror off Main so the first composition avoids its blocking read.
         applicationScope.launch(Dispatchers.IO) { dataStore.warmPreferenceMirror() }
+        applicationScope.launch(Dispatchers.IO) {
+            com.ozyern.exhale.utils.AppIcon.reconcile(
+                this@App,
+                dataStore.data.first()[com.ozyern.exhale.constants.AppIconKey],
+            )
+        }
         applicationScope.launch(Dispatchers.IO) { com.ozyern.exhale.ai.AiDefaults.keepLegacyProvider(this@App) }
 
         CrashHandler.install(this)
