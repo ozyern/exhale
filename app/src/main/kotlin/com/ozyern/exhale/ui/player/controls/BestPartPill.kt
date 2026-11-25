@@ -1,16 +1,12 @@
 /** GPL-3.0. Third-party portions: see NOTICE. */
 package com.ozyern.exhale.ui.player.controls
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
@@ -89,23 +85,24 @@ internal fun BestPartPill(
     LaunchedEffect(reaching) { if (reaching) heard = true }
 
     val haptics = rememberHaptics()
-    AnimatedVisibility(
-        visible = at != null && ahead && !heard && !mixing,
-        // A fade either way. The room it takes opens and closes around the fade, so what is
-        // beside it glides instead of jumping.
-        enter = expandVertically(tween(BEST_PART_FADE_MS)) +
-            fadeIn(tween(BEST_PART_FADE_MS, delayMillis = BEST_PART_FADE_MS / 2)),
-        exit = fadeOut(tween(BEST_PART_FADE_MS)) +
-            shrinkVertically(tween(BEST_PART_FADE_MS, delayMillis = BEST_PART_FADE_MS / 2)),
-        modifier = modifier,
-    ) {
+    // Always in the layout; only its opacity animates. Shown and hidden with AnimatedVisibility,
+    // it added and removed itself (and expanded/shrank its room) while a song simply played,
+    // inside the player's shared-transition layout -- and a node coming or going there while the
+    // player was being swiped closed crashed Compose's lookahead measure pass.
+    val visible = at != null && ahead && !heard && !mixing
+    val shown by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(BEST_PART_FADE_MS),
+        label = "bestPartShown",
+    )
+    Box(modifier = modifier.graphicsLayer { alpha = shown }) {
         val shape = CircleShape
         Box(
             modifier = Modifier
                 .padding(top = 8.dp)
                 .clip(shape)
                 .background(Color.Black.copy(alpha = GLASS_FLAT_ALPHA * 0.5f))
-                .clickable(role = Role.Button) {
+                .clickable(enabled = visible, role = Role.Button) {
                     val target = at ?: return@clickable
                     haptics.play(Haptic.Tap)
                     heard = true
