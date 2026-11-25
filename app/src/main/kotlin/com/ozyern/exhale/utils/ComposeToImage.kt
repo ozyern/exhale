@@ -233,9 +233,9 @@ object ComposeToImage {
         val logoBoxSize = 22f * scale
         val footerY = imageHeight - padding - logoBoxSize
         
-        // The GTA VI icon, in full colour, as in the LyricsImageCard preview.
+        // The GTA VI splash mark, in full colour, as in the LyricsImageCard preview.
         val logoBoxRect = RectF(padding, footerY, padding + logoBoxSize, footerY + logoBoxSize)
-        context.getDrawable(R.drawable.exhale_gtavi_badge)?.toBitmap()?.let {
+        context.getDrawable(R.drawable.exhale_gtavi_mark)?.toBitmap()?.let {
             val logoPaint = Paint().apply {
                 isAntiAlias = true
                 isFilterBitmap = true

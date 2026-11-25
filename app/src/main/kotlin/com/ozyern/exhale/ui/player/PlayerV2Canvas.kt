@@ -630,6 +630,10 @@ internal fun DockVideoOverArtwork(mediaId: String?, modifier: Modifier = Modifie
 val LocalCanvasSurfacePriority = androidx.compose.runtime.compositionLocalOf { 1 }
 
 private suspend fun fetchCanvasArtwork(context: Context, metadata: MediaMetadata, canvasSource: CanvasSource): CanvasArtwork? {
+    // Every provider below matches on title and artist alone, so a live take, a medley or a remix
+    // found the studio song and its motion cover played over the performance's own artwork
+    // ("Espresso / Bed Chem (Live)" turned into the Short n' Sweet cover). Those keep their art.
+    if (isOtherRecording(metadata.title)) return null
     val cacheKey = "${metadata.id}:${canvasSource.name}"
     CanvasArtworkPlaybackCache.get(cacheKey)?.let { return it }
     val countryCode = Locale.getDefault().country
@@ -665,3 +669,16 @@ private suspend fun fetchCanvasArtwork(context: Context, metadata: MediaMetadata
     if (fetched != null) CanvasArtworkPlaybackCache.put(cacheKey, fetched)
     return fetched
 }
+
+/**
+ * A recording that is not the studio song its title names: the tag after the name ("(Live)",
+ * "- Acoustic", "[Sped Up]") or two songs run together with a spaced slash (a medley). Read as a
+ * tag, not a word anywhere in the title, so "Live Forever" stays an ordinary song.
+ */
+private val otherRecordingTag = Regex(
+    """(?i)[(\[|\-–—]\s*[^)\]|]*\b(live|medley|acoustic|unplugged|remix|mashup|session|tour|concert|sped\s*up|slowed|performance)\b""",
+)
+private val medleyJoin = Regex("""\s/|/\s""")
+
+internal fun isOtherRecording(title: String): Boolean =
+    otherRecordingTag.containsMatchIn(title) || medleyJoin.containsMatchIn(title)

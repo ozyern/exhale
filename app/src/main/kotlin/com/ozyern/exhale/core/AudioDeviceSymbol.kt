@@ -80,7 +80,7 @@ fun rememberAudioDeviceNames(): AudioDeviceNames {
 }
 
 /** USB audio class devices (type-C earphones and DACs) report names like "USB-Audio - OnePlus". */
-private val USB_AUDIO = Regex("""usb[ -]?audio""")
+private val USB_AUDIO = Regex("""\busb[ -]?audio\b""")
 
 /** SF Symbol name for an output device: product name first (Galaxy Buds, Sony WH, JBL...), then its type. */
 fun audioDeviceSymbol(name: String?, type: AudioDeviceType? = null): String {

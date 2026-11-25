@@ -27,6 +27,7 @@ import com.music.innertube.models.YouTubeClient.Companion.WEB
 import com.music.innertube.models.YouTubeClient.Companion.WEB_CREATOR
 import com.music.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.music.innertube.models.response.PlayerResponse
+import com.music.innertube.models.SongItem
 import com.ozyern.exhale.constants.AudioQuality
 import com.ozyern.exhale.constants.EnableSaavnStreamingKey
 import com.ozyern.exhale.constants.ForceSelectedQualityKey
@@ -410,6 +411,11 @@ object YTPlayerUtils {
         requireYouTube: Boolean = false,
         preferAac: Boolean = false,
     ): Result<PlaybackData> {
+        // Every source below needs the same title/artist lookup; fetch it once per song start
+        // instead of once per source (it was repeated for modules, TIDAL and Saavn).
+        var sharedMetadata: Pair<SongItem?, PlayerResponse?>? = null
+        suspend fun metadataOnce(): Pair<SongItem?, PlayerResponse?> =
+            sharedMetadata ?: resolvePlaybackMetadata(videoId, playlistId).also { sharedMetadata = it }
         if (context != null) {
             // Honor selected quality only when Saavn is enabled.
             val forceSelectedQuality = context.dataStore.get(EnableSaavnStreamingKey, true) &&
@@ -422,7 +428,7 @@ object YTPlayerUtils {
                 val moduleSettingsJson = context.dataStore.get(ModuleSettingsKey, "{}")
                 Timber.tag(TAG).d("  enabledModules: $enabledModulesJson")
                 Timber.tag(TAG).d("  moduleSources: $moduleSourcesJson")
-                runCatching {
+                run { runCatching {
                     // Stored in the user's chosen priority order (drag-reorder in
                     // ModuleSourceScreen), lowest index tried first.
                     val enabledOrder = parseJsonStringArray(enabledModulesJson)
@@ -443,7 +449,7 @@ object YTPlayerUtils {
                     Timber.tag(TAG).d("  Resolving YouTube metadata for search query...")
 
                     val metadata = withTimeoutOrNull(5_000L) {
-                        resolvePlaybackMetadata(videoId, playlistId)
+                        metadataOnce()
                     } ?: return@runCatching null
                     val (currentSong, meta) = metadata
 
@@ -474,12 +480,11 @@ object YTPlayerUtils {
                         forceSelectedQuality = forceSelectedQuality,
                     ) ?: return@runCatching null
 
-                    val playback = with(ModulePlaybackResolver) { match.playbackData(meta) }
-                    return Result.success(playback)
+                    with(ModulePlaybackResolver) { match.playbackData(meta) }
                 }.onFailure { e ->
                     if (e is kotlinx.coroutines.CancellationException) throw e
                     Timber.tag(TAG).e(e, "═══ SPINE INTERCEPT ERROR ═══")
-                }
+                }.getOrNull() }?.let { return Result.success(it) }
                 Timber.tag(TAG).d("═══ SPINE INTERCEPT END ═══")
             } // !forceStandardAudio
 
@@ -489,8 +494,8 @@ object YTPlayerUtils {
             val tidalAccount = com.ozyern.exhale.utils.tidal.TidalAccount.isPreferred(context)
             if (!forceStandardAudio && !requireYouTube && !forceSelectedQuality && allowLossless && (tidalPublic || tidalAccount)) {
                 Timber.tag(TAG).d("Lossless enabled — trying TIDAL for videoId=$videoId")
-                val tidalResult = runCatching {
-                    val (currentSong, meta) = resolvePlaybackMetadata(videoId, playlistId)
+                val tidalResult = run { runCatching {
+                    val (currentSong, meta) = metadataOnce()
 
                     val title = currentSong?.title ?: meta?.videoDetails?.title.orEmpty()
                     if (title.isBlank()) return@runCatching null
@@ -558,7 +563,7 @@ object YTPlayerUtils {
 
                     Timber.tag(TAG).i("Tidal: streaming FLAC \"${best.title}\" (id=${best.id}, ${quality.toApiValue()}) for videoId=$videoId")
                     tidalPlaybackData(meta, streamUrl, quality, best.duration)
-                }.getOrNull()
+                }.getOrNull() }
 
                 if (tidalResult != null) return Result.success(tidalResult)
                 Timber.tag(TAG).d("TIDAL intercept failed or returned null — trying next source")
@@ -567,8 +572,8 @@ object YTPlayerUtils {
             val saavnEnabled = !requireYouTube && context.dataStore.get(EnableSaavnStreamingKey, true)
             if (saavnEnabled && !preferAac) {
                 Timber.tag(TAG).d("JioSaavn streaming enabled — trying Saavn for videoId=$videoId")
-                val saavnResult = runCatching {
-                    val (currentSong, meta) = resolvePlaybackMetadata(videoId, playlistId)
+                val saavnResult = run { runCatching {
+                    val (currentSong, meta) = metadataOnce()
 
                     // Prefer the YouTube Music next() title; fall back to videoDetails title
                     val title = currentSong?.title
@@ -685,7 +690,7 @@ object YTPlayerUtils {
                         streamExpiresInSeconds = 3600,
                         isSaavnStream          = true,   // ← mark as Saavn so downloads skip YT range trick
                     )
-                }.getOrNull()
+                }.getOrNull() }
 
                 if (saavnResult != null) {
                     return Result.success(saavnResult)

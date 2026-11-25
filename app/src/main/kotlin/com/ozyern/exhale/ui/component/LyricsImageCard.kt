@@ -388,13 +388,11 @@ fun LyricsImageCard(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    // The GTA VI icon, in full colour; ComposeToImage draws the same badge.
+                    // The GTA VI splash mark, in full colour; ComposeToImage draws the same.
                     Image(
-                        painter = painterResource(id = R.drawable.exhale_gtavi_badge),
+                        painter = painterResource(id = R.drawable.exhale_gtavi_mark),
                         contentDescription = null,
-                        modifier = Modifier
-                            .size(22.dp)
-                            .clip(RoundedCornerShape(22)),
+                        modifier = Modifier.size(22.dp),
                     )
 
                     Spacer(modifier = Modifier.width(8.dp))

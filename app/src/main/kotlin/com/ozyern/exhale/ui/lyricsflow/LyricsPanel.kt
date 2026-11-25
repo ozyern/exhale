@@ -2063,8 +2063,8 @@ internal fun LyricsPanel(
         return
     }
 
-    // The list, and over it the way back to the song: scrolled away from the line being sung,
-    // the same "sync" button the classic lyrics view shows brings the reading back to it.
+    // The list, and over it one way back to the song: scrolled away from the line being sung,
+    // a single "sync" button (as in the classic lyrics view) brings the reading back to it.
     Box(modifier) {
         LazyColumn(
             state = listState,
@@ -2560,6 +2560,10 @@ internal fun LyricsPanel(
                             }
                         }
                     }
+                    }
+                }
+            }
+        }
         androidx.compose.animation.AnimatedVisibility(
             visible = browsingByDrag && !picking && isSynced,
             enter = androidx.compose.animation.slideInVertically { it } + androidx.compose.animation.fadeIn(),
@@ -2574,10 +2578,6 @@ internal fun LyricsPanel(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(androidx.compose.ui.res.stringResource(com.ozyern.exhale.R.string.auto_scroll))
-            }
-        }
-    }
-                }
             }
         }
     }

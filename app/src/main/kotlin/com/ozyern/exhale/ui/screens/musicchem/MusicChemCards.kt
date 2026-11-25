@@ -345,10 +345,9 @@ private fun MusicChemCard(
                     )
                 }
                 Spacer(Modifier.width(10.dp))
-                // Exhale's own mark in its gold. The black around it was made transparent, so its
-                // glow lies on the card.
+                // Exhale's GTA VI mark (the splash one), on a transparent ground so it lies on the card.
                 Image(
-                    painter = painterResource(R.drawable.music_chem_logo),
+                    painter = painterResource(R.drawable.exhale_gtavi_mark),
                     contentDescription = null,
                     modifier = Modifier.size(38.dp),
                 )

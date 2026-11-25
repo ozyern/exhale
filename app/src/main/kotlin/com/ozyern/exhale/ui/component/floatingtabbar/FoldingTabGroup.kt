@@ -272,7 +272,10 @@ internal fun FoldingTabGroup(
                     layerBlock: (GraphicsLayerScope.() -> Unit)?,
                 ) {
                     with(backdrop) { drawBackdrop(density, coordinates, layerBlock) }
-                    val progress = dampedDragAnimation.pressProgress.coerceIn(0f, 1f)
+                    // The bar's own surface is no longer mixed in: it is opaque and artwork-tinted, so
+                    // the held lens filled with a solid red disc. BitChord's lens is clear glass over
+                    // what is behind the dock, and so is this one now.
+                    val progress = 0f
                     if (progress > 0f) {
                         surfacePaint.alpha = progress
                         val canvas = drawContext.canvas
