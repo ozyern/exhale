@@ -31,6 +31,8 @@ class ConnectClient(
     private val selfName: () -> String,
     /** The Wi-Fi's broadcast address, or null when not on Wi-Fi (then nothing is tried). */
     private val broadcastAddress: () -> InetAddress?,
+    /** Addresses to ask one by one as well, for routers that drop broadcasts (the subnet). */
+    private val directAddresses: () -> List<InetAddress> = { emptyList() },
     private val onStatus: (ConnectStatus) -> Unit,
     private val onMessage: (ConnectMessage) -> Unit,
 ) {
@@ -61,7 +63,12 @@ class ConnectClient(
     val isConnected: Boolean get() = link?.isOpen == true && link?.peerId != null
 
     /** PCs answering on this Wi-Fi right now, for the pairing screen. Blocks for about a second. */
-    fun discover(): List<Beacon> = broadcastAddress()?.let { DiscoveryFinder.find(it) }.orEmpty()
+    fun discover(): List<Beacon> = DiscoveryFinder.find(broadcastAddress(), directAddresses())
+
+    /** Asks one address the user typed in (the PC shows it in Settings → Connected devices). */
+    fun discoverAt(host: String): List<Beacon> =
+        runCatching { InetAddress.getByName(host.trim()) }.getOrNull()
+            ?.let { DiscoveryFinder.find(null, listOf(it)) }.orEmpty()
 
     /**
      * Pairs with [beacon] using the [code] on its screen. Blocks until the PC answers.
@@ -137,7 +144,8 @@ class ConnectClient(
 
     /** The most recently paired PC first; its last address first, then whatever answers on the Wi-Fi. */
     private fun connectToAny(paired: List<PairedDevice>): Link? {
-        if (broadcastAddress() == null) return null
+        // No gate on knowing the Wi-Fi: a stale address fails in a moment, and the phone may not
+        // have reported its network yet when a paired PC is right there.
         val ordered = paired.sortedByDescending { it.pairedAtMs }
         for (device in ordered) {
             val host = device.lastHost ?: continue

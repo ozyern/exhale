@@ -2163,6 +2163,17 @@ private fun ConnectedDevicesCard() {
         }
     }
 
+    // For when the phone can't find this PC by itself (some routers drop the broadcast it uses).
+    val addresses = remember { connect.localAddresses() }
+    if (addresses.isNotEmpty()) {
+        RowDivider()
+        RowShell(
+            "This PC's address: ${addresses.joinToString("  ·  ")}",
+            "If the phone doesn't find this PC, type this address on the phone under Connected devices.",
+            null,
+        )
+    }
+
     devices.sortedByDescending { it.pairedAtMs }.forEach { device ->
         RowDivider()
         val online = device.id in connected

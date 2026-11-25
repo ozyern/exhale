@@ -65,6 +65,8 @@ object PhoneConnect {
     private var store: PairStore? = null
     @Volatile private var player: Player? = null
     @Volatile private var broadcast: InetAddress? = null
+    /** Every other address on the Wi-Fi's subnet, asked one by one when broadcasts are dropped. */
+    @Volatile private var subnet: List<InetAddress> = emptyList()
 
     fun init(context: Context) {
         if (client != null) return
@@ -85,6 +87,7 @@ object PhoneConnect {
             store = pairs,
             selfName = { deviceName(app) },
             broadcastAddress = { broadcast },
+            directAddresses = { subnet },
             onStatus = { status ->
                 _status.value = status
                 _devices.value = pairs.devices()
@@ -120,6 +123,9 @@ object PhoneConnect {
     fun nudge() = client?.nudge()
 
     suspend fun discover(): List<Beacon> = withContext(Dispatchers.IO) { client?.discover().orEmpty() }
+
+    /** Looks for Exhale at an address the user typed (the PC shows it on its Connected devices page). */
+    suspend fun discoverAt(host: String): List<Beacon> = withContext(Dispatchers.IO) { client?.discoverAt(host).orEmpty() }
 
     /** Pairs with [beacon] using the code on its screen. Null on success. */
     suspend fun pair(beacon: Beacon, code: String): ConnectMessage.Rejected.Reason? = withContext(Dispatchers.IO) {
@@ -171,15 +177,31 @@ object PhoneConnect {
         runCatching {
             connectivity.registerNetworkCallback(request, object : ConnectivityManager.NetworkCallback() {
                 override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
-                    broadcast = broadcastOf(properties)
+                    learn(properties)
                     client?.nudge()
                 }
 
                 override fun onLost(network: Network) {
                     broadcast = null
+                    subnet = emptyList()
                 }
             })
         }
+        // What the phone is on right now, without waiting for the first callback.
+        runCatching {
+            connectivity.activeNetwork?.let { network ->
+                val caps = connectivity.getNetworkCapabilities(network)
+                if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true ||
+                    caps?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true
+                ) connectivity.getLinkProperties(network)?.let(::learn)
+            }
+        }
+    }
+
+    private fun learn(properties: LinkProperties) {
+        broadcast = broadcastOf(properties)
+        val link = properties.linkAddresses.firstOrNull { it.address is Inet4Address }
+        subnet = link?.let { com.ozyern.exhale.connect.DiscoveryFinder.subnet(it.address, it.prefixLength) }.orEmpty()
     }
 
     private fun broadcastOf(properties: LinkProperties): InetAddress? {

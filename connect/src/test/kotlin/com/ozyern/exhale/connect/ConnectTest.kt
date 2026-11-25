@@ -64,8 +64,12 @@ class PairingTest {
 class ConnectLinkTest {
     private fun tempDir(name: String): File = Files.createTempDirectory("exhale-connect-$name").toFile()
 
+    /** A free port, so a running Exhale on this machine never answers in the test's place. */
+    private fun freePort(): Int = java.net.ServerSocket(0).use { it.localPort }
+
     @Test fun pairOnceThenReconnectAndControl() {
         val hostStore = PairStore(tempDir("host"))
+        val port = freePort()
         val received = CopyOnWriteArrayList<ConnectMessage>()
         val commandSeen = CountDownLatch(1)
         val host = ConnectHost(
@@ -73,6 +77,8 @@ class ConnectLinkTest {
             selfName = { "Test PC" },
             onPeersChanged = {},
             onMessage = { _, message -> received += message; if (message is ConnectMessage.Command) commandSeen.countDown() },
+            port = port,
+            discoveryPort = freePort(),
         )
         host.start()
         try {
@@ -87,7 +93,7 @@ class ConnectLinkTest {
                 onMessage = { if (it is ConnectMessage.NowPlaying) nowPlaying.countDown() },
             )
 
-            val beacon = Beacon(hostStore.selfId, "Test PC").also { it.host = "127.0.0.1" }
+            val beacon = Beacon(hostStore.selfId, "Test PC", port).also { it.host = "127.0.0.1" }
             // A wrong code is turned away and pairs nothing.
             host.openPairing()
             assertEquals(ConnectMessage.Rejected.Reason.WRONG_CODE, client.pair(beacon, "000000"))
@@ -115,12 +121,13 @@ class ConnectLinkTest {
 
     @Test fun aStrangerWithoutTheKeyIsTurnedAway() {
         val hostStore = PairStore(tempDir("host2"))
-        val host = ConnectHost(hostStore, { "PC" }, {}, { _, _ -> })
+        val port = freePort()
+        val host = ConnectHost(hostStore, { "PC" }, {}, { _, _ -> }, port = port, discoveryPort = freePort())
         host.start()
         try {
             val strangerStore = PairStore(tempDir("stranger"))
             // Claims to be paired, with a key the PC never gave out.
-            strangerStore.save(PairedDevice(hostStore.selfId, "PC", Pairing.newSecret(), "127.0.0.1"))
+            strangerStore.save(PairedDevice(hostStore.selfId, "PC", Pairing.newSecret(), "127.0.0.1", port))
             val connected = CountDownLatch(1)
             val stranger = ConnectClient(strangerStore, { "Stranger" }, { InetAddress.getLoopbackAddress() },
                 onStatus = { if (it is ConnectStatus.Connected) connected.countDown() }, onMessage = {})

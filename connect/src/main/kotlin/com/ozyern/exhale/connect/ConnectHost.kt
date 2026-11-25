@@ -23,11 +23,14 @@ class ConnectHost(
     private val onMessage: (peerId: String, ConnectMessage) -> Unit,
     /** A phone just came in (new or back): the app sends it what is playing. */
     private val onPeerJoined: (peerId: String) -> Unit = {},
+    /** Where to listen. The apps use the fixed ports; tests pass free ones. */
+    private val port: Int = CONNECT_TCP_PORT,
+    discoveryPort: Int = CONNECT_DISCOVERY_PORT,
 ) {
     private val links = CopyOnWriteArrayList<Link>()
     private val nonces = HashMap<Link, String>()
     @Volatile private var server: ServerSocket? = null
-    private val responder = DiscoveryResponder { Beacon(store.selfId, selfName()) }
+    private val responder = DiscoveryResponder(discoveryPort) { Beacon(store.selfId, selfName(), port) }
 
     /** The code on screen while pairing is open, and when it stops working. */
     @Volatile private var pairing: Pair<String, Long>? = null
@@ -38,7 +41,7 @@ class ConnectHost(
         val socket = runCatching {
             ServerSocket().apply {
                 reuseAddress = true
-                bind(InetSocketAddress(CONNECT_TCP_PORT))
+                bind(InetSocketAddress(port))
             }
         }.getOrNull() ?: return
         server = socket

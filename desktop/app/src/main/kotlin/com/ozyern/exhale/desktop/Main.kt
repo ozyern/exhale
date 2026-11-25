@@ -74,6 +74,19 @@ internal val appIcon: BitmapPainter by lazy {
 }
 
 fun main() {
+    // One Exhale at a time: a second start brings the open window forward and says so, then quits.
+    if (!SingleInstance.acquire()) {
+        SingleInstance.showRunning()
+        runCatching {
+            javax.swing.JOptionPane.showMessageDialog(
+                null,
+                "Exhale is already open in another window.",
+                "Exhale",
+                javax.swing.JOptionPane.INFORMATION_MESSAGE,
+            )
+        }
+        return
+    }
     // Direct3D 12 on Windows: the glass, the moving artwork shader and the blurred lyric lines all
     // render on the GPU at the display's refresh rate. `-Dskiko.renderApi=OPENGL` still overrides it.
     if (System.getProperty("skiko.renderApi") == null) System.setProperty("skiko.renderApi", "DIRECT3D")
@@ -178,6 +191,17 @@ fun main() {
             onKeyEvent = { AppShortcuts.dispatchPlain(it) },
         ) {
             window.minimumSize = java.awt.Dimension(960, 640)
+
+            // Another start of Exhale asked for this window: show it, restore it, bring it forward.
+            LaunchedEffect(Unit) {
+                SingleInstance.showRequests.collect { requests ->
+                    if (requests == 0) return@collect
+                    windowVisible = true
+                    windowState.isMinimized = false
+                    window.toFront()
+                    window.requestFocus()
+                }
+            }
 
             // Join Windows' media list, so Exhale appears in the quick settings panel and the keyboard's
             // media keys reach it from any window. Needs the window itself, which only exists here.

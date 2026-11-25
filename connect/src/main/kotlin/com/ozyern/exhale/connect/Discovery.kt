@@ -34,7 +34,7 @@ private val beaconJson = Json { ignoreUnknownKeys = true }
  * [Beacon]. A plain UDP broadcast rather than mDNS, so neither app needs another library, and it
  * works on the home routers that block multicast but pass broadcast.
  */
-class DiscoveryResponder(private val beacon: () -> Beacon) {
+class DiscoveryResponder(private val port: Int = CONNECT_DISCOVERY_PORT, private val beacon: () -> Beacon) {
     @Volatile private var socket: DatagramSocket? = null
 
     fun start() {
@@ -42,7 +42,7 @@ class DiscoveryResponder(private val beacon: () -> Beacon) {
         val bound = runCatching {
             DatagramSocket(null).apply {
                 reuseAddress = true
-                bind(InetSocketAddress(CONNECT_DISCOVERY_PORT))
+                bind(InetSocketAddress(port))
             }
         }.getOrNull() ?: return
         socket = bound
@@ -68,26 +68,34 @@ class DiscoveryResponder(private val beacon: () -> Beacon) {
 }
 
 /**
- * The phone side: asks the whole Wi-Fi once and collects every Exhale for Windows that answers
- * within [timeoutMs]. [broadcast] is the network's broadcast address (Android knows it from its
- * DHCP lease); 255.255.255.255 reaches the same machines on most home networks.
+ * The phone side: asks the Wi-Fi and collects every Exhale for Windows that answers within
+ * [timeoutMs]. [broadcast] is the network's broadcast address; [direct] are addresses asked one by
+ * one as well, because plenty of home routers (Jio's among them) drop broadcasts between Wi-Fi
+ * clients while letting ordinary packets through. A typed-in PC address is just a [direct] of one.
  */
 object DiscoveryFinder {
-    fun find(broadcast: InetAddress, timeoutMs: Int = 1_500): List<Beacon> {
+    fun find(broadcast: InetAddress?, direct: List<InetAddress> = emptyList(), timeoutMs: Int = 2_000): List<Beacon> {
         val found = LinkedHashMap<String, Beacon>()
         runCatching {
             DatagramSocket().use { socket ->
                 socket.broadcast = true
-                socket.soTimeout = 250
+                socket.soTimeout = 200
                 val question = QUESTION.toByteArray(Charsets.UTF_8)
+                fun ask(to: InetAddress) {
+                    runCatching { socket.send(DatagramPacket(question, question.size, to, CONNECT_DISCOVERY_PORT)) }
+                }
                 val deadline = System.currentTimeMillis() + timeoutMs
+                var asks = 0
                 var nextAsk = 0L
                 val buffer = ByteArray(1024)
                 while (System.currentTimeMillis() < deadline) {
-                    // Asked a few times: one broadcast packet is easily lost on Wi-Fi.
-                    if (System.currentTimeMillis() >= nextAsk) {
-                        runCatching { socket.send(DatagramPacket(question, question.size, broadcast, CONNECT_DISCOVERY_PORT)) }
-                        nextAsk = System.currentTimeMillis() + 400
+                    // Asked a few times: one UDP packet is easily lost on Wi-Fi.
+                    if (asks < 3 && System.currentTimeMillis() >= nextAsk) {
+                        broadcast?.let(::ask)
+                        runCatching { ask(InetAddress.getByName("255.255.255.255")) }
+                        direct.forEach(::ask)
+                        asks++
+                        nextAsk = System.currentTimeMillis() + 500
                     }
                     try {
                         val packet = DatagramPacket(buffer, buffer.size)
@@ -104,5 +112,23 @@ object DiscoveryFinder {
             }
         }
         return found.values.toList()
+    }
+
+    /**
+     * Every other address on this device's subnet, for [find]'s one-by-one asking. Only for
+     * home-sized networks (a /22 or smaller, at most about a thousand addresses).
+     */
+    fun subnet(self: InetAddress, prefixLength: Int): List<InetAddress> {
+        val bytes = self.address
+        if (bytes.size != 4 || prefixLength !in 22..30) return emptyList()
+        val ip = bytes.fold(0) { acc, b -> (acc shl 8) or (b.toInt() and 0xff) }
+        val mask = -1 shl (32 - prefixLength)
+        val network = ip and mask
+        val count = 1 shl (32 - prefixLength)
+        return (1 until count - 1).mapNotNull { offset ->
+            val host = network + offset
+            if (host == ip) null
+            else InetAddress.getByAddress(byteArrayOf((host ushr 24).toByte(), (host ushr 16).toByte(), (host ushr 8).toByte(), host.toByte()))
+        }
     }
 }

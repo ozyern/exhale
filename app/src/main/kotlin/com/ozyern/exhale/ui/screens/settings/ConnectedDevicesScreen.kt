@@ -55,17 +55,47 @@ fun ConnectedDevicesScreen(navController: NavController) {
     var code by remember { mutableStateOf("") }
     var pairing by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    var typedAddress by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) { PhoneConnect.nudge() }
 
-    fun search() {
+    fun runSearch() {
         searching = true
         message = null
         scope.launch {
             found = PhoneConnect.discover()
             searching = false
             if (found.isNullOrEmpty()) {
-                message = "No PC answered. Open Exhale on the PC, make sure both are on the same Wi-Fi, and allow Exhale through the Windows firewall if it asked."
+                message = "No PC answered. Make sure Exhale is open on the PC and both are on the same Wi-Fi — " +
+                    "or type the PC's address below (it's shown on the PC under Settings → Connected devices)."
+            }
+        }
+    }
+
+    // Newer Android asks before an app may reach other devices on the Wi-Fi.
+    val localNetwork = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { runSearch() }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    fun search() {
+        val needsAsking = android.os.Build.VERSION.SDK_INT >= 37 &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, LOCAL_NETWORK_PERMISSION) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (needsAsking) localNetwork.launch(LOCAL_NETWORK_PERMISSION) else runSearch()
+    }
+
+    fun searchAt(address: String) {
+        if (address.isBlank()) return
+        searching = true
+        message = null
+        scope.launch {
+            val answers = PhoneConnect.discoverAt(address)
+            searching = false
+            if (answers.isEmpty()) {
+                message = "Nothing answered at $address. Check the address on the PC and that Exhale is open there."
+            } else {
+                found = answers
+                if (answers.size == 1) { pairingWith = answers.first(); code = "" }
             }
         }
     }
@@ -153,6 +183,25 @@ fun ConnectedDevicesScreen(navController: NavController) {
                             description = { Text("On the PC: Settings → Connected devices → Pair.") },
                             enabled = !searching,
                             onClick = ::search,
+                        ),
+                    )
+                    add(
+                        IosSettingsItem(
+                            icon = painterResource(R.drawable.link),
+                            title = {
+                                OutlinedTextField(
+                                    value = typedAddress,
+                                    onValueChange = { typedAddress = it.filter { c -> c.isDigit() || c == '.' }.take(15) },
+                                    singleLine = true,
+                                    placeholder = { Text("PC address, e.g. 192.168.1.20") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            },
+                            description = { Text("Or connect by address: shown on the PC under Connected devices.") },
+                            trailingContent = { Text("Go", color = IosTheme.colors.systemBlue) },
+                            enabled = !searching && typedAddress.count { it == '.' } == 3,
+                            onClick = { searchAt(typedAddress) },
                         ),
                     )
                     found.orEmpty().forEach { beacon ->
@@ -246,3 +295,6 @@ fun ConnectedDevicesScreen(navController: NavController) {
         }
     }
 }
+
+/** Android's runtime permission for reaching other devices on the local network. */
+private const val LOCAL_NETWORK_PERMISSION = "android.permission.ACCESS_LOCAL_NETWORK"

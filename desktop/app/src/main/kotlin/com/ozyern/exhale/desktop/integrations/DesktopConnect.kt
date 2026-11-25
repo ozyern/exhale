@@ -150,6 +150,24 @@ object DesktopConnect {
         _connected.value = host?.connectedIds().orEmpty()
     }
 
+    /**
+     * This PC's addresses on its local networks, for the phone to type in when the Wi-Fi drops the
+     * broadcast it would otherwise find the PC with. Physical adapters only: no VPN or virtual ones.
+     */
+    fun localAddresses(): List<String> = runCatching {
+        java.net.NetworkInterface.getNetworkInterfaces().toList()
+            .filter { it.isUp && !it.isLoopback && !it.isVirtual && !it.isPointToPoint }
+            .filterNot { iface ->
+                val name = (iface.displayName + " " + iface.name).lowercase()
+                listOf("virtual", "vmware", "hyper-v", "vethernet", "wsl", "tap", "tun", "vpn", "vgate", "loopback", "bluetooth").any { it in name }
+            }
+            .flatMap { iface -> iface.inetAddresses.toList() }
+            .filterIsInstance<java.net.Inet4Address>()
+            .filter { it.isSiteLocalAddress }
+            .map { it.hostAddress }
+            .distinct()
+    }.getOrDefault(emptyList())
+
     /** The connected phone's name, or null when none is linked: names the "Continue on" item. */
     fun connectedPhoneName(): String? {
         val id = _connected.value.firstOrNull() ?: return null
