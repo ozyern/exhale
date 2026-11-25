@@ -130,7 +130,15 @@ fun main() {
                 runCatching { DesktopPlayer(scope) }
             }
         }
-        LaunchedEffect(player) { player?.getOrNull()?.let { Integrations.start(it, scope) } }
+        LaunchedEffect(player) {
+            player?.getOrNull()?.let {
+                Integrations.start(it, scope)
+                // The phone's Wi-Fi link: always listening, so a paired phone connects by itself.
+                com.ozyern.exhale.desktop.integrations.DesktopConnect.start(it, scope)
+                // Listen Together rooms, shared with the Android app.
+                com.ozyern.exhale.desktop.integrations.DesktopListenTogether.attach(it, scope)
+            }
+        }
         DisposableEffect(Unit) {
             onDispose {
                 player?.getOrNull()?.close()

@@ -476,7 +476,8 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
     }
 
     /** Starts [index] of [queue]. With shuffle on, everything after the chosen song is shuffled. */
-    fun play(queue: List<SongItem>, index: Int) {
+    /** Plays [queue] from [index]; [startAtSeconds] picks up partway in (a handoff from the phone). */
+    fun play(queue: List<SongItem>, index: Int, startAtSeconds: Double? = null) {
         val song = queue.getOrNull(index) ?: return
         if (_state.value.shuffle) {
             unshuffled = queue
@@ -491,7 +492,7 @@ class DesktopPlayer(private val scope: CoroutineScope) : AutoCloseable {
                 queue.drop(index).take(8).forEach { LosslessLibrary.lookup(it) }
             }
         }
-        load(_state.value.index)
+        load(_state.value.index, startAt = startAtSeconds?.takeIf { it > 0.5 })
     }
 
     private fun load(index: Int, startAt: Double? = null) {

@@ -140,6 +140,8 @@ class App : Application(), SingletonImageLoader.Factory {
 
         // Warm the preference mirror off Main so the first composition avoids its blocking read.
         applicationScope.launch(Dispatchers.IO) { dataStore.warmPreferenceMirror() }
+        // Exhale Connect: keeps the link to a paired PC on the same Wi-Fi, reconnecting by itself.
+        com.ozyern.exhale.phoneconnect.PhoneConnect.init(this)
         applicationScope.launch(Dispatchers.IO) {
             com.ozyern.exhale.utils.AppIcon.reconcile(
                 this@App,

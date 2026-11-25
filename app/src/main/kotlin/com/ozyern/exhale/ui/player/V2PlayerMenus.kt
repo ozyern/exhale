@@ -412,6 +412,47 @@ fun V2RoutePopover(
                     }
                 }
             }
+            // Exhale Connect: the paired PC is one more place to play, while it is connected.
+            val connectStatus by com.ozyern.exhale.phoneconnect.PhoneConnect.status.collectAsState()
+            (connectStatus as? com.ozyern.exhale.connect.ConnectStatus.Connected)?.let { connected ->
+                androidx.compose.foundation.layout.Box(
+                    contentAlignment = androidx.compose.ui.Alignment.CenterStart,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .clip(ContinuousRoundedRectangle(percent = 50))
+                        .background(Color.White.copy(alpha = 0.12f))
+                        .clickable {
+                            com.ozyern.exhale.phoneconnect.PhoneConnect.handOffToPc()
+                            onDismiss()
+                        },
+                ) {
+                    androidx.compose.foundation.layout.Row(
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    ) {
+                        com.ozyern.exhale.ui.component.SymbolIcon(
+                            // sf() throws on a name the bundled set lacks; fall back rather than crash.
+                            symbol = com.ozyern.exhale.ui.component.sf(
+                                listOf("laptopcomputer", "desktopcomputer", "display", "speaker.wave.2.fill")
+                                    .first { SfSymbol.named(it) != null },
+                            ),
+                            contentDescription = null,
+                            size = 20.dp,
+                            tint = Color.White.copy(alpha = 0.82f),
+                        )
+                        androidx.compose.foundation.layout.Spacer(Modifier.width(10.dp))
+                        com.ozyern.exhale.ui.ios.compat.Text(
+                            "Continue on ${connected.peer.name}",
+                            color = Color.White,
+                            fontSize = 17.sp,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                            maxLines = 1,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
             com.ozyern.exhale.core.VolumeControlRow(
                 label = stringResource(R.string.volume),
                 icon = androidx.compose.material.icons.Icons.Filled.VolumeUp,

@@ -49,6 +49,8 @@ rootProject.name = "exhale"
 include(":app")
 include(":canvas")
 include(":openflac")
+// Phone <-> Exhale for Windows on the same Wi-Fi; the Windows build includes it as ../connect.
+include(":connect")
 include(":innertube")
 project(":innertube").projectDir = file("core/innertube")
 include(":lyrics-data")

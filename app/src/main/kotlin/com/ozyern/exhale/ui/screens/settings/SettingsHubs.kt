@@ -229,6 +229,7 @@ object SettingsHubs {
                     SettingsLink("YouTube Music", R.drawable.account, { systemRed }, route("settings/account"), "Sign-in, sync and ListenBrainz", "login youtube sync listenbrainz"),
                     SettingsLink("Spotify", R.drawable.spotify, { systemGreen }, route("settings/spotify"), "Connect and import playlists", "import"),
                     SettingsLink("Apple Music import", R.drawable.playlist_add, { systemRed }, SettingsAction.AppleMusicImport, "Import playlists from a link or export", "apple music playlist import export"),
+                    SettingsLink("Connected devices", R.drawable.cast, { systemBlue }, route("settings/connected_devices"), "Exhale for Windows on your Wi-Fi", "pc windows desktop computer connect pair remote handoff continue"),
                     SettingsLink("Discord", R.drawable.discord, { systemIndigo }, route("settings/integrations/discord"), "Listening status", "rich presence"),
                     SettingsLink("Last.fm", R.drawable.music_note, { systemRed }, route("settings/integrations/lastfm"), "Scrobbling", "scrobble"),
                 ),

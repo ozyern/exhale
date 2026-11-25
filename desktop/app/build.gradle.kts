@@ -18,6 +18,7 @@ dependencies {
     implementation(project(":lrclib"))
     // The FLAC page's catalogue, shared with the Android app.
     implementation(project(":openflac"))
+    implementation(project(":connect"))
     implementation(project(":betterlyrics"))
     implementation(project(":simpmusic"))
     implementation(project(":kugou"))
@@ -179,4 +180,12 @@ compose.desktop {
             }
         }
     }
+}
+
+// Listen Together speaks the Android app's own protocol: its message classes are compiled in from
+// the shared module rather than copied, so the two apps can never drift apart on the wire.
+// ServerClock is left out: it needs atomicfu, and the desktop client keeps its own simpler clock.
+kotlin.sourceSets.named("main") {
+    kotlin.srcDir("../../feature/listen-together/domain/src/commonMain/kotlin/com/ozyern/exhale/listentogether")
+    kotlin.exclude("**/ServerClock.kt")
 }

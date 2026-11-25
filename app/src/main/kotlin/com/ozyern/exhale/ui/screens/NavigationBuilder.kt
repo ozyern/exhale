@@ -667,6 +667,10 @@ fun NavGraphBuilder.navigationBuilder(
         ModuleDetailScreen(navController, scrollBehavior, it.arguments?.getString("moduleId") ?: "")
     }
 
+    sharedComposable("settings/connected_devices") {
+        com.ozyern.exhale.ui.screens.settings.ConnectedDevicesScreen(navController)
+    }
+
     sharedComposable("settings/integrations/discord") {
         DiscordSettings(navController, scrollBehavior, snackbarHostState)
     }

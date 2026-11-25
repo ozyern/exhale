@@ -964,19 +964,8 @@ private fun QualityBadge(state: PlayerState, settings: Settings) {
                         .clickable { showQualityInfo = !showQualityInfo }
                         .padding(horizontal = 4.dp, vertical = 2.dp),
                 ) {
-                    LosslessWaveformIcon(
-                        tint = ink,
-                        modifier = Modifier.size(width = 16.dp, height = 11.dp),
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        if (state.isHiRes) "Hi-Res Lossless" else "Lossless",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 0.1.sp,
-                        color = ink,
-                        maxLines = 1,
-                    )
+                    // The Android player's badge: its glyph, its type, its light sweeping the words.
+                    LosslessQualityBadge(hiRes = state.isHiRes, ink = Color.White, playing = state.isPlaying)
                 }
 
                 if (showQualityInfo) {
@@ -1131,6 +1120,20 @@ private fun AirPlayButton(player: DesktopPlayer) {
                     },
                     onClick = {
                         player.setAudioOutput(output.name)
+                        open = false
+                    },
+                )
+            }
+            // Exhale Connect: the paired phone is one more place to play, while it is connected.
+            val connectedPhones by com.ozyern.exhale.desktop.integrations.DesktopConnect.connected.collectAsState()
+            if (connectedPhones.isNotEmpty()) {
+                val phoneName = com.ozyern.exhale.desktop.integrations.DesktopConnect.connectedPhoneName() ?: "phone"
+                androidx.compose.material3.HorizontalDivider()
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Continue on $phoneName", fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    leadingIcon = { Box(Modifier.size(18.dp)) },
+                    onClick = {
+                        com.ozyern.exhale.desktop.integrations.DesktopConnect.handOffToPhone()
                         open = false
                     },
                 )

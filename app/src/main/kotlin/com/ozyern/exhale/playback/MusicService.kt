@@ -518,6 +518,7 @@ class MusicService :
     private val playerInitialized = MutableStateFlow(false)
     val isPlayerReady: kotlinx.coroutines.flow.StateFlow<Boolean> = playerInitialized.asStateFlow()
 
+    private var phoneConnect: com.ozyern.exhale.phoneconnect.PhoneConnectBridge? = null
     private val _playerFlow = MutableStateFlow<ExoPlayer?>(null)
     val playerFlow = _playerFlow.asStateFlow()
 
@@ -692,6 +693,8 @@ class MusicService :
         )
         player = createExoPlayer()
         player.addListener(this@MusicService)
+        // Exhale Connect: the paired PC sees and controls this player over the Wi-Fi.
+        phoneConnect = com.ozyern.exhale.phoneconnect.PhoneConnectBridge(this, scope).also { it.start() }
 
         AudioCache.init(playerCache, downloadCache)
         AudioCache.prefetchHead = streamResolver::prefetchAnalysisHead
@@ -4244,6 +4247,8 @@ class MusicService :
 
     override fun onDestroy() {
         isRunning = false
+        phoneConnect?.stop()
+        phoneConnect = null
         liveLyricsPublisher?.stop()
 
         try {

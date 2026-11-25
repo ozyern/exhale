@@ -35,3 +35,8 @@ listOf("innertube", "lrclib", "kugou", "simpmusic", "betterlyrics", "lastfm", "k
 // uploads both apps play from, and a fix to it (a new upload, a source that moved) reaches both.
 include(":openflac")
 project(":openflac").projectDir = file("../openflac")
+
+// Exhale Connect: how this app and the phone find, pair with and talk to each other on the Wi-Fi.
+// The Android app's own module, like :openflac, so both sides speak exactly the same protocol.
+include(":connect")
+project(":connect").projectDir = file("../connect")

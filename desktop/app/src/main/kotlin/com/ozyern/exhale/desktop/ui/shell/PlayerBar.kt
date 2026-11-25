@@ -45,6 +45,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -280,6 +281,20 @@ private fun OutputButton(player: DesktopPlayer) {
                     },
                     onClick = {
                         player.setAudioOutput(output.name)
+                        open = false
+                    },
+                )
+            }
+            // Exhale Connect: the paired phone is one more place to play, while it is connected.
+            val connectedPhones by com.ozyern.exhale.desktop.integrations.DesktopConnect.connected.collectAsState()
+            if (connectedPhones.isNotEmpty()) {
+                val phoneName = com.ozyern.exhale.desktop.integrations.DesktopConnect.connectedPhoneName() ?: "phone"
+                androidx.compose.material3.HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text("Continue on $phoneName", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    leadingIcon = { Box(Modifier.size(20.dp)) },
+                    onClick = {
+                        com.ozyern.exhale.desktop.integrations.DesktopConnect.handOffToPhone()
                         open = false
                     },
                 )

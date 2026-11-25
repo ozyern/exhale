@@ -384,6 +384,7 @@ dependencies {
     implementation(project(":network-storage"))
     implementation(project(":canvas"))
     implementation(project(":openflac"))
+    implementation(project(":connect"))
     implementation(project(":playback-core"))
     implementation(project(":playback-presentation"))
     implementation(project(":history-core"))

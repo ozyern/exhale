@@ -152,6 +152,13 @@ object DesktopPrefs {
         _history.value = updated
     }
 
+    /** History as rebuilt with the phone's plays merged in (Exhale Connect), newest first. */
+    fun replaceHistory(songs: List<SongItem>) {
+        val updated = songs.distinctBy { it.id }.take(300)
+        putRecords("history", encodeSongs(updated))
+        _history.value = updated
+    }
+
     fun clearHistory() {
         put("history", null)
         _history.value = emptyList()

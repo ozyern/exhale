@@ -568,6 +568,24 @@ private fun categories(
         ),
     ),
     Category(
+        "devices", "Connected devices", "Your phone on the same Wi-Fi", NavIcons.Link, { it.tertiary },
+        listOf(
+            Group(
+                "Exhale on your phone",
+                listOf(CustomItem("Phones", "Pair once; it reconnects by itself", keywords = "phone android connect pair remote handoff sync wifi") { ConnectedDevicesCard() }),
+            ),
+        ),
+    ),
+    Category(
+        "listen_together", "Listen Together", "Play in sync with friends", NavIcons.Link, { it.primary },
+        listOf(
+            Group(
+                "Rooms",
+                listOf(CustomItem("Room", "Create one, or join with a code", keywords = "listen together jam party room friends sync share") { ListenTogetherCard() }),
+            ),
+        ),
+    ),
+    Category(
         "privacy", "Privacy", "Listen and search history", NavIcons.Lock, { it.error },
         listOf(
             Group(
@@ -2102,5 +2120,126 @@ private fun UpdatesCard() {
                 if (checking) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Check now")
             }
         }
+    }
+}
+
+/**
+ * Settings → Connected devices: pair a phone once with a code, then it finds this PC and connects
+ * by itself on the same Wi-Fi. A connected phone can be controlled from here, and what plays here
+ * can be handed to it.
+ */
+@Composable
+private fun ConnectedDevicesCard() {
+    val connect = com.ozyern.exhale.desktop.integrations.DesktopConnect
+    val code by connect.pairingCode.collectAsState()
+    val devices by connect.devices.collectAsState()
+    val connected by connect.connected.collectAsState()
+    val phone by connect.phone.collectAsState()
+
+    val pairingCode = code
+    if (pairingCode != null) {
+        RowShell(
+            "Enter this code on your phone",
+            "On the phone: Settings → Connected devices → Pair with a PC. The code works for two minutes.",
+            NavIcons.Link,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    pairingCode.chunked(3).joinToString(" "),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp,
+                )
+                OutlinedButton(onClick = connect::cancelPairing) { Text("Cancel") }
+            }
+        }
+    } else {
+        RowShell(
+            "Pair a phone",
+            "Pair once and your phone connects by itself whenever it is on this Wi-Fi: remote control, and hand songs between them.",
+            NavIcons.Link,
+        ) {
+            Button(onClick = connect::startPairing) { Text("Pair") }
+        }
+    }
+
+    devices.sortedByDescending { it.pairedAtMs }.forEach { device ->
+        RowDivider()
+        val online = device.id in connected
+        RowShell(
+            device.name,
+            if (online) "Connected" else "Not connected — it reconnects by itself on this Wi-Fi",
+            null,
+        ) {
+            OutlinedButton(onClick = { connect.forget(device.id) }) { Text("Forget") }
+        }
+    }
+
+    // The phone's remote, while one is connected and playing something.
+    val nowOnPhone = phone?.second
+    val track = nowOnPhone?.track
+    if (connected.isNotEmpty()) {
+        RowDivider()
+        RowShell(
+            track?.title ?: "Nothing playing on the phone",
+            track?.let { "${it.artists} · on your phone" } ?: "Hand over what plays here to carry on there.",
+            null,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (track != null) {
+                    OutlinedButton(onClick = { connect.commandPhone(com.ozyern.exhale.connect.ConnectAction.PREVIOUS) }) { Text("Previous") }
+                    Button(onClick = { connect.commandPhone(com.ozyern.exhale.connect.ConnectAction.TOGGLE) }) {
+                        Text(if (nowOnPhone.playing) "Pause" else "Play")
+                    }
+                    OutlinedButton(onClick = { connect.commandPhone(com.ozyern.exhale.connect.ConnectAction.NEXT) }) { Text("Next") }
+                }
+                OutlinedButton(onClick = { connect.handOffToPhone() }) { Text("Continue on phone") }
+            }
+        }
+    }
+}
+
+/**
+ * Settings → Listen Together: the Android app's rooms, on the PC. The host's playback is the
+ * room's; a guest's player follows it. Join requests come here for the host to approve.
+ */
+@Composable
+private fun ListenTogetherCard() {
+    val together = com.ozyern.exhale.desktop.integrations.DesktopListenTogether
+    val session by together.session.collectAsState()
+    val status by together.status.collectAsState()
+    val name = remember { System.getProperty("user.name")?.takeIf { it.isNotBlank() } ?: "Exhale for Windows" }
+
+    val room = session
+    if (room == null) {
+        RowShell("Start a room", status ?: "Others join with its code and hear what you play, in sync.", NavIcons.Link) {
+            Button(onClick = { together.createRoom(name) }) { Text("Create room") }
+        }
+        RowDivider()
+        TextSettingRow("Join a room", "Room code", "", "Join") { code ->
+            if (code.isNotBlank()) together.joinRoom(code, name)
+        }
+        return
+    }
+
+    RowShell(
+        "Room ${room.roomCode}",
+        if (room.isHost) "You're the host: everyone hears what plays here." else "Following the host's playback.",
+        NavIcons.Link,
+    ) {
+        OutlinedButton(onClick = together::leave) { Text("Leave") }
+    }
+    room.pendingJoins.forEach { request ->
+        RowDivider()
+        RowShell("${request.username} wants to join", null, null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { together.reject(request.userId) }) { Text("Decline") }
+                Button(onClick = { together.approve(request.userId) }) { Text("Let in") }
+            }
+        }
+    }
+    room.users.forEach { user ->
+        RowDivider()
+        RowShell(user.username + if (user.userId == room.userId) " (you)" else "", if (user.isHost) "Host" else "Listening", null)
     }
 }

@@ -792,7 +792,7 @@ private fun CollectionInfo(
                 meta.forEachIndexed { i, fact ->
                     if (i > 0) Text(" · ", fontSize = 11.5.sp, color = grey)
                     if (fact == "Lossless") {
-                        LosslessWaveformIcon(tint = grey, modifier = Modifier.size(width = 14.dp, height = 10.dp))
+                        LosslessWaveformIcon(tint = grey, modifier = Modifier.size(width = 15.dp, height = 8.dp))
                         Spacer(Modifier.width(3.dp))
                     }
                     Text(fact, fontSize = 11.5.sp, fontWeight = FontWeight.Medium, color = grey, maxLines = 1)
