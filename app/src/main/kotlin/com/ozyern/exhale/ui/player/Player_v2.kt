@@ -1268,11 +1268,13 @@ private fun PlayerV2Content(
                                 }
 
                                 // Keep leftover pane height above the title to prevent overlap with the timeline.
-                                // The reference design's Best Part pill sits at the top of it, at the foot of the cover,
-                                // so it never moves the title or the controls when it comes and goes.
+                                // The Best Part pill floats here without taking layout space, so it never moves
+                                // the title or the controls when it comes and goes. Squared hangs it from the top
+                                // of the gap under its card; Hero Blend leaves no gap, so there it rises from
+                                // the title row into the cover's dissolving foot instead of landing on the title.
                                 Box(
                                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                                    contentAlignment = Alignment.TopCenter,
+                                    contentAlignment = if (isHeroLook) Alignment.BottomCenter else Alignment.TopCenter,
                                 ) {
                                     if (showBestPart && !isWidePlayerLayout) {
                                         val bestPartLines = remember(currentLyrics?.lyrics) {
@@ -1294,7 +1296,13 @@ private fun PlayerV2Content(
                                                     position = target
                                                 }
                                             },
-                                            modifier = Modifier.wrapContentHeight(align = Alignment.Top, unbounded = true),
+                                            modifier = if (isHeroLook) {
+                                                Modifier
+                                                    .wrapContentHeight(align = Alignment.Bottom, unbounded = true)
+                                                    .padding(bottom = 14.dp)
+                                            } else {
+                                                Modifier.wrapContentHeight(align = Alignment.Top, unbounded = true)
+                                            },
                                         )
                                     }
                                 }

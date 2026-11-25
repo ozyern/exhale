@@ -579,6 +579,8 @@ class MusicService :
     // Silent stall recoveries are separate from playback exception retries.
     private val losslessStallCount = mutableMapOf<String, Int>()
     private val MAX_LOSSLESS_STALLS_BEFORE_FALLBACK = 2
+    /** Load-control byte ceiling (Java heap): ~1 min of 24-bit/192 kHz FLAC, ~3 min of 24/96. */
+    private val LOSSLESS_TARGET_BUFFER_BYTES = 64 * 1024 * 1024
     /** Silence this close to a song's start or end is the song itself, never a lossless stall. */
     private val STALL_IGNORE_HEAD_MS = 5_000L
     private val STALL_IGNORE_TAIL_MS = 15_000L
@@ -1498,10 +1500,16 @@ class MusicService :
                 androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
                         50_000,   // Min buffer: 50s
-                        50_000,   // Max buffer: 50s
-                        750,      // Buffer for playback: 750ms — start audio as soon as we have it
-                        2_000     // Buffer for playback after re-buffer: 2s
+                        90_000,   // Max buffer: 90s, so a hi-res track rides out a dead patch of network
+                        1_000,    // Buffer for playback: 1s -- first audio still starts at once
+                        6_000     // After a stall, hold 6s before resuming: at hi-res bitrates 2s
+                                  // drained before the next read landed, so playback stuttered stall-to-stall
                     )
+                    // ExoPlayer otherwise caps audio at ~13 MB, which 24-bit/192 kHz FLAC (5-9 Mbit/s)
+                    // fills in 12-20 s: the "50 s" buffer quietly stopped loading at a third of that.
+                    // Time decides instead, under a 64 MB ceiling that keeps the heap safe at 9 Mbit/s.
+                    .setTargetBufferBytes(LOSSLESS_TARGET_BUFFER_BYTES)
+                    .setPrioritizeTimeOverSizeThresholds(true)
                     .build()
             )
             .setHandleAudioBecomingNoisy(true)

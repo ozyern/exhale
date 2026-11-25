@@ -25,3 +25,23 @@ class LyricsSyncLevelTest {
         assertEquals("preferred-words", policy.best?.provider)
     }
 }
+
+class LyricsJudgedPolicyTest {
+    private val taste = "[00:01.000]You'll get a taste of me\n[00:04.000]Lipstick on your coffee cup\n[00:08.000]Fake smile but the real stuff"
+    private val tasteWords = "[00:01.000]<00:01.000|00:01.500>Taste <00:01.800|00:02.300>again\n[00:04.000]Lipstick on your coffee cup\n[00:08.000]Fake smile but the real stuff"
+    private val otherSong = "[00:01.000]<00:01.000|00:01.500>Driving <00:01.800|00:02.300>home\n[00:04.000]Through the city lights tonight\n[00:08.000]Nothing gonna stop me now"
+
+    @Test fun aSourceSingingAnotherSongLosesToOnesThatAgree() {
+        val policy = LyricsUpgradePolicy(title = "Taste")
+        assertNotNull(policy.consider("word-but-wrong", 0, otherSong))
+        assertNotNull(policy.consider("lines", 3, taste))
+        assertNotNull(policy.consider("words", 5, tasteWords))
+        assertEquals("words", policy.best?.provider)
+    }
+
+    @Test fun withoutATitleTheLadderIsUnchanged() {
+        val policy = LyricsUpgradePolicy()
+        assertNotNull(policy.consider("word", 0, otherSong))
+        assertNull(policy.consider("lines", 3, taste))
+    }
+}

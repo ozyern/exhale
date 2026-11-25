@@ -80,11 +80,11 @@ fun BootSplash(
     }
     if (reducedMotion) return
 
-    // The neon "E))" on a transparent ground (splash_logo_gtavi, cut from assets/splash_gtavi.png).
+    // The neon "E))" on a transparent ground (splash_logo_gold, cut from assets/icon_dark.png).
     // Decoded once; the canvas scales the one bitmap, so nothing is re-rendered as it grows.
     val mark = remember {
         runCatching {
-            android.graphics.BitmapFactory.decodeResource(context.resources, R.drawable.splash_logo_gtavi)
+            android.graphics.BitmapFactory.decodeResource(context.resources, R.drawable.splash_logo_gold)
                 ?.asImageBitmap()
         }.getOrNull()
     }

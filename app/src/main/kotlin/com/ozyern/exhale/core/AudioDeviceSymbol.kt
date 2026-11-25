@@ -79,12 +79,21 @@ fun rememberAudioDeviceNames(): AudioDeviceNames {
     return remember(raw) { AudioDeviceNames(raw) }
 }
 
+/** USB audio class devices (type-C earphones and DACs) report names like "USB-Audio - OnePlus". */
+private val USB_AUDIO = Regex("""usb[ -]?audio""")
+
 /** SF Symbol name for an output device: product name first (Galaxy Buds, Sony WH, JBL...), then its type. */
 fun audioDeviceSymbol(name: String?, type: AudioDeviceType? = null): String {
     val n = name.orEmpty().lowercase()
     fun has(vararg keys: String) = keys.any { it in n }
+    // Whole words only: as substrings, "audi" matched every "USB-Audio" DAC and "kia"/"tata"/"ford"
+    // hide inside ordinary product names, so wired earphones came up as a car.
+    val words = n.split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }.toSet()
+    fun word(vararg keys: String) = keys.any { it in words }
     return when {
-        has("android auto", "carplay", "car ", " car", "vehicle", "toyota", "honda", "hyundai", "kia", "tata", "mahindra", "bmw", "audi", "mercedes", "ford") -> "car.fill"
+        USB_AUDIO.containsMatchIn(n) -> if (has("speaker", "dock")) "hifispeaker.fill" else "headphones"
+        has("android auto", "carplay", "vehicle") ||
+            word("car", "toyota", "honda", "hyundai", "kia", "tata", "mahindra", "bmw", "audi", "mercedes", "ford") -> "car.fill"
         has("watch", "wear os", "pixel watch", "galaxy fit", "mi band", "smart band") -> "watch.analog"
         has("tv", "bravia", "chromecast", "android tv", "fire tv", "mi box", "roku", "shield") -> "tv.fill"
         has("soundbar", "sonos", "bose home", "boombox", "echo", "nest audio", "nest mini", "home mini") -> "hifispeaker.2.fill"

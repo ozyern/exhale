@@ -77,7 +77,7 @@ fun LiquidLensBoot(onFinished: () -> Unit, modifier: Modifier = Modifier, speed:
         }
         Box(modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black), contentAlignment = Alignment.Center) {
             androidx.compose.foundation.Image(
-                painter = androidx.compose.ui.res.painterResource(R.drawable.splash_logo_gtavi),
+                painter = androidx.compose.ui.res.painterResource(R.drawable.splash_logo_gold),
                 contentDescription = null,
                 modifier = Modifier
                     .size(androidx.compose.ui.unit.Dp(120f))
@@ -242,7 +242,7 @@ private class Mark(val full: Bitmap, val rect: FloatArray) {
         fun symbol(context: Context, shot: LensFilm.Shot): Mark {
             val px = (TEXELS_PER_UNIT * shot.slotH).roundToInt()
             val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
-            val source = android.graphics.BitmapFactory.decodeResource(context.resources, R.drawable.splash_logo_gtavi)
+            val source = android.graphics.BitmapFactory.decodeResource(context.resources, R.drawable.splash_logo_gold)
             if (source != null) {
                 val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
                     colorFilter = android.graphics.PorterDuffColorFilter(android.graphics.Color.WHITE, android.graphics.PorterDuff.Mode.SRC_IN)

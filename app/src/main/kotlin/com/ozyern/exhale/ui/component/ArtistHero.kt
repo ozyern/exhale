@@ -440,6 +440,7 @@ internal class HeroBlurNode(
     private var small: androidx.compose.ui.graphics.layer.GraphicsLayer? = null
     private val horizontal = android.graphics.RuntimeShader(HeroBlurShader.replace("AXIS", "float2(1.0, 0.0)"))
     private val vertical = android.graphics.RuntimeShader(HeroBlurShader.replace("AXIS", "float2(0.0, 1.0)"))
+    private val grain = android.graphics.RuntimeShader(HeroGrainShader)
     private var effectKey: HeroBlurEffectKey? = null
 
     private data class HeroBlurEffectKey(
@@ -500,6 +501,7 @@ internal class HeroBlurNode(
                 shader.setFloatUniform("pxPerPt", pxPerPt)
                 shader.setFloatUniform("progress", p)
                 shader.setFloatUniform("washEnabled", if (pageColor != null) 1f else 0f)
+                shader.setFloatUniform("vibrancy", if (sideFromHeight > 0f) 1f else 0f)
                 shader.setColorUniform("pageColor", nextKey.pageArgb ?: android.graphics.Color.TRANSPARENT)
             }
             configure(horizontal)
@@ -514,8 +516,43 @@ internal class HeroBlurNode(
         }
         drawLayer(sharp)
         scale(1f / sx, 1f / sy, pivot = androidx.compose.ui.geometry.Offset.Zero) { drawLayer(small) }
+        // The player's foot gets a film-grain tooth at full resolution: drawn at the blur's
+        // quarter scale it would smear into blotches. It rises with the blur, so the sharp
+        // art above stays clean.
+        if (sideFromHeight > 0f) {
+            grain.setFloatUniform("side", size.height / sideFromHeight)
+            grain.setFloatUniform("strength", HeroGrainStrength)
+            drawRect(
+                brush = androidx.compose.ui.graphics.ShaderBrush(grain),
+                blendMode = androidx.compose.ui.graphics.BlendMode.Overlay,
+            )
+        }
     }
 }
+
+/** Peak opacity of the player foot's grain, an overlay of mid-grey noise. */
+internal const val HeroGrainStrength = 0.16f
+
+/** Per-pixel mono noise around mid-grey, faded in down the blurred foot. */
+internal const val HeroGrainShader = """
+uniform float side;
+uniform float strength;
+
+float hash(float2 p) {
+    float3 q = fract(float3(p.xyx) * 0.1031);
+    q += dot(q, q.yzx + 33.33);
+    return fract((q.x + q.y) * q.z);
+}
+
+half4 main(float2 c) {
+    float fr = c.y / side;
+    float t = clamp((fr - 0.74) / 0.30, 0.0, 1.0);
+    t = t * t * (3.0 - 2.0 * t);
+    float n = hash(floor(c));
+    float a = strength * t;
+    return half4(half3(n) * a, a);
+}
+"""
 
 /** Blur layer downscale. At 1/4 the 48pt peak is ~32px of radius: 81 taps covers ±3σ. */
 internal const val HeroBlurDown = 4
@@ -537,6 +574,7 @@ uniform float mirrorAt;
 uniform float pxPerPt;
 uniform float progress;
 uniform float washEnabled;
+uniform float vibrancy;
 layout(color) uniform half4 pageColor;
 
 float ease(float a, float b, float x) {
@@ -579,6 +617,16 @@ half4 main(float2 c) {
     if (axis.y > 0.5) {
         float n = fract(sin(dot(c, float2(12.9898, 78.233))) * 43758.5453) - 0.5;
         col.rgb += n / 255.0;
+        // Material, not smear: as the blur deepens the colour is lifted the way a frosted
+        // pane does (saturation up, a touch of light), so the foot glows in the art's own
+        // hues instead of turning to mud. Premultiplied, so work on the unpremultiplied rgb.
+        if (vibrancy > 0.0 && col.a > 0.001) {
+            float t = vibrancy * ease(2.0, 30.0, s / pxPerPt);
+            float3 rgb = col.rgb / col.a;
+            float l = dot(rgb, float3(0.2126, 0.7152, 0.0722));
+            rgb = clamp(mix(float3(l), rgb, 1.0 + 0.55 * t) * (1.0 + 0.06 * t), 0.0, 1.0);
+            col.rgb = rgb * col.a;
+        }
         col *= ease(0.0, 1.5, s);
         // Premultiplied compositing closes on the SAME page colour at every x.
         // No independent tinted rectangle ending underneath the release card.

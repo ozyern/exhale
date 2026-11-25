@@ -79,6 +79,65 @@ object LyricsSearch {
 
     private const val MIN_DURATION_S = 30
 
+    /**
+     * What is left of a source's answer once it is judged as Exhale for Windows judges it, or null
+     * when it is not this song's lyrics at all.
+     *
+     * - Credits out: a source with nothing for a song hands over the record's paperwork (publishers,
+     *   writers, "Sabrina Carpenter："), which parses as cleanly as a verse.
+     * - A first line that is just the song's name is a heading, not a sung line.
+     * - Fewer than four sung lines left over: it was never the song.
+     * - A [loose] source (one that answers a search it did not really match, like KuGou, or a lookup
+     *   made with the length set aside) must prove it heard the question: the title has to be sung.
+     *   Asked for "Taste" by length alone, such a source answers with another song of that length.
+     */
+    fun judge(lines: List<LyricLine>, title: String, loose: Boolean): List<LyricLine>? {
+        val kept = lines.filterNot { it.text.isNotBlank() && isPaperwork(it.text) }.let { kept ->
+            val head = kept.indexOfFirst { it.text.isNotBlank() }
+            if (head >= 0 && isTitleHeading(kept[head].text, title)) kept.filterIndexed { i, _ -> i != head } else kept
+        }
+        val sung = kept.filter { it.text.isNotBlank() }
+        if (sung.size < MIN_LINES) return null
+        if (loose && !soundsLikeTitle(sung.joinToString(" ") { it.text }, cleanTitle(title))) return null
+        return kept
+    }
+
+    private const val MIN_LINES = 4
+
+    private val creditLine = Regex(
+        """(?i)(publishing|publisher|warner|chappell|universal music|sony/?atv|kobalt|songwriter|composer|lyricist|arranger|all rights reserved|℗|©|作词|作曲|编曲|制作人)""",
+    )
+    private val writerList = Regex("""[^\s/]{2,}(/[^\s/]{2,}){2,}""")
+
+    private fun isPaperwork(text: String): Boolean {
+        val line = text.trim()
+        if (creditLine.containsMatchIn(line)) return true
+        if (writerList.matches(line)) return true
+        return line.length < 48 && (line.endsWith('：') || line.endsWith(':'))
+    }
+
+    private fun bare(text: String) = text.lowercase().filter { it.isLetterOrDigit() }
+
+    private fun isTitleHeading(line: String, title: String): Boolean {
+        val heading = bare(line.substringBefore(" - "))
+        return heading.isNotEmpty() && (heading == bare(title) || heading == bare(cleanTitle(title)))
+    }
+
+    private val minorWords = setOf("the", "and", "feat", "with", "from", "for", "you", "your")
+    private val notWord = Regex("""[^\p{L}\p{N}']+""")
+    private val notPhrase = Regex("""[^\p{L}\p{N}' ]+""")
+
+    /** Every word of the title is sung somewhere, or the title is sung as a phrase. */
+    internal fun soundsLikeTitle(text: String, title: String): Boolean {
+        val body = text.lowercase()
+        val phrase = title.lowercase().replace(notPhrase, " ").replace(spaces, " ").trim()
+        if (phrase.isNotEmpty() && phrase in body.replace(notPhrase, " ").replace(spaces, " ")) return true
+        val words = phrase.split(' ').filter { it.length >= 3 && it !in minorWords }
+        if (words.isEmpty()) return true
+        val sung = body.split(notWord).toSet()
+        return words.all { it in sung }
+    }
+
     private val oneOff = Regex("""(?i)\b(live|concert|session|medley|mashup|unplugged|tour)\b""")
 
     private val bracketed = Regex("""\s*[(\[]([^)\]]*)[)\]]""")

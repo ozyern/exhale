@@ -32,4 +32,15 @@ object ExploreCache {
     fun putRecommended(items: List<YTItem>) {
         recommended = items
     }
+
+    /** The hero built from the setup picks, and the picks it was built from. */
+    @Volatile var forYou: List<com.music.innertube.models.AlbumItem>? = null
+        private set
+    @Volatile var forYouKey: String? = null
+        private set
+
+    fun putForYou(key: String, albums: List<com.music.innertube.models.AlbumItem>) {
+        forYou = albums
+        forYouKey = key
+    }
 }

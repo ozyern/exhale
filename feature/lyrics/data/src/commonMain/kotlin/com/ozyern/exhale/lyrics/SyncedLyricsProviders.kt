@@ -55,8 +55,13 @@ class SyncedLyricsProvider(
         for (ask in if (requiresVideoId) asks.take(1) else asks) {
             // The repository gives a source twelve seconds in all; no new phrasing after nine.
             if (started.elapsedNow() > PhrasingBudget) break
-            val lines = lookup(ask)
-            if (lines.isNullOrEmpty()) continue
+            val raw = lookup(ask)
+            if (raw.isNullOrEmpty()) continue
+            // KuGou answers searches it did not really match, and any source asked with the length
+            // set aside is matching on the name alone; line-timed BetterLyrics is KuGou passed on.
+            val loose = this.id == "Kugou" || ask.durationMs == 0L && durationMs > 0 ||
+                (this.id.startsWith("BetterLyrics") && raw.none { it.isWordSynced })
+            val lines = LyricsSearch.judge(raw, title, loose) ?: continue
             // Timed for another cut of the song: try the next phrasing, then let the next source answer.
             if (!LyricsSearch.fits(lines, durationMs, title)) {
                 timedForAnother = true

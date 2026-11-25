@@ -248,7 +248,9 @@ fun FoldingTabBar(
     ) { children, constraints ->
         val width = constraints.maxWidth
         val expandedHeight = rowHeight.roundToPx()
-        val compactHeight = if (accessory != null) InlineRowHeight.roundToPx() else expandedHeight
+        // Folded, the page and search circles are always the small 48dp ones, player or not.
+        // Kept at the open bar's height when nothing was playing, they swelled into big lenses.
+        val compactHeight = InlineRowHeight.roundToPx()
         val spacing = sizes.componentSpacing.roundToPx()
         val p = fold.value
         val openHeight = lerp(expandedHeight.toFloat(), SearchRowHeight.toPx(), search.value.coerceIn(0f, 1f))

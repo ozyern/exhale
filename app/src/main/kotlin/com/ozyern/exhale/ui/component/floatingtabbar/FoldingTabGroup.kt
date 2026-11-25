@@ -139,8 +139,10 @@ internal fun FoldingTabGroup(
                 initialScale = 1f,
                 // As Apple Music's: held, the slot becomes a wide, low capsule that rises just past
                 // the bar's edges, not a near-round bubble towering over it (it was 78/56 both ways).
-                pressedScale = 1.5f,
-                pressedScaleY = 1.16f,
+                // A gentle swell, not a bubble: held, the slot grows a little wider than its tab and
+                // only just taller, so it stays inside the bar instead of spilling over its edges.
+                pressedScale = 1.22f,
+                pressedScaleY = 1.06f,
                 onDragStarted = {},
                 onDragStopped = {
                     val targetIndex = targetValue.fastRoundToInt().fastCoerceIn(0, tabsCount - 1)
@@ -184,17 +186,23 @@ internal fun FoldingTabGroup(
             )
         }
 
-        Row(
-            Modifier
-                .graphicsLayer { translationX = panelOffset }
-                .clip(ContinuousCapsule)
-                .then(interactiveHighlight.modifier)
-                .height(height)
-                .fillMaxWidth()
-                .padding(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            content = content,
-        )
+        // While the slot is held the tab it left lets go of its accent, so the lens is the only
+        // coloured thing on the bar; before, the old tab stayed red beside the one being dragged to.
+        CompositionLocalProvider(
+            LocalTabSelectionEmphasis provides { 1f - dampedDragAnimation.pressProgress.fastCoerceIn(0f, 1f) },
+        ) {
+            Row(
+                Modifier
+                    .graphicsLayer { translationX = panelOffset }
+                    .clip(ContinuousCapsule)
+                    .then(interactiveHighlight.modifier)
+                    .height(height)
+                    .fillMaxWidth()
+                    .padding(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                content = content,
+            )
+        }
 
         // The tabs again, tinted and invisible: what the slot shows the selected tab through.
         CompositionLocalProvider(
@@ -231,8 +239,9 @@ internal fun FoldingTabGroup(
             }
         val slotGrowth = Modifier.layout { measurable, constraints ->
             val velocity = dampedDragAnimation.velocity / 10f
-            val scaleX = dampedDragAnimation.scaleX / (1f - (velocity * 0.75f).fastCoerceIn(-0.2f, 0.2f))
-            val scaleY = dampedDragAnimation.scaleY * (1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f))
+            // A hint of stretch with speed; more read as the slot wobbling like jelly.
+            val scaleX = dampedDragAnimation.scaleX / (1f - (velocity * 0.35f).fastCoerceIn(-0.1f, 0.1f))
+            val scaleY = dampedDragAnimation.scaleY * (1f - (velocity * 0.12f).fastCoerceIn(-0.06f, 0.06f))
             val width = constraints.maxWidth
             val slotHeight = constraints.maxHeight
             val grownWidth = (width * scaleX).roundToInt().coerceAtLeast(1)
@@ -245,7 +254,8 @@ internal fun FoldingTabGroup(
         val slotLens: BackdropEffectScope.() -> Unit = {
             val progress = dampedDragAnimation.pressProgress
             // Bent at the rim, clear across the middle, so the glyph under it stays legible.
-            lens(12.dp.toPx() * progress, 10.dp.toPx() * progress, chromaticAberration = true)
+            // No chromatic split: the rainbow fringe at the rim read as a cheap filter, not glass.
+            lens(10.dp.toPx() * progress, 8.dp.toPx() * progress, chromaticAberration = false)
         }
         // While pressed the slot also refracts the bar's own surface, faded in so release doesn't pop.
         val pressedBackdrop = remember(backdrop, surfaceBackdrop, dampedDragAnimation) {
@@ -320,6 +330,12 @@ internal fun FoldingTabGroup(
         )
     }
 }
+
+/**
+ * How strongly the selected tab shows its accent, 0..1: it fades while the glass slot is held, so
+ * a tab's content can ease its selected colour toward the inactive one. Read it in composition.
+ */
+val LocalTabSelectionEmphasis = androidx.compose.runtime.compositionLocalOf<() -> Float> { { 1f } }
 
 /** One cell of [FoldingTabGroup]: icon over title, scaled with the slot while pressed. */
 @Composable

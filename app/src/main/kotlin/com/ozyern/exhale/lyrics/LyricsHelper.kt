@@ -89,7 +89,10 @@ class LyricsHelper(
         val providers = resolveLyricsProviders().usableFor(isLocalSong(mediaMetadata.id))
             .filter { LyricsProviderSettings.isEnabled(context, it) }
         return coroutineScope {
-            val policy = LyricsUpgradePolicy()
+            // Judged against each other and the song's name, as Exhale for Windows judges them.
+            val policy = LyricsUpgradePolicy(
+                title = LyricsSearch.query(mediaMetadata.title, mediaMetadata.artists.joinToString { it.name }).first,
+            )
             initialLyrics?.takeIf { initial -> providers.any { it.id == initial.provider } }?.let {
                 policy.consider(it.provider, providers.indexOfFirst { p -> p.id == it.provider }, it.lyrics)
             }

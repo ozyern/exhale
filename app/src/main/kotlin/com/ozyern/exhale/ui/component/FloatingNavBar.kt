@@ -433,7 +433,12 @@ private fun AppFloatingNavBarChrome(
                     // Inactive labels get the same chrome as the glyphs: light ink, colour-dodged onto the glass.
                     Text(
                         text = stringResource(screen.titleId),
-                        color = if (isSelected) selectedLabelColor else unselectedLabelColor,
+                        color = if (isSelected) {
+                            androidx.compose.ui.graphics.lerp(
+                                unselectedLabelColor, selectedLabelColor,
+                                com.ozyern.exhale.ui.component.floatingtabbar.LocalTabSelectionEmphasis.current(),
+                            )
+                        } else unselectedLabelColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         fontSize = 10.sp,
@@ -442,7 +447,12 @@ private fun AppFloatingNavBarChrome(
                 },
                 icon = {
                     val name = screen.navSymbol()
-                    val tint = if (isSelected) selectedIconColor else unselectedIconColor
+                    val tint = if (isSelected) {
+                        androidx.compose.ui.graphics.lerp(
+                            unselectedIconColor, selectedIconColor,
+                            com.ozyern.exhale.ui.component.floatingtabbar.LocalTabSelectionEmphasis.current(),
+                        )
+                    } else unselectedIconColor
                     if (name != null) {
                         // Headroom: the bounce scales the glyph up, so it is drawn at 80% inside the slot.
                         Box(Modifier.size(screen.glyphSize()), contentAlignment = Alignment.Center) {

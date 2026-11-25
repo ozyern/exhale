@@ -66,6 +66,9 @@ internal object AppRoutePolicy {
         // Full-bleed artwork pages with their own header: a blur strip over it only smears it.
         "update",
         "flac",
+        // Onboarding draws its own back / "Not Now" buttons where the strip would sit, and the
+        // strip blurred them into smudges.
+        "song_preferences",
     )
 
     fun isTabRoot(route: String?) = route != null && route in tabRootRoutes

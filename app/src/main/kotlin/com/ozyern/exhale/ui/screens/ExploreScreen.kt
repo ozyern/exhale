@@ -149,6 +149,8 @@ fun ExploreScreen(
     val coroutineScope = rememberCoroutineScope()
     val explorePage by exploreViewModel.explorePage.collectAsStateWithLifecycle()
     val recommended by exploreViewModel.recommendedForYou.collectAsStateWithLifecycle()
+    val forYou by exploreViewModel.forYou.collectAsStateWithLifecycle()
+    val seedNames by exploreViewModel.seedNames.collectAsStateWithLifecycle()
     val chartsPage by chartsViewModel.chartsPage.collectAsStateWithLifecycle()
     val art by tilesViewModel.art.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { if (chartsPage == null) chartsViewModel.loadCharts() }
@@ -180,9 +182,16 @@ fun ExploreScreen(
         }
     }
 
-    val albums = explorePage?.newReleaseAlbums.orEmpty().distinctBy { it.id }
-    val hero = albums.take(6)
-    val newReleases = albums.drop(6)
+    // New releases by the artists picked in setup lead the shelf.
+    val albums = remember(explorePage, seedNames) {
+        explorePage?.newReleaseAlbums.orEmpty().distinctBy { it.id }.sortedBy { album ->
+            if (album.artists.orEmpty().any { it.name.lowercase() in seedNames }) 0 else 1
+        }
+    }
+    // The top of the page follows the setup picks; with none, the newest releases fill it.
+    val hero = forYou.ifEmpty { albums.take(6) }
+    val heroIds = remember(hero) { hero.mapTo(HashSet()) { it.id } }
+    val newReleases = if (forYou.isEmpty()) albums.drop(6) else albums.filter { it.id !in heroIds }
     val topSongs = chartsPage?.sections?.firstOrNull { it.chartType == ChartType.TOP }?.items.orEmpty().distinctBy { it.id }
     val moods = explorePage?.moodAndGenres.orEmpty()
     val recommendedTitle = stringResource(R.string.recommended_for_you)
