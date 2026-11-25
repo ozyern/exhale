@@ -6,6 +6,7 @@ package com.ozyern.exhale.ui.player
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -352,18 +353,22 @@ fun PlayerArtworkMorphOverlay(
     }
 }
 
-/** The generic cover: a dark tile with a music note, sized to whatever square it is given. */
+/**
+ * The generic cover: a dark tile with a music note, sized to whatever square it is given.
+ * A plain Box with a fractional-size icon, not BoxWithConstraints: this sits inside the player's
+ * shared-transition (lookahead) layout, where a subcomposing layout crashed the measure pass.
+ */
 @Composable
 internal fun MorphArtworkPlaceholder(modifier: Modifier = Modifier) {
-    androidx.compose.foundation.layout.BoxWithConstraints(
+    Box(
         modifier.background(MorphPlaceholderFill),
         contentAlignment = Alignment.Center,
     ) {
-        com.ozyern.exhale.ui.component.SymbolIcon(
-            symbol = com.ozyern.exhale.ui.component.sf("music.note"),
+        androidx.compose.material3.Icon(
+            painter = androidx.compose.ui.res.painterResource(com.ozyern.exhale.R.drawable.music_note),
             contentDescription = null,
-            size = minOf(maxWidth, maxHeight) * 0.22f,
             tint = Color.White.copy(alpha = 0.38f),
+            modifier = Modifier.fillMaxSize(0.22f),
         )
     }
 }

@@ -997,7 +997,10 @@ fun BottomSheetPlayer(
                         hero = v2Look == com.ozyern.exhale.constants.PlayerLook.HERO,
                         videoLook = CanvasVideoLooks.forMedia(ambientMetadata?.id),
                         transitionMillis = maxOf(bgFadeMs, 800),
-                        bleedVisible = { PlayerMorph.rise || (state.isExpanded && !PlayerMorph.active) },
+                        // Fully open is enough: "and not morphing" read the morph's progress, which a
+                        // swipe can leave resting a hair short of 1, and the bleed then never came
+                        // back after the player was closed once. Expanded means the morph is over.
+                        bleedVisible = { PlayerMorph.rise || state.isExpanded },
                         pageShowing = { !v17ShowingCover },
                         modifier = Modifier
                             .fillMaxSize()

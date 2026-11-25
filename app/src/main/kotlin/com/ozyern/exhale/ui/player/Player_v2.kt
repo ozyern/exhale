@@ -901,17 +901,33 @@ private fun PlayerV2Content(
                     ) else Modifier
                 ),
             handle = {
-            Row(
+            // Exhale master's strip over the cover: the grab handle stays put in the middle, and the
+            // Song / Video pill sits at the right of the same strip when the track has a video.
+            val videoSwitchEnabled by rememberPreference(com.ozyern.exhale.constants.ShowVideoSwitchKey, true)
+            val showVideoSwitch = canWatchVideo && videoSwitchEnabled && playerState == PlayerInternalState.COVER
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = if (isHeroLook && !videoActive) systemBarsTopPadding + 16.dp else 16.dp, bottom = 8.dp),
-                horizontalArrangement = Arrangement.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                // The song / video switch replaces the grab pill whenever a video exists for the track.
-                val videoSwitchEnabled by rememberPreference(com.ozyern.exhale.constants.ShowVideoSwitchKey, true)
-                val showVideoSwitch = canWatchVideo && videoSwitchEnabled && playerState == PlayerInternalState.COVER
-                if (!showVideoSwitch) Box(
+                if (showVideoSwitch) {
+                    VideoModePill(
+                        watchingVideo = watchVideo,
+                        loading = watchVideo && videoLookup is com.ozyern.exhale.playback.VideoStreamLookup.Loading,
+                        modifier = Modifier.align(Alignment.CenterEnd).padding(end = 14.dp),
+                    ) {
+                        val selected = !watchVideo
+                        if (selected && videoLookup is com.ozyern.exhale.playback.VideoStreamLookup.Unavailable) {
+                            mediaMetadata?.id?.let(playerConnection::requestVideoStream)
+                        }
+                        selectVideo(selected)
+                    }
+                }
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
+                ) {
+                Box(
                     modifier = Modifier
                         .width(54.dp)
                         .height(5.dp)
@@ -922,16 +938,8 @@ private fun PlayerV2Content(
                 val partyViewModel: com.ozyern.exhale.viewmodels.JamViewModel = koinViewModel()
                 val party by partyViewModel.session.collectAsStateWithLifecycle()
                 party?.let { PartyChip(it.code, it.members.size, adaptivePrimary) { state.collapseSoft(); navController.navigate("listen_together/party") } }
-                if (showVideoSwitch) {
-                    SongVideoModeControl(watchVideo, adaptivePrimary) { selected ->
-                        if (selected && watchVideo && videoLookup is com.ozyern.exhale.playback.VideoStreamLookup.Unavailable) {
-                            mediaMetadata?.id?.let(playerConnection::requestVideoStream)
-                        }
-                        selectVideo(selected)
-                    }
-                    if (watchVideo && videoLookup is com.ozyern.exhale.playback.VideoStreamLookup.Unavailable) {
-                        Text(stringResource(R.string.video_unavailable), color = adaptiveSecondary, fontSize = 12.sp)
-                    }
+                if (showVideoSwitch && watchVideo && videoLookup is com.ozyern.exhale.playback.VideoStreamLookup.Unavailable) {
+                    Text(stringResource(R.string.video_unavailable), color = adaptiveSecondary, fontSize = 12.sp)
                 }
                 }
             }

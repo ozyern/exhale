@@ -1,6 +1,8 @@
 package com.ozyern.exhale.ui.player
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -60,5 +62,60 @@ internal fun SongVideoModeControl(watchingVideo: Boolean, color: Color, onSelect
                 )
             }
         }
+    }
+}
+
+/**
+ * Exhale master's Song ⇄ Video switch: one small glass pill at the right of the strip over the
+ * cover, the grab handle left where it is. It names the other mode ("Video" while the song shows,
+ * "Song" while the video does), lights up while the video is on, and spins while it is being found.
+ */
+@Composable
+internal fun VideoModePill(
+    watchingVideo: Boolean,
+    loading: Boolean,
+    modifier: Modifier = Modifier,
+    onToggle: () -> Unit,
+) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .height(30.dp)
+            .clip(CircleShape)
+            // Lit is a brighter pane of the same glass, as on master.
+            .background(Color.White.copy(alpha = if (watchingVideo) 0.24f else 0.14f))
+            .border(0.5.dp, Color.White.copy(alpha = 0.22f), CircleShape)
+            .clickable {
+                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                onToggle()
+            }
+            .padding(horizontal = 12.dp),
+    ) {
+        if (loading) {
+            androidx.compose.material3.CircularProgressIndicator(
+                color = Color.White,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(14.dp),
+            )
+        } else {
+            com.ozyern.exhale.ui.component.SymbolIcon(
+                // sf() throws on a name the bundled set lacks; take the first one it has.
+                symbol = com.ozyern.exhale.ui.component.sf(
+                    listOf("play.rectangle.fill", "film", "tv", "play.fill")
+                        .first { com.composables.sfsymbols.SfSymbol.named(it) != null },
+                ),
+                contentDescription = null,
+                size = 15.dp,
+                tint = Color.White,
+            )
+        }
+        androidx.compose.foundation.layout.Spacer(Modifier.width(6.dp))
+        Text(
+            text = stringResource(if (watchingVideo) R.string.video_mode_song else R.string.video_mode_video),
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+        )
     }
 }

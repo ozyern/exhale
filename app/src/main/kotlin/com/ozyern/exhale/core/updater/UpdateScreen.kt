@@ -78,8 +78,9 @@ fun UpdateScreen(navController: NavHostController, viewModel: UpdateViewModel = 
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                GlassCircleButton(onClick = { navController.navigateUp() }, size = 44.dp) {
-                    SymbolIcon(symbol = sf("chevron.left"), contentDescription = stringResource(R.string.back_content_desc))
+                // ColorOS 17's header: a glass back arrow, the title, and a glass overflow menu.
+                GlassCircleButton(onClick = { navController.navigateUp() }, size = 48.dp) {
+                    SymbolIcon(symbol = sf(firstSymbol("arrow.left", "chevron.left")), contentDescription = stringResource(R.string.back_content_desc))
                 }
                 Text(
                     stringResource(R.string.exhale_update_title),
@@ -87,8 +88,24 @@ fun UpdateScreen(navController: NavHostController, viewModel: UpdateViewModel = 
                     fontFamily = OppoSans,
                     fontWeight = FontWeight.Bold,
                     fontSize = 24.sp,
-                    modifier = Modifier.semantics { heading() },
+                    modifier = Modifier.weight(1f).semantics { heading() },
                 )
+                var menuOpen by remember { mutableStateOf(false) }
+                Box {
+                    GlassCircleButton(onClick = { menuOpen = true }, size = 48.dp) {
+                        SymbolIcon(symbol = sf(firstSymbol("ellipsis.vertical", "ellipsis")), contentDescription = null)
+                    }
+                    androidx.compose.material3.DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text(stringResource(R.string.system_update)) },
+                            onClick = { menuOpen = false; navController.navigate("settings/update") },
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text(stringResource(R.string.changelog)) },
+                            onClick = { menuOpen = false; navController.navigate("settings/changelog") },
+                        )
+                    }
+                }
             }
 
             val checking = state.enabled && state.phase == UpdatePhase.CHECKING && release == null
@@ -97,8 +114,28 @@ fun UpdateScreen(navController: NavHostController, viewModel: UpdateViewModel = 
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Spacer(Modifier.weight(if (checking) 1.1f else 0.35f))
-                ExhaleGlowWordmark(fontSize = 66.sp)
-                ColorOsVersionText(BuildConfig.VERSION_NAME, fontSize = 22.sp, modifier = Modifier.padding(top = 12.dp))
+                // ColorOS 17's hero: the version as one huge numeral, the name under it, the phone under that.
+                Text(
+                    BuildConfig.VERSION_NAME.split('.').take(2).joinToString("."),
+                    fontFamily = OppoSans,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 132.sp,
+                    lineHeight = 132.sp,
+                    style = androidx.compose.ui.text.TextStyle(
+                        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                            listOf(Color.White, Color(0xFFF6E7C8)),
+                        ),
+                    ),
+                )
+                ExhaleGlowWordmark(fontSize = 44.sp)
+                Text(
+                    deviceName(context),
+                    fontFamily = OppoSans,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.White.copy(alpha = 0.92f),
+                    modifier = Modifier.padding(top = 6.dp),
+                )
                 Spacer(Modifier.weight(1f))
 
                 if (checking) {
@@ -194,11 +231,17 @@ private fun UpdateCardButton(text: String, primary: Boolean, enabled: Boolean = 
         onClick = onClick,
         enabled = enabled,
         size = CupertinoButtonSize.Large,
+        // ColorOS's pair: a pale frosted button and a clear one with a hairline rim.
         colors = CupertinoButtonDefaults.filledButtonColors(
             contentColor = if (primary) Color(0xFF141414) else Color.White,
-            containerColor = if (primary) Color(0xFFF1ECE4) else Color.White.copy(alpha = 0.14f),
+            containerColor = if (primary) Color.White.copy(alpha = 0.86f) else Color.White.copy(alpha = 0.10f),
         ),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (primary) Modifier
+                else Modifier.border(0.6.dp, Color.White.copy(alpha = 0.22f), androidx.compose.foundation.shape.CircleShape),
+            ),
     ) {
         Text(text, fontFamily = OppoSans, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
             color = if (primary) Color(0xFF141414) else Color.White)
@@ -300,3 +343,13 @@ private fun UpdateFailure.messageResource(): Int = when (this) {
     UpdateFailure.UNAVAILABLE -> R.string.updater_unavailable
     UpdateFailure.METADATA -> R.string.updater_metadata_failed
 }
+
+/** The phone as its owner named it ("OnePlus 13"), else its maker and model. */
+private fun deviceName(context: android.content.Context): String =
+    runCatching { android.provider.Settings.Global.getString(context.contentResolver, android.provider.Settings.Global.DEVICE_NAME) }
+        .getOrNull()?.takeIf { it.isNotBlank() }
+        ?: "${android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${android.os.Build.MODEL}"
+
+/** The first SF Symbol the bundled set has, so a missing name never throws in sf(). */
+private fun firstSymbol(vararg names: String): String =
+    names.firstOrNull { com.composables.sfsymbols.SfSymbol.named(it) != null } ?: names.last()
