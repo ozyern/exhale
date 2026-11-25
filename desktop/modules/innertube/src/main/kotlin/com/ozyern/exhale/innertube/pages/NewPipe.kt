@@ -1,0 +1,255 @@
+/*
+ * Exhale Project Original (2026)
+ * ozyern (github.com/ozyern)
+ * Licensed Under GPL-3.0 | see git history for contributors
+ */
+
+package com.ozyern.exhale.innertube
+
+import com.ozyern.exhale.innertube.PlaybackAuthState
+import com.ozyern.exhale.innertube.models.YouTubeClient
+import com.ozyern.exhale.innertube.models.response.PlayerResponse
+import io.ktor.http.URLBuilder
+import io.ktor.http.parseQueryString
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.OkHttpClient
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.schabi.newpipe.extractor.NewPipe
+import org.schabi.newpipe.extractor.downloader.Downloader
+import org.schabi.newpipe.extractor.downloader.Request
+import org.schabi.newpipe.extractor.downloader.Response
+import org.schabi.newpipe.extractor.exceptions.ParsingException
+import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
+import org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerManager
+import java.io.IOException
+import java.net.Proxy
+import java.net.SocketTimeoutException
+import java.util.concurrent.TimeUnit
+
+private class NewPipeDownloaderImpl(proxy: Proxy?) : Downloader() {
+
+    private val client = OkHttpClient.Builder()
+        .proxy(proxy)
+        .retryOnConnectionFailure(true)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(45, TimeUnit.SECONDS)
+        .build()
+
+    @Throws(IOException::class, ReCaptchaException::class)
+    override fun execute(request: Request): Response {
+        val httpMethod = request.httpMethod()
+        val url = request.url()
+        val headers = request.headers()
+        val dataToSend = request.dataToSend()
+
+        val requestBuilder = okhttp3.Request.Builder()
+            .method(httpMethod, dataToSend?.toRequestBody())
+            .url(url)
+
+        var hasUserAgent = false
+        headers.forEach { (headerName, headerValueList) ->
+            if (headerName.equals("User-Agent", ignoreCase = true) && headerValueList.isNotEmpty()) {
+                hasUserAgent = true
+            }
+            if (headerValueList.size > 1) {
+                requestBuilder.removeHeader(headerName)
+                headerValueList.forEach { headerValue ->
+                    requestBuilder.addHeader(headerName, headerValue)
+                }
+            } else if (headerValueList.size == 1) {
+                requestBuilder.header(headerName, headerValueList[0])
+            }
+        }
+
+        if (!hasUserAgent) {
+            requestBuilder.header("User-Agent", YouTubeClient.USER_AGENT_WEB)
+        }
+
+        val response = client.newCall(requestBuilder.build()).execute()
+
+        if (response.code == 429) {
+            response.close()
+
+            throw ReCaptchaException("reCaptcha Challenge requested", url)
+        }
+
+        val responseBodyToReturn = response.body.string()
+
+        val latestUrl = response.request.url.toString()
+        return Response(response.code, response.message, response.headers.toMultimap(), responseBodyToReturn, latestUrl)
+    }
+
+}
+
+object NewPipeUtils {
+
+    init {
+        NewPipe.init(NewPipeDownloaderImpl(YouTube.proxy))
+    }
+
+    /**
+     * When each player-code function last failed to be found, by kind. NewPipe caches a function
+     * once it has found one, but not its failure to: when YouTube's player code changes shape past
+     * its known patterns, every stream resolved ran those regexes over the whole multi-megabyte
+     * script again, to fail the same way. The failure is the script's, so it is remembered for a
+     * while and the caller falls back at once. Only parse failures — a network error is retried.
+     */
+    private val parseFailedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private const val PARSE_FAILURE_MEMORY_MS = 10 * 60_000L
+
+    private inline fun <T> rememberingParseFailure(kind: String, block: () -> T): T {
+        val failedAt = parseFailedAt[kind]
+        if (failedAt != null && System.currentTimeMillis() - failedAt < PARSE_FAILURE_MEMORY_MS) {
+            throw ParsingException("$kind unavailable (failed ${(System.currentTimeMillis() - failedAt) / 1000}s ago)")
+        }
+        return try {
+            block().also { parseFailedAt.remove(kind) }
+        } catch (e: ParsingException) {
+            parseFailedAt[kind] = System.currentTimeMillis()
+            throw e
+        }
+    }
+
+    private fun deobfuscateSignature(videoId: String, signature: String): String =
+        rememberingParseFailure("signature") {
+            YoutubeJavaScriptPlayerManager.deobfuscateSignature(videoId, signature)
+        }
+
+    private fun deobfuscateThrottling(videoId: String, url: String): String =
+        rememberingParseFailure("throttling") {
+            YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(videoId, url)
+        }
+
+    fun getSignatureTimestamp(videoId: String): Result<Int> = runCatching {
+        YoutubeJavaScriptPlayerManager.getSignatureTimestamp(videoId)
+    }
+
+    /**
+     * Does the player-code work that otherwise lands on the first songs after every launch.
+     *
+     * The first stream after a cold start pays to download YouTube's player code, and then to
+     * extract and compile two functions out of it — the signature decipher and the throttling
+     * (`n`) function — in the JavaScript engine. Each is done once and cached for the life of the
+     * process, which is why playback is slow for the first two or three songs and fine after.
+     * Running each once here, on throwaway input, moves that cost to app start.
+     *
+     * The inputs are dummies: only the side effect (the cached, compiled function) is wanted, so
+     * every result and every failure is ignored.
+     */
+    fun warmUp(videoId: String) {
+        runCatching { YoutubeJavaScriptPlayerManager.getSignatureTimestamp(videoId) }
+        runCatching { YoutubeJavaScriptPlayerManager.deobfuscateSignature(videoId, "0123456789abcdefghijklmnopqrstuvwxyzABCDEF") }
+        runCatching {
+            YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(
+                videoId,
+                "https://rr1---sn-warmup.googlevideo.com/videoplayback?n=abcdefghijklmnop",
+            )
+        }
+    }
+
+    fun getStreamUrl(
+        format: PlayerResponse.StreamingData.Format,
+        videoId: String,
+        client: YouTubeClient? = null,
+        authState: PlaybackAuthState = YouTube.currentPlaybackAuthState(),
+    ): Result<String> =
+        runCatching {
+            val directUrl = format.url
+            if (directUrl != null) {
+                val resolvedDirectUrl =
+                    if (directUrl.toHttpUrlOrNull()?.queryParameter("n")?.isNotBlank() == true) {
+                        runCatching {
+                            retryWithBackoff(
+                                maxAttempts = 3,
+                                initialDelayMs = 250L,
+                                maxDelayMs = 2_000L
+                            ) {
+                                deobfuscateThrottling(
+                                    videoId,
+                                    directUrl
+                                )
+                            }
+                        }.getOrElse { directUrl }
+                    } else {
+                        directUrl
+                    }
+
+                return@runCatching YouTube.appendGvsPoToken(
+                    url = resolvedDirectUrl,
+                    client = client,
+                    authState = authState,
+                )
+            }
+
+            val url = run {
+                val cipherString = format.signatureCipher ?: format.cipher
+                if (cipherString == null) throw ParsingException("Could not find format url")
+
+                val params = parseQueryString(cipherString)
+                val obfuscatedSignature = params["s"]
+                    ?: throw ParsingException("Could not parse cipher signature")
+                val signatureParam = params["sp"]
+                    ?: throw ParsingException("Could not parse cipher signature parameter")
+                val url = params["url"]?.let { URLBuilder(it) }
+                    ?: throw ParsingException("Could not parse cipher url")
+                url.parameters[signatureParam] =
+                    deobfuscateSignature(
+                        videoId,
+                        obfuscatedSignature
+                    )
+                url.toString()
+            }
+
+            val resolvedUrl = runCatching {
+                retryWithBackoff(
+                    maxAttempts = 3,
+                    initialDelayMs = 250L,
+                    maxDelayMs = 2_000L
+                ) {
+                    deobfuscateThrottling(videoId, url)
+                }
+            }.getOrElse { url }
+
+            YouTube.appendGvsPoToken(
+                url = resolvedUrl,
+                client = client,
+                authState = authState,
+            )
+        }
+
+    private inline fun <T> retryWithBackoff(
+        maxAttempts: Int,
+        initialDelayMs: Long,
+        maxDelayMs: Long,
+        block: () -> T
+    ): T {
+        var attempt = 0
+        var delayMs = initialDelayMs
+        var lastError: Throwable? = null
+        while (attempt < maxAttempts) {
+            try {
+                return block()
+            } catch (e: Throwable) {
+                val isRetryable =
+                    e is SocketTimeoutException ||
+                        e is IOException ||
+                        e.cause is SocketTimeoutException ||
+                        e.cause is IOException
+                if (!isRetryable || attempt == maxAttempts - 1) throw e
+                lastError = e
+                try {
+                    Thread.sleep(delayMs)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw e
+                }
+                delayMs = (delayMs * 2).coerceAtMost(maxDelayMs)
+                attempt++
+            }
+        }
+        throw lastError ?: IllegalStateException("Retry attempts exhausted")
+    }
+
+}

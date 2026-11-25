@@ -188,3 +188,6 @@ renovate.json
 
 __pycache__/
 apk-out/
+
+# libmpv for the Windows app is ~120 MB; fetched by desktop/scripts/fetch-libmpv.ps1.
+/desktop/resources/windows/*.dll

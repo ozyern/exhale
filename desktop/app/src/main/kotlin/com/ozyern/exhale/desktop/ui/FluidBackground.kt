@@ -1,0 +1,327 @@
+/*
+ * Exhale Project Original (2026)
+ * ozyern (github.com/ozyern)
+ * Licensed Under GPL-3.0 | see git history for contributors
+ */
+
+package com.ozyern.exhale.desktop.ui
+
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
+import com.ozyern.exhale.desktop.data.LocalSettings
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.Canvas
+import org.jetbrains.skia.ColorAlphaType
+import org.jetbrains.skia.ColorType
+import org.jetbrains.skia.Image
+import org.jetbrains.skia.ImageInfo
+import org.jetbrains.skia.Rect
+import kotlin.math.cos
+import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.sqrt
+
+/**
+ * Moving artwork: four slowly counter-rotating, domain-warped samplings of a 48px
+ * thumbnail, averaged, pushed in saturation and vignetted.
+ *
+ * It used to be a GPU shader evaluated for every pixel of the window, every frame — and because the
+ * page's glass records what's behind it, several times a frame. On a 2560×1600 panel that single
+ * background was the most expensive thing Exhale drew. The field is nothing but soft gradients, so it
+ * is now worked out 30 times a second at 240 pixels wide, off the UI thread, and stretched to the
+ * window as one image: the same picture for a small fraction of the work.
+ */
+private const val FluidSide = 48
+
+// 160 wide, not 240: the field is soft gradients stretched with bicubic filtering, and the narrower
+// field is 2.25× less work per frame for a picture that looks the same at window size.
+private const val FieldWidth = 160
+
+/** The artwork shrunk to 48×48 and softened, as RGB floats for sampling. */
+private class FluidTexture(val rgb: FloatArray)
+
+/** Kept for callers from the shader days; the CPU field always works. */
+val fluidBackgroundAvailable: Boolean get() = true
+
+private val fluidHttp = OkHttpClient()
+private val fluidCache = object : LinkedHashMap<String, FluidTexture>(16, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FluidTexture>) = size > 16
+}
+
+private fun loadFluidTexture(url: String): FluidTexture {
+    val bytes = fluidHttp.newCall(Request.Builder().url(url).build()).execute().use { it.body.bytes() }
+    val source = Image.makeFromEncoded(bytes)
+    val bitmap = Bitmap().apply { allocPixels(ImageInfo(FluidSide, FluidSide, ColorType.RGBA_8888, ColorAlphaType.PREMUL)) }
+    Canvas(bitmap).apply { drawImageRect(source, Rect.makeWH(FluidSide.toFloat(), FluidSide.toFloat())) }.close()
+    val pixels = bitmap.readPixels() ?: error("Unreadable artwork")
+    val rgb = FloatArray(FluidSide * FluidSide * 3)
+    for (i in 0 until FluidSide * FluidSide) {
+        rgb[i * 3] = (pixels[i * 4].toInt() and 0xFF) / 255f
+        rgb[i * 3 + 1] = (pixels[i * 4 + 1].toInt() and 0xFF) / 255f
+        rgb[i * 3 + 2] = (pixels[i * 4 + 2].toInt() and 0xFF) / 255f
+    }
+    // No softening on top: the swirls keep the cover's own detail, as the shader's did.
+    return FluidTexture(rgb)
+}
+
+/** Bilinear sample of [tex] at uv (0..1, clamped like the shader was), added into [acc] times [w]. */
+private fun sample(tex: FluidTexture, u: Float, v: Float, w: Float, acc: FloatArray) {
+    val cx = u.coerceIn(0.02f, 0.98f) * FluidSide - 0.5f
+    val cy = v.coerceIn(0.02f, 0.98f) * FluidSide - 0.5f
+    val x0 = cx.toInt().coerceIn(0, FluidSide - 1)
+    val y0 = cy.toInt().coerceIn(0, FluidSide - 1)
+    val x1 = (x0 + 1).coerceAtMost(FluidSide - 1)
+    val y1 = (y0 + 1).coerceAtMost(FluidSide - 1)
+    val fx = (cx - x0).coerceIn(0f, 1f)
+    val fy = (cy - y0).coerceIn(0f, 1f)
+    val rgb = tex.rgb
+    for (c in 0..2) {
+        val a = rgb[(y0 * FluidSide + x0) * 3 + c]
+        val b = rgb[(y0 * FluidSide + x1) * 3 + c]
+        val d = rgb[(y1 * FluidSide + x0) * 3 + c]
+        val e = rgb[(y1 * FluidSide + x1) * 3 + c]
+        val top = a + (b - a) * fx
+        val bottom = d + (e - d) * fx
+        acc[c] += (top + (bottom - top) * fy) * w
+    }
+}
+
+private fun smoothstep(edge0: Float, edge1: Float, x: Float): Float {
+    val t = ((x - edge0) / (edge1 - edge0)).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
+
+private fun renderField(current: FluidTexture, previous: FluidTexture, blend: Float, time: Float, width: Int, height: Int, aspect: Float, brightness: Float): ImageBitmap {
+    val out = ByteArray(width * height * 4)
+    val cosA = FloatArray(4)
+    val sinA = FloatArray(4)
+    val warpA = FloatArray(4)
+    val warpB = FloatArray(4)
+    val driftX = FloatArray(4)
+    val driftY = FloatArray(4)
+    for (i in 0..3) {
+        val fi = i.toFloat()
+        val dir = if (i == 1 || i == 3) -1f else 1f
+        val angle = time * (0.045f + 0.02f * fi) * dir + fi * 1.9f
+        cosA[i] = cos(angle)
+        sinA[i] = sin(angle)
+        warpA[i] = time * 0.17f + fi * 2.3f
+        warpB[i] = time * 0.13f + fi * 1.1f
+        driftX[i] = sin(time * 0.05f + fi) * 0.18f
+        driftY[i] = cos(time * 0.04f + fi * 1.7f) * 0.18f
+    }
+    val now = FloatArray(3)
+    val before = FloatArray(3)
+    val mixing = blend < 0.999f
+    var o = 0
+    for (y in 0 until height) {
+        val py = (y + 0.5f) / height - 0.5f
+        for (x in 0 until width) {
+            val px = ((x + 0.5f) / width - 0.5f) * aspect
+            now.fill(0f)
+            before.fill(0f)
+            for (i in 0..3) {
+                val scale = 1f / (1.35f + 0.45f * i)
+                val qx = (cosA[i] * px - sinA[i] * py) * scale
+                val qy = (sinA[i] * px + cosA[i] * py) * scale
+                val u = qx + 0.10f * sin(warpA[i] + qy * 4f) + 0.5f + driftX[i]
+                val v = qy + 0.10f * cos(warpB[i] + qx * 4f) + 0.5f + driftY[i]
+                val w = if (i == 0) 1.6f else 1f
+                sample(current, u, v, w, now)
+                if (mixing) sample(previous, u, v, w, before)
+            }
+            var r = now[0] / 4.6f
+            var g = now[1] / 4.6f
+            var b = now[2] / 4.6f
+            if (mixing) {
+                r = before[0] / 4.6f + (r - before[0] / 4.6f) * blend
+                g = before[1] / 4.6f + (g - before[1] / 4.6f) * blend
+                b = before[2] / 4.6f + (b - before[2] / 4.6f) * blend
+            }
+            val luma = r * 0.299f + g * 0.587f + b * 0.114f
+            r = (luma + (r - luma) * 1.45f).coerceAtLeast(0f)
+            g = (luma + (g - luma) * 1.45f).coerceAtLeast(0f)
+            b = (luma + (b - luma) * 1.45f).coerceAtLeast(0f)
+            val vignette = 1f - smoothstep(0.2f, 1.3f, sqrt(px * px + py * py))
+            val k = brightness * (0.62f + 0.38f * vignette)
+            out[o] = (r * k * 255f).coerceIn(0f, 255f).toInt().toByte()
+            out[o + 1] = (g * k * 255f).coerceIn(0f, 255f).toInt().toByte()
+            out[o + 2] = (b * k * 255f).coerceIn(0f, 255f).toInt().toByte()
+            out[o + 3] = 0xFF.toByte()
+            o += 4
+        }
+    }
+    val bitmap = Bitmap().apply {
+        allocPixels(ImageInfo(width, height, ColorType.RGBA_8888, ColorAlphaType.OPAQUE))
+        installPixels(out)
+        setImmutable()
+    }
+    return Image.makeFromBitmap(bitmap).toComposeImageBitmap()
+}
+
+/**
+ * Field time between rendered frames; the GPU blends across each one. A tenth of a second: the drift
+ * is far too slow for the blend between frames to show, and it halves the frames worked out.
+ */
+private const val FieldStep = 0.1f
+
+/**
+ * How often the field's clock moves, and so how often the window redraws for it: 30 times a second.
+ * It used to advance on every displayed frame — on a 240 Hz panel, the whole window and every pane of
+ * glass over it redrawn 240 times a second for as long as a song played, for motion too slow to see
+ * step at 30.
+ */
+private const val FieldTickMs = 33L
+
+/**
+ * The artwork at [url] as a slowly moving field of its own colours. A new cover cross-fades in over
+ * 1.4 s rather than cutting. Only drawing is invalidated as it moves, never composition.
+ *
+ * Frames are worked out off the UI thread on a fixed timeline — one every [FieldStep] of field time,
+ * kept a couple of steps ahead of what's shown — and the window blends the two either side of "now"
+ * at its own refresh rate. A frame that takes longer than usual to work out is already done before
+ * it's needed, so the drift never stalls; it used to wait on each frame, and every late one showed
+ * as a hitch in the motion.
+ *
+ * The clock only runs while the field can be seen moving: not [paused], not with reduced motion, and
+ * — behind the pages ([holdWhileBusy]) — not while the interface itself is moving ([UiMotion]). Every
+ * frame of drift re-records the page for the glass over it, so a scroll or a page change gets the
+ * whole frame to itself and the field picks up again where it stopped.
+ */
+@Composable
+fun FluidArtwork(url: String?, modifier: Modifier = Modifier, brightness: Float = 0.9f, paused: Boolean = false, smooth: Boolean = false) {
+    val holdWhileBusy = !smooth
+    var current by remember { mutableStateOf<FluidTexture?>(null) }
+    var previous by remember { mutableStateOf<FluidTexture?>(null) }
+    val blend = remember { Animatable(1f) }
+
+    LaunchedEffect(url) {
+        if (url == null) return@LaunchedEffect
+        val texture = synchronized(fluidCache) { fluidCache[url] }
+            ?: withContext(Dispatchers.IO) { runCatching { loadFluidTexture(url) }.getOrNull() }
+                ?.also { synchronized(fluidCache) { fluidCache[url] = it } }
+            ?: return@LaunchedEffect
+        if (texture === current) return@LaunchedEffect
+        previous = current ?: texture
+        current = texture
+        blend.snapTo(0f)
+        blend.animateTo(1f, tween(1_400, easing = LinearOutSlowInEasing))
+    }
+
+    val animate = !LocalSettings.current.reducedMotion
+    val focused by rememberUpdatedState(LocalWindowInfo.current.isWindowFocused)
+    val running by rememberUpdatedState(animate && !paused)
+
+    // Field time, in seconds. Advanced once per displayed frame while running; read while drawing.
+    val clock = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        var last = 0L
+        while (true) {
+            if (!running || (holdWhileBusy && UiMotion.busy)) {
+                last = 0L
+                delay(50L)
+                continue
+            }
+            if (!focused) {
+                // Behind another window: still drifting, at a fraction of the redraws.
+                delay(UnfocusedTickMs)
+                val now = System.nanoTime()
+                if (last != 0L) clock.floatValue += (now - last) / 1_000_000_000f
+                last = now
+                continue
+            }
+            delay(FieldTickMs)
+            val now = System.nanoTime()
+            if (last != 0L) clock.floatValue += ((now - last) / 1_000_000_000f).coerceAtMost(0.1f)
+            last = now
+        }
+    }
+
+    // The frames worked out so far, oldest first, each with the field time it shows.
+    class Frame(val time: Float, val image: ImageBitmap, val texture: FluidTexture)
+    val frames = remember { mutableStateOf<List<Frame>>(emptyList()) }
+    val aspect = remember { mutableFloatStateOf(16f / 10f) }
+
+    LaunchedEffect(brightness) {
+        while (true) {
+            val texture = current
+            if (texture == null) {
+                delay(100L)
+                continue
+            }
+            val now = clock.floatValue
+            val have = frames.value
+            // A new cover (or none yet): start again from the frame for now.
+            val fresh = have.isEmpty() || have.last().texture !== texture
+            val nextTime = if (fresh) (now / FieldStep).toInt() * FieldStep else have.last().time + FieldStep
+            // Far enough ahead already; a cover crossfade still needs fresh frames while it runs.
+            if (!fresh && nextTime > now + FieldStep * 2.5f && !blend.isRunning) {
+                delay(8L)
+                continue
+            }
+            val ratio = aspect.floatValue.coerceIn(0.4f, 4f)
+            var width = FieldWidth
+            var height = (FieldWidth / ratio).roundToInt().coerceIn(40, 400)
+            // A very tall or very wide cover would otherwise make the field several times the work
+            // of a square one; hold the pixel count to about what a square 240 costs.
+            val budget = FieldWidth * FieldWidth
+            if (width * height > budget) {
+                val scale = sqrt(budget.toFloat() / (width * height))
+                width = (width * scale).roundToInt().coerceAtLeast(120)
+                height = (height * scale).roundToInt().coerceAtLeast(60)
+            }
+            val mix = blend.value
+            val before = previous ?: texture
+            val time = if (animate) nextTime else 0f
+            val image = withContext(Dispatchers.Default) { renderField(texture, before, mix, time, width, height, ratio, brightness) }
+            val kept = if (fresh) emptyList() else frames.value.filter { it.time >= clock.floatValue - FieldStep * 1.5f }
+            frames.value = kept + Frame(nextTime, image, texture)
+            if (!animate && !blend.isRunning) delay(250L)
+        }
+    }
+
+    Box(
+        modifier
+            .onSizeChanged { if (it.height > 0) aspect.floatValue = it.width.toFloat() / it.height }
+            .drawBehind {
+                val list = frames.value
+                if (list.isEmpty()) return@drawBehind
+                val now = clock.floatValue
+                val dst = IntSize(size.width.roundToInt(), size.height.roundToInt())
+                // The two frames either side of now, the later one faded over the earlier by how far
+                // between them now is.
+                val after = list.firstOrNull { it.time > now }
+                val before = list.lastOrNull { it.time <= now } ?: list.first()
+                // Bicubic, so stretching the field keeps its swirls crisp-edged rather than smeared.
+                drawImage(before.image, dstSize = dst, filterQuality = FilterQuality.High)
+                if (after != null && after !== before) {
+                    val t = ((now - before.time) / (after.time - before.time)).coerceIn(0f, 1f)
+                    if (t > 0.001f) drawImage(after.image, dstSize = dst, alpha = t, filterQuality = FilterQuality.High)
+                }
+            },
+    )
+}

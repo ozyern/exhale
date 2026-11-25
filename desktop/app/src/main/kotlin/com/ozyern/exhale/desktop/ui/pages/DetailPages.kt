@@ -1,0 +1,1323 @@
+/*
+ * Exhale Project Original (2026)
+ * ozyern (github.com/ozyern)
+ * Licensed Under GPL-3.0 | see git history for contributors
+ */
+
+package com.ozyern.exhale.desktop.ui.pages
+
+import com.ozyern.exhale.desktop.ui.pressScale
+import com.ozyern.exhale.desktop.ui.player.LosslessWaveformIcon
+import com.ozyern.exhale.desktop.player.LosslessLibrary
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.VerticalScrollbar
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollbarAdapter
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.launch
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import com.ozyern.exhale.desktop.ui.OptionsIcons
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.min
+import coil3.compose.AsyncImage
+import com.ozyern.exhale.desktop.data.DesktopPrefs
+import com.ozyern.exhale.desktop.data.LocalSettings
+import com.ozyern.exhale.desktop.data.Pin
+import com.ozyern.exhale.desktop.ui.AppleColors
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.foundation.border
+import androidx.compose.ui.platform.LocalDensity
+import com.ozyern.exhale.desktop.ui.thumbnailSizeFor
+import androidx.compose.foundation.layout.widthIn
+import com.ozyern.exhale.desktop.ui.CollectionActionsMenu
+import com.ozyern.exhale.desktop.ui.SongActionsMenu
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.unit.sp
+import com.ozyern.exhale.desktop.player.DesktopPlayer
+import com.ozyern.exhale.desktop.player.PlayerState
+import com.ozyern.exhale.desktop.ui.BenchList
+import com.ozyern.exhale.desktop.ui.EqualizerBars
+import com.ozyern.exhale.desktop.ui.ItemCard
+import com.ozyern.exhale.desktop.ui.LocalNavigator
+import com.ozyern.exhale.desktop.ui.NavIcons
+import com.ozyern.exhale.desktop.ui.TransportIcons
+import com.ozyern.exhale.desktop.ui.cascade
+import com.ozyern.exhale.desktop.ui.feedIntro
+import com.ozyern.exhale.desktop.ui.formatTime
+import com.ozyern.exhale.desktop.ui.glass.glassPlate
+import com.ozyern.exhale.desktop.ui.home.ChromeInsets
+import com.ozyern.exhale.desktop.ui.home.GlassIconButton
+import com.ozyern.exhale.desktop.ui.home.LargeTitle
+import com.ozyern.exhale.desktop.ui.playNow
+import com.ozyern.exhale.desktop.ui.rememberArtworkColors
+import com.ozyern.exhale.desktop.ui.rememberCascade
+import com.ozyern.exhale.desktop.ui.rememberItemOpener
+import com.ozyern.exhale.desktop.ui.resizedThumbnail
+import com.ozyern.exhale.desktop.ui.sharedArtwork
+import com.ozyern.exhale.innertube.YouTube
+import com.ozyern.exhale.innertube.models.AlbumItem
+import com.ozyern.exhale.innertube.models.AlbumReleaseType
+import com.ozyern.exhale.innertube.models.Artist
+import com.ozyern.exhale.innertube.models.ArtistItem
+import com.ozyern.exhale.innertube.models.BrowseEndpoint
+import com.ozyern.exhale.innertube.models.SongItem
+import com.ozyern.exhale.innertube.models.YTItem
+import com.ozyern.exhale.innertube.models.filterExplicit
+import com.ozyern.exhale.innertube.models.filterVideo
+import com.ozyern.exhale.innertube.pages.AlbumPage
+import com.ozyern.exhale.innertube.pages.ArtistPage
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+/** The Content settings, applied to what a page lists. */
+internal fun <T : YTItem> List<T>.clean(): List<T> = filterExplicit(DesktopPrefs.hideExplicit).filterVideo(DesktopPrefs.hideVideos)
+
+/** What a page knows about itself before it has loaded: enough to draw its header straight away. */
+private class CollectionHeader(
+    val kind: String,
+    val title: String,
+    val artwork: String?,
+    val artists: List<Artist>,
+    val facts: List<String>,
+    val description: String?,
+    // What Pin, in the page's ⋯ menu, keeps in the sidebar.
+    val pin: Pin? = null,
+    // Copy Link, in the same menu.
+    val link: String? = null,
+    val explicit: Boolean = false,
+)
+
+/** How long a list of songs runs, said plainly: "43 min", "1 hr 12 min". */
+private fun runningTime(songs: List<SongItem>): String? {
+    val seconds = songs.sumOf { it.duration ?: 0 }
+    if (seconds <= 0) return null
+    val minutes = (seconds + 30) / 60
+    return if (minutes >= 60) "${minutes / 60} hr ${minutes % 60} min" else "$minutes min"
+}
+
+private fun songCount(count: Int): String = if (count == 1) "1 song" else "$count songs"
+
+/** The same, spelled out for the foot of an album: "36 minutes", "1 hour, 12 minutes". */
+private fun runningTimeLong(songs: List<SongItem>): String? {
+    val seconds = songs.sumOf { it.duration ?: 0 }
+    if (seconds <= 0) return null
+    val minutes = (seconds + 30) / 60
+    fun unit(n: Int, word: String) = if (n == 1) "1 $word" else "$n ${word}s"
+    return if (minutes >= 60) {
+        listOfNotNull(unit(minutes / 60, "hour"), (minutes % 60).takeIf { it > 0 }?.let { unit(it, "minute") }).joinToString(", ")
+    } else {
+        unit(minutes, "minute")
+    }
+}
+
+// ── Album ──
+
+@Composable
+fun AlbumScreen(
+    browseId: String,
+    title: String?,
+    thumbnail: String?,
+    sharedKey: String?,
+    player: DesktopPlayer,
+    state: PlayerState,
+    insets: ChromeInsets,
+    onBack: () -> Unit,
+) {
+    var attempt by remember { mutableIntStateOf(0) }
+    var result by remember(browseId) { mutableStateOf<Result<AlbumPage>?>(null) }
+    LaunchedEffect(browseId, attempt) {
+        result = null
+        result = withContext(Dispatchers.IO) { YouTube.album(browseId) }
+    }
+    val page = result?.getOrNull()
+    val album = page?.album
+    val songs = remember(page) { page?.songs.orEmpty().clean() }
+    // The Music app's editorial note, under the facts. YouTube keeps it on the album's own page, when it has one.
+    val description by produceState<String?>(null, browseId) {
+        value = withContext(Dispatchers.IO) { YouTube.albumDescription(browseId).getOrNull() }
+    }
+    val header = CollectionHeader(
+        kind = when (album?.releaseType) {
+            AlbumReleaseType.SINGLE -> "Single"
+            AlbumReleaseType.EP -> "EP"
+            else -> "Album"
+        },
+        title = album?.title ?: title.orEmpty(),
+        artwork = album?.thumbnail ?: thumbnail,
+        artists = album?.artists.orEmpty().ifEmpty { songs.firstOrNull()?.artists.orEmpty() },
+        facts = listOfNotNull(album?.year?.toString(), songs.takeIf { it.isNotEmpty() }?.let { songCount(it.size) }, runningTime(songs)),
+        description = description,
+        pin = Pin(Pin.Kind.Album, browseId, album?.title ?: title.orEmpty(), album?.artists?.joinToString { it.name }, album?.thumbnail ?: thumbnail),
+        link = album?.playlistId?.takeIf { it.isNotBlank() }?.let(com.ozyern.exhale.desktop.data.ShareLinks::album),
+        explicit = album?.explicit == true || songs.any { it.explicit },
+    )
+    // "More by …": the lead artist's other albums and singles, fetched once the album itself is known.
+    val leadArtist = header.artists.firstOrNull { it.id != null }
+    val moreBy by produceState<List<YTItem>?>(null, leadArtist?.id, browseId) {
+        val id = leadArtist?.id ?: return@produceState
+        value = withContext(Dispatchers.IO) { YouTube.artist(id).getOrNull() }
+            ?.sections.orEmpty()
+            .filter { section -> section.items.all { it is AlbumItem } }
+            .flatMap { it.items }
+            .filterNot { it.id == browseId }
+            .distinctBy { it.id }
+            .clean()
+            .take(16)
+    }
+    CollectionPage(
+        pageKey = "album:$browseId",
+        header = header,
+        sharedKey = sharedKey,
+        songs = songs,
+        loading = result == null,
+        failed = result?.isFailure == true,
+        onRetry = { attempt++ },
+        showArtwork = false,
+        player = player,
+        state = state,
+        insets = insets,
+        onBack = onBack,
+        onPlay = { shuffled -> if (songs.isNotEmpty()) player.play(if (shuffled) songs.shuffled() else songs, 0) },
+        footer = if (page == null) null else {
+            {
+                Column(verticalArrangement = Arrangement.spacedBy(30.dp)) {
+                    // The Music app's foot of an album: when it came out, then how many songs and how long,
+                    // each on its own quiet line under the last track.
+                    Column(Modifier.padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        album?.year?.let { Text("$it", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        Text(
+                            listOfNotNull(songCount(songs.size), runningTimeLong(songs)).joinToString(", "),
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    moreBy?.takeIf { it.isNotEmpty() }?.let { ShelfSection("More by ${leadArtist?.name.orEmpty()}", it, state, player) }
+                    // YouTube lists this album's other editions and other artists' albums together; the
+                    // Music app keeps them apart, as Other Versions and You Might Also Like.
+                    val names = header.artists.mapTo(HashSet()) { it.name.lowercase() }
+                    val (versions, alike) = page.otherVersions.partition { item ->
+                        item is AlbumItem && item.artists.orEmpty().any { it.name.lowercase() in names }
+                    }
+                    versions.takeIf { it.isNotEmpty() }?.let { ShelfSection("Other Versions", it, state, player) }
+                    alike.takeIf { it.isNotEmpty() }?.let { ShelfSection("You Might Also Like", it, state, player) }
+                }
+            }
+        },
+    )
+}
+
+// ── Playlist ──
+
+@Composable
+fun PlaylistScreen(
+    playlistId: String,
+    title: String?,
+    thumbnail: String?,
+    sharedKey: String?,
+    player: DesktopPlayer,
+    state: PlayerState,
+    insets: ChromeInsets,
+    onBack: () -> Unit,
+) {
+    var attempt by remember { mutableIntStateOf(0) }
+    var loaded by remember(playlistId) { mutableStateOf<com.ozyern.exhale.innertube.pages.PlaylistPage?>(null) }
+    var failed by remember(playlistId) { mutableStateOf(false) }
+    var songs by remember(playlistId) { mutableStateOf<List<SongItem>>(emptyList()) }
+    var continuation by remember(playlistId) { mutableStateOf<String?>(null) }
+    var loadingMore by remember(playlistId) { mutableStateOf(false) }
+    LaunchedEffect(playlistId, attempt) {
+        failed = false
+        withContext(Dispatchers.IO) { YouTube.playlist(playlistId) }
+            .onSuccess { page ->
+                loaded = page
+                songs = page.songs.clean().distinctBy { it.id }
+                continuation = page.songsContinuation ?: page.continuation
+            }
+            .onFailure { if (it is CancellationException) throw it else failed = true }
+    }
+    // Long playlists arrive a page at a time as the list nears its end.
+    var wantMore by remember(playlistId) { mutableIntStateOf(0) }
+    LaunchedEffect(wantMore) {
+        val next = continuation ?: return@LaunchedEffect
+        if (wantMore == 0 || loadingMore) return@LaunchedEffect
+        loadingMore = true
+        withContext(Dispatchers.IO) { YouTube.playlistContinuation(next) }
+            .onSuccess { more ->
+                songs = (songs + more.songs.clean()).distinctBy { it.id }
+                continuation = more.continuation?.takeIf { it != next && more.songs.isNotEmpty() }
+            }
+            .onFailure { if (it is CancellationException) throw it else continuation = null }
+        loadingMore = false
+    }
+
+    val playlist = loaded?.playlist
+    val header = CollectionHeader(
+        kind = "Playlist",
+        title = playlist?.title ?: title.orEmpty(),
+        artwork = playlist?.thumbnail ?: thumbnail,
+        artists = listOfNotNull(playlist?.author),
+        facts = listOfNotNull(playlist?.songCountText ?: songs.takeIf { it.isNotEmpty() }?.let { songCount(it.size) }, runningTime(songs)),
+        description = playlist?.description,
+        pin = Pin(Pin.Kind.Playlist, playlistId, playlist?.title ?: title.orEmpty(), playlist?.author?.name, playlist?.thumbnail ?: thumbnail),
+        link = com.ozyern.exhale.desktop.data.ShareLinks.playlist(playlistId),
+    )
+    CollectionPage(
+        pageKey = "playlist:$playlistId",
+        header = header,
+        sharedKey = sharedKey,
+        songs = songs,
+        loading = loaded == null && !failed,
+        failed = failed,
+        onRetry = { attempt++ },
+        showArtwork = true,
+        player = player,
+        state = state,
+        insets = insets,
+        onBack = onBack,
+        onPlay = { shuffled -> if (songs.isNotEmpty()) player.play(if (shuffled) songs.shuffled() else songs, 0) },
+        onNearEnd = { if (continuation != null && !loadingMore) wantMore++ },
+        loadingMore = loadingMore,
+    )
+}
+
+/**
+ * An album or a playlist, laid out for a wide window: the cover
+ * and what it is on the left, standing still, and the songs scrolling beside it. Narrow windows stack
+ * the two. The cover arrives from the card that was clicked (see sharedArtwork), the page is washed in
+ * the cover's colour, and the songs cascade in once they've loaded.
+ */
+@Composable
+private fun CollectionPage(
+    pageKey: String,
+    header: CollectionHeader,
+    sharedKey: String?,
+    songs: List<SongItem>,
+    loading: Boolean,
+    failed: Boolean,
+    onRetry: () -> Unit,
+    showArtwork: Boolean,
+    player: DesktopPlayer,
+    state: PlayerState,
+    insets: ChromeInsets,
+    onBack: () -> Unit,
+    onPlay: (shuffled: Boolean) -> Unit,
+    footer: (@Composable () -> Unit)? = null,
+    onNearEnd: () -> Unit = {},
+    loadingMore: Boolean = false,
+) {
+    val cascade = rememberCascade(pageKey, ready = !loading)
+    val listState = rememberLazyListState()
+    // Find in Album: filters the tracks in place, keeping each one's own number.
+    var query by remember(pageKey) { mutableStateOf("") }
+    val shown = remember(songs, query) {
+        val q = query.trim()
+        songs.withIndex().filter { (_, song) ->
+            q.isEmpty() || song.title.contains(q, ignoreCase = true) || song.artists.any { it.name.contains(q, ignoreCase = true) }
+        }
+    }
+    LaunchedEffect(listState, songs.size) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index to listState.layoutInfo.totalItemsCount }
+            .collect { (last, total) -> if (last != null && total > 0 && last >= total - 6) onNearEnd() }
+    }
+    LaunchedEffect(songs) {
+        if (songs.isNotEmpty()) {
+            LosslessLibrary.warmAlbum(header.title, header.artists.firstOrNull()?.name, songs)
+        }
+    }
+
+    ArtworkWash(header.artwork) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val start = insets.start + 20.dp
+            val tracks: LazyListScope.() -> Unit = {
+                when {
+                    failed -> item(key = "failed") { PageError(onRetry) }
+                    loading -> items(count = 8, key = { "skeleton_$it" }) { TrackPlaceholder() }
+                    songs.isEmpty() -> item(key = "empty") { Hint("Nothing to play here.") }
+                    shown.isEmpty() -> item(key = "no_match") { Hint("No songs match “${query.trim()}”.") }
+                    else -> trackItems(songs, shown, state, player, cascade, showArtwork)
+                }
+                if (loadingMore) items(count = 3, key = { "more_$it" }) { TrackPlaceholder() }
+                if (footer != null) item(key = "footer") { Box(Modifier.feedIntro(3f, cascade).padding(top = 28.dp)) { footer() } }
+            }
+
+            // The Music app's album and playlist page on the Mac, at every width: the cover with the title,
+            // artist and Play / Shuffle beside it at the top, then the tracks across the page beneath.
+            // (A side column of its own left the cover a sliver once the sidebar took its share.)
+            val coverSize = (maxWidth * 0.24f).coerceIn(200.dp, 300.dp)
+            Box(Modifier.fillMaxSize()) {
+                LazyColumn(
+                    state = listState,
+                    contentPadding = PaddingValues(start = start, end = 40.dp, top = 8.dp, bottom = insets.bottom + 16.dp),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    // The Music app's toolbar over an album: Share, ⋯, and Find in Album at the right.
+                    item(key = "toolbar") {
+                        PageToolbar(header, songs, player, query, onQuery = { query = it }, findLabel = if (showArtwork) "Find in Playlist" else "Find in Album")
+                    }
+                    item(key = "header") {
+                        // The cover, and beside it the title block at the top and the note and buttons at
+                        // its foot, the two ends lined up with the cover's.
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp, top = 6.dp, bottom = 28.dp)) {
+                            Cover(header.artwork, coverSize, sharedKey, RoundedCornerShape(10.dp))
+                            Spacer(Modifier.width(34.dp))
+                            CollectionInfo(
+                                header,
+                                songs = songs,
+                                onPlay = onPlay,
+                                modifier = Modifier.weight(1f).height(coverSize),
+                            )
+                        }
+                    }
+                    tracks()
+                }
+                PageScrollbar(listState, insets)
+                // Better than the Music app, which makes you scroll back up to play: once the header has
+                // gone, its cover, title and Play / Shuffle wait at the top of the page.
+                val headerGone by remember(listState) { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
+                CompactHeader(
+                    header = header,
+                    visible = headerGone,
+                    canPlay = songs.isNotEmpty(),
+                    onPlay = onPlay,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(start = insets.start + 56.dp, end = 160.dp, top = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun PageScrollbar(state: LazyListState, insets: ChromeInsets) {
+    Box(Modifier.fillMaxSize()) {
+        VerticalScrollbar(
+            adapter = rememberScrollbarAdapter(state),
+            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(top = 16.dp, bottom = insets.bottom, end = 6.dp),
+        )
+    }
+}
+
+/**
+ * The page's ground: the cover's colour pooled at the top and draining away. A gradient rather than a
+ * blurred copy of the cover, so it costs nothing to scroll over.
+ */
+@Composable
+internal fun ArtworkWash(artwork: String?, content: @Composable () -> Unit) {
+    val colors by rememberArtworkColors(artwork?.resizedThumbnail(120))
+    val tint by animateColorAsState(colors.firstOrNull() ?: Color.Transparent, tween(900), label = "page_wash")
+    val second by animateColorAsState(colors.getOrNull(1) ?: colors.firstOrNull() ?: Color.Transparent, tween(900), label = "page_wash_2")
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier.fillMaxWidth().height(620.dp).background(
+                Brush.verticalGradient(listOf(tint.copy(alpha = tint.alpha * 0.34f), second.copy(alpha = second.alpha * 0.10f), Color.Transparent)),
+            ),
+        )
+        content()
+    }
+}
+
+/**
+ * The cover: the card's own thumbnail first — already in memory, so the flight never shows an empty
+ * frame — and a sharp copy fading in over it once that has loaded.
+ */
+@Composable
+private fun Cover(artwork: String?, size: Dp, sharedKey: String?, shape: Shape) {
+    val colors by rememberArtworkColors(artwork?.resizedThumbnail(120))
+    val glow by animateColorAsState(colors.firstOrNull() ?: Color.Transparent, tween(800), label = "cover_glow")
+    val tiltOn = !LocalSettings.current.reducedMotion
+    val tiltX = remember { Animatable(0f) }
+    val tiltY = remember { Animatable(0f) }
+    val motion = rememberCoroutineScope()
+    Box(Modifier.size(size)) {
+        // The cover's own colour pooled under it, like light through a record sleeve.
+        Box(
+            Modifier
+                .matchParentSize()
+                .graphicsLayer {
+                    scaleX = 1.22f
+                    scaleY = 1.14f
+                    translationY = 22.dp.toPx()
+                }
+                .background(Brush.radialGradient(listOf(glow.copy(alpha = glow.alpha * 0.55f), Color.Transparent))),
+        )
+        Box(
+            Modifier
+                .sharedArtwork(sharedKey, shape)
+                .matchParentSize()
+                .pointerInput(tiltOn) {
+                    if (!tiltOn) return@pointerInput
+                    val area = this.size
+                    // Leans toward the pointer, a little — the same as the cards it came from.
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val at = event.changes.firstOrNull()?.position ?: continue
+                            val inside = event.type != PointerEventType.Exit
+                            val x = if (inside) (0.5f - at.y / area.height.coerceAtLeast(1)) * 9f else 0f
+                            val y = if (inside) (at.x / area.width.coerceAtLeast(1) - 0.5f) * 9f else 0f
+                            motion.launch { tiltX.animateTo(x, spring(dampingRatio = 0.7f, stiffness = 220f)) }
+                            motion.launch { tiltY.animateTo(y, spring(dampingRatio = 0.7f, stiffness = 220f)) }
+                        }
+                    }
+                }
+                .graphicsLayer {
+                    rotationX = tiltX.value
+                    rotationY = tiltY.value
+                    cameraDistance = 16f * density
+                }
+                .shadow(28.dp, shape, clip = false)
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        ) {
+            AsyncImage(artwork?.resizedThumbnail(544), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            // A sharper copy only where the screen has more pixels than that: at 150% a 280 dp cover is
+            // 420 px, which the 544 already covers, and a 1080 here was fetched and decoded for nothing.
+            val sharp = thumbnailSizeFor(size.value * LocalDensity.current.density)
+            if (sharp > 544) {
+                AsyncImage(artwork?.resizedThumbnail(sharp), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
+        }
+    }
+}
+
+/**
+ * The header in brief, at the top of the page once the real one has scrolled away: the cover, title
+ * and artist, and Play / Shuffle. A plain frosted plate rather than live glass, so scrolling the
+ * tracks under it re-blurs nothing.
+ */
+@Composable
+private fun CompactHeader(header: CollectionHeader, visible: Boolean, canPlay: Boolean, onPlay: (Boolean) -> Unit, modifier: Modifier) {
+    val shown by animateFloatAsState(if (visible) 1f else 0f, spring(dampingRatio = 1f, stiffness = 600f), label = "compact_header")
+    if (shown < 0.01f) return
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        modifier
+            .widthIn(max = 620.dp)
+            .fillMaxWidth()
+            .graphicsLayer {
+                alpha = shown
+                translationY = (1f - shown) * -12.dp.toPx()
+            }
+            .height(46.dp)
+            .shadow(14.dp, shape)
+            .clip(shape)
+            .background(Color(0xF0222224))
+            .border(0.75.dp, Color.White.copy(alpha = 0.12f), shape)
+            .padding(start = 7.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(32.dp).clip(RoundedCornerShape(5.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+            AsyncImage(header.artwork?.resizedThumbnail(120), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(header.title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (header.artists.isNotEmpty()) {
+                Text(header.artists.joinToString { it.name }, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        CircleAction(TransportIcons.Shuffle, "Shuffle", filled = false, enabled = canPlay) { onPlay(true) }
+        Spacer(Modifier.width(6.dp))
+        CircleAction(TransportIcons.Play, "Play", filled = true, enabled = canPlay) { onPlay(false) }
+    }
+}
+
+/** A round button: the accent filled for the main action, a grey disc for the rest. */
+@Composable
+private fun CircleAction(icon: ImageVector, description: String, filled: Boolean, enabled: Boolean = true, size: Dp = 32.dp, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val pressed by interaction.collectIsPressedAsState()
+    val base = if (filled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.1f)
+    Box(
+        Modifier
+            .graphicsLayer { alpha = if (enabled) 1f else 0.45f }
+            .size(size)
+            .clip(CircleShape)
+            .background(
+                when {
+                    pressed -> lerp(base, Color.Black, 0.15f)
+                    hovered -> lerp(base, Color.White, 0.12f)
+                    else -> base
+                },
+            )
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+            .semantics { contentDescription = description; role = Role.Button },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, null, tint = Color.White, modifier = Modifier.size(size * 0.48f))
+    }
+}
+
+/**
+ * The strip above an album, as on macOS 27: Share and ⋯ as round glass buttons and the Find in
+ * Album field, all at the right; the back button is the title bar's.
+ */
+@Composable
+private fun PageToolbar(
+    header: CollectionHeader,
+    songs: List<SongItem>,
+    player: DesktopPlayer,
+    query: String,
+    onQuery: (String) -> Unit,
+    findLabel: String,
+) {
+    Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
+        val link = header.link
+        var copied by remember { mutableStateOf(false) }
+        LaunchedEffect(copied) { if (copied) { kotlinx.coroutines.delay(1600); copied = false } }
+        CircleAction(if (copied) OptionsIcons.Link else OptionsIcons.Share, if (copied) "Link copied" else "Share", filled = false, enabled = link != null) {
+            link?.let { runCatching { java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(java.awt.datatransfer.StringSelection(it), null) } }
+            copied = true
+        }
+        Spacer(Modifier.width(8.dp))
+        Box {
+            var menu by remember { mutableStateOf(false) }
+            CircleAction(NavIcons.More, "More", filled = false) { menu = true }
+            CollectionActionsMenu(
+                songs = songs,
+                pin = header.pin,
+                artist = header.artists.firstOrNull { it.id != null },
+                link = header.link,
+                player = player,
+                expanded = menu,
+                onDismiss = { menu = false },
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        FindField(query, onQuery, findLabel)
+    }
+}
+
+/** macOS's find field: a small rounded field with a magnifier, its clear button once there's text. */
+@Composable
+private fun FindField(query: String, onQuery: (String) -> Unit, placeholder: String) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(9.dp)
+    val accent = MaterialTheme.colorScheme.primary
+    Row(
+        Modifier
+            .width(220.dp)
+            .height(30.dp)
+            .then(if (focused) Modifier.border(2.dp, accent.copy(alpha = 0.6f), shape) else Modifier)
+            .clip(shape)
+            .background(Color.White.copy(alpha = 0.08f))
+            .padding(start = 9.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(NavIcons.Search, null, tint = Color.White.copy(alpha = 0.55f), modifier = Modifier.size(13.dp))
+        Spacer(Modifier.width(6.dp))
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            if (query.isEmpty()) Text(placeholder, fontSize = 13.sp, color = Color.White.copy(alpha = 0.42f), maxLines = 1)
+            androidx.compose.foundation.text.BasicTextField(
+                value = query,
+                onValueChange = onQuery,
+                singleLine = true,
+                textStyle = TextStyle(fontSize = 13.sp, color = Color.White),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(accent),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { focused = it.isFocused }
+                    .onPreviewKeyEvent {
+                        if (it.type == KeyEventType.KeyDown && it.key == Key.Escape && query.isNotEmpty()) { onQuery(""); true } else false
+                    }
+                    .semantics { contentDescription = placeholder },
+            )
+        }
+        if (query.isNotEmpty()) {
+            Box(
+                Modifier.size(22.dp).clip(CircleShape).clickable { onQuery("") }.semantics { contentDescription = "Clear"; role = Role.Button },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(Modifier.size(14.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
+                    Text("×", fontSize = 11.sp, lineHeight = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The Music app's album header on macOS 27, beside the cover: the title (with its E), the artist in
+ * the accent, and the facts in small grey; then, at the cover's foot, the note cut to a few lines with
+ * MORE, and the buttons — Shuffle and Pin as round buttons either side of a bold Play capsule.
+ */
+@Composable
+private fun CollectionInfo(
+    header: CollectionHeader,
+    songs: List<SongItem>,
+    onPlay: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val canPlay = songs.isNotEmpty()
+    // The header's lines rise in one after another, as on an artist's page.
+    val reduced = LocalSettings.current.reducedMotion
+    val settle = remember { Animatable(if (reduced) 1f else 0f) }
+    LaunchedEffect(Unit) { settle.animateTo(1f, spring(dampingRatio = 1f, stiffness = 70f)) }
+    val progress: () -> Float = { settle.value }
+    val grey = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(modifier) {
+        Spacer(Modifier.weight(0.6f))
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.stage(0.08f, progress)) {
+            Text(
+                header.title,
+                fontSize = 26.sp,
+                lineHeight = 30.sp,
+                letterSpacing = (-0.02).em,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            if (header.explicit) {
+                Spacer(Modifier.width(8.dp))
+                Icon(NavIcons.Explicit, contentDescription = "Explicit", tint = grey, modifier = Modifier.size(17.dp))
+            }
+        }
+        if (header.artists.isNotEmpty()) {
+            Spacer(Modifier.height(2.dp))
+            ArtistLinks(
+                header.artists,
+                TextStyle(fontSize = 22.sp, lineHeight = 27.sp, fontWeight = FontWeight.Medium, letterSpacing = (-0.01).em),
+                MaterialTheme.colorScheme.primary,
+                Modifier.stage(0.16f, progress),
+            )
+        }
+        // Only what's true of this one: the kind when it isn't an album, the year, and Lossless when
+        // a lossless source is set up to play it from.
+        val meta = buildList {
+            if (header.kind != "Album" && header.kind != "Playlist") add(header.kind)
+            addAll(header.facts)
+            if (LosslessLibrary.isConfigured && header.kind != "Playlist") add("Lossless")
+        }
+        if (meta.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.stage(0.24f, progress)) {
+                meta.forEachIndexed { i, fact ->
+                    if (i > 0) Text(" · ", fontSize = 11.5.sp, color = grey)
+                    if (fact == "Lossless") {
+                        LosslessWaveformIcon(tint = grey, modifier = Modifier.size(width = 14.dp, height = 10.dp))
+                        Spacer(Modifier.width(3.dp))
+                    }
+                    Text(fact, fontSize = 11.5.sp, fontWeight = FontWeight.Medium, color = grey, maxLines = 1)
+                }
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        header.description?.takeIf { it.isNotBlank() }?.let { text ->
+            Box(Modifier.widthIn(max = 720.dp).stage(0.28f, progress)) { NoteText(text) }
+            Spacer(Modifier.height(14.dp))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.stage(0.32f, progress)) {
+            CircleAction(TransportIcons.Shuffle, "Shuffle", filled = false, enabled = canPlay, size = 34.dp) { onPlay(true) }
+            Spacer(Modifier.width(12.dp))
+            PlayCapsule(enabled = canPlay) { onPlay(false) }
+            header.pin?.let { pin ->
+                Spacer(Modifier.width(12.dp))
+                val pins by DesktopPrefs.pins.collectAsState()
+                val pinned = pins.any { it.id == pin.id }
+                CircleAction(if (pinned) NavIcons.Check else OptionsIcons.Pin, if (pinned) "Unpin" else "Pin", filled = false, size = 34.dp) {
+                    DesktopPrefs.togglePin(pin)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The Music app's Play on macOS 27: a wide, bold capsule — in the dark appearance a light one with dark
+ * type, so it's the one thing on the page that reads as "start here".
+ */
+@Composable
+private fun PlayCapsule(enabled: Boolean, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val hovered by interaction.collectIsHoveredAsState()
+    val base = Color(0xFFF5F5F7)
+    val fill = when {
+        pressed -> lerp(base, Color.Black, 0.14f)
+        hovered -> lerp(base, Color.Black, 0.06f)
+        else -> base
+    }
+    Row(
+        Modifier
+            .graphicsLayer { alpha = if (enabled) 1f else 0.45f }
+            .height(34.dp)
+            .width(136.dp)
+            .clip(CircleShape)
+            .background(fill)
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+            .semantics(mergeDescendants = true) { role = Role.Button },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(TransportIcons.Play, contentDescription = null, tint = Color.Black, modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(5.dp))
+        Text("Play", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.Black)
+    }
+}
+
+/**
+ * The album's note as the Music app sets it: a few grey lines, and MORE in small capitals at their
+ * end when there's more to read. Clicking opens the rest in place.
+ */
+@Composable
+private fun NoteText(text: String) {
+    var expanded by remember(text) { mutableStateOf(false) }
+    var overflowing by remember(text) { mutableStateOf(false) }
+    Column(Modifier.clip(RoundedCornerShape(6.dp)).clickable(enabled = overflowing || expanded) { expanded = !expanded }) {
+        Text(
+            text,
+            fontSize = 12.5.sp,
+            lineHeight = 17.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = if (expanded) Int.MAX_VALUE else 3,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { if (!expanded) overflowing = it.hasVisualOverflow },
+        )
+        if (overflowing || expanded) {
+            Text(
+                if (expanded) "LESS" else "MORE",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.04.em,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.align(Alignment.End).padding(top = 1.dp),
+            )
+        }
+    }
+}
+
+private fun LazyListScope.trackItems(
+    songs: List<SongItem>,
+    shown: List<IndexedValue<SongItem>>,
+    state: PlayerState,
+    player: DesktopPlayer,
+    cascade: () -> Float,
+    showArtwork: Boolean,
+) {
+    // An album whose every track is by the same artists lists them as the Music app does: single lines.
+    val oneArtist = !showArtwork && songs.map { song -> song.artists.joinToString { it.name } }.distinct().size <= 1
+    itemsIndexed(shown, key = { _, (i, song) -> "$i:${song.id}" }) { row, (index, song) ->
+        val active = song.id == state.current?.id
+        val favorites by DesktopPrefs.favorites.collectAsState()
+        TrackRow(
+            number = index + 1,
+            song = song,
+            active = active,
+            playing = state.isPlaying,
+            showArtwork = showArtwork,
+            onClick = { if (active) player.togglePlayPause() else player.play(songs, index) },
+            modifier = Modifier.cascade(row, cascade),
+            compact = oneArtist,
+            player = player,
+            favorite = favorites.any { it.id == song.id },
+        )
+    }
+}
+
+// ── "See all" ──
+
+@Composable
+fun ArtistItemsScreen(
+    browseId: String,
+    params: String?,
+    title: String,
+    player: DesktopPlayer,
+    state: PlayerState,
+    insets: ChromeInsets,
+    onBack: () -> Unit,
+) {
+    var attempt by remember { mutableIntStateOf(0) }
+    var items by remember(browseId, params) { mutableStateOf<List<YTItem>?>(null) }
+    var failed by remember(browseId, params) { mutableStateOf(false) }
+    var continuation by remember(browseId, params) { mutableStateOf<String?>(null) }
+    var loadingMore by remember(browseId, params) { mutableStateOf(false) }
+    var wantMore by remember(browseId, params) { mutableIntStateOf(0) }
+    LaunchedEffect(browseId, params, attempt) {
+        failed = false
+        withContext(Dispatchers.IO) { YouTube.artistItems(BrowseEndpoint(browseId, params)) }
+            .onSuccess { page ->
+                items = page.items.clean()
+                continuation = page.continuation
+            }
+            .onFailure { if (it is CancellationException) throw it else failed = true }
+    }
+    LaunchedEffect(wantMore) {
+        val next = continuation ?: return@LaunchedEffect
+        if (wantMore == 0 || loadingMore) return@LaunchedEffect
+        loadingMore = true
+        withContext(Dispatchers.IO) { YouTube.artistItemsContinuation(next) }
+            .onSuccess { more ->
+                items = (items.orEmpty() + more.items.clean()).distinctBy { it.id }
+                continuation = more.continuation?.takeIf { it != next && more.items.isNotEmpty() }
+            }
+            .onFailure { if (it is CancellationException) throw it else continuation = null }
+        loadingMore = false
+    }
+
+    val loaded = items
+    val cascade = rememberCascade("items:$browseId:$params", ready = loaded != null)
+    val open = rememberItemOpener(player)
+    val start = insets.start + 20.dp
+    val songs = loaded?.filterIsInstance<SongItem>().orEmpty()
+    val allSongs = loaded != null && loaded.isNotEmpty() && songs.size == loaded.size
+    val gridState = rememberLazyGridState()
+    LaunchedEffect(gridState) {
+        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index to gridState.layoutInfo.totalItemsCount }
+            .collect { (last, total) -> if (last != null && total > 0 && last >= total - 8 && continuation != null && !loadingMore) wantMore++ }
+    }
+
+    LazyVerticalGrid(
+        state = gridState,
+        columns = if (allSongs) GridCells.Adaptive(520.dp) else GridCells.Adaptive(190.dp),
+        contentPadding = PaddingValues(start = start, end = 40.dp, top = 16.dp, bottom = insets.bottom + 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (allSongs) 16.dp else 18.dp),
+        verticalArrangement = Arrangement.spacedBy(if (allSongs) 2.dp else 22.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        item(span = { GridItemSpan(maxLineSpan) }) { LargeTitle(title, Modifier.padding(bottom = 14.dp)) }
+        when {
+            failed -> item(span = { GridItemSpan(maxLineSpan) }) { PageError { attempt++ } }
+            loaded == null -> items(count = 8, span = { GridItemSpan(maxLineSpan) }) { TrackPlaceholder() }
+            loaded.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) { Hint("Nothing here yet.") }
+            allSongs -> itemsIndexed(songs, key = { i, s -> "$i:${s.id}" }) { index, song ->
+                val active = song.id == state.current?.id
+                TrackRow(
+                    number = null,
+                    song = song,
+                    active = active,
+                    playing = state.isPlaying,
+                    showArtwork = true,
+                    onClick = { if (active) player.togglePlayPause() else player.play(songs, index) },
+                    modifier = Modifier.cascade(index, cascade),
+                )
+            }
+            else -> itemsIndexed(loaded, key = { i, item -> "$i:${item.id}" }) { index, item ->
+                Box(Modifier.cascade(index, cascade)) {
+                    ItemCard(item, isActive = item.id == state.current?.id, onClick = { open(item) }, artSize = 176.dp, onPlay = { player.playNow(item) })
+                }
+            }
+        }
+    }
+}
+
+// ── Pieces ──
+
+/** A shelf of cards under a heading, for the end of a page ("Other versions"). */
+@Composable
+private fun ShelfSection(title: String, items: List<YTItem>, state: PlayerState, player: DesktopPlayer) {
+    val open = rememberItemOpener(player)
+    Column {
+        SectionTitle(title, onSeeAll = null, modifier = Modifier.padding(start = 12.dp, bottom = 12.dp))
+        LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            itemsIndexed(items, key = { i, item -> "$i:${item.id}" }) { _, item ->
+                ItemCard(item, isActive = item.id == state.current?.id, onClick = { open(item) }, onPlay = { player.playNow(item) })
+            }
+        }
+    }
+}
+
+@Composable
+internal fun SectionTitle(title: String, onSeeAll: (() -> Unit)?, modifier: Modifier = Modifier) {
+    // The Music app's shelf header: "Title ›" on one line, the whole of it the way to see everything.
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier
+                .then(if (onSeeAll != null) Modifier.hoverable(interaction).clickable(interactionSource = interaction, indication = null, onClick = onSeeAll) else Modifier),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = if (hovered) 0.75f else 1f))
+            if (onSeeAll != null) {
+                Icon(
+                    NavIcons.ChevronRight,
+                    contentDescription = "See all $title",
+                    tint = Color.White.copy(alpha = if (hovered) 0.75f else 0.55f),
+                    modifier = Modifier.padding(start = 2.dp).size(16.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * One song in a list: its number (a play glyph under the pointer, bouncing bars while it plays), the
+ * cover when the list mixes albums, title and linked artists, and the time.
+ */
+@Composable
+fun TrackRow(
+    number: Int?,
+    song: SongItem,
+    active: Boolean,
+    playing: Boolean,
+    showArtwork: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    // An album by one artist, as the Music app lists it: one line per track, the artist left out, a
+    // hairline between rows.
+    compact: Boolean = false,
+    // Given, a ⋯ for the song's actions shows under the pointer.
+    player: DesktopPlayer? = null,
+    // In an album's list, Favorite Songs get the Music app's star in the gutter before the number.
+    favorite: Boolean? = null,
+) {
+    var menu by remember { mutableStateOf(false) }
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val pressed by interaction.collectIsPressedAsState()
+    val press by pressScale(pressed, pressedScale = 0.985f)
+    val shape = RoundedCornerShape(if (compact) 8.dp else 12.dp)
+    val accent = MaterialTheme.colorScheme.primary
+    // Flat fills, as the Music app's list rows: hover a grey wash. In an album's single-line list the
+    // playing track is marked by its bars and title alone, as there; elsewhere faintly in the accent.
+    val fill = when {
+        active && !compact -> accent.copy(alpha = 0.14f)
+        hovered -> Color.White.copy(alpha = 0.07f)
+        else -> Color.Transparent
+    }
+    val rule = Color.White.copy(alpha = 0.08f)
+    val ruleStart = (if (number != null) 56.dp else 12.dp) + if (favorite != null) 10.dp else 0.dp
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = press
+                scaleY = press
+            }
+            .then(
+                if (compact && !active && !hovered) {
+                    Modifier.drawBehind {
+                        val y = size.height - 0.5f
+                        drawLine(rule, Offset(ruleStart.toPx(), y), Offset(size.width - 12.dp.toPx(), y), strokeWidth = 1f)
+                    }
+                } else {
+                    Modifier
+                },
+            )
+            .clip(shape)
+            .background(fill)
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .heightIn(min = if (compact) 44.dp else 58.dp)
+            .padding(start = if (favorite != null) 0.dp else 12.dp, end = 12.dp, top = if (compact) 4.dp else 8.dp, bottom = if (compact) 4.dp else 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (favorite != null) {
+            Box(Modifier.width(22.dp), contentAlignment = Alignment.Center) {
+                if (favorite) Icon(NavIcons.Star, contentDescription = "Favorite", tint = Color(0xFFFFC53D), modifier = Modifier.size(11.dp))
+            }
+        }
+        if (number != null) {
+            Box(Modifier.width(34.dp), contentAlignment = Alignment.Center) {
+                when {
+                    active && playing -> EqualizerBars(accent, Modifier.size(16.dp))
+                    active || hovered -> Icon(TransportIcons.Play, contentDescription = "Play", tint = if (active) accent else MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
+                    else -> Text("$number", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Spacer(Modifier.width(10.dp))
+        }
+        if (showArtwork) {
+            Box(Modifier.size(46.dp).clip(RoundedCornerShape(9.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                AsyncImage(song.thumbnail.resizedThumbnail(160), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                if (number == null && active) {
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)), contentAlignment = Alignment.Center) {
+                        if (playing) EqualizerBars(Color.White, Modifier.size(16.dp))
+                    }
+                }
+            }
+            Spacer(Modifier.width(14.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    song.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontSize = if (compact) 14.sp else MaterialTheme.typography.titleSmall.fontSize,
+                    fontWeight = if (compact) FontWeight.Normal else FontWeight.SemiBold,
+                    color = if (active) accent else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (song.explicit) {
+                    Spacer(Modifier.width(6.dp))
+                    Icon(NavIcons.Explicit, contentDescription = "Explicit", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+                }
+            }
+            if (song.artists.isNotEmpty() && !compact) {
+                ArtistLinks(song.artists, MaterialTheme.typography.bodySmall, MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        song.duration?.let {
+            Spacer(Modifier.width(12.dp))
+            Text(formatTime(it.toDouble()), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (player != null) {
+            // Its room is always kept, so a row doesn't shift as the pointer crosses it.
+            Box(Modifier.padding(start = 8.dp).size(28.dp)) {
+                // The Music app keeps an album's ⋯ on every row, quiet until the pointer reaches it.
+                if (hovered || menu || compact) {
+                    Box(
+                        Modifier.matchParentSize().clip(CircleShape).clickable { menu = true },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(NavIcons.More, "More", tint = MaterialTheme.colorScheme.onSurface.copy(alpha = if (hovered || menu) 0.85f else 0.45f), modifier = Modifier.size(18.dp))
+                    }
+                }
+                SongActionsMenu(song, player, expanded = menu, onDismiss = { menu = false })
+            }
+        }
+    }
+}
+
+/** Artist names, each one a link to its page when YouTube gave it an id. */
+@Composable
+fun ArtistLinks(artists: List<Artist>, style: TextStyle, color: Color, modifier: Modifier = Modifier, suffix: String? = null) {
+    val nav = LocalNavigator.current
+    val hover = MaterialTheme.colorScheme.onSurface
+    val text = remember(artists, nav, suffix, hover) {
+        buildAnnotatedString {
+            artists.forEachIndexed { i, artist ->
+                if (i > 0) append(", ")
+                val id = artist.id
+                if (id != null && nav != null) {
+                    val link = LinkAnnotation.Clickable(
+                        tag = "artist:$id",
+                        styles = TextLinkStyles(hoveredStyle = SpanStyle(textDecoration = TextDecoration.Underline, color = hover)),
+                    ) { nav.openArtist(id, artist.name, null) }
+                    withLink(link) { append(artist.name) }
+                } else {
+                    append(artist.name)
+                }
+            }
+            suffix?.let { append(it) }
+        }
+    }
+    Text(text, style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = modifier)
+}
+
+/**
+ * The Music app's Play and Shuffle: a compact capsule filled with the accent, a white symbol and
+ * label. Brightens under the pointer and dips when pressed; it doesn't grow.
+ */
+@Composable
+internal fun AppleCapsule(text: String, icon: ImageVector, enabled: Boolean = true, filled: Boolean = true, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val hovered by interaction.collectIsHoveredAsState()
+    // Unfilled, it's the quiet grey capsule the Music app uses for secondary actions.
+    val base = if (filled) AppleColors.Accent else Color.White.copy(alpha = 0.12f)
+    val fill = when {
+        pressed -> lerp(base, Color.Black, 0.18f)
+        hovered -> lerp(base, Color.White, 0.1f)
+        else -> base
+    }
+    Row(
+        Modifier
+            .graphicsLayer { alpha = if (enabled) 1f else 0.45f }
+            .height(34.dp)
+            .widthIn(min = 112.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(fill)
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+    }
+}
+
+@Composable
+internal fun PillButton(text: String, icon: ImageVector, primary: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val hovered by interaction.collectIsHoveredAsState()
+    val scale by pressScale(pressed, hovered, pressedScale = 0.93f, hoverScale = 1.04f)
+    val background = if (primary) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = if (hovered) 0.17f else 0.10f)
+    val content = if (primary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+    Row(
+        Modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                alpha = if (enabled) 1f else 0.45f
+            }
+            .height(46.dp)
+            .shadow(if (primary && hovered) 16.dp else 0.dp, CircleShape, clip = false)
+            .clip(CircleShape)
+            .background(background)
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+            .padding(start = 18.dp, end = 22.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(text, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = content)
+    }
+}
+
+@Composable
+internal fun ExpandableText(text: String, collapsedLines: Int) {
+    var expanded by remember(text) { mutableStateOf(false) }
+    var overflowing by remember(text) { mutableStateOf(false) }
+    Column {
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = if (expanded) Int.MAX_VALUE else collapsedLines,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { if (!expanded) overflowing = it.hasVisualOverflow },
+        )
+        if (overflowing || expanded) {
+            Text(
+                if (expanded) "Less" else "More",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(8.dp)).clickable { expanded = !expanded }.padding(vertical = 4.dp),
+            )
+        }
+    }
+}
+
+@Composable
+internal fun TrackPlaceholder() {
+    val pulse by rememberInfiniteTransition(label = "track_skeleton").animateFloat(
+        initialValue = 0.4f,
+        targetValue = 0.85f,
+        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse),
+        label = "track_skeleton_alpha",
+    )
+    Row(Modifier.fillMaxWidth().graphicsLayer { alpha = pulse }.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(44.dp).glassPlate(RoundedCornerShape(9.dp)))
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Box(Modifier.fillMaxWidth(0.45f).height(14.dp).glassPlate(RoundedCornerShape(6.dp)))
+            Spacer(Modifier.height(8.dp))
+            Box(Modifier.fillMaxWidth(0.25f).height(11.dp).glassPlate(RoundedCornerShape(6.dp)))
+        }
+    }
+}
+
+@Composable
+internal fun PageError(onRetry: () -> Unit) {
+    Column(Modifier.padding(vertical = 28.dp)) {
+        Text("Couldn't load this page.", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(4.dp))
+        Text("Check your connection, then try again.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(14.dp))
+        PillButton("Try again", NavIcons.Reset, primary = true, onClick = onRetry)
+    }
+}
+
+@Composable
+internal fun Hint(text: String) {
+    Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 28.dp))
+}

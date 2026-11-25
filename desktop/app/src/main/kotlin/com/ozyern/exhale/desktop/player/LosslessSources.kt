@@ -1,0 +1,1868 @@
+/*
+ * Exhale Project Original (2026)
+ * ozyern (github.com/ozyern)
+ * Licensed Under GPL-3.0 | see git history for contributors
+ */
+
+package com.ozyern.exhale.desktop.player
+
+import com.ozyern.exhale.desktop.data.DesktopPrefs
+import com.ozyern.exhale.innertube.models.SongItem
+import com.ozyern.exhale.openflac.OpenFlac
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
+import org.w3c.dom.Element
+import org.xml.sax.InputSource
+import java.io.File
+import java.io.RandomAccessFile
+import java.io.StringReader
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
+import java.net.SocketTimeoutException
+import java.net.URL
+import java.net.URLEncoder
+import java.security.MessageDigest
+import java.text.Normalizer
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+import javax.xml.parsers.DocumentBuilderFactory
+import kotlin.math.abs
+import kotlin.random.Random
+
+/** Where a lossless copy of what's playing can come from. Exhale ships none of these — you add your own. */
+enum class LosslessKind {
+    /** A folder of files on this PC: FLAC, ALAC, WAV, AIFF, APE, WavPack. */
+    FOLDER,
+
+    /** A Subsonic-compatible server: Navidrome, Airsonic, Gonic, Jellyfin's Subsonic endpoint. */
+    SUBSONIC,
+
+    /** A source server speaking the addon protocol: /manifest.json, /search?q=, /stream/{id}. */
+    ADDON,
+
+    /** The Internet Archive: concerts taped with the band's blessing, and public-domain music. */
+    ARCHIVE,
+
+    /** Wikimedia Commons: public-domain and Creative Commons recordings, much of it FLAC or WAV. */
+    WIKIMEDIA,
+
+    /** Jamendo's Creative Commons catalogue, through a free client ID of your own. */
+    JAMENDO,
+
+    /** A Plex server of yours. */
+    PLEX,
+
+    /** A Jellyfin server of yours. */
+    JELLYFIN,
+
+    /** Whatever media servers answer on this network: a NAS, Plex's DLNA, Windows media sharing. */
+    DLNA,
+
+    /** Free CD-quality FLAC (44.1 kHz / 16-bit) streamed from public Monochrome mirrors. */
+    MONOCHROME,
+
+    /** Free CD-quality & Hi-Res FLAC streamed from public Tidal streaming instances. */
+    TIDAL,
+
+    /** Studio Master Hi-Res FLAC (up to 24-bit / 192 kHz) streamed from public Qobuz endpoints. */
+    QOBUZ,
+
+    /** Free 24/7 CD-quality and Hi-Res FLAC streams from Radio Paradise. */
+    RADIOPARADISE,
+}
+
+data class LosslessSource(
+    val id: String,
+    val kind: LosslessKind,
+    val name: String,
+    /** A folder path, or the server's base URL. */
+    val location: String,
+    val username: String = "",
+    val password: String = "",
+    val enabled: Boolean = true,
+) {
+    val kindLabel: String
+        get() = when (kind) {
+            LosslessKind.FOLDER -> "Folder on this PC"
+            LosslessKind.SUBSONIC -> "Subsonic server"
+            LosslessKind.ADDON -> "Addon server"
+            LosslessKind.ARCHIVE -> "Internet Archive"
+            LosslessKind.WIKIMEDIA -> "Wikimedia Commons"
+            LosslessKind.JAMENDO -> "Jamendo"
+            LosslessKind.PLEX -> "Plex server"
+            LosslessKind.JELLYFIN -> "Jellyfin server"
+            LosslessKind.DLNA -> "Servers on this network"
+            LosslessKind.MONOCHROME -> "Monochrome FLAC"
+            LosslessKind.TIDAL -> "Tidal FLAC"
+            LosslessKind.QOBUZ -> "Qobuz Hi-Res"
+            LosslessKind.RADIOPARADISE -> "Radio Paradise FLAC"
+        }
+}
+
+sealed interface SourceHealth {
+    data object Unknown : SourceHealth
+    data object Checking : SourceHealth
+    data class Ok(val detail: String) : SourceHealth
+    data class Failed(val message: String) : SourceHealth
+}
+
+/** One candidate copy of a song, as a source described it. */
+data class LosslessTrack(
+    val title: String,
+    val artist: String?,
+    val album: String?,
+    val durationSeconds: Double?,
+    val url: String,
+    val format: String,
+    val sampleRate: Int? = null,
+    val bitDepth: Int? = null,
+    val bitrate: Int? = null,
+    val sourceName: String,
+) {
+    val lossless: Boolean get() = format.lowercase(Locale.US) in LosslessFormats
+
+    /** A file on this PC, or on a server in the house: nothing a slow internet connection can interrupt. */
+    val nearby: Boolean get() = !url.startsWith("http", ignoreCase = true) || isPrivateAddress(url)
+
+    /**
+     * Lossless over lossy, then a copy close to home over one across the internet (a hi-res file that
+     * stutters is worth less than a CD-quality one that doesn't), then FLAC over the other lossless
+     * formats, then bit depth × rate and bitrate.
+     */
+    val rank: Long
+        get() {
+            val depth = (bitDepth ?: if (lossless) 16 else 0).toLong()
+            val rate = (sampleRate ?: if (lossless) 44_100 else 0).toLong()
+            return (if (lossless) 1L shl 60 else 0L) +
+                (if (nearby) 1L shl 58 else 0L) +
+                (if (format.equals("flac", ignoreCase = true)) 1L shl 56 else 0L) +
+                depth * rate + (bitrate ?: 0).toLong()
+        }
+
+    /** Worked out once: a library of tens of thousands of files is compared with every song that starts. */
+    internal val matchTitle: String by lazy(LazyThreadSafetyMode.PUBLICATION) { TrackMatch.normalize(title) }
+}
+
+private val PrivateHost = Regex("""^https?://(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|[^/:]+\.local\b)""", RegexOption.IGNORE_CASE)
+
+private fun isPrivateAddress(url: String): Boolean = PrivateHost.containsMatchIn(url)
+
+private val LosslessFormats = setOf("flac", "alac", "wav", "wave", "aiff", "aif", "ape", "wv", "dsf", "dff", "shn")
+/** Dolby Digital, Dolby Digital Plus (the format Atmos music is streamed and sold in) and TrueHD. */
+private val DolbyFormats = setOf("ac3", "ec3", "eac3", "thd", "mlp", "mka")
+private val AudioExtensions = LosslessFormats + DolbyFormats + setOf("m4a", "mp3", "ogg", "opus", "aac")
+
+/**
+ * Lossless and hi-res playback, from sources the listener configures.
+ *
+ * Every source is theirs: a folder of files they own, a Subsonic server they run, or an addon server
+ * they're entitled to use. Exhale has no built-in endpoints and fetches no remote code — a source is
+ * only ever an address that was typed in here.
+ *
+ * When a song starts, every enabled source is asked at once for its own copy. Candidates are matched
+ * against the song by title, artist and runtime, the best copy wins, and if nothing matches the song
+ * plays from YouTube exactly as before.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+object LosslessLibrary {
+    private const val KEY = "lossless_sources"
+    private const val AUTO_KEY = "lossless_looked_in_music"
+    private const val ARCHIVE_KEY = "lossless_archive_removed"
+    private const val UserAgent = "Exhale (+https://github.com/ozyern/exhale)"
+
+    /** Sources that cost nothing and need no account, so they're there from the first song. */
+    private val BuiltIn = listOf(
+        LosslessKind.RADIOPARADISE,
+        LosslessKind.MONOCHROME,
+        LosslessKind.TIDAL,
+        LosslessKind.QOBUZ,
+        LosslessKind.ARCHIVE,
+        LosslessKind.WIKIMEDIA,
+        LosslessKind.DLNA,
+    )
+
+    private fun removedKey(kind: LosslessKind): String =
+        if (kind == LosslessKind.ARCHIVE) ARCHIVE_KEY else "lossless_removed_${kind.name.lowercase(Locale.US)}"
+
+    private fun builtInName(kind: LosslessKind): String = when (kind) {
+        LosslessKind.RADIOPARADISE -> "Radio Paradise (Lossless FLAC)"
+        LosslessKind.MONOCHROME -> "Monochrome FLAC"
+        LosslessKind.TIDAL -> "Tidal (Public FLAC)"
+        LosslessKind.QOBUZ -> "Qobuz Studio FLAC"
+        LosslessKind.ARCHIVE -> "Sabrina's Basement"
+        LosslessKind.WIKIMEDIA -> "Wikimedia Commons"
+        else -> "Servers on this network"
+    }
+
+    private fun builtInLocation(kind: LosslessKind): String = when (kind) {
+        LosslessKind.RADIOPARADISE -> "stream.radioparadise.com"
+        LosslessKind.MONOCHROME -> "monochrome.st"
+        LosslessKind.TIDAL -> "tidal.com"
+        LosslessKind.QOBUZ -> "play.qobuz.com"
+        LosslessKind.ARCHIVE -> "archive.org"
+        LosslessKind.WIKIMEDIA -> "commons.wikimedia.org"
+        else -> "this network"
+    }
+
+    private val _sources = MutableStateFlow(load())
+    val sources: StateFlow<List<LosslessSource>> = _sources.asStateFlow()
+
+    private val _health = MutableStateFlow<Map<String, SourceHealth>>(emptyMap())
+    val health: StateFlow<Map<String, SourceHealth>> = _health.asStateFlow()
+
+    /** What the last resolve found, for the player's badge and the settings page. */
+    private val _lastMatch = MutableStateFlow<String?>(null)
+    val lastMatch: StateFlow<String?> = _lastMatch.asStateFlow()
+
+    private val http = OkHttpClient.Builder()
+        .connectTimeout(3, TimeUnit.SECONDS)
+        .readTimeout(4, TimeUnit.SECONDS)
+        .build()
+
+    val isConfigured: Boolean get() = _sources.value.any { it.enabled }
+
+    fun add(source: LosslessSource) {
+        _sources.value = _sources.value.filterNot { it.id == source.id } + source
+        forgetLookups()
+        save()
+    }
+
+    fun remove(id: String) {
+        forgetLookups()
+        val removed = _sources.value.firstOrNull { it.id == id }
+        _sources.value = _sources.value.filterNot { it.id == id }
+        _health.value = _health.value - id
+        FolderIndex.forget(id)
+        // Taken away on purpose: don't put it back on the next start.
+        if (removed != null && removed.kind in BuiltIn) DesktopPrefs.putAll(mapOf(removedKey(removed.kind) to "removed"))
+        save()
+    }
+
+    fun setEnabled(id: String, enabled: Boolean) {
+        _sources.value = _sources.value.map { if (it.id == id) it.copy(enabled = enabled) else it }
+        forgetLookups()
+        save()
+    }
+
+    fun move(id: String, by: Int) {
+        val list = _sources.value.toMutableList()
+        val from = list.indexOfFirst { it.id == id }.takeIf { it >= 0 } ?: return
+        val to = (from + by).coerceIn(0, list.size - 1)
+        if (to == from) return
+        list.add(to, list.removeAt(from))
+        _sources.value = list
+        save()
+    }
+
+    fun newId(): String = Random.nextLong().toULong().toString(16)
+
+    /**
+     * First run: if there's music on this PC, the Music folder becomes a source without anyone being
+     * asked. Someone who has never heard the word "lossless" still gets their own FLACs played in place
+     * of YouTube's stream. It happens once — remove the source and it stays removed.
+     */
+    suspend fun ensureDefaultSource() {
+        BuiltIn.forEach { kind ->
+            if (_sources.value.none { it.kind == kind } && DesktopPrefs.raw(removedKey(kind)) != "removed") {
+                add(LosslessSource(id = kind.name.lowercase(Locale.US), kind = kind, name = builtInName(kind), location = builtInLocation(kind)))
+            }
+        }
+        if (DesktopPrefs.raw(AUTO_KEY) != "done") {
+            DesktopPrefs.putAll(mapOf(AUTO_KEY to "done"))
+            addMusicFolders()
+        }
+        warm()
+    }
+
+    /**
+     * Music already on this PC: the Music folder, and the same folder on any other fixed drive — a
+     * library on D: is where most people with FLACs actually keep them.
+     */
+    private suspend fun addMusicFolders() {
+        val home = System.getProperty("user.home")?.let { File(it, "Music") }
+        val drives = withContext(Dispatchers.IO) { File.listRoots().orEmpty().toList() }
+        val candidates = (listOfNotNull(home) + drives.map { File(it, "Music") })
+            .distinctBy { it.absolutePath.lowercase(Locale.US) }
+            // Never a OneDrive folder: reading a placeholder there would pull the whole library down.
+            .filter { it.isDirectory && !it.absolutePath.contains("onedrive", ignoreCase = true) }
+        candidates.forEach { folder ->
+            val hasAudio = withContext(Dispatchers.IO) {
+                runCatching {
+                    folder.walkTopDown().maxDepth(4).any { it.isFile && it.extension.lowercase(Locale.US) in AudioExtensions }
+                }.getOrDefault(false)
+            }
+            if (hasAudio) {
+                val label = if (folder == home) "My music" else "Music on ${folder.absolutePath.take(2)}"
+                add(LosslessSource(id = newId(), kind = LosslessKind.FOLDER, name = label, location = folder.absolutePath))
+            }
+        }
+    }
+
+    /** Reads folder sources before the first song asks for one, so no song waits on the disk. */
+    suspend fun warm() = withContext(Dispatchers.IO) {
+        // Off the window's thread: this walks the whole library and opens every FLAC in it.
+        _sources.value.filter { it.enabled && it.kind == LosslessKind.FOLDER }.forEach { source ->
+            runCatching { FolderIndex.tracks(source) }
+        }
+    }
+
+    /** Can this source be reached, and does it hold anything? Also refreshes a folder's index. */
+    suspend fun check(source: LosslessSource): SourceHealth {
+        _health.value = _health.value + (source.id to SourceHealth.Checking)
+        val result = withContext(Dispatchers.IO) {
+            runCatching {
+                when (source.kind) {
+                    LosslessKind.FOLDER -> {
+                        val folder = File(source.location)
+                        if (!folder.isDirectory) return@runCatching SourceHealth.Failed("That folder doesn't exist.")
+                        val tracks = FolderIndex.rescan(source)
+                        val lossless = tracks.count { it.lossless }
+                        if (tracks.isEmpty()) {
+                            SourceHealth.Failed("No audio files in that folder.")
+                        } else {
+                            SourceHealth.Ok("$lossless lossless of ${tracks.size} files")
+                        }
+                    }
+                    LosslessKind.SUBSONIC -> {
+                        val json = getJson(subsonicUrl(source, "ping.view", emptyMap()))
+                        val response = json.optJSONObject("subsonic-response")
+                        val status = response?.optString("status")
+                        if (status == "ok") {
+                            SourceHealth.Ok("Subsonic ${response.optString("version", "server")} answered")
+                        } else {
+                            SourceHealth.Failed(response?.optJSONObject("error")?.optString("message") ?: "The server rejected that sign-in.")
+                        }
+                    }
+                    LosslessKind.ARCHIVE -> {
+                        val found = archiveIdentifiers("mediatype:(audio) AND format:(Flac)")
+                        if (found.isEmpty()) SourceHealth.Failed("archive.org didn't answer.") else SourceHealth.Ok("archive.org answered")
+                    }
+                    LosslessKind.WIKIMEDIA -> {
+                        val pages = getJson(
+                            "https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrlimit=1" +
+                                "&gsrsearch=${encode("filetype:audio flac")}&prop=imageinfo&iiprop=url&format=json",
+                        ).optJSONObject("query")?.optJSONObject("pages")
+                        if (pages == null) SourceHealth.Failed("Commons didn't answer.") else SourceHealth.Ok("commons.wikimedia.org answered")
+                    }
+                    LosslessKind.JAMENDO -> {
+                        if (source.username.isBlank()) {
+                            SourceHealth.Failed("Add your Jamendo client ID.")
+                        } else {
+                            val json = getJson("https://api.jamendo.com/v3.0/tracks/?client_id=${encode(source.username)}&format=json&limit=1")
+                            val code = json.optJSONObject("headers")?.optInt("code", -1) ?: -1
+                            if (code == 0) {
+                                SourceHealth.Ok("Jamendo accepted the client ID")
+                            } else {
+                                SourceHealth.Failed(json.optJSONObject("headers")?.optString("error_message")?.takeIf { it.isNotBlank() } ?: "Jamendo rejected that client ID.")
+                            }
+                        }
+                    }
+                    LosslessKind.PLEX -> {
+                        val container = getJson("${source.location.trimEnd('/')}/identity", mapOf("X-Plex-Token" to source.password)).optJSONObject("MediaContainer")
+                        if (container == null) SourceHealth.Failed("That Plex server didn't answer.") else SourceHealth.Ok("Plex ${container.optString("version", "server")} answered")
+                    }
+                    LosslessKind.JELLYFIN -> {
+                        val info = getJson("${source.location.trimEnd('/')}/System/Info", mapOf("X-Emby-Token" to source.password))
+                        val name = info.optString("ServerName").takeIf { it.isNotBlank() }
+                        if (name == null) SourceHealth.Failed("That Jellyfin server didn't answer, or the API key is wrong.") else SourceHealth.Ok("$name answered")
+                    }
+                    LosslessKind.DLNA -> {
+                        val servers = discoverDlna()
+                        dlnaServers = System.currentTimeMillis() to servers
+                        if (servers.isEmpty()) {
+                            SourceHealth.Failed("No media servers answered on this network.")
+                        } else {
+                            SourceHealth.Ok("${servers.size} media server${if (servers.size == 1) "" else "s"} on this network")
+                        }
+                    }
+                    LosslessKind.ADDON -> {
+                        val manifest = getJson(source.location.trimEnd('/') + "/manifest.json")
+                        val name = manifest.optString("name").ifBlank { "Addon" }
+                        val resources = manifest.optJSONArray("resources")?.let { array -> List(array.length()) { array.optString(it) } }.orEmpty()
+                        if (resources.isEmpty() || "search" in resources) {
+                            SourceHealth.Ok("$name ${manifest.optString("version", "")}".trim())
+                        } else {
+                            SourceHealth.Failed("That addon doesn't offer search.")
+                        }
+                    }
+                    LosslessKind.MONOCHROME -> {
+                        val mirrors = if (source.location.startsWith("http", ignoreCase = true)) {
+                            listOf(source.location.trimEnd('/')) + MONOCHROME_MIRRORS
+                        } else {
+                            MONOCHROME_MIRRORS
+                        }
+                        val anyUp = mirrors.any { mirror ->
+                            runCatching {
+                                val req = Request.Builder()
+                                    .url("$mirror/search/tracks?q=test&limit=1")
+                                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+                                    .build()
+                                http.newCall(req).execute().use { it.isSuccessful }
+                            }.getOrDefault(false)
+                        }
+                        if (anyUp) SourceHealth.Ok("Monochrome mirrors active") else SourceHealth.Failed("Monochrome mirrors unreachable")
+                    }
+                    LosslessKind.TIDAL -> {
+                        val instances = if (source.location.startsWith("http", ignoreCase = true)) {
+                            listOf(source.location.trimEnd('/')) + TIDAL_INSTANCES
+                        } else {
+                            TIDAL_INSTANCES
+                        }
+                        val anyUp = instances.any { inst ->
+                            runCatching {
+                                val req = Request.Builder()
+                                    .url("$inst/search?s=test&limit=1")
+                                    .header("User-Agent", "ArchiveTune-Android")
+                                    .build()
+                                http.newCall(req).execute().use { it.isSuccessful }
+                            }.getOrDefault(false)
+                        }
+                        if (anyUp) SourceHealth.Ok("Tidal instances active") else SourceHealth.Failed("Tidal instances unreachable")
+                    }
+                    LosslessKind.QOBUZ -> {
+                        val creds = QobuzCredentialFetcher.getCredentials(http)
+                        if (creds != null) {
+                            SourceHealth.Ok("Live Qobuz API credentials active (appId=${creds.appId})")
+                        } else {
+                            val instances = if (source.location.startsWith("http", ignoreCase = true)) {
+                                listOf(source.location.trimEnd('/')) + QOBUZ_INSTANCES
+                            } else {
+                                QOBUZ_INSTANCES
+                            }
+                            val anyUp = instances.any { inst ->
+                                runCatching {
+                                    val req = Request.Builder()
+                                        .url("$inst/search?q=test&limit=1")
+                                        .header("User-Agent", "ArchiveTune-Android")
+                                        .build()
+                                    http.newCall(req).execute().use { it.isSuccessful }
+                                }.getOrDefault(false)
+                            }
+                            if (anyUp) SourceHealth.Ok("Qobuz instances active") else SourceHealth.Failed("Qobuz instances unreachable")
+                        }
+                    }
+                    LosslessKind.RADIOPARADISE -> {
+                        val ok = runCatching {
+                            val req = Request.Builder()
+                                .url("https://api.radioparadise.com/api/now_playing")
+                                .header("Accept", "application/json")
+                                .header("User-Agent", UserAgent)
+                                .build()
+                            http.newCall(req).execute().use { it.isSuccessful }
+                        }.getOrDefault(false)
+                        if (ok) SourceHealth.Ok("7 FLAC channels online (Main, Mellow, Rock, World, Serenity, 2050, KFAT)")
+                        else SourceHealth.Failed("Radio Paradise unreachable")
+                    }
+                }
+            }.getOrElse { SourceHealth.Failed(it.message ?: "Couldn't reach it.") }
+        }
+        _health.value = _health.value + (source.id to result)
+        return result
+    }
+
+    private val memoryTrackRegistry = ConcurrentHashMap<String, LosslessTrack>()
+
+    private fun trackKey(artist: String?, title: String): String {
+        val a = cleanArtist(artist.orEmpty()).let { TrackMatch.normalize(it) }
+        val t = cleanTitle(title).let { TrackMatch.normalize(it) }
+        return "$a::$t"
+    }
+
+    fun warmAlbum(albumTitle: String?, artist: String?, tracks: List<SongItem>) {
+        if (tracks.isEmpty()) return
+        lookupScope.launch {
+            tracks.take(8).forEach { lookup(it) }
+        }
+    }
+
+    /**
+     * The best copy of [song] any source holds, or null to let YouTube play it. Sources are asked at
+     * once, not in turn: a folder answers in milliseconds where a server takes a second, and a slow
+     * source shouldn't hold up a song that's already started.
+     */
+    private suspend fun resolve(song: SongItem): LosslessAnswer? {
+        val rawArtist = song.artists.firstOrNull()?.name.orEmpty()
+        val cArtist = cleanArtist(rawArtist)
+        val isSabrina = song.artists.any { it.name.lowercase(Locale.US).contains("sabrina") } ||
+            cArtist.lowercase(Locale.US).contains("sabrina") ||
+            song.title.lowercase(Locale.US).let { it in setOf("taste", "please please please", "espresso", "bed chem", "good graces", "sharpest tool", "coincidence", "juno", "slim pickins", "dumb & poetic", "lie to girls", "don't smile", "busy woman", "nonsense", "feather") } ||
+            song.album?.name?.lowercase(Locale.US)?.let { "short n' sweet" in it || "man's best friend" in it || "mans best friend" in it } == true
+        // Her songs go straight to the shared catalogue, which reads every one of her album uploads once
+        // and has every caller wait for that read. The old flag let only the first song of an album page
+        // wait; the rest searched before the uploads were read and fell back to YouTube.
+        val sabrinaCopy = if (isSabrina) {
+            sharedArchiveCopy(song, rawArtist.takeIf { "sabrina" in it.lowercase(Locale.US) } ?: "Sabrina Carpenter")
+        } else {
+            null
+        }
+        val directMemMatch = sabrinaCopy
+            ?: memoryTrackRegistry[trackKey(rawArtist, song.title)]
+            ?: song.artists.mapNotNull { memoryTrackRegistry[trackKey(it.name, song.title)] }.firstOrNull()
+            ?: (if (isSabrina) memoryTrackRegistry.values.firstOrNull { TrackMatch.matches(song, it, strict = false) } else null)
+        if (directMemMatch != null) {
+            return LosslessAnswer("${directMemMatch.title} — ${directMemMatch.sourceName}", ResolvedStream(
+                url = directMemMatch.url,
+                headers = StreamHeaders(userAgent = "Exhale", origin = null, referer = null),
+                mimeType = "audio/${directMemMatch.format.lowercase(Locale.US)}",
+                bitrate = directMemMatch.bitrate ?: 0,
+                clientName = directMemMatch.sourceName,
+                loudnessDb = null,
+                sampleRate = directMemMatch.sampleRate,
+                bitDepth = directMemMatch.bitDepth,
+                lossless = true,
+                sourceLabel = "Sabrina's Basement",
+            ))
+        }
+
+        val enabled = _sources.value.filter { it.enabled }
+        if (enabled.isEmpty()) return null
+        val best = withContext(Dispatchers.IO) {
+            supervisorScope {
+                val channel = Channel<List<LosslessTrack>>(Channel.UNLIMITED)
+                val jobs = enabled.map { source ->
+                    launch {
+                        val found = withTimeoutOrNull(3_500) {
+                            runCatching { search(source, song) }.getOrDefault(emptyList())
+                        }.orEmpty()
+                        channel.send(found)
+                    }
+                }
+                val candidates = mutableListOf<LosslessTrack>()
+                var completed = 0
+                while (completed < enabled.size) {
+                    val batch = channel.receive()
+                    completed++
+                    val matched = batch.filter { it.lossless && TrackMatch.matches(song, it) }
+                    if (matched.isNotEmpty()) {
+                        candidates.addAll(matched)
+                        val top = candidates.maxByOrNull { it.rank }
+                        if (top != null && (top.sampleRate ?: 0) >= 44_100) {
+                            jobs.forEach { it.cancel() }
+                            return@supervisorScope top
+                        }
+                    }
+                }
+                candidates.maxByOrNull { it.rank }
+            }
+        } ?: return null
+        return LosslessAnswer("${best.title} — Sabrina's Basement", ResolvedStream(
+            url = best.url,
+            headers = StreamHeaders(userAgent = "Exhale", origin = null, referer = null),
+            mimeType = "audio/${best.format.lowercase(Locale.US)}",
+            bitrate = best.bitrate ?: 0,
+            clientName = "Sabrina's Basement",
+            loudnessDb = null,
+            sampleRate = best.sampleRate,
+            bitDepth = best.bitDepth,
+            lossless = true,
+            sourceLabel = "Sabrina's Basement",
+        ))
+    }
+
+    private class LosslessAnswer(val description: String, val stream: ResolvedStream)
+
+    private class Lookup(val startedAt: Long, val answer: Deferred<LosslessAnswer?>)
+
+    /** Outlives any one song's start, so a lookup a skip walked away from is still there for next time. */
+    private val lookupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val lookups = ConcurrentHashMap<String, Lookup>()
+
+    /** Copies that wouldn't play or couldn't keep up, not offered again this session. */
+    private val rejected = ConcurrentHashMap.newKeySet<String>()
+
+    /** How long "no copy of this song anywhere" is believed; the answer may only have been a bad network. */
+    private const val NothingFoundForMs = 15 * 60_000L
+
+    /**
+     * The search for a lossless copy of [song], started now unless it already has been. It carries on
+     * whether or not anyone waits for it, and its answer is kept, so the second play of a song and the
+     * song queued up next never wait at all.
+     */
+    fun lookup(song: SongItem): Deferred<ResolvedStream?>? {
+        if (!isConfigured || song.id in rejected) return null
+        val now = System.currentTimeMillis()
+        val existing = lookups[song.id]?.takeUnless {
+            it.answer.isCompleted && it.answer.getCompletionExceptionOrNull() == null &&
+                it.answer.getCompleted() == null && now - it.startedAt > NothingFoundForMs
+        }
+        if (lookups.size > 400) lookups.clear()
+        val running = existing ?: Lookup(now, lookupScope.async { runCatching { resolve(song) }.getOrNull() }).also { lookups[song.id] = it }
+        return lookupScope.async { running.answer.await()?.stream }
+    }
+
+    /** The copy of this song now playing, for the settings page; null when YouTube's stream is. */
+    fun announce(songId: String?) {
+        val answer = songId?.let { lookups[it] }?.answer?.takeIf { it.isCompleted && it.getCompletionExceptionOrNull() == null }
+        _lastMatch.value = answer?.getCompleted()?.description
+    }
+
+    /** This copy failed or couldn't keep up. The song falls back to the next best source from here on. */
+    fun reject(songId: String) {
+        rejected += songId
+        lookups.remove(songId)
+    }
+
+    private fun forgetLookups() {
+        lookups.clear()
+        rejected.clear()
+    }
+
+    private suspend fun search(source: LosslessSource, song: SongItem): List<LosslessTrack> = when (source.kind) {
+        LosslessKind.FOLDER -> FolderIndex.tracks(source)
+        LosslessKind.SUBSONIC -> subsonicSearch(source, song)
+        LosslessKind.ADDON -> addonSearch(source, song)
+        LosslessKind.ARCHIVE -> archiveSearch(source, song)
+        LosslessKind.WIKIMEDIA -> wikimediaSearch(source, song)
+        LosslessKind.JAMENDO -> jamendoSearch(source, song)
+        LosslessKind.PLEX -> plexSearch(source, song)
+        LosslessKind.JELLYFIN -> jellyfinSearch(source, song)
+        LosslessKind.DLNA -> dlnaSearch(source, song)
+        LosslessKind.MONOCHROME -> monochromeSearch(source, song)
+        LosslessKind.TIDAL -> tidalSearch(source, song)
+        LosslessKind.QOBUZ -> qobuzSearch(source, song)
+        LosslessKind.RADIOPARADISE -> radioparadiseSearch(source, song)
+    }
+
+    // ---- Radio Paradise FLAC -----------------------------------------------------------------
+
+    private val RADIO_PARADISE_CHANNELS = listOf(
+        Pair("0", "https://stream.radioparadise.com/flac"),
+        Pair("1", "https://stream.radioparadise.com/mellow-flac"),
+        Pair("2", "https://stream.radioparadise.com/rock-flac"),
+        Pair("3", "https://stream.radioparadise.com/world-flac"),
+        Pair("4", "https://stream.radioparadise.com/serenity-flac"),
+        Pair("5", "https://stream.radioparadise.com/radio2050-flac"),
+        Pair("6", "https://stream.radioparadise.com/kfat-flac"),
+    )
+
+    private fun radioparadiseSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
+        val matches = mutableListOf<LosslessTrack>()
+        for ((chanId, streamUrl) in RADIO_PARADISE_CHANNELS) {
+            val nowPlaying = runCatching {
+                val req = Request.Builder()
+                    .url("https://api.radioparadise.com/api/now_playing?chan=$chanId")
+                    .header("Accept", "application/json")
+                    .header("User-Agent", UserAgent)
+                    .build()
+                http.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) return@use null
+                    val body = resp.body.string()
+                    if (body.isBlank() || body.trimStart().startsWith("<")) null else JSONObject(body)
+                }
+            }.getOrNull() ?: continue
+
+            val title = nowPlaying.optString("title").ifBlank { continue }
+            val artist = nowPlaying.optString("artist").ifBlank { null }
+            val album = nowPlaying.optString("album").ifBlank { null }
+            val durationSeconds = nowPlaying.optDouble("time", Double.NaN).takeIf { !it.isNaN() && it > 0 }
+
+            val candidate = LosslessTrack(
+                title = title,
+                artist = artist,
+                album = album,
+                durationSeconds = durationSeconds,
+                url = streamUrl,
+                format = "flac",
+                sampleRate = 44100,
+                bitDepth = 16,
+                bitrate = 1411200,
+                sourceName = "Radio Paradise FLAC",
+            )
+            if (TrackMatch.matches(song, candidate)) {
+                matches += candidate
+            }
+        }
+        return matches
+    }
+
+    // ---- Query Sanitization ------------------------------------------------------------------
+
+    private fun cleanTitle(title: String): String {
+        return title
+            .replace(Regex("""\s*[\[(]\s*(?:official\s*(?:music\s*)?video|official\s*audio|lyric\s*video|lyrics?\s*video|visualizer|audio|4k|hd|hq|mv|performance\s*video|remaster(?:ed)?(?:\s*\d{4})?|explicit|clean)\b.*?[\])]""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s*[\[(]\s*(?:feat\.?|ft\.?|featuring)\b.*?[\])]""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s*-\s*(?:official|video|audio|remaster(?:ed)?|lyrics?).*$""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+    }
+
+    private fun cleanArtist(artist: String?): String {
+        if (artist.isNullOrBlank()) return ""
+        return artist
+            .substringBefore(',')
+            .substringBefore('&')
+            .replace(Regex("""\s*[\[(].*?[\])]"""), "")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+    }
+
+    private fun candidateQueries(song: SongItem): List<String> {
+        val rawArtist = song.artists.firstOrNull()?.name?.trim().orEmpty()
+        val cArtist = cleanArtist(rawArtist)
+        val rawTitle = song.title.trim()
+        val cTitle = cleanTitle(rawTitle)
+
+        val queries = mutableListOf<String>()
+        if (cArtist.isNotBlank() && cTitle.isNotBlank()) {
+            queries += "$cArtist $cTitle"
+        }
+        if (rawArtist.isNotBlank() && cTitle.isNotBlank() && rawArtist != cArtist) {
+            queries += "$rawArtist $cTitle"
+        }
+        if (cTitle.isNotBlank() && cTitle != rawTitle) {
+            queries += cTitle
+        }
+        val fallback = listOfNotNull(rawArtist.takeIf { it.isNotBlank() }, rawTitle.takeIf { it.isNotBlank() }).joinToString(" ")
+        if (fallback.isNotBlank()) {
+            queries += fallback
+        }
+        return queries.distinct().filter { it.isNotBlank() }
+    }
+
+    // ---- Monochrome FLAC ---------------------------------------------------------------------
+
+    private val MONOCHROME_MIRRORS = emptyList<String>()
+
+    private fun monochromeSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
+        val mirrors = if (source.location.startsWith("http", ignoreCase = true)) {
+            listOf(source.location.trimEnd('/')) + MONOCHROME_MIRRORS
+        } else {
+            MONOCHROME_MIRRORS
+        }.distinct().filter { it.isNotBlank() }
+
+        val queries = candidateQueries(song)
+        val results = mutableListOf<LosslessTrack>()
+        for (query in queries) {
+            val encodedQuery = encode(query)
+            for (mirror in mirrors) {
+                val url = "$mirror/search/tracks?q=$encodedQuery&limit=8"
+                val json = runCatching {
+                    val req = Request.Builder()
+                        .url(url)
+                        .header("Accept", "application/json")
+                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+                        .build()
+                    http.newCall(req).execute().use { resp ->
+                        if (!resp.isSuccessful) return@use null
+                        val body = resp.body.string()
+                        if (body.isBlank() || body.trimStart().startsWith("<")) null else JSONObject(body)
+                    }
+                }.getOrNull() ?: continue
+
+                val tracks = json.optJSONArray("tracks") ?: json.optJSONArray("data") ?: continue
+                for (i in 0 until tracks.length()) {
+                    val item = tracks.optJSONObject(i) ?: continue
+                    if (item.optBoolean("playable", true) == false) continue
+                    val id = item.optString("id").ifBlank { item.optString("trackId") }
+                    if (id.isBlank()) continue
+                    val title = item.optString("title").ifBlank { continue }
+                    val artistNamesArray = item.optJSONArray("artistNames")
+                    val trackArtist = if (artistNamesArray != null && artistNamesArray.length() > 0) {
+                        (0 until artistNamesArray.length()).map { artistNamesArray.optString(it) }.joinToString(", ")
+                    } else {
+                        item.optString("artist").ifBlank { null }
+                    }
+                    val album = item.optString("albumTitle").ifBlank { item.optString("album").ifBlank { null } }
+                    val rawDuration = item.optDouble("duration", Double.NaN)
+                    val duration = if (!rawDuration.isNaN() && rawDuration > 0) {
+                        if (rawDuration > 10_000) rawDuration / 1000.0 else rawDuration
+                    } else null
+
+                    val candidate = LosslessTrack(
+                        title = title,
+                        artist = trackArtist,
+                        album = album,
+                        durationSeconds = duration,
+                        url = "$mirror/track/$id",
+                        format = "flac",
+                        sampleRate = 44100,
+                        bitDepth = 16,
+                        bitrate = 1411000,
+                        sourceName = source.name,
+                    )
+                    if (TrackMatch.matches(song, candidate)) {
+                        // `/track/<id>` answers with JSON, not audio; the file is behind the track's
+                        // manifest. Handed over as it was, the copy failed to play.
+                        resolveTidalTrackStream(mirror, id, candidate, source.name)?.let {
+                            results += it
+                            return results
+                        }
+                    }
+                }
+                if (results.isNotEmpty()) return results
+            }
+        }
+        return results
+    }
+
+    // ---- Tidal Public Streaming --------------------------------------------------------------
+
+    private const val TIDAL_PUBLIC_TOKEN = "49YxDN9a2aFV6RTG"
+    private const val TIDAL_BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+
+    private val TIDAL_INSTANCES = emptyList<String>()
+
+    private fun tidalSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
+        val instances = if (source.location.startsWith("http", ignoreCase = true)) {
+            listOf(source.location.trimEnd('/')) + TIDAL_INSTANCES
+        } else {
+            TIDAL_INSTANCES
+        }.distinct().filter { it.isNotBlank() && listOf("qqdl.site", "kinoplus.online", "zarz.moe").none { dead -> it.contains(dead, ignoreCase = true) } }
+
+        if (instances.isEmpty()) return emptyList()
+
+        val queries = candidateQueries(song)
+
+        // 1. First try official Tidal Web Search API (100M+ catalog, rapid response with exact official ID)
+        for (query in queries) {
+            val encodedQuery = encode(query)
+            val apiUrl = "https://tidal.com/v1/search/tracks?countryCode=US&locale=en_US&deviceType=BROWSER&limit=8&offset=0&query=$encodedQuery"
+            val items = runCatching {
+                val req = Request.Builder()
+                    .url(apiUrl)
+                    .header("Accept", "application/json")
+                    .header("User-Agent", TIDAL_BROWSER_UA)
+                    .header("x-tidal-token", TIDAL_PUBLIC_TOKEN)
+                    .build()
+                http.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) return@use null
+                    val body = resp.body.string()
+                    if (body.isBlank()) null else JSONObject(body).optJSONArray("items")
+                }
+            }.getOrNull()
+
+            if (items != null && items.length() > 0) {
+                for (i in 0 until items.length()) {
+                    val item = items.optJSONObject(i) ?: continue
+                    val trackId = item.optString("id").ifBlank { continue }
+                    val title = item.optString("title").ifBlank { continue }
+                    val trackArtist = item.optJSONObject("artist")?.optString("name")
+                        ?: item.optJSONArray("artists")?.optJSONObject(0)?.optString("name")
+                        ?: item.optString("artist").ifBlank { null }
+                    val album = item.optJSONObject("album")?.optString("title")
+                        ?: item.optString("album").ifBlank { null }
+                    val duration = item.optDouble("duration", Double.NaN).takeIf { !it.isNaN() && it > 0 }
+                    val audioQuality = item.optString("audioQuality", "LOSSLESS").uppercase(Locale.US)
+                    val isHiRes = audioQuality.contains("HI_RES") || audioQuality.contains("MAX")
+
+                    val candidate = LosslessTrack(
+                        title = title,
+                        artist = trackArtist,
+                        album = album,
+                        durationSeconds = duration,
+                        url = "",
+                        format = "flac",
+                        sampleRate = if (isHiRes) 96000 else 44100,
+                        bitDepth = if (isHiRes) 24 else 16,
+                        bitrate = if (isHiRes) 2304000 else 1411000,
+                        sourceName = source.name,
+                    )
+                    if (!TrackMatch.matches(song, candidate)) continue
+
+                    for (inst in instances) {
+                        val streamTrack = resolveTidalTrackStream(inst, trackId, candidate, source.name)
+                        if (streamTrack != null) {
+                            return listOf(streamTrack)
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Direct instance search fallback
+        val results = mutableListOf<LosslessTrack>()
+        for (query in queries) {
+            val encodedQuery = encode(query)
+            for (instance in instances) {
+                val searchUrl = "$instance/search?s=$encodedQuery&limit=8"
+                val json = runCatching {
+                    val req = Request.Builder()
+                        .url(searchUrl)
+                        .header("Accept", "application/json")
+                        .header("User-Agent", "ArchiveTune-Android")
+                        .build()
+                    http.newCall(req).execute().use { resp ->
+                        if (!resp.isSuccessful) return@use null
+                        val body = resp.body.string()
+                        if (body.isBlank()) null else JSONObject(body)
+                    }
+                }.getOrNull() ?: continue
+
+                val items = json.optJSONObject("data")?.optJSONArray("items")
+                    ?: json.optJSONArray("items")
+                    ?: continue
+
+                for (i in 0 until items.length()) {
+                    val item = items.optJSONObject(i) ?: continue
+                    val trackId = item.optString("id").ifBlank { continue }
+                    val title = item.optString("title").ifBlank { continue }
+                    val trackArtist = item.optJSONObject("artist")?.optString("name")
+                        ?: item.optJSONArray("artists")?.optJSONObject(0)?.optString("name")
+                        ?: item.optString("artist").ifBlank { null }
+                    val album = item.optJSONObject("album")?.optString("title")
+                        ?: item.optString("album").ifBlank { null }
+                    val duration = item.optDouble("duration", Double.NaN).takeIf { !it.isNaN() && it > 0 }
+                    val audioQuality = item.optString("audioQuality", "LOSSLESS").uppercase(Locale.US)
+                    val isHiRes = audioQuality.contains("HI_RES") || audioQuality.contains("MAX")
+
+                    val candidate = LosslessTrack(
+                        title = title,
+                        artist = trackArtist,
+                        album = album,
+                        durationSeconds = duration,
+                        url = "",
+                        format = "flac",
+                        sampleRate = if (isHiRes) 96000 else 44100,
+                        bitDepth = if (isHiRes) 24 else 16,
+                        bitrate = if (isHiRes) 2304000 else 1411000,
+                        sourceName = source.name,
+                    )
+                    if (!TrackMatch.matches(song, candidate)) continue
+
+                    val streamTrack = resolveTidalTrackStream(instance, trackId, candidate, source.name)
+                    if (streamTrack != null) {
+                        results += streamTrack
+                        return results
+                    }
+                }
+            }
+        }
+        return results
+    }
+
+    private fun resolveTidalTrackStream(
+        instance: String,
+        trackId: String,
+        candidate: LosslessTrack,
+        sourceName: String,
+    ): LosslessTrack? {
+        val streamUrl = "$instance/track?id=$trackId&quality=LOSSLESS"
+        return runCatching {
+            val req = Request.Builder()
+                .url(streamUrl)
+                .header("Accept", "application/json")
+                .header("User-Agent", "ArchiveTune-Android")
+                .build()
+            val json = http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@use null
+                val body = resp.body.string()
+                if (body.isBlank() || body.trimStart().startsWith("<")) null else JSONObject(body)
+            } ?: return null
+
+            val data = json.optJSONObject("data") ?: return null
+            val manifestB64 = data.optString("manifest").takeIf { it.isNotBlank() }
+            if (manifestB64 != null) {
+                val manifestText = String(java.util.Base64.getDecoder().decode(manifestB64.trim()), Charsets.UTF_8).trim()
+                if (manifestText.startsWith("{")) {
+                    val root = JSONObject(manifestText)
+                    val urls = root.optJSONArray("urls")
+                    val directUrl = (0 until (urls?.length() ?: 0)).mapNotNull { urls?.optString(it) }.firstOrNull { it.isNotBlank() }
+                    if (directUrl != null) {
+                        val sampleRate = root.optInt("sampleRate").takeIf { it > 0 } ?: candidate.sampleRate
+                        val bitDepth = root.optInt("bitDepth").takeIf { it > 0 } ?: candidate.bitDepth
+                        val bitrate = root.optInt("bitrate").takeIf { it > 0 } ?: candidate.bitrate
+                        return candidate.copy(
+                            url = directUrl,
+                            format = "flac",
+                            sampleRate = sampleRate,
+                            bitDepth = bitDepth,
+                            bitrate = bitrate,
+                            sourceName = sourceName,
+                        )
+                    }
+                }
+            }
+            val directUrl = data.optString("url").takeIf { it.isNotBlank() }
+                ?: data.optJSONArray("urls")?.optString(0)?.takeIf { it.isNotBlank() }
+            if (directUrl != null) {
+                candidate.copy(url = directUrl, format = "flac", sourceName = sourceName)
+            } else null
+        }.getOrNull()
+    }
+
+    // ---- Qobuz Studio Hi-Res -----------------------------------------------------------------
+
+    private val QOBUZ_INSTANCES = emptyList<String>()
+
+    private fun qobuzSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
+        val instances = if (source.location.startsWith("http", ignoreCase = true)) {
+            listOf(source.location.trimEnd('/')) + QOBUZ_INSTANCES
+        } else {
+            QOBUZ_INSTANCES
+        }.distinct()
+
+        val queries = candidateQueries(song)
+        for (query in queries) {
+            val encodedQuery = encode(query)
+            for (inst in instances) {
+                val searchUrls = listOf(
+                    "$inst/api/get-music?q=$encodedQuery&offset=0",
+                    "$inst/search?q=$encodedQuery&limit=8",
+                )
+                for (searchUrl in searchUrls) {
+                    val items = runCatching {
+                        val req = Request.Builder()
+                            .url(searchUrl)
+                            .header("Accept", "application/json")
+                            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+                            .build()
+                        http.newCall(req).execute().use { resp ->
+                            if (!resp.isSuccessful) return@use null
+                            val body = resp.body.string()
+                            if (body.isBlank() || body.trimStart().startsWith("<")) null else JSONObject(body)
+                        }
+                    }.getOrNull() ?: continue
+
+                    val tracks = items.optJSONObject("data")?.optJSONArray("items")
+                        ?: items.optJSONArray("tracks")
+                        ?: items.optJSONArray("items")
+                        ?: items.optJSONArray("data")
+                        ?: continue
+
+                    for (i in 0 until tracks.length()) {
+                        val item = tracks.optJSONObject(i) ?: continue
+                        val id = item.optString("id").ifBlank { item.optString("track_id") }
+                        if (id.isBlank()) continue
+                        val title = item.optString("title").ifBlank { continue }
+                        val trackArtist = item.optJSONObject("performer")?.optString("name")
+                            ?: item.optString("artist")
+                            ?: item.optJSONObject("album")?.optJSONObject("artist")?.optString("name")
+                            ?: item.optString("performer_name").ifBlank { null }
+                        val album = item.optJSONObject("album")?.optString("title")
+                            ?: item.optString("album_title").ifBlank { null }
+                        val rawDuration = item.optDouble("duration", Double.NaN)
+                        val duration = if (!rawDuration.isNaN() && rawDuration > 0) {
+                            if (rawDuration > 10_000) rawDuration / 1000.0 else rawDuration
+                        } else null
+
+                        val candidate = LosslessTrack(
+                            title = title,
+                            artist = trackArtist,
+                            album = album,
+                            durationSeconds = duration,
+                            url = "",
+                            format = "flac",
+                            sampleRate = 96000,
+                            bitDepth = 24,
+                            bitrate = 2304000,
+                            sourceName = source.name,
+                        )
+                        if (!TrackMatch.matches(song, candidate)) continue
+
+                        val streamTrack = resolveQobuzTrackStream(inst, id, candidate, source.name)
+                        if (streamTrack != null) {
+                            return listOf(streamTrack)
+                        }
+                    }
+                }
+            }
+        }
+        return emptyList()
+    }
+
+    private fun resolveQobuzTrackStream(
+        instance: String,
+        trackId: String,
+        candidate: LosslessTrack,
+        sourceName: String,
+    ): LosslessTrack? {
+        val formatIds = listOf(27, 7, 6)
+        for (fmt in formatIds) {
+            val downloadUrls = listOf(
+                "$instance/api/download-music?track_id=$trackId&quality=$fmt",
+                "$instance/track?id=$trackId&format_id=$fmt",
+                "$instance/track?id=$trackId&quality=$fmt",
+            )
+            for (url in downloadUrls) {
+                val track = runCatching {
+                    val req = Request.Builder()
+                        .url(url)
+                        .header("Accept", "application/json")
+                        .header("User-Agent", "ArchiveTune-Android")
+                        .build()
+                    val body = http.newCall(req).execute().use { resp ->
+                        if (!resp.isSuccessful) return@use null
+                        val text = resp.body.string()
+                        if (text.isBlank() || text.trimStart().startsWith("<")) null else JSONObject(text)
+                    } ?: return@runCatching null
+
+                    val streamUrl = body.optString("url").takeIf { it.startsWith("http") }
+                        ?: body.optJSONObject("data")?.optString("url")?.takeIf { it.startsWith("http") }
+                        ?: return@runCatching null
+
+                    val isHiRes = fmt == 27 || fmt == 7
+                    candidate.copy(
+                        url = streamUrl,
+                        format = "flac",
+                        sampleRate = if (fmt == 27) 192000 else if (fmt == 7) 96000 else 44100,
+                        bitDepth = if (isHiRes) 24 else 16,
+                        bitrate = if (fmt == 27) 4608000 else if (fmt == 7) 2304000 else 1411000,
+                        sourceName = sourceName,
+                    )
+                }.getOrNull()
+                if (track != null) return track
+            }
+        }
+        return null
+    }
+
+    // ---- Wikimedia Commons -------------------------------------------------------------------
+
+    /** Public-domain and Creative Commons recordings, served straight from upload.wikimedia.org. */
+    private fun wikimediaSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
+        val artist = song.artists.firstOrNull()?.name.orEmpty()
+        val query = listOf("filetype:audio", song.title, artist).filter { it.isNotBlank() }.joinToString(" ")
+        val url = "https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrlimit=8" +
+            "&gsrsearch=${encode(query)}&prop=imageinfo&iiprop=${encode("url|mime|metadata|extmetadata")}&format=json"
+        val pages = getJson(url).optJSONObject("query")?.optJSONObject("pages") ?: return emptyList()
+        return pages.keys().asSequence().mapNotNull { key ->
+            val page = pages.optJSONObject(key) ?: return@mapNotNull null
+            val info = page.optJSONArray("imageinfo")?.optJSONObject(0) ?: return@mapNotNull null
+            val fileUrl = info.optString("url").substringBefore('?').takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val format = fileUrl.substringAfterLast('.', "").lowercase(Locale.US)
+            if (format !in LosslessFormats) return@mapNotNull null
+            LosslessTrack(
+                title = page.optString("title").removePrefix("File:").substringBeforeLast('.').replace('_', ' '),
+                artist = stripHtml(info.optJSONObject("extmetadata")?.optJSONObject("Artist")?.optString("value").orEmpty()).takeIf { it.isNotBlank() },
+                album = null,
+                durationSeconds = metadataValue(info.optJSONArray("metadata"), "length"),
+                url = fileUrl,
+                format = format,
+                sourceName = source.name,
+            )
+        }.toList()
+    }
+
+    /** MediaWiki's metadata comes as a list of {name, value} pairs rather than an object. */
+    private fun metadataValue(metadata: JSONArray?, name: String): Double? {
+        val list = metadata ?: return null
+        for (index in 0 until list.length()) {
+            val entry = list.optJSONObject(index) ?: continue
+            if (entry.optString("name").equals(name, ignoreCase = true)) {
+                return entry.optDouble("value", Double.NaN).takeIf { !it.isNaN() && it > 0 }
+            }
+        }
+        return null
+    }
+
+    private fun stripHtml(value: String): String =
+        value.replace(Regex("<[^>]+>"), " ").replace(Regex("&[a-z]+;"), " ").replace(Regex("\\s+"), " ").trim()
+
+    // ---- Jamendo -----------------------------------------------------------------------------
+
+    /** Creative Commons music, in FLAC where the artist allowed a download. Needs a free client ID. */
+    private fun jamendoSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
+        val clientId = source.username.ifBlank { return emptyList() }
+        val artist = song.artists.firstOrNull()?.name.orEmpty()
+        val url = "https://api.jamendo.com/v3.0/tracks/?client_id=${encode(clientId)}&format=json&limit=10" +
+            "&audioformat=flac&namesearch=${encode(song.title)}" +
+            if (artist.isBlank()) "" else "&artist_name=${encode(artist)}"
+        val results = getJson(url).optJSONArray("results") ?: JSONArray()
+        return (0 until results.length()).mapNotNull { index ->
+            val entry = results.optJSONObject(index) ?: return@mapNotNull null
+            if (!entry.optBoolean("audiodownload_allowed", true)) return@mapNotNull null
+            val download = entry.optString("audiodownload").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            LosslessTrack(
+                title = entry.optString("name"),
+                artist = entry.optString("artist_name").takeIf { it.isNotBlank() },
+                album = entry.optString("album_name").takeIf { it.isNotBlank() },
+                durationSeconds = entry.optDouble("duration", Double.NaN).takeIf { !it.isNaN() && it > 0 },
+                url = if ("format=" in download) download else "$download&format=flac",
+                format = "flac",
+                sourceName = source.name,
+            )
+        }
+    }
+
+    // ---- Plex and Jellyfin -------------------------------------------------------------------
+
+    /** A Plex server's own library, streamed as the file is. The token stays on this PC. */
+    private fun plexSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
+        val base = source.location.trimEnd('/')
+        val token = source.password
+        val container = getJson(
+            "$base/search?query=${encode(song.title)}&type=10&limit=20",
+            mapOf("X-Plex-Token" to token),
+        ).optJSONObject("MediaContainer") ?: return emptyList()
+        val items = container.optJSONArray("Metadata") ?: return emptyList()
+        return (0 until items.length()).mapNotNull { index ->
+            val entry = items.optJSONObject(index) ?: return@mapNotNull null
+            val media = entry.optJSONArray("Media")?.optJSONObject(0) ?: return@mapNotNull null
+            val part = media.optJSONArray("Part")?.optJSONObject(0) ?: return@mapNotNull null
+            val key = part.optString("key").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val format = (part.optString("container").takeIf { it.isNotBlank() } ?: media.optString("audioCodec")).lowercase(Locale.US)
+            LosslessTrack(
+                title = entry.optString("title"),
+                artist = entry.optString("grandparentTitle").takeIf { it.isNotBlank() },
+                album = entry.optString("parentTitle").takeIf { it.isNotBlank() },
+                durationSeconds = entry.optLong("duration").takeIf { it > 0 }?.div(1000.0),
+                url = "$base$key?X-Plex-Token=${encode(token)}",
+                format = format,
+                bitrate = media.optInt("bitrate").takeIf { it > 0 }?.times(1_000),
+                sourceName = source.name,
+            )
+        }
+    }
+
+    /** The same for Jellyfin, over its own API rather than the Subsonic one. */
+    private fun jellyfinSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
+        val base = source.location.trimEnd('/')
+        val key = source.password
+        val items = getJson(
+            "$base/Items?searchTerm=${encode(song.title)}&IncludeItemTypes=Audio&Recursive=true&Limit=15&Fields=${encode("MediaSources")}",
+            mapOf("X-Emby-Token" to key),
+        ).optJSONArray("Items") ?: return emptyList()
+        return (0 until items.length()).mapNotNull { index ->
+            val entry = items.optJSONObject(index) ?: return@mapNotNull null
+            val id = entry.optString("Id").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val media = entry.optJSONArray("MediaSources")?.optJSONObject(0)
+            val audio = media?.optJSONArray("MediaStreams")?.let { streams ->
+                (0 until streams.length()).mapNotNull { streams.optJSONObject(it) }.firstOrNull { it.optString("Type") == "Audio" }
+            }
+            LosslessTrack(
+                title = entry.optString("Name"),
+                artist = entry.optJSONArray("Artists")?.optString(0)?.takeIf { it.isNotBlank() } ?: entry.optString("AlbumArtist").takeIf { it.isNotBlank() },
+                album = entry.optString("Album").takeIf { it.isNotBlank() },
+                // Jellyfin counts in ticks of 100 nanoseconds.
+                durationSeconds = entry.optLong("RunTimeTicks").takeIf { it > 0 }?.div(10_000_000.0),
+                url = "$base/Audio/$id/stream?static=true&api_key=${encode(key)}",
+                format = (media?.optString("Container") ?: entry.optString("Container")).lowercase(Locale.US),
+                sampleRate = audio?.optInt("SampleRate")?.takeIf { it > 0 },
+                bitDepth = audio?.optInt("BitDepth")?.takeIf { it > 0 },
+                bitrate = media?.optInt("Bitrate")?.takeIf { it > 0 },
+                sourceName = source.name,
+            )
+        }
+    }
+
+    // ---- Media servers on this network -------------------------------------------------------
+
+    @Volatile private var dlnaServers: Pair<Long, List<String>> = 0L to emptyList()
+
+    /**
+     * No address to type: Exhale shouts on the local network (SSDP) and whatever media server answers —
+     * a NAS, Plex's DLNA side, Windows media sharing — is asked for the song by name.
+     */
+    private fun dlnaSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
+        val (found, servers) = dlnaServers
+        // Believed either way: on a network with no media servers, every song used to shout and wait.
+        val fresh = if (System.currentTimeMillis() - found < 5 * 60_000L) {
+            servers
+        } else {
+            discoverDlna().also { dlnaServers = System.currentTimeMillis() to it }
+        }
+        return fresh.flatMap { description ->
+            runCatching { dlnaTracks(description, song, source.name) }.getOrDefault(emptyList())
+        }
+    }
+
+    /** The SSDP shout itself: every media server on the network answers with its description URL. */
+    private fun discoverDlna(): List<String> {
+        val message = buildString {
+            append("M-SEARCH * HTTP/1.1\r\n")
+            append("HOST: 239.255.255.250:1900\r\n")
+            append("MAN: \"ssdp:discover\"\r\n")
+            append("MX: 2\r\n")
+            append("ST: urn:schemas-upnp-org:device:MediaServer:1\r\n\r\n")
+        }.toByteArray()
+        val found = LinkedHashSet<String>()
+        runCatching {
+            DatagramSocket().use { socket ->
+                socket.soTimeout = 1_200
+                socket.send(DatagramPacket(message, message.size, InetAddress.getByName("239.255.255.250"), 1900))
+                val buffer = ByteArray(4096)
+                val deadline = System.currentTimeMillis() + 2_500
+                while (System.currentTimeMillis() < deadline && found.size < 4) {
+                    val packet = DatagramPacket(buffer, buffer.size)
+                    try {
+                        socket.receive(packet)
+                    } catch (_: SocketTimeoutException) {
+                        break
+                    }
+                    val text = String(packet.data, 0, packet.length, Charsets.US_ASCII)
+                    Regex("(?im)^location:\\s*(\\S+)").find(text)?.groupValues?.get(1)?.let { found += it }
+                }
+            }
+        }
+        return found.toList()
+    }
+
+    /** A server's ContentDirectory, asked for the song by title; DIDL-Lite comes back escaped inside. */
+    private fun dlnaTracks(descriptionUrl: String, song: SongItem, sourceName: String): List<LosslessTrack> {
+        val description = httpText(descriptionUrl, emptyMap()) ?: return emptyList()
+        val document = parseXml(description) ?: return emptyList()
+        val services = document.getElementsByTagName("service")
+        var control: String? = null
+        for (index in 0 until services.length) {
+            val service = services.item(index) as? Element ?: continue
+            val type = service.getElementsByTagName("serviceType").item(0)?.textContent.orEmpty()
+            if ("ContentDirectory" in type) {
+                control = service.getElementsByTagName("controlURL").item(0)?.textContent
+                break
+            }
+        }
+        val controlUrl = control?.let { URL(URL(descriptionUrl), it).toString() } ?: return emptyList()
+        val criteria = "(upnp:class derivedfrom \"object.item.audioItem\") and (dc:title contains \"${song.title.replace('"', ' ')}\")"
+        val envelope = """<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body><u:Search xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1">
+<ContainerID>0</ContainerID><SearchCriteria>${escapeXml(criteria)}</SearchCriteria><Filter>*</Filter>
+<StartingIndex>0</StartingIndex><RequestedCount>20</RequestedCount><SortCriteria></SortCriteria>
+</u:Search></s:Body></s:Envelope>"""
+        val request = Request.Builder()
+            .url(controlUrl)
+            .header("User-Agent", UserAgent)
+            .header("SOAPACTION", "\"urn:schemas-upnp-org:service:ContentDirectory:1#Search\"")
+            .post(envelope.toRequestBody("text/xml; charset=utf-8".toMediaType()))
+            .build()
+        val response = http.newCall(request).execute().use { if (it.isSuccessful) it.body.string() else null } ?: return emptyList()
+        val result = parseXml(response)?.getElementsByTagName("Result")?.item(0)?.textContent ?: return emptyList()
+        return didlTracks(result, sourceName)
+    }
+
+    /** DIDL-Lite: one <item> per track, each with a <res> that is the URL and carries its own details. */
+    internal fun didlTracks(didl: String, sourceName: String): List<LosslessTrack> {
+        val document = parseXml(didl) ?: return emptyList()
+        val items = document.getElementsByTagName("item")
+        return (0 until items.length).mapNotNull { index ->
+            val item = items.item(index) as? Element ?: return@mapNotNull null
+            fun text(tag: String) = item.getElementsByTagName(tag).item(0)?.textContent?.takeIf { it.isNotBlank() }
+            val resources = item.getElementsByTagName("res")
+            var best: Element? = null
+            for (resourceIndex in 0 until resources.length) {
+                val resource = resources.item(resourceIndex) as? Element ?: continue
+                val protocol = resource.getAttribute("protocolInfo").lowercase(Locale.US)
+                val url = resource.textContent.orEmpty()
+                val format = url.substringAfterLast('.', "").substringBefore('?').lowercase(Locale.US)
+                if (format in LosslessFormats || "flac" in protocol || "wav" in protocol || "alac" in protocol) {
+                    best = resource
+                    break
+                }
+            }
+            val resource = best ?: return@mapNotNull null
+            val url = resource.textContent?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val protocol = resource.getAttribute("protocolInfo").lowercase(Locale.US)
+            val format = url.substringAfterLast('.', "").substringBefore('?').lowercase(Locale.US)
+                .takeIf { it in LosslessFormats }
+                ?: LosslessFormats.firstOrNull { it in protocol }
+                ?: return@mapNotNull null
+            LosslessTrack(
+                title = text("dc:title") ?: text("title") ?: return@mapNotNull null,
+                artist = text("upnp:artist") ?: text("artist") ?: text("dc:creator"),
+                album = text("upnp:album") ?: text("album"),
+                durationSeconds = parseLength(resource.getAttribute("duration")),
+                url = url,
+                format = format,
+                sampleRate = resource.getAttribute("sampleFrequency").toIntOrNull()?.takeIf { it > 0 },
+                bitDepth = resource.getAttribute("bitsPerSample").toIntOrNull()?.takeIf { it > 0 },
+                bitrate = resource.getAttribute("bitrate").toIntOrNull()?.takeIf { it > 0 }?.times(8),
+                sourceName = sourceName,
+            )
+        }
+    }
+
+    private fun parseXml(xml: String): org.w3c.dom.Document? = runCatching {
+        DocumentBuilderFactory.newInstance().apply {
+            isNamespaceAware = false
+            // Nothing here should ever fetch a DTD from the network.
+            setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+            setFeature("http://xml.org/sax/features/external-general-entities", false)
+        }.newDocumentBuilder().parse(InputSource(StringReader(xml)))
+    }.getOrNull()
+
+    private fun escapeXml(value: String): String =
+        value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
+
+    private fun httpText(url: String, headers: Map<String, String>): String? = runCatching {
+        val builder = Request.Builder().url(url).header("User-Agent", UserAgent)
+        headers.forEach { (name, value) -> builder.header(name, value) }
+        http.newCall(builder.build()).execute().use { if (it.isSuccessful) it.body.string() else null }
+    }.getOrNull()
+
+    // ---- Internet Archive --------------------------------------------------------------------
+
+    private val archiveCache = ConcurrentHashMap<String, List<LosslessTrack>>()
+
+    /**
+     * archive.org: the one catalogue on the open internet handing out lossless with no account — the
+     * etree collection of concerts taped with the band's blessing, and public-domain recordings.
+     *
+     * Items are found by artist and title, then each one's file list is read for a FLAC whose own title
+     * and runtime match the song. Matching is strict here: a 1977 audience tape is not the studio
+     * single, and only a runtime that agrees within a few seconds says otherwise.
+     */
+    private suspend fun archiveSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
+        archiveCache[song.id]?.let { return it }
+        val rawArtist = song.artists.firstOrNull()?.name.orEmpty()
+        val cArtist = cleanArtist(rawArtist)
+        val cTitle = cleanTitle(song.title)
+
+        val direct = memoryTrackRegistry[trackKey(rawArtist, song.title)]
+        if (direct != null) return listOf(direct)
+
+        // The Android app's lookup, shared through :openflac: Sabrina Carpenter's whole catalogue read
+        // up front (every album upload, the 24-bit ones preferred), the uploads an artist was found in
+        // before, then a search. This used to be a copy of it here that knew three uploads — one of
+        // them since removed — so most of her albums fell back to YouTube's lossy stream.
+        sharedArchiveCopy(song, rawArtist)?.let { copy ->
+            if (archiveCache.size > 300) archiveCache.clear()
+            archiveCache[song.id] = listOf(copy)
+            return listOf(copy)
+        }
+
+        val queries = mutableListOf<String>()
+        val cAlbum = song.album?.name?.let { cleanTitle(it) }?.takeIf { it.isNotBlank() }
+        if (cArtist.isNotBlank()) {
+            val titlePart = listOfNotNull(
+                cTitle.takeIf { it.isNotBlank() }?.let { quoted(it) },
+                cAlbum?.let { quoted(it) },
+            ).joinToString(" OR ")
+            if (titlePart.isNotBlank()) {
+                queries += "mediatype:(audio) AND format:(Flac) AND creator:(${quoted(cArtist)}) AND title:($titlePart)"
+            }
+            queries += "mediatype:(audio) AND format:(Flac) AND creator:(${quoted(cArtist)})"
+        }
+        if (cArtist.isNotBlank() && cTitle.isNotBlank()) {
+            queries += "mediatype:(audio) AND format:(Flac) AND creator:(${quoted(cArtist)}) AND title:(${quoted(cTitle)})"
+        }
+        if (cTitle.isNotBlank()) {
+            queries += "mediatype:(audio) AND format:(Flac) AND title:(${quoted(cTitle)})"
+        }
+        val identifiers = supervisorScope {
+            queries.distinct().take(2).map { query -> async { runCatching { archiveIdentifiers(query) }.getOrDefault(emptyList()) } }.awaitAll()
+        }.flatten().distinct().take(3)
+        val tracks = supervisorScope {
+            identifiers.map { id -> async { runCatching { archiveTracks(id, "Sabrina's Basement") }.getOrDefault(emptyList()) } }.awaitAll()
+        }.flatten().filter { TrackMatch.matches(song, it, strict = false) }
+        if (archiveCache.size > 300) archiveCache.clear()
+        archiveCache[song.id] = tracks
+        return tracks
+    }
+
+    /**
+     * [song]'s FLAC copy from the shared catalogue ([OpenFlac.findCopy]), as Android's ArchiveFlac asks
+     * for it. Songs from search and feeds carry no length, and the match needs one: YouTube's queue
+     * is asked for it, three seconds at most, rather than the song being skipped.
+     */
+    private suspend fun sharedArchiveCopy(song: SongItem, artist: String): LosslessTrack? {
+        if (artist.isBlank() || song.title.isBlank()) return null
+        val seconds = song.duration?.takeIf { it > 0 }
+            ?: kotlinx.coroutines.withTimeoutOrNull(3_000) {
+                com.ozyern.exhale.innertube.YouTube.queue(listOf(song.id)).getOrNull()?.firstOrNull()?.duration
+            }
+            ?: return null
+        val track = runCatching { OpenFlac.findCopy(song.title, artist, seconds, song.album?.name) }.getOrNull() ?: return null
+        return LosslessTrack(
+            title = track.title,
+            artist = track.artist,
+            album = track.album,
+            durationSeconds = track.durationSeconds?.toDouble(),
+            url = track.url,
+            format = track.url.substringAfterLast('.', "flac").substringBefore('?').lowercase(Locale.US).takeIf { it in LosslessFormats } ?: "flac",
+            sampleRate = track.sampleRate,
+            bitDepth = track.bitDepth,
+            sourceName = "Sabrina's Basement",
+        )
+    }
+
+    private fun quoted(value: String): String = "\"" + value.replace('"', ' ') + "\""
+
+    private fun archiveIdentifiers(query: String): List<String> {
+        val url = "https://archive.org/advancedsearch.php?q=${encode(query)}" +
+            "&fl%5B%5D=identifier&sort%5B%5D=${encode("downloads desc")}&rows=4&page=1&output=json"
+        val docs = getJson(url).optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()
+        return (0 until docs.length()).mapNotNull { docs.optJSONObject(it)?.optString("identifier")?.takeIf(String::isNotBlank) }
+    }
+
+    /** One archive item's lossless files, as tracks. */
+    private fun archiveTracks(identifier: String, sourceName: String): List<LosslessTrack> {
+        val json = getJson("https://archive.org/metadata/${encode(identifier)}")
+        val server = json.optString("server").takeIf { it.isNotBlank() }
+        val dir = json.optString("dir").takeIf { it.isNotBlank() }
+        OpenFlac.noteArchiveServer(identifier, server, dir)
+        val metadata = json.optJSONObject("metadata")
+        val creator = metadata?.opt("creator")?.let { if (it is JSONArray) it.optString(0) else it.toString() }?.takeIf { it.isNotBlank() }
+        val itemTitle = metadata?.optString("title")?.takeIf { it.isNotBlank() }
+        val files = json.optJSONArray("files") ?: JSONArray()
+        return (0 until files.length()).mapNotNull { index ->
+            val file = files.optJSONObject(index) ?: return@mapNotNull null
+            val name = file.optString("name")
+            val format = name.substringAfterLast('.', "").lowercase(Locale.US)
+            if (format !in LosslessFormats) return@mapNotNull null
+            // A taper's file name — "gd77-05-08d2t05" — says nothing; the file's own title does.
+            val title = file.optString("title").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val relativePath = name.split('/').joinToString("/") { encode(it).replace("+", "%20") }
+            val directUrl = if (server != null && dir != null) {
+                "https://$server$dir/$relativePath"
+            } else {
+                "https://archive.org/download/${encode(identifier)}/$relativePath"
+            }
+            LosslessTrack(
+                title = title,
+                artist = file.optString("artist").takeIf { it.isNotBlank() } ?: creator,
+                album = file.optString("album").takeIf { it.isNotBlank() } ?: itemTitle,
+                durationSeconds = parseLength(file.optString("length")),
+                url = directUrl,
+                format = format,
+                sampleRate = file.optInt("sample_rate").takeIf { it > 0 },
+                sourceName = sourceName,
+            ).also { track ->
+                val k = trackKey(track.artist, track.title)
+                memoryTrackRegistry.putIfAbsent(k, track)
+            }
+        }
+    }
+
+    /** Lengths come as "274.45", as "4:34", or as a DLNA clock — "0:04:33.000". */
+    internal fun parseLength(raw: String): Double? {
+        if (raw.isBlank()) return null
+        raw.trim().toDoubleOrNull()?.let { return it.takeIf { seconds -> seconds > 0 } }
+        val parts = raw.trim().split(':').map { it.trim().toDoubleOrNull() ?: return null }
+        if (parts.isEmpty()) return null
+        return parts.fold(0.0) { total, part -> total * 60 + part }.takeIf { it > 0 }
+    }
+
+    // ---- Subsonic ----------------------------------------------------------------------------
+
+    /** Subsonic's salted-token auth: the password never goes over the wire, only md5(password + salt). */
+    private fun subsonicUrl(source: LosslessSource, method: String, params: Map<String, String>): String {
+        val salt = Random.nextLong().toULong().toString(16)
+        val token = md5(source.password + salt)
+        val query = buildMap {
+            put("u", source.username)
+            put("t", token)
+            put("s", salt)
+            put("v", "1.16.1")
+            put("c", "Exhale")
+            put("f", "json")
+            putAll(params)
+        }.entries.joinToString("&") { "${it.key}=${encode(it.value)}" }
+        return "${source.location.trimEnd('/')}/rest/$method?$query"
+    }
+
+    private fun subsonicSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
+        val query = listOfNotNull(song.title, song.artists.firstOrNull()?.name).joinToString(" ")
+        val url = subsonicUrl(
+            source,
+            "search3.view",
+            mapOf("query" to query, "songCount" to "30", "albumCount" to "0", "artistCount" to "0"),
+        )
+        val songs = getJson(url).optJSONObject("subsonic-response")?.optJSONObject("searchResult3")?.optJSONArray("song") ?: JSONArray()
+        return (0 until songs.length()).mapNotNull { index ->
+            val entry = songs.optJSONObject(index) ?: return@mapNotNull null
+            val id = entry.optString("id").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val suffix = entry.optString("suffix").lowercase(Locale.US)
+            LosslessTrack(
+                title = entry.optString("title"),
+                artist = entry.optString("artist").takeIf { it.isNotBlank() },
+                album = entry.optString("album").takeIf { it.isNotBlank() },
+                durationSeconds = entry.optDouble("duration", Double.NaN).takeIf { !it.isNaN() && it > 0 },
+                // format=raw: the server sends the file as it is, with no transcoding on the way.
+                url = subsonicUrl(source, "stream.view", mapOf("id" to id, "format" to "raw", "maxBitRate" to "0")),
+                format = suffix,
+                sampleRate = entry.optInt("samplingRate").takeIf { it > 0 },
+                bitDepth = entry.optInt("bitDepth").takeIf { it > 0 },
+                bitrate = entry.optInt("bitRate").takeIf { it > 0 }?.times(1_000),
+                sourceName = source.name,
+            )
+        }
+    }
+
+    // ---- Addon protocol ----------------------------------------------------------------------
+
+    private fun addonSearch(source: LosslessSource, song: SongItem): List<LosslessTrack> {
+        val base = source.location.trimEnd('/')
+        val query = listOfNotNull(song.title, song.artists.firstOrNull()?.name).joinToString(" ")
+        val tracks = getJson("$base/search?q=${encode(query)}").optJSONArray("tracks") ?: JSONArray()
+        return (0 until tracks.length()).mapNotNull { index ->
+            val entry = tracks.optJSONObject(index) ?: return@mapNotNull null
+            val title = entry.optString("title").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val artist = entry.optString("artist").takeIf { it.isNotBlank() }
+            val duration = entry.optDouble("duration", Double.NaN).takeIf { !it.isNaN() && it > 0 }
+            val candidate = LosslessTrack(
+                title = title,
+                artist = artist,
+                album = entry.optString("album").takeIf { it.isNotBlank() },
+                durationSeconds = duration,
+                url = entry.optString("streamURL"),
+                format = entry.optString("format").lowercase(Locale.US),
+                sourceName = source.name,
+            )
+            // Only the matching track's stream is asked for, so a search doesn't hammer the server.
+            if (!TrackMatch.matches(song, candidate)) return@mapNotNull null
+            val id = entry.optString("id").takeIf { it.isNotBlank() }
+            val stream = if (candidate.url.isNotBlank() || id == null) null else runCatching { getJson("$base/stream/${encode(id)}") }.getOrNull()
+            val url = candidate.url.takeIf { it.isNotBlank() } ?: stream?.optString("url").orEmpty()
+            if (url.isBlank()) return@mapNotNull null
+            // Anything under DRM can't be played here, and shouldn't be asked for twice.
+            val encrypted = stream?.opt("encrypted")
+            if (encrypted == true || (encrypted is String && encrypted.isNotBlank() && encrypted != "none")) return@mapNotNull null
+            candidate.copy(
+                url = url,
+                format = (stream?.optString("format")?.takeIf { it.isNotBlank() } ?: stream?.optString("codec")?.takeIf { it.isNotBlank() } ?: candidate.format).lowercase(Locale.US),
+                sampleRate = stream?.optInt("sampleRate")?.takeIf { it > 0 },
+                bitDepth = stream?.optInt("bitDepth")?.takeIf { it > 0 },
+                bitrate = stream?.optInt("bitrate")?.takeIf { it > 0 },
+            )
+        }
+    }
+
+    // ---- Shared ------------------------------------------------------------------------------
+
+    private fun getJson(url: String, headers: Map<String, String> = emptyMap()): JSONObject {
+        val builder = Request.Builder().url(url).header("Accept", "application/json").header("User-Agent", UserAgent)
+        headers.forEach { (name, value) -> builder.header(name, value) }
+        http.newCall(builder.build()).execute().use { response ->
+            val body = response.body.string()
+            if (!response.isSuccessful) error("HTTP ${response.code}")
+            return JSONObject(body)
+        }
+    }
+
+    private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
+
+    private fun md5(value: String): String =
+        MessageDigest.getInstance("MD5").digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
+
+    private fun load(): List<LosslessSource> = runCatching {
+        val raw = DesktopPrefs.raw(KEY)?.takeIf { it.isNotBlank() } ?: return emptyList()
+        val array = JSONArray(raw)
+        (0 until array.length()).mapNotNull { index ->
+            val entry = array.optJSONObject(index) ?: return@mapNotNull null
+            LosslessSource(
+                id = entry.optString("id").ifBlank { return@mapNotNull null },
+                kind = runCatching { LosslessKind.valueOf(entry.optString("kind")) }.getOrNull() ?: return@mapNotNull null,
+                name = entry.optString("name").ifBlank { "Source" },
+                location = entry.optString("location"),
+                username = entry.optString("username"),
+                password = entry.optString("password"),
+                enabled = entry.optBoolean("enabled", true),
+            )
+        }
+    }.getOrDefault(emptyList())
+
+    private fun save() {
+        val array = JSONArray()
+        _sources.value.forEach { source ->
+            array.put(
+                JSONObject()
+                    .put("id", source.id)
+                    .put("kind", source.kind.name)
+                    .put("name", source.name)
+                    .put("location", source.location)
+                    .put("username", source.username)
+                    .put("password", source.password)
+                    .put("enabled", source.enabled),
+            )
+        }
+        DesktopPrefs.putAll(mapOf(KEY to array.toString()))
+    }
+}
+
+/**
+ * A folder of music, read once and kept. FLAC files carry their own tags, sample rate and bit depth in
+ * a header a few hundred bytes long, so a library indexes as fast as the disk can list it; other
+ * formats fall back to what the file and folder names say.
+ */
+private object FolderIndex {
+    private val cached = HashMap<String, List<LosslessTrack>>()
+    private val lock = Mutex()
+
+    suspend fun tracks(source: LosslessSource): List<LosslessTrack> = lock.withLock {
+        cached[source.id] ?: scan(source).also { cached[source.id] = it }
+    }
+
+    suspend fun rescan(source: LosslessSource): List<LosslessTrack> = lock.withLock {
+        scan(source).also { cached[source.id] = it }
+    }
+
+    fun forget(id: String) {
+        cached.remove(id)
+    }
+
+    private fun scan(source: LosslessSource): List<LosslessTrack> {
+        val root = File(source.location)
+        if (!root.isDirectory) return emptyList()
+        return root.walkTopDown()
+            .maxDepth(8)
+            .filter { it.isFile && it.extension.lowercase(Locale.US) in AudioExtensions }
+            .take(40_000)
+            .map { file -> read(file, source.name) }
+            .toList()
+    }
+
+    private fun read(file: File, sourceName: String): LosslessTrack {
+        val extension = file.extension.lowercase(Locale.US)
+        val flac = if (extension == "flac") runCatching { readFlac(file) }.getOrNull() else null
+        val fromName = titleAndArtistFromPath(file)
+        return LosslessTrack(
+            title = flac?.tags?.get("TITLE") ?: fromName.first,
+            artist = flac?.tags?.get("ARTIST") ?: flac?.tags?.get("ALBUMARTIST") ?: fromName.second,
+            album = flac?.tags?.get("ALBUM") ?: file.parentFile?.name,
+            durationSeconds = flac?.duration,
+            url = file.absolutePath,
+            format = extension,
+            sampleRate = flac?.sampleRate,
+            bitDepth = flac?.bitDepth,
+            bitrate = flac?.let { info -> info.duration?.takeIf { it > 0 }?.let { (file.length() * 8 / it).toInt() } },
+            sourceName = sourceName,
+        )
+    }
+
+    /** "Artist/Album/03 - Title.flac", or "Artist - Title.flac": whatever the names give away. */
+    private fun titleAndArtistFromPath(file: File): Pair<String, String?> {
+        val base = file.nameWithoutExtension.replace(Regex("^\\s*\\d{1,3}\\s*[-._)]\\s*"), "").trim()
+        val split = base.split(" - ", limit = 2)
+        return if (split.size == 2 && split[0].isNotBlank()) {
+            split[1].trim() to split[0].trim()
+        } else {
+            base to file.parentFile?.parentFile?.name
+        }
+    }
+
+    private class FlacInfo(val tags: Map<String, String>, val sampleRate: Int?, val bitDepth: Int?, val duration: Double?)
+
+    private fun readFlac(file: File): FlacInfo? {
+        RandomAccessFile(file, "r").use { raf ->
+            val magic = ByteArray(4)
+            raf.readFully(magic)
+            if (String(magic, Charsets.US_ASCII) != "fLaC") return null
+            var tags = emptyMap<String, String>()
+            var sampleRate: Int? = null
+            var bitDepth: Int? = null
+            var duration: Double? = null
+            var last = false
+            while (!last && raf.filePointer < raf.length()) {
+                val header = ByteArray(4)
+                raf.readFully(header)
+                last = (header[0].toInt() and 0x80) != 0
+                val type = header[0].toInt() and 0x7F
+                val length = ((header[1].toInt() and 0xFF) shl 16) or ((header[2].toInt() and 0xFF) shl 8) or (header[3].toInt() and 0xFF)
+                if (length < 0 || length > 10_000_000) return null
+                when (type) {
+                    // STREAMINFO: 20 bits of sample rate, 5 of bit depth and 36 of total samples, packed.
+                    0 -> {
+                        val body = ByteArray(length)
+                        raf.readFully(body)
+                        if (body.size < 18) return null
+                        val rate = ((body[10].toInt() and 0xFF) shl 12) or ((body[11].toInt() and 0xFF) shl 4) or ((body[12].toInt() and 0xF0) shr 4)
+                        val depth = (((body[12].toInt() and 0x01) shl 4) or ((body[13].toInt() and 0xF0) shr 4)) + 1
+                        val samples = ((body[13].toLong() and 0x0FL) shl 32) or
+                            ((body[14].toLong() and 0xFFL) shl 24) or
+                            ((body[15].toLong() and 0xFFL) shl 16) or
+                            ((body[16].toLong() and 0xFFL) shl 8) or
+                            (body[17].toLong() and 0xFFL)
+                        sampleRate = rate.takeIf { it > 0 }
+                        bitDepth = depth.takeIf { it > 1 }
+                        duration = if (rate > 0 && samples > 0) samples.toDouble() / rate else null
+                    }
+                    // VORBIS_COMMENT: the tags, as little-endian length-prefixed "KEY=value" strings.
+                    4 -> {
+                        val body = ByteArray(length)
+                        raf.readFully(body)
+                        tags = parseVorbisComment(body)
+                    }
+                    else -> raf.seek(raf.filePointer + length)
+                }
+            }
+            return FlacInfo(tags, sampleRate, bitDepth, duration)
+        }
+    }
+
+    private fun parseVorbisComment(body: ByteArray): Map<String, String> {
+        fun int(at: Int): Int =
+            (body[at].toInt() and 0xFF) or ((body[at + 1].toInt() and 0xFF) shl 8) or
+                ((body[at + 2].toInt() and 0xFF) shl 16) or ((body[at + 3].toInt() and 0xFF) shl 24)
+
+        return runCatching {
+            var cursor = 0
+            val vendor = int(cursor)
+            cursor += 4 + vendor
+            val count = int(cursor)
+            cursor += 4
+            val tags = HashMap<String, String>()
+            repeat(count.coerceIn(0, 512)) {
+                val length = int(cursor)
+                cursor += 4
+                if (length < 0 || cursor + length > body.size) return tags
+                val entry = String(body, cursor, length, Charsets.UTF_8)
+                cursor += length
+                val split = entry.indexOf('=')
+                if (split > 0) tags[entry.substring(0, split).uppercase(Locale.US)] = entry.substring(split + 1)
+            }
+            tags
+        }.getOrDefault(emptyMap())
+    }
+}
+
+/**
+ * Whether a source's track is the song that's playing. YouTube titles carry things a library's don't —
+ * "(Official Video)", "feat." — so both sides are reduced to their plain words first, and the runtime
+ * settles it: two songs of the same name a minute apart are not the same recording.
+ */
+internal object TrackMatch {
+    private val Noise = Regex(
+        "\\((?:[^)]*\\b(?:official|video|audio|lyric|lyrics|visualizer|remaster(?:ed)?|explicit|clean|hd|hq|mv|version|edit)\\b[^)]*)\\)" +
+            "|\\[(?:[^\\]]*\\b(?:official|video|audio|lyric|lyrics|visualizer|remaster(?:ed)?|explicit|clean|hd|hq|mv)\\b[^\\]]*)\\]" +
+            "|\\b(?:feat|ft|featuring|with)\\b[^-]*",
+        RegexOption.IGNORE_CASE,
+    )
+
+    fun normalize(value: String): String {
+        val stripped = Normalizer.normalize(value.lowercase(Locale.US), Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
+        return stripped
+            .replace(Noise, " ")
+            .replace(Regex("[^a-z0-9 ]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    }
+
+    fun matches(song: SongItem, candidate: LosslessTrack, strict: Boolean = false): Boolean {
+        val wanted = normalize(song.title)
+        val found = candidate.matchTitle
+        if (wanted.isEmpty() || found.isEmpty()) return false
+        val sameTitle = wanted == found || (wanted.length > 6 && found.length > 6 && (found.startsWith(wanted) || wanted.startsWith(found)))
+        if (!sameTitle) return false
+
+        val wantedDuration = song.duration?.toDouble()
+        val foundDuration = candidate.durationSeconds
+        // Both runtimes known and more than 12 seconds apart: a different recording, live or extended.
+        if (wantedDuration != null && foundDuration != null && abs(wantedDuration - foundDuration) > 12.0) return false
+        // Strict (a public catalogue full of live takes of the same song): the runtime has to be there,
+        // and it has to agree closely (within 3s), or this is another performance rather than another copy.
+        if (strict) {
+            if (wantedDuration == null || foundDuration == null) return false
+            if (abs(wantedDuration - foundDuration) > 3.0) return false
+        }
+
+        val artists = song.artists.map { normalize(it.name) }.filter { it.isNotEmpty() }
+        if (artists.isEmpty()) return !strict
+        val theirs = listOfNotNull(candidate.artist, candidate.album).joinToString(" ") { normalize(it) }
+        // A file with no artist anywhere still counts when the title and runtime already agree.
+        if (theirs.isBlank()) return !strict && foundDuration != null && wantedDuration != null
+        return artists.any { artist -> theirs.contains(artist) || artist.split(' ').any { it.length > 3 && theirs.contains(it) } }
+    }
+}
