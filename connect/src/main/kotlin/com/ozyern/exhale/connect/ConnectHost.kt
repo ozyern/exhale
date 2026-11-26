@@ -26,7 +26,11 @@ class ConnectHost(
     /** Where to listen. The apps use the fixed ports; tests pass free ones. */
     private val port: Int = CONNECT_TCP_PORT,
     discoveryPort: Int = CONNECT_DISCOVERY_PORT,
+    /** Why links come and go, for a log file; the apps' only window onto a flaky connection. */
+    private val log: (String) -> Unit = {},
 ) {
+    /** When each phone's current link was admitted. */
+    private val admittedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val links = CopyOnWriteArrayList<Link>()
     private val nonces = HashMap<Link, String>()
     @Volatile private var server: ServerSocket? = null
@@ -147,8 +151,20 @@ class ConnectHost(
     }
 
     private fun admit(link: Link, id: String, name: String, welcome: ConnectMessage.Welcome) {
+        val previous = links.filter { it !== link && it.peerId == id && it.isOpen }
+        // The same phone in twice at once (two copies of the app, a reconnect racing the old link):
+        // replacing a link admitted moments ago only had the other copy replace this one in turn, over
+        // and over. A link that has just come up keeps its place; the newcomer is turned away.
+        val since = admittedAt[id]?.let { System.currentTimeMillis() - it }
+        if (previous.isNotEmpty() && since != null && since < REPLACE_GRACE_MS) {
+            log("turned away a second link from $name ($id) from ${link.remoteHost}: the current one is ${since} ms old")
+            link.close()
+            return
+        }
         // One link per phone: a reconnect replaces the one it left behind.
-        links.filter { it !== link && it.peerId == id }.forEach { it.close() }
+        previous.forEach { it.close() }
+        admittedAt[id] = System.currentTimeMillis()
+        log("admitted $name ($id) from ${link.remoteHost}" + if (previous.isNotEmpty()) ", replacing ${previous.size} older link(s)" else "")
         link.peerId = id
         link.peerName = name
         link.send(welcome)
@@ -164,11 +180,16 @@ class ConnectHost(
     private fun closed(link: Link) {
         links -= link
         synchronized(nonces) { nonces.remove(link) }
+        link.peerId?.let { id ->
+            val lived = admittedAt[id]?.let { System.currentTimeMillis() - it }
+            log("link from ${link.peerName ?: id} (${link.remoteHost}) closed" + (lived?.let { " after $it ms" } ?: ""))
+        }
         if (link.peerId != null) onPeersChanged(store.devices())
     }
 
     private companion object {
         const val PAIRING_WINDOW_MS = 120_000L
+        const val REPLACE_GRACE_MS = 2_000L
         const val MAX_WRONG_CODES = 5
     }
 }

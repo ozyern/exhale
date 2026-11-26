@@ -129,6 +129,8 @@ class ConnectClient(
 
     private fun loop() {
         var backoffMs = 2_000L
+        // After a link that died young: how long before trying again, doubling while it keeps happening.
+        var dropBackoffMs = DROP_BACKOFF_MIN_MS
         while (running) {
             val paired = store.devices()
             if (paired.isEmpty()) {
@@ -140,10 +142,21 @@ class ConnectClient(
             val connected = connectToAny(paired)
             if (connected != null) {
                 backoffMs = 2_000L
+                val openedAt = System.currentTimeMillis()
                 // Hold here until the link drops.
                 while (running && connected.isOpen) waitFor(5_000)
                 if (link === connected) link = null
                 setStatus(if (store.devices().isEmpty()) ConnectStatus.Unpaired else ConnectStatus.Searching)
+                // A link that dropped within seconds of coming up is not retried at once: reconnecting
+                // on the instant (the close nudges this loop) turned whatever closed it into a
+                // connect-disconnect loop many times a second. The wait is a plain sleep, so the nudges
+                // that would cut it short are ignored; it resets once a link has stayed up.
+                if (System.currentTimeMillis() - openedAt < STABLE_LINK_MS) {
+                    sleepQuietly(dropBackoffMs)
+                    dropBackoffMs = (dropBackoffMs * 2).coerceAtMost(DROP_BACKOFF_MAX_MS)
+                } else {
+                    dropBackoffMs = DROP_BACKOFF_MIN_MS
+                }
                 continue
             }
             waitFor(backoffMs)
@@ -231,6 +244,8 @@ class ConnectClient(
 
     private fun waitFor(ms: Long) = synchronized(lock) { runCatching { lock.wait(ms) } }
 
+    private fun sleepQuietly(ms: Long) = runCatching { Thread.sleep(ms) }
+
     private fun setStatus(next: ConnectStatus) {
         if (next == status) return
         status = next
@@ -239,6 +254,10 @@ class ConnectClient(
 
     companion object {
         const val PING_EVERY_MS = 20_000L
+        /** A link that lasts this long has settled; one that drops sooner is backed off from. */
+        const val STABLE_LINK_MS = 10_000L
+        const val DROP_BACKOFF_MIN_MS = 1_000L
+        const val DROP_BACKOFF_MAX_MS = 30_000L
         const val READ_TIMEOUT_MS = 60_000
     }
 }

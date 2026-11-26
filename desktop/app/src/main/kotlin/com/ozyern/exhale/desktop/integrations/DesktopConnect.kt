@@ -78,6 +78,7 @@ object DesktopConnect {
                 if (phone != null && phone.first !in _connected.value) _phone.value = null
             },
             onMessage = { peerId, message -> scope.launch(Dispatchers.Main) { handle(peerId, message) } },
+            log = ::logConnect,
             onPeerJoined = { peerId ->
                 // The code is spent the moment a phone pairs with it.
                 _pairingCode.value = null
@@ -129,6 +130,18 @@ object DesktopConnect {
     fun stop() {
         host?.stop()
         host = null
+    }
+
+    /**
+     * Links coming and going, with the time, in connect.log beside the pairing data: what a flaky
+     * connection is diagnosed from. Started afresh once it passes 256 KB, so it never grows unbounded.
+     */
+    private fun logConnect(line: String) {
+        runCatching {
+            val file = java.io.File(dataDir(), "connect.log")
+            if (file.length() > 256 * 1024) file.delete()
+            file.appendText("${java.time.LocalDateTime.now().withNano(0)} $line" + System.lineSeparator())
+        }
     }
 
     /** Opens pairing: shows a code for two minutes. */
