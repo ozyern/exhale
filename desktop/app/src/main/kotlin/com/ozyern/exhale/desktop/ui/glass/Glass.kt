@@ -17,12 +17,14 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
@@ -31,6 +33,7 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
@@ -88,6 +91,46 @@ fun Modifier.liquidGlass(
         onDrawSurface = { drawRect(tint) },
     )
 }
+
+/**
+ * The Android app's menu material (`iosMenuSurface`, liquid branch), with its numbers: the page behind
+ * saturated ×1.8, blurred 8 dp and bent at the rim by a 12 dp lens, a faint white rim lit at 45°, the
+ * charcoal fill at 82 % over it, and a soft shadow under the panel. Popups compose in the window, so
+ * the page recording ([LocalAppBackdrop]) reaches them as it does the chrome.
+ *
+ * Without a recording, or with glass off (setting, Lite graphics), the opaque charcoal panel instead.
+ */
+fun Modifier.menuGlass(shape: Shape, backdrop: Backdrop?): Modifier {
+    if (backdrop == null || glassOff()) {
+        return shadow(28.dp, shape, ambientColor = Color.Black, spotColor = Color.Black)
+            .clip(shape)
+            .background(MenuPanelFill.copy(alpha = 0.96f))
+            .border(0.5.dp, Color.White.copy(alpha = 0.1f), shape)
+    }
+    return drawBackdrop(
+        backdrop = backdrop,
+        shape = { shape },
+        effects = {
+            colorControls(saturation = 1.8f)
+            blur(8.dp.toPx())
+            lens(12.dp.toPx(), 12.dp.toPx())
+        },
+        highlight = {
+            Highlight(
+                width = 0.8.dp,
+                style = com.kyant.backdrop.highlight.HighlightStyle.Default(color = Color.White.copy(alpha = 0.20f), angle = 45f),
+            )
+        },
+        // Android's is 12 % black over a light-leaning page; the desktop app is always dark, so deeper.
+        shadow = { Shadow(radius = 40.dp, offset = androidx.compose.ui.unit.DpOffset(0.dp, 8.dp), color = Color.Black.copy(alpha = 0.45f)) },
+        onDrawBehind = { drawOutline(shape.createOutline(size, layoutDirection, this), MenuFrostBase) },
+        onDrawSurface = { drawRect(MenuPanelFill.copy(alpha = 0.82f)) },
+    )
+}
+
+/** The Android menu's charcoal (IosMenuMaterial.DarkPanelFill) and the frost laid under the glass. */
+private val MenuPanelFill = Color(0xFF1C1C1E)
+private val MenuFrostBase = Color(0xFF2C2C2E)
 
 /**
  * A flat frosted pane, as macOS draws a sidebar: what's behind is saturated and blurred, then tinted

@@ -173,9 +173,24 @@ class Mpv(private val listener: Listener, windowId: Long? = null, extraOptions: 
         setStart(startSeconds)
         // A short cushion, so the song starts as soon as it reasonably can. Most connections never touch
         // it again. One that runs dry gets a bigger one each time: see DesktopPlayer.onBuffering.
-        // For lossless or hot-swap, do not pause playback: begin decoding immediately
-        lib.mpv_set_property_string(ctx, "cache-pause-initial", if (lossless || startSeconds != null) "no" else "yes")
-        lib.mpv_set_property_string(ctx, "cache-pause-wait", if (lossless || startSeconds != null) "0.2" else StartingCushionSeconds.toString())
+        // A hot-swap (same song, picked up at its place) carries straight on: the old stream covered it.
+        // A lossless song from the top waits for a real cushion too: started on 0.2 s, a FLAC stream at
+        // four to ten times YouTube's bitrate ran dry in its first seconds and stuttered.
+        val hotSwap = startSeconds != null
+        lib.mpv_set_property_string(ctx, "cache-pause-initial", if (hotSwap) "no" else "yes")
+        lib.mpv_set_property_string(
+            ctx,
+            "cache-pause-wait",
+            when {
+                hotSwap -> "0.2"
+                lossless -> LosslessCushionSeconds.toString()
+                else -> StartingCushionSeconds.toString()
+            },
+        )
+        // Lossless reads further ahead, in memory (still within demuxer-max-bytes): a slow moment on the
+        // network drains its much bigger stream far sooner than a compressed one's 40 s.
+        lib.mpv_set_property_string(ctx, "demuxer-readahead-secs", if (lossless) "60" else "20")
+        lib.mpv_set_property_string(ctx, "cache-secs", if (lossless) "120" else "40")
         // A lossless file can be seeked by asking again, unlike YouTube's in-order streams, so it stays
         // in memory rather than writing tens of megabytes to the temp folder while it plays.
         lib.mpv_set_property_string(ctx, "cache-on-disk", if (lossless) "no" else "yes")
@@ -350,6 +365,9 @@ class Mpv(private val listener: Listener, windowId: Long? = null, extraOptions: 
 
         /** Seconds of music in hand before a song starts. Holding out for eight made FLAC take ages to load. */
         const val StartingCushionSeconds = 1.5
+
+        /** Seconds of a lossless stream in hand before it starts. */
+        const val LosslessCushionSeconds = 0.8
 
         const val FORMAT_FLAG = 3
         const val FORMAT_DOUBLE = 5

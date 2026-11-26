@@ -68,6 +68,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import coil3.compose.AsyncImage
+import com.ozyern.exhale.desktop.ui.glass.menuGlass
 import kotlinx.coroutines.launch
 
 /**
@@ -138,6 +139,8 @@ fun OptionsMenu(expanded: Boolean, onDismiss: () -> Unit, content: @Composable C
             }
         }
     }
+    // The page recording, read out here: it is what the panel's glass bends.
+    val backdrop = com.ozyern.exhale.desktop.ui.glass.LocalAppBackdrop.current
     Popup(popupPositionProvider = position, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
         Column(
             Modifier
@@ -150,10 +153,9 @@ fun OptionsMenu(expanded: Boolean, onDismiss: () -> Unit, content: @Composable C
                 }
                 .width(OptionsMenuStyle.Width)
                 .heightIn(max = 640.dp)
-                .shadow(28.dp, OptionsMenuStyle.Shape, ambientColor = Color.Black, spotColor = Color.Black)
+                // Android's menu glass: frosted, saturated page through the panel, a lens at the rim.
+                .then(Modifier.menuGlass(OptionsMenuStyle.Shape, backdrop))
                 .clip(OptionsMenuStyle.Shape)
-                .background(OptionsMenuStyle.PanelFill.copy(alpha = 0.96f))
-                .border(0.5.dp, Color.White.copy(alpha = 0.1f), OptionsMenuStyle.Shape)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 6.dp, vertical = 8.dp),
             content = content,
