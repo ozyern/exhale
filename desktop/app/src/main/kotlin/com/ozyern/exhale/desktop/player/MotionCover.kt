@@ -145,6 +145,9 @@ class MotionCoverRenderer(private val size: Int = 720, logFile: String? = null, 
      */
     private val recent = ArrayDeque<Image>()
 
+    /** The frame's bytes on their way from mpv's pixels into a Skia image; reused every frame. */
+    private var frameBuffer = ByteArray(0)
+
     /** Bumped for every new frame; read it while drawing [current] so each frame redraws. */
     val frames: MutableIntState = mutableIntStateOf(0)
 
@@ -229,7 +232,13 @@ class MotionCoverRenderer(private val size: Int = 720, logFile: String? = null, 
             // colour *adds* onto what's under it: the still cover and the video summed, blown-out with
             // double edges. So the byte is set to opaque here, off the window's thread, as the frame is
             // copied out — the bitmap is free for the next frame, and the image keeps its texture.
-            val bytes = bitmap.readPixels() ?: continue
+            // Into one reused buffer, read straight from the bitmap's pixels: readPixels() made a new
+            // 2 MB array every frame, ~60 MB a second of garbage that kept the collector too busy with
+            // young objects to ever reach the old ones holding native memory.
+            val length = bitmap.rowBytes * size
+            if (frameBuffer.size != length) frameBuffer = ByteArray(length)
+            val bytes = frameBuffer
+            Pointer(pixels.addr).read(0, bytes, 0, length)
             var a = 3
             while (a < bytes.size) {
                 bytes[a] = -1

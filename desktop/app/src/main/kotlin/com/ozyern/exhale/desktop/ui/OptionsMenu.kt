@@ -300,6 +300,94 @@ private fun OptionsRow(item: OptionsItem) {
     }
 }
 
+/**
+ * A free-standing row for any menu in the app, so every popup reads as the Android ⋯ menu: an
+ * optional symbol, the title, an optional line under it, and a tick or trailing content on the right.
+ * Without an icon the title still lines up with the iconed rows.
+ */
+@Composable
+fun OptionsMenuRow(
+    title: String,
+    icon: ImageVector? = null,
+    description: String? = null,
+    enabled: Boolean = true,
+    checked: Boolean = false,
+    destructive: Boolean = false,
+    trailing: (@Composable () -> Unit)? = null,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val ink = if (destructive) Color(0xFFFF453A) else OptionsMenuStyle.Label
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (hovered && enabled) OptionsMenuStyle.Highlight else Color.Transparent)
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+            .graphicsLayer { alpha = if (enabled) 1f else 0.4f }
+            .heightIn(min = 30.dp)
+            .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 6.dp)
+            .semantics(mergeDescendants = true) { role = Role.Button },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.width(22.dp), contentAlignment = Alignment.CenterStart) {
+            if (icon != null) Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(17.dp))
+        }
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(title, fontSize = 13.sp, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            description?.let {
+                Text(it, fontSize = 11.sp, color = OptionsMenuStyle.SecondaryLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        when {
+            trailing != null -> Box(Modifier.padding(start = 8.dp)) { trailing() }
+            checked -> Icon(OptionsIcons.Tick, contentDescription = "Selected", tint = ink, modifier = Modifier.padding(start = 8.dp).size(15.dp))
+        }
+    }
+}
+
+/** A row whose title is drawn by the caller (a font preview, say), with the same hover wash and tick. */
+@Composable
+fun OptionsMenuCustomRow(checked: Boolean = false, onClick: () -> Unit, content: @Composable () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (hovered) OptionsMenuStyle.Highlight else Color.Transparent)
+            .hoverable(interaction)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .semantics(mergeDescendants = true) { role = Role.Button },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.weight(1f)) { content() }
+        if (checked) Icon(OptionsIcons.Tick, contentDescription = "Selected", tint = OptionsMenuStyle.Label, modifier = Modifier.padding(start = 8.dp).size(15.dp))
+    }
+}
+
+/** A small heading at the top of a menu ("Name style for …"). */
+@Composable
+fun OptionsMenuTitle(text: String) {
+    Text(
+        text,
+        fontSize = 11.5.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = OptionsMenuStyle.SecondaryLabel,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+    )
+}
+
+/** The hairline band between groups of rows. */
+@Composable
+fun OptionsDivider() = OptionsSeparator(Modifier.padding(vertical = 4.dp))
+
 @Composable
 private fun OptionsSeparator(modifier: Modifier = Modifier) {
     Box(modifier.padding(horizontal = 8.dp).fillMaxWidth().height(1.dp).background(OptionsMenuStyle.Separator))
@@ -354,6 +442,33 @@ object OptionsIcons {
 
     /** link: Copy link. */
     val Link: ImageVector by lazy { line("Options.Link", "M10,14L14,10M8.5,11.5L6.5,13.5A3.5,3.5 0 0 0 11.5,18.5L13.5,16.5M15.5,12.5L17.5,10.5A3.5,3.5 0 0 0 12.5,5.5L10.5,7.5") }
+
+    /** checkmark: the chosen row. */
+    val Tick: ImageVector by lazy { line("Options.Tick", "M5,12.5L10,17.5L19,7", stroke = 2.2f) }
+
+    /** sidebar.left: Edit / Hide Sidebar. */
+    val Sidebar: ImageVector by lazy { line("Options.Sidebar", "M5,4.5H19A1.5,1.5 0 0 1 20.5,6V18A1.5,1.5 0 0 1 19,19.5H5A1.5,1.5 0 0 1 3.5,18V6A1.5,1.5 0 0 1 5,4.5ZM9.5,4.5V19.5") }
+
+    /** pencil: Edit. */
+    val Edit: ImageVector by lazy { line("Options.Edit", "M4.5,19.5L5.3,15.6L15.8,5.1A1.9,1.9 0 0 1 18.9,8.2L8.4,18.7Z M14,6.9L17.1,10") }
+
+    /** eye.slash: Hide. */
+    val Hide: ImageVector by lazy { line("Options.Hide", "M3,12C5,8 8.2,6 12,6C15.8,6 19,8 21,12C19,16 15.8,18 12,18C8.2,18 5,16 3,12ZM12,9.5A2.5,2.5 0 1 1 12,14.5A2.5,2.5 0 1 1 12,9.5ZM4,4L20,20") }
+
+    /** person.crop.circle: Sign in. */
+    val Person: ImageVector by lazy { line("Options.Person", "M12,3.5A8.5,8.5 0 1 1 12,20.5A8.5,8.5 0 1 1 12,3.5ZM12,7.5A3,3 0 1 1 12,13.5A3,3 0 1 1 12,7.5ZM6.5,17.8C7.8,16 9.7,15 12,15C14.3,15 16.2,16 17.5,17.8") }
+
+    /** speaker.wave.2: an audio output. */
+    val Speaker: ImageVector by lazy { line("Options.Speaker", "M4,9.5H7L11.5,5.5V18.5L7,14.5H4ZM15,9A4,4 0 0 1 15,15M17.5,6.5A7.5,7.5 0 0 1 17.5,17.5") }
+
+    /** iphone: the paired phone. */
+    val Phone: ImageVector by lazy { line("Options.Phone", "M8.5,2.5H15.5A1.5,1.5 0 0 1 17,4V20A1.5,1.5 0 0 1 15.5,21.5H8.5A1.5,1.5 0 0 1 7,20V4A1.5,1.5 0 0 1 8.5,2.5ZM10.5,18.5H13.5") }
+
+    /** textformat: a type style. */
+    val TypeStyle: ImageVector by lazy { line("Options.TypeStyle", "M4,19L9,5L14,19M5.8,14H12.2M15.5,12.5H20.5M18,10V19") }
+
+    /** arrow.uturn.backward: back to the default. */
+    val Reset: ImageVector by lazy { line("Options.Reset", "M9,7L5,11L9,15M5,11H14.5A4.5,4.5 0 0 1 14.5,20H11") }
 
     /** play.fill. */
     val Play: ImageVector by lazy { line("Options.Play", "M8,5.5V18.5L18.5,12Z") }

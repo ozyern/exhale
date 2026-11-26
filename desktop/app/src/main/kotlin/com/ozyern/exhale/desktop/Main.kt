@@ -132,6 +132,8 @@ fun main() {
             .crossfade(!com.ozyern.exhale.desktop.data.Graphics.lite)
             .build()
     }
+    // Native pixels (covers, backgrounds, video frames) freed on time; see MemoryGuard.
+    MemoryGuard.start()
 
     application {
         val scope = rememberCoroutineScope()
@@ -171,6 +173,10 @@ fun main() {
         // Closed with "Keep playing when closed" on, the window only hides: the music, the media
         // session and the integrations carry on, and the notification area brings it back.
         var windowVisible by remember { mutableStateOf(true) }
+        LaunchedEffect(windowState) {
+            androidx.compose.runtime.snapshotFlow { !windowVisible || windowState.isMinimized }
+                .collect { MemoryGuard.windowAway = it }
+        }
         val closeWindow: () -> Unit = {
             if (AppSettings.current.closeToTray) windowVisible = false else closeApp()
         }

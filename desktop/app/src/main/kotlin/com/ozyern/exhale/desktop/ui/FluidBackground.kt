@@ -24,12 +24,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.graphics.asComposeImageBitmap
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import com.ozyern.exhale.desktop.data.LocalSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -77,7 +78,8 @@ private fun loadFluidTexture(url: String): FluidTexture {
     val source = Image.makeFromEncoded(bytes)
     val bitmap = Bitmap().apply { allocPixels(ImageInfo(FluidSide, FluidSide, ColorType.RGBA_8888, ColorAlphaType.PREMUL)) }
     Canvas(bitmap).apply { drawImageRect(source, Rect.makeWH(FluidSide.toFloat(), FluidSide.toFloat())) }.close()
-    val pixels = bitmap.readPixels() ?: error("Unreadable artwork")
+    // Freed now rather than whenever the collector gets round to it: both hold native pixels.
+    val pixels = try { bitmap.readPixels() ?: error("Unreadable artwork") } finally { source.close(); bitmap.close() }
     val rgb = FloatArray(FluidSide * FluidSide * 3)
     for (i in 0 until FluidSide * FluidSide) {
         rgb[i * 3] = (pixels[i * 4].toInt() and 0xFF) / 255f
@@ -115,7 +117,30 @@ private fun smoothstep(edge0: Float, edge1: Float, x: Float): Float {
     return t * t * (3f - 2f * t)
 }
 
-private fun renderField(current: FluidTexture, previous: FluidTexture, blend: Float, time: Float, width: Int, height: Int, aspect: Float, brightness: Float): ImageBitmap {
+/**
+ * One worked-out field frame and the native memory behind it. The pixels live outside the Java heap,
+ * so they are freed here when the frame retires, not left to the garbage collector: the wrappers are a
+ * few bytes each, nothing pushes the collector to reclaim them, and at ten frames a second the pixels
+ * behind them ran into gigabytes over a long session.
+ */
+private class FieldImage(private val bitmap: Bitmap) {
+    // Shares the bitmap's pixels; Image.toComposeImageBitmap() would copy them into another bitmap.
+    val image: ImageBitmap = bitmap.asComposeImageBitmap()
+    fun close() = bitmap.close()
+}
+
+/** Frees retired frames a beat after they leave the list, once nothing can still be drawing them. */
+private val fieldRetirement = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default)
+
+private fun retire(images: List<FieldImage>) {
+    if (images.isEmpty()) return
+    fieldRetirement.launch {
+        delay(1_000L)
+        images.forEach { runCatching { it.close() } }
+    }
+}
+
+private fun renderField(current: FluidTexture, previous: FluidTexture, blend: Float, time: Float, width: Int, height: Int, aspect: Float, brightness: Float): FieldImage {
     val out = ByteArray(width * height * 4)
     val cosA = FloatArray(4)
     val sinA = FloatArray(4)
@@ -180,7 +205,7 @@ private fun renderField(current: FluidTexture, previous: FluidTexture, blend: Fl
         installPixels(out)
         setImmutable()
     }
-    return Image.makeFromBitmap(bitmap).toComposeImageBitmap()
+    return FieldImage(bitmap)
 }
 
 /**
@@ -262,8 +287,17 @@ fun FluidArtwork(url: String?, modifier: Modifier = Modifier, brightness: Float 
     }
 
     // The frames worked out so far, oldest first, each with the field time it shows.
-    class Frame(val time: Float, val image: ImageBitmap, val texture: FluidTexture)
+    class Frame(val time: Float, val rendered: FieldImage, val texture: FluidTexture) {
+        val image: ImageBitmap get() = rendered.image
+    }
     val frames = remember { mutableStateOf<List<Frame>>(emptyList()) }
+    // Off the screen, every frame still held goes too.
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose {
+            retire(frames.value.map { it.rendered })
+            frames.value = emptyList()
+        }
+    }
     val aspect = remember { mutableFloatStateOf(16f / 10f) }
 
     LaunchedEffect(brightness) {
@@ -298,8 +332,10 @@ fun FluidArtwork(url: String?, modifier: Modifier = Modifier, brightness: Float 
             val before = previous ?: texture
             val time = if (animate) nextTime else 0f
             val image = withContext(Dispatchers.Default) { renderField(texture, before, mix, time, width, height, ratio, brightness) }
-            val kept = if (fresh) emptyList() else frames.value.filter { it.time >= clock.floatValue - FieldStep * 1.5f }
+            val all = frames.value
+            val kept = if (fresh) emptyList() else all.filter { it.time >= clock.floatValue - FieldStep * 1.5f }
             frames.value = kept + Frame(nextTime, image, texture)
+            retire(all.filter { it !in kept }.map { it.rendered })
             if (!animate && !blend.isRunning) delay(250L)
         }
     }

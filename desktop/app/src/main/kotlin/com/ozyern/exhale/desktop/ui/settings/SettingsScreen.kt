@@ -1407,20 +1407,12 @@ private fun ChoiceControl(item: ChoiceItem, accent: Color) {
             Spacer(Modifier.width(6.dp))
             Icon(TransportIcons.Collapse, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
         }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, modifier = Modifier.heightIn(max = 420.dp)) {
+        com.ozyern.exhale.desktop.ui.OptionsMenu(expanded = expanded, onDismiss = { expanded = false }) {
             item.options.forEach { (value, label) ->
-                DropdownMenuItem(
-                    text = { Text(label) },
-                    onClick = {
-                        expanded = false
-                        item.onSelect(value)
-                    },
-                    trailingIcon = if (value == item.selected) {
-                        { Icon(NavIcons.Check, contentDescription = null, tint = accent) }
-                    } else {
-                        null
-                    },
-                )
+                com.ozyern.exhale.desktop.ui.OptionsMenuRow(label, checked = value == item.selected) {
+                    expanded = false
+                    item.onSelect(value)
+                }
             }
         }
     }

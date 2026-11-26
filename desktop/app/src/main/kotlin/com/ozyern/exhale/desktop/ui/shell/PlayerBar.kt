@@ -266,40 +266,7 @@ private fun OutputButton(player: DesktopPlayer) {
             outputs = player.audioOutputs()
             open = true
         }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }, offset = DpOffset(0.dp, (-8).dp)) {
-            if (outputs.isEmpty()) {
-                DropdownMenuItem(text = { Text("No outputs found") }, onClick = { open = false }, enabled = false)
-            }
-            val current = player.currentAudioOutput()
-            outputs.forEach { output ->
-                DropdownMenuItem(
-                    text = { Text(output.description, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    leadingIcon = {
-                        Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
-                            if (output.name == current) Icon(NavIcons.Check, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                        }
-                    },
-                    onClick = {
-                        player.setAudioOutput(output.name)
-                        open = false
-                    },
-                )
-            }
-            // Exhale Connect: the paired phone is one more place to play, while it is connected.
-            val connectedPhones by com.ozyern.exhale.desktop.integrations.DesktopConnect.connected.collectAsState()
-            if (connectedPhones.isNotEmpty()) {
-                val phoneName = com.ozyern.exhale.desktop.integrations.DesktopConnect.connectedPhoneName() ?: "phone"
-                androidx.compose.material3.HorizontalDivider()
-                DropdownMenuItem(
-                    text = { Text("Continue on $phoneName", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    leadingIcon = { Box(Modifier.size(20.dp)) },
-                    onClick = {
-                        com.ozyern.exhale.desktop.integrations.DesktopConnect.handOffToPhone()
-                        open = false
-                    },
-                )
-            }
-        }
+        com.ozyern.exhale.desktop.ui.AudioOutputMenu(player, outputs, expanded = open, onDismiss = { open = false })
     }
 }
 

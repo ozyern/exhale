@@ -84,6 +84,8 @@ private fun extractColors(url: String): List<Color> {
     val side = 24
     val bitmap = Bitmap().apply { allocN32Pixels(side, side) }
     Canvas(bitmap).apply { drawImageRect(image, Rect.makeWH(side.toFloat(), side.toFloat())) }.close()
+    // The full-size decode is done with: free its native pixels now, not when the collector gets to it.
+    image.close()
 
     // weight, r, g, b
     val buckets = Array(12) { FloatArray(4) }
@@ -102,6 +104,7 @@ private fun extractColors(url: String): List<Color> {
         bucket[2] += g * weight
         bucket[3] += b * weight
     }
+    bitmap.close()
     return buckets.filter { it[0] > 0f }
         .sortedByDescending { it[0] }
         .take(3)

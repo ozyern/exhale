@@ -191,18 +191,8 @@ private fun copyToClipboard(text: String) {
  * shadow, rows of 13-point text with their symbols, the row under the pointer filled with the accent.
  */
 @Composable
-internal fun MacMenu(expanded: Boolean, onDismiss: () -> Unit, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
-    DropdownMenu(
-        expanded = expanded,
-        onDismissRequest = onDismiss,
-        shape = OptionsMenuStyle.Shape,
-        containerColor = OptionsMenuStyle.PanelFill.copy(alpha = 0.96f),
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, androidx.compose.ui.graphics.Color.White.copy(alpha = 0.1f)),
-        shadowElevation = 20.dp,
-        modifier = Modifier.widthIn(min = 240.dp, max = 300.dp).padding(horizontal = 5.dp),
-        content = content,
-    )
-}
+internal fun MacMenu(expanded: Boolean, onDismiss: () -> Unit, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) =
+    OptionsMenu(expanded = expanded, onDismiss = onDismiss, content = content)
 
 /** A hairline between groups of a menu, inset from its edges as macOS insets them. */
 @Composable

@@ -1105,40 +1105,7 @@ private fun AirPlayButton(player: DesktopPlayer) {
             outputs = player.audioOutputs()
             open = true
         }
-        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }, shape = RoundedCornerShape(12.dp)) {
-            if (outputs.isEmpty()) {
-                androidx.compose.material3.DropdownMenuItem(text = { Text("No outputs found", fontSize = 13.sp) }, onClick = { open = false }, enabled = false)
-            }
-            val current = player.currentAudioOutput()
-            outputs.forEach { output ->
-                androidx.compose.material3.DropdownMenuItem(
-                    text = { Text(output.description, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    leadingIcon = {
-                        Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
-                            if (output.name == current) Icon(NavIcons.Check, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                        }
-                    },
-                    onClick = {
-                        player.setAudioOutput(output.name)
-                        open = false
-                    },
-                )
-            }
-            // Exhale Connect: the paired phone is one more place to play, while it is connected.
-            val connectedPhones by com.ozyern.exhale.desktop.integrations.DesktopConnect.connected.collectAsState()
-            if (connectedPhones.isNotEmpty()) {
-                val phoneName = com.ozyern.exhale.desktop.integrations.DesktopConnect.connectedPhoneName() ?: "phone"
-                androidx.compose.material3.HorizontalDivider()
-                androidx.compose.material3.DropdownMenuItem(
-                    text = { Text("Continue on $phoneName", fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    leadingIcon = { Box(Modifier.size(18.dp)) },
-                    onClick = {
-                        com.ozyern.exhale.desktop.integrations.DesktopConnect.handOffToPhone()
-                        open = false
-                    },
-                )
-            }
-        }
+        com.ozyern.exhale.desktop.ui.AudioOutputMenu(player, outputs, expanded = open, onDismiss = { open = false })
     }
 }
 

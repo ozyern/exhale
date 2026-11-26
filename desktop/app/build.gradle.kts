@@ -144,6 +144,12 @@ compose.desktop {
             "-XX:+ExplicitGCInvokesConcurrent",
             "-Xms96m",
             "-Xmx1g",
+            // Direct buffers (network, audio) capped: past this the JDK collects to reclaim them
+            // instead of letting native memory grow unchecked.
+            "-XX:MaxDirectMemorySize=256m",
+            // Hand an emptied heap back to Windows sooner; matters most on PCs with little memory.
+            "-XX:MinHeapFreeRatio=10",
+            "-XX:MaxHeapFreeRatio=30",
             // Compile hot code after a third of the usual calls, so the first scroll through Home and
             // the first open of the player stop running interpreted sooner.
             "-XX:CompileThresholdScaling=0.33",

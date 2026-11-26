@@ -522,41 +522,28 @@ private fun ArtistFontMenu(
     onMakeDefault: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss, modifier = Modifier.widthIn(min = 320.dp)) {
-        Text(
-            "Name style for $name",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        )
+    com.ozyern.exhale.desktop.ui.OptionsMenu(expanded = expanded, onDismiss = onDismiss) {
+        com.ozyern.exhale.desktop.ui.OptionsMenuTitle("Name style for $name")
         ArtistNameFont.entries.forEach { font ->
-            DropdownMenuItem(
-                text = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            if (font.uppercase) name.uppercase() else name,
-                            fontFamily = font.family,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 22.sp * font.scale,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f).artistNameTexture(font),
-                        )
-                        Text(font.label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 12.dp))
-                    }
-                },
-                trailingIcon = if (font == current) {
-                    { Icon(NavIcons.Check, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp)) }
-                } else {
-                    null
-                },
-                onClick = { onPick(font) },
-            )
+            com.ozyern.exhale.desktop.ui.OptionsMenuCustomRow(checked = font == current, onClick = { onPick(font) }) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (font.uppercase) name.uppercase() else name,
+                        fontFamily = font.family,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp * font.scale,
+                        color = com.ozyern.exhale.desktop.ui.OptionsMenuStyle.Label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).artistNameTexture(font),
+                    )
+                    Text(font.label, fontSize = 11.sp, color = com.ozyern.exhale.desktop.ui.OptionsMenuStyle.SecondaryLabel, modifier = Modifier.padding(start = 10.dp))
+                }
+            }
         }
-        HorizontalDivider(Modifier.padding(vertical = 4.dp))
-        DropdownMenuItem(text = { Text("Use ${current.label} for every artist", fontSize = 14.sp) }, onClick = onMakeDefault)
-        if (ownChoice) DropdownMenuItem(text = { Text("Back to the default", fontSize = 14.sp) }, onClick = { onPick(null) })
+        com.ozyern.exhale.desktop.ui.OptionsDivider()
+        com.ozyern.exhale.desktop.ui.OptionsMenuRow("Use ${current.label} for every artist", com.ozyern.exhale.desktop.ui.OptionsIcons.TypeStyle, onClick = onMakeDefault)
+        if (ownChoice) com.ozyern.exhale.desktop.ui.OptionsMenuRow("Back to the default", com.ozyern.exhale.desktop.ui.OptionsIcons.Reset, onClick = { onPick(null) })
     }
 }
 

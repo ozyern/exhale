@@ -224,8 +224,8 @@ fun AppSidebar(
 
     // What a right-click anywhere on the pane offers, under whatever the row itself adds.
     val paneMenu: @Composable ColumnScope.(() -> Unit) -> Unit = { dismiss ->
-        MenuAction(if (editing) "Done Editing" else "Edit Sidebar") { editing = !editing; dismiss() }
-        MenuAction("Hide Sidebar") { hide(); dismiss() }
+        MenuAction(if (editing) "Done Editing" else "Edit Sidebar", com.ozyern.exhale.desktop.ui.OptionsIcons.Edit) { editing = !editing; dismiss() }
+        MenuAction("Hide Sidebar", com.ozyern.exhale.desktop.ui.OptionsIcons.Sidebar) { hide(); dismiss() }
     }
 
     androidx.compose.foundation.layout.BoxWithConstraints(
@@ -314,7 +314,7 @@ fun AppSidebar(
                                     roundArt = pin.kind == Pin.Kind.Artist,
                                     indent = 16.dp,
                                     menu = { dismiss ->
-                                        MenuAction("Unpin") { DesktopPrefs.togglePin(pin); dismiss() }
+                                        MenuAction("Unpin", com.ozyern.exhale.desktop.ui.OptionsIcons.Pin) { DesktopPrefs.togglePin(pin); dismiss() }
                                         MenuDivider()
                                         paneMenu(dismiss)
                                     },
@@ -359,12 +359,12 @@ fun AppSidebar(
                             on = selectedPage == playlist.id,
                             artwork = playlist.thumbnail,
                             menu = { dismiss ->
-                                MenuAction("Play") { player.playItem(playlist); dismiss() }
-                                MenuAction(if (DesktopPrefs.isPinned(playlist.id)) "Unpin" else "Pin") {
+                                MenuAction("Play", com.ozyern.exhale.desktop.ui.OptionsIcons.Play) { player.playItem(playlist); dismiss() }
+                                MenuAction(if (DesktopPrefs.isPinned(playlist.id)) "Unpin" else "Pin", com.ozyern.exhale.desktop.ui.OptionsIcons.Pin) {
                                     DesktopPrefs.togglePin(Pin(Pin.Kind.Playlist, playlist.id, playlist.title, playlist.author?.name, playlist.thumbnail))
                                     dismiss()
                                 }
-                                MenuAction("Copy Link") {
+                                MenuAction("Copy Link", com.ozyern.exhale.desktop.ui.OptionsIcons.Link) {
                                     runCatching { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(com.ozyern.exhale.desktop.data.ShareLinks.playlist(playlist.id)), null) }
                                     dismiss()
                                 }
@@ -633,10 +633,10 @@ private fun AccountRow(
             )
         }
         SidebarMenu(menuOpen, onDismiss = { menuOpen = false }) {
-            if (name == null) MenuAction("Sign In…") { onSignIn(); menuOpen = false }
+            if (name == null) MenuAction("Sign In…", com.ozyern.exhale.desktop.ui.OptionsIcons.Person) { onSignIn(); menuOpen = false }
             // Your listening, by the month: Exhale's answer to the Music app's Replay, kept with what's yours.
-            LocalNavigator.current?.let { nav -> MenuAction("Your Sound Chem") { nav.openSoundChem(); menuOpen = false } }
-            MenuAction("Settings…") { onSettings(); menuOpen = false }
+            LocalNavigator.current?.let { nav -> MenuAction("Your Sound Chem", com.ozyern.exhale.desktop.ui.NavIcons.Stats) { nav.openSoundChem(); menuOpen = false } }
+            MenuAction("Settings…", com.ozyern.exhale.desktop.ui.NavIcons.Settings) { onSettings(); menuOpen = false }
             MenuDivider()
             paneMenu { menuOpen = false }
         }
@@ -674,30 +674,17 @@ private fun Checkbox(checked: Boolean) {
     }
 }
 
+/** The sidebar's menus are the app's one menu: the Android ⋯ panel ([com.ozyern.exhale.desktop.ui.OptionsMenu]). */
 @Composable
-private fun SidebarMenu(expanded: Boolean, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    DropdownMenu(
-        expanded = expanded,
-        onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(12.dp),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        content = content,
-    )
-}
+private fun SidebarMenu(expanded: Boolean, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) =
+    com.ozyern.exhale.desktop.ui.OptionsMenu(expanded = expanded, onDismiss = onDismiss, content = content)
 
 @Composable
-private fun MenuAction(label: String, onClick: () -> Unit) {
-    DropdownMenuItem(
-        text = { Text(label, fontSize = 13.sp) },
-        onClick = onClick,
-        modifier = Modifier.height(30.dp),
-    )
-}
+private fun MenuAction(label: String, icon: ImageVector? = null, onClick: () -> Unit) =
+    com.ozyern.exhale.desktop.ui.OptionsMenuRow(title = label, icon = icon, onClick = onClick)
 
 @Composable
-private fun MenuDivider() {
-    HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
-}
+private fun MenuDivider() = com.ozyern.exhale.desktop.ui.OptionsDivider()
 
 /**
  * Drawings after SF Symbols at their Regular weight: one even, fairly light stroke with round ends
