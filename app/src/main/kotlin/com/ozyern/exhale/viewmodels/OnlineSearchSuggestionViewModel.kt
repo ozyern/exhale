@@ -72,7 +72,10 @@ class OnlineSearchSuggestionViewModel(
 
                 SearchSuggestionViewState(
                     history = candidates.history,
-                    suggestions = candidates.providerQueries,
+                    // YouTube stars out words in its suggestions ("a$$ like that"); tapping one then
+                    // searched the censored text and found only clean edits.
+                    suggestions = if (hideExplicit) candidates.providerQueries
+                    else candidates.providerQueries.map { com.ozyern.exhale.search.ExplicitSearch.uncensor(it, query) }.distinct(),
                     items = listOfNotNull(parsedItem) + recommendedItems,
                     isFromLink = parsedUrl != null,
                 )

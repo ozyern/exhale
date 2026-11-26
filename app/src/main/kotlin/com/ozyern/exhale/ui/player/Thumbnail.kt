@@ -919,6 +919,9 @@ private val RIPPLE_MAX_DISPLACEMENT = 14.dp
 /** How many ripple rings fit across the artwork's radius (fallback path). */
 private const val RIPPLE_RINGS = 3.0
 
+/** How long a song change waits for the new cover before letting go of the old one. */
+private const val ARTWORK_SWAP_WAIT_MS = 350L
+
 /** Keep only the outgoing and current covers; let GC reclaim bitmaps after drawing ends. */
 private const val MAX_CACHED_COVERS = 2
 
@@ -990,7 +993,20 @@ internal fun ThumbnailImage(
             currentUrl = artworkUri
             return@LaunchedEffect
         }
-        ensureLoaded(artworkUri)
+        // Wait only briefly for the new cover. Waiting for it outright kept the last song's art up
+        // for as long as the download (and its fallback ladder) took, seconds on a slow network.
+        // Not ready in time, the old cover goes anyway: the new one shows the moment it lands,
+        // over the placeholder, and only the melt is skipped.
+        val ready = kotlinx.coroutines.withTimeoutOrNull(ARTWORK_SWAP_WAIT_MS) { ensureLoaded(artworkUri) } != null
+        if (!ready) {
+            outgoingUrl = null
+            currentUrl = artworkUri
+            currentKey = contentKey
+            morph.snapTo(1f)
+            // Keep decoding it so the next change can melt out of it.
+            ensureLoaded(artworkUri)
+            return@LaunchedEffect
+        }
         // On interruption, continue from the cover that was mostly visible to avoid a jump.
         val interrupted = outgoingUrl != null
         if (!interrupted || morph.value >= 0.5f) outgoingUrl = currentUrl

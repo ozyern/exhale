@@ -63,10 +63,11 @@ class OnlineSearchViewModel(
                     val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                     val hideVideoSongs = context.dataStore.get(HideVideoSongsKey, false) || context.dataStore.get(DataSaverEnabledKey, false)
                     val hideYoutubeShorts = context.dataStore.get(HideYoutubeShortsKey, false)
-                    summaryPage =
-                        it.filterExplicit(
-                            hideExplicit,
-                        ).filterVideoSongs(hideVideoSongs).filterYoutubeShorts(hideYoutubeShorts)
+                    val filtered = it.filterExplicit(
+                        hideExplicit,
+                    ).filterVideoSongs(hideVideoSongs).filterYoutubeShorts(hideYoutubeShorts)
+                    // A clean edit no longer leads when the explicit song is on the page.
+                    summaryPage = if (hideExplicit) filtered else com.ozyern.exhale.search.ExplicitSearch.preferExplicit(filtered)
                 }
         } else {
             if (viewStateMap[filter.value] != null) return
