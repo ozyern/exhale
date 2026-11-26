@@ -759,13 +759,14 @@ fun SettingsScreen(
 
     CompositionLocalProvider(LocalChangedKeys provides changed, LocalReset provides resetKey) {
         Row(
-            Modifier.fillMaxSize().padding(start = insets.start + 20.dp, top = 24.dp, end = 24.dp),
+            // Android's grouped page: black, the cards lifted off it in #1C1C1E.
+            Modifier.fillMaxSize().background(SettingsStyle.PageFill).padding(start = insets.start + 20.dp, top = 24.dp, end = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             val landingState = rememberLazyListState()
             Column(Modifier.width(256.dp).fillMaxHeight().padding(bottom = insets.bottom + 12.dp)) {
                 Row(Modifier.padding(start = 2.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
+                    Text("Settings", fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.8).sp, color = SettingsStyle.Label)
                 }
                 SearchPill(query, searchFocus) { query = it }
                 LazyColumn(
@@ -779,14 +780,16 @@ fun SettingsScreen(
                         item(key = "update") { MacUpdateRow(release.tag) { open("updates") } }
                     }
                     item(key = "all") {
-                        CategoryList(all.filter { it.id != "about" }, if (query.isBlank() && selected != "about") selected else null, changed, scheme, ::open)
+                        // One grouped card of places, as the Android settings hub lists them.
+                        Box(Modifier.fillMaxWidth().settingsGroup().padding(4.dp)) {
+                            CategoryList(all.filter { it.id != "about" }, if (query.isBlank() && selected != "about") selected else null, changed, scheme, ::open)
+                        }
                     }
                     if (changed.isNotEmpty()) {
                         item(key = "changed") { ChangedNote(changed.size) }
                     }
                 }
             }
-            Box(Modifier.width(1.dp).fillMaxHeight().background(Color.White.copy(alpha = 0.06f)))
 
             Box(Modifier.weight(1f).fillMaxHeight()) {
                 AnimatedContent(
@@ -907,14 +910,26 @@ fun SettingsScreen(
 
 /** A tonal floor, glass over it, a diagonal sheen and a rim bright at the top: a plate, not a smudge. */
 @Composable
-internal fun Modifier.settingsGroup(shape: Shape = RoundedCornerShape(10.dp)): Modifier {
-    val surface = MaterialTheme.colorScheme.surfaceContainerHigh
-    // A box of settings, not a card: one flat translucent fill, a hairline around it, and the barest
-    // lift along the top edge. The sheen a plate would carry is what makes a list look like a poster.
-    return clip(shape)
-        .background(surface.copy(alpha = 0.55f))
-        .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.035f), Color.White.copy(alpha = 0.008f))))
-        .border(0.8.dp, Color.White.copy(alpha = 0.075f), shape)
+internal fun Modifier.settingsGroup(shape: Shape = RoundedCornerShape(SettingsStyle.CardRadius)): Modifier =
+    // The Android app's inset-grouped card (IosSettingsGroup): one flat secondary-grouped fill on the
+    // black page, no rim, no sheen.
+    clip(shape).background(SettingsStyle.CardFill)
+
+/** The Android settings look (iOS inset-grouped, dark), in the desktop app's units. */
+internal object SettingsStyle {
+    /** systemGroupedBackground: the page. */
+    val PageFill = Color(0xFF000000)
+    /** secondarySystemGroupedBackground: the cards. */
+    val CardFill = Color(0xFF1C1C1E)
+    val Separator = Color(0x99545458)
+    val Label = Color.White
+    val SecondaryLabel = Color(0xB3EBEBF5)
+    /** Android's 26 dp, scaled to rows a little shorter than a phone's. */
+    val CardRadius = 22.dp
+    val RowHeight = 44.dp
+    val RowHeightWithSubtitle = 54.dp
+    val IconTile = 29.dp
+    val IconTileRadius = 7.dp
 }
 
 /** The rounded-square plate a glyph sits on: brighter top, dimmer bottom, a rim in the same hue. */
@@ -935,18 +950,18 @@ internal fun Chevron() {
 /** A quiet, tracked label over a plate — it names the group, it doesn't compete with it. */
 @Composable
 internal fun SectionLabel(title: String, modifier: Modifier = Modifier) {
+    // Android's section header: sentence case, subheadline, secondary label, over the card's text column.
     Text(
         title,
-        style = MaterialTheme.typography.labelMedium,
-        fontWeight = FontWeight.SemiBold,
-        letterSpacing = 0.2.sp,
-        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
-        modifier = modifier.padding(start = 6.dp, end = 10.dp, top = 12.dp, bottom = 6.dp),
+        fontSize = 14.sp,
+        letterSpacing = (-0.2).sp,
+        color = SettingsStyle.SecondaryLabel,
+        modifier = modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 7.dp),
     )
 }
 
 @Composable
-internal fun RowDivider(indent: Dp = 16.dp) = HorizontalDivider(Modifier.padding(start = indent), thickness = 1.dp, color = Color.White.copy(alpha = 0.07f))
+internal fun RowDivider(indent: Dp = 16.dp) = HorizontalDivider(Modifier.padding(start = indent), thickness = 0.5.dp, color = SettingsStyle.Separator)
 
 /** Lights up every place the settings search matched inside [text]. */
 @Composable
@@ -1098,16 +1113,17 @@ private fun ChangedNote(count: Int) {
 
 /** A glyph on a solid rounded square, white on the hue — the icon System Settings gives every pane. */
 @Composable
-internal fun IconSquircle(icon: ImageVector, accent: Color, size: Dp = 28.dp) {
+internal fun IconSquircle(icon: ImageVector, accent: Color, size: Dp = SettingsStyle.IconTile) {
+    // Android's settings tile: the glyph in white on a flat fill of the accent, not a gradient.
     val ink = if (accent.luminance() > 0.62f) Color.Black.copy(alpha = 0.78f) else Color.White
     Box(
         Modifier
             .size(size)
-            .clip(RoundedCornerShape(size * 0.27f))
-            .background(Brush.verticalGradient(listOf(androidx.compose.ui.graphics.lerp(accent, Color.White, 0.2f), accent))),
+            .clip(RoundedCornerShape(SettingsStyle.IconTileRadius * (size / SettingsStyle.IconTile)))
+            .background(accent.copy(alpha = 0.9f)),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(size * 0.58f))
+        Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(size * 0.62f))
     }
 }
 
@@ -1183,7 +1199,8 @@ private fun CategoryRow(category: Category, accent: Color, selected: Boolean, ch
             .background(wash)
             .hoverable(interaction)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .heightIn(min = 40.dp)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val hue = categoryHue(category.id)
@@ -1192,9 +1209,8 @@ private fun CategoryRow(category: Category, accent: Color, selected: Boolean, ch
         // One line, the way a sidebar names a place. What the page is for belongs on the page.
         Text(
             category.label,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 15.sp,
+            color = SettingsStyle.Label,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
@@ -1217,11 +1233,13 @@ private fun CategoryRow(category: Category, accent: Color, selected: Boolean, ch
 @Composable
 private fun CategoryHeader(category: Category, changedCount: Int, onResetAll: () -> Unit, modifier: Modifier) {
     Row(modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        // Android's large title.
         Text(
             category.label,
-            fontSize = 26.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = (-0.6).sp,
+            fontSize = 34.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = (-0.8).sp,
+            color = SettingsStyle.Label,
             modifier = Modifier.weight(1f),
         )
         if (changedCount > 0) {
@@ -1247,7 +1265,7 @@ private fun GroupCard(title: String, items: List<Item>, accent: Color, hue: Colo
             SectionLabel(title)
             Column(Modifier.fillMaxWidth().settingsGroup()) {
                 items.forEachIndexed { index, item ->
-                    if (index > 0) RowDivider(if (item.icon != null) 56.dp else 14.dp)
+                    if (index > 0) RowDivider(if (item.icon != null) 60.dp else 16.dp)
                     ItemRow(item)
                 }
             }
@@ -1325,20 +1343,21 @@ private fun RowShell(
     Row(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = 46.dp)
+            .heightIn(min = if (subtitle != null) SettingsStyle.RowHeightWithSubtitle else SettingsStyle.RowHeight)
             .background(MaterialTheme.colorScheme.onSurface.copy(alpha = wash))
             .hoverable(interaction)
             .then(if (onClick != null) Modifier.clickable(interactionSource = interaction, indication = null, onClick = onClick) else Modifier)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            Icon(icon, contentDescription = null, tint = LocalRowHue.current.takeIf { it.isSpecified } ?: accent, modifier = Modifier.size(24.dp))
-            Spacer(Modifier.width(14.dp))
+            // Android's filled tile at the head of the row, the glyph white on the group's hue.
+            IconSquircle(icon, LocalRowHue.current.takeIf { it.isSpecified } ?: accent)
+            Spacer(Modifier.width(15.dp))
         }
-        Column(Modifier.weight(1f)) {
-            Text(highlighted(title), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-            subtitle?.let { Text(highlighted(it), fontSize = 11.5.sp, lineHeight = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(highlighted(title), fontSize = 15.sp, lineHeight = 20.sp, color = SettingsStyle.Label)
+            subtitle?.let { Text(highlighted(it), fontSize = 13.sp, lineHeight = 17.sp, color = SettingsStyle.SecondaryLabel) }
         }
         ResetMark(settingKey, hovered)
         trailing?.let {
