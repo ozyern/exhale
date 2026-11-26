@@ -1764,7 +1764,7 @@ private fun PlayerV2Content(
                             .padding(horizontal = 32.dp)
                     ) {
                     // Above the scrubber: the line being sung on the cover page, opening the lyrics
-                    // on a tap; on the lyrics page, where they came from.
+                    // on a tap; on the lyrics page, nothing.
                     if (!isWidePlayerLayout && playerState != PlayerInternalState.QUEUE) {
                         androidx.compose.animation.Crossfade(
                             targetState = playerState == PlayerInternalState.LYRICS,
@@ -1772,19 +1772,9 @@ private fun PlayerV2Content(
                             label = "v2LyricStrip",
                         ) { onLyrics ->
                             if (onLyrics) {
-                                val provider = currentLyrics?.provider?.takeIf { it.isNotBlank() && it != "Unknown" }
-                                Box(Modifier.fillMaxWidth().height(28.dp), contentAlignment = Alignment.CenterStart) {
-                                    if (provider != null) Text(
-                                        text = stringResource(R.string.lyrics_by_provider, provider),
-                                        style = AppTheme.typography.bodyMedium.copy(
-                                            fontSize = 15.sp,
-                                            textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
-                                        ),
-                                        color = adaptivePrimary.copy(alpha = 0.55f),
-                                        maxLines = 1,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                    )
-                                }
+                                // No provider credit on the lyrics page; the strip keeps its height so
+                                // the scrubber stays put between the two pages.
+                                Spacer(Modifier.fillMaxWidth().height(28.dp))
                             } else if (showLyricPreview) {
                                 com.ozyern.exhale.ui.lyricsflow.CurrentLyricStrip(
                                     sliderPositionProvider = { sliderPosition ?: position },
