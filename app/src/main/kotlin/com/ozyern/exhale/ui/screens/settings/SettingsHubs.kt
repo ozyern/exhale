@@ -169,7 +169,7 @@ object SettingsHubs {
                     SettingsLink("Theme", R.drawable.palette, { systemPurple }, route("settings/appearance/theme"), "Accent, dark mode and pure black", "dark light accent color"),
                     SettingsLink("Presets", R.drawable.palette, { systemPink }, route("settings/appearance/presets"), "Ready-made looks"),
                     SettingsLink("Make your own", R.drawable.edit, { systemOrange }, route("settings/appearance/diy"), "Design a theme from scratch", "diy"),
-                    SettingsLink("Liquid Glass", R.drawable.palette, { systemCyan }, route("settings/appearance/liquidglass"), "Blur, tint, highlights and lens", "glass blur"),
+                    SettingsLink("Clear Chem", R.drawable.palette, { systemCyan }, route("settings/appearance/liquidglass"), "Blur, tint, highlights and lens", "glass blur"),
                 ),
             ),
             SettingsLinkGroup(

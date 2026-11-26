@@ -332,7 +332,9 @@ object AppleMusicCanvasProvider {
         val attributes = result["attributes"]?.jsonObject ?: return null
         val resultArtist = attributes["artistName"]?.jsonPrimitive?.contentOrNull.orEmpty()
         val name = attributes["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
-        val collection = attributes["collectionName"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        // The catalog names a song's album "albumName"; "collectionName" is the iTunes field.
+        val collection = (attributes["albumName"] ?: attributes["collectionName"])?.jsonPrimitive?.contentOrNull.orEmpty()
+        val isSong = result["type"]?.jsonPrimitive?.contentOrNull == "songs"
         val nameLower = name.lowercase(Locale.ROOT)
         val collectionLower = collection.lowercase(Locale.ROOT)
         val isBlacklisted = nameLower.contains("playlist") || nameLower.contains("set list") ||
@@ -351,7 +353,13 @@ object AppleMusicCanvasProvider {
         var score = if (resultArtist.equals(artist, ignoreCase = true)) 10 else 5
         score += when {
             name.equals(term, ignoreCase = true) -> 15
-            name.contains(term, ignoreCase = true) || term.contains(name, ignoreCase = true) -> 7
+            // A song only counts as the same one with a different tag ("Nonsense" / "Nonsense
+            // (Remastered)"). A title that merely contains the other ("A Nonsense Christmas" /
+            // "Nonsense") is another song: it still cleared the bar, and when the playing song's
+            // album had no motion cover the search fell through to it, so the other album's cover
+            // replaced the playing edition's art.
+            isSong && baseTitle(name) == baseTitle(term) -> 7
+            !isSong && (name.contains(term, ignoreCase = true) || term.contains(name, ignoreCase = true)) -> 7
             else -> -10
         }
         for (word in editionWords) {
@@ -371,6 +379,14 @@ object AppleMusicCanvasProvider {
         AppleCanvasLogger.d("Result: '$name' by '$resultArtist' (Album: '$collection', ID: ${result["id"]}) -> Score: $score")
         return score
     }
+
+    /** A title without its trailing tag ("(Remastered)", "[Deluxe]", " - Single Version"), for comparing songs. */
+    internal fun baseTitle(title: String): String =
+        title.lowercase(Locale.ROOT)
+            .replace(Regex("""\s*[(\[][^)\]]*[)\]]"""), "")
+            .replace(Regex("""\s+[-–—]\s+.*$"""), "")
+            .replace(Regex("""[^\p{L}\p{N}]+"""), " ")
+            .trim()
 
     private fun resolveAlbumId(result: JsonObject, attributes: JsonObject): String? {
         val resultType = result["type"]?.jsonPrimitive?.contentOrNull

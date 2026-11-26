@@ -411,7 +411,7 @@
     <string name="theme">Theme</string>
     <string name="theme_desc">Customize your app theme</string>
     <string name="apple_music_ui">Apple Music UI</string>
-    <string name="apple_music_ui_desc">iOS 26 liquid glass style: floating glass nav bar and tab icons</string>
+    <string name="apple_music_ui_desc">Clear Chem style: floating glass nav bar and tab icons</string>
     <string name="theme_colors">Theme &amp; Colors</string>
     <string name="theme_mode">Theme Mode</string>
     <string name="color_palette">Color Palette</string>
@@ -687,7 +687,7 @@
     <string name="preset_category_font">Fonts</string>
     <string name="preset_category_player">Player look</string>
     <string name="preset_category_lyrics">Lyrics styling</string>
-    <string name="preset_category_glass">Liquid glass</string>
+    <string name="preset_category_glass">Clear Chem</string>
     <string name="preset_category_background">Wallpapers</string>
     <string name="preset_category_player_icons">Custom player icons</string>
     <string name="preset_category_diy">DIY stickers</string>

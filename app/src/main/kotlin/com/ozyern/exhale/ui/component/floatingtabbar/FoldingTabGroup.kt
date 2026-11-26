@@ -145,6 +145,13 @@ internal fun FoldingTabGroup(
                 // standing just past its edges (the width is made round in slotGrowth below).
                 pressedScale = 1f,
                 pressedScaleY = 1.16f,
+                // BitChord's dock moves slowly and lands softly: the slot glides to its tab with a
+                // hint of overshoot, and the lens swells and settles instead of snapping.
+                valueStiffness = DockSettleStiffness,
+                valueDampingRatio = DockSettleDamping,
+                pressStiffness = 150f,
+                scaleStiffness = 90f,
+                dragFollowStiffness = DockFollowStiffness,
                 onDragStarted = {},
                 onDragStopped = {
                     val targetIndex = targetValue.fastRoundToInt().fastCoerceIn(0, tabsCount - 1)
@@ -152,7 +159,7 @@ internal fun FoldingTabGroup(
                     if (targetIndex == currentIndex) onSelected(targetIndex)
                     currentIndex = targetIndex
                     animateToValue(targetIndex.toFloat())
-                    animationScope.launch { offsetAnimation.animateTo(0f, spring(1f, 300f, 0.5f)) }
+                    animationScope.launch { offsetAnimation.animateTo(0f, spring(0.8f, 90f, 0.5f)) }
                 },
                 onDrag = { _, dragAmount ->
                     updateValue(
@@ -206,10 +213,12 @@ internal fun FoldingTabGroup(
             )
         }
 
-        // The tabs again, tinted and invisible: what the slot shows the selected tab through.
+        // The tabs again, tinted and invisible: what the slot shows the tabs through. At rest the
+        // selected tab shows in the accent; held, the glyphs keep their plain ink and are gently
+        // magnified, so the tab under the lens reads through the glass instead of vanishing.
+        val lensGlyphColor = if (isLightTheme) Color.Black else Color.White
         CompositionLocalProvider(
-            // Barely magnified, as Apple Music's: the lens tints what is under it rather than enlarging it.
-            LocalLiquidBottomTabScale provides { lerp(1f, 1.06f, dampedDragAnimation.pressProgress) },
+            LocalLiquidBottomTabScale provides { lerp(1f, 1.12f, dampedDragAnimation.pressProgress) },
         ) {
             Row(
                 Modifier
@@ -220,7 +229,12 @@ internal fun FoldingTabGroup(
                     .height(height - 8.dp)
                     .fillMaxWidth()
                     .padding(horizontal = 4.dp)
-                    .graphicsLayer(colorFilter = ColorFilter.tint(accentColor)),
+                    .graphicsLayer {
+                        val press = dampedDragAnimation.pressProgress.fastCoerceIn(0f, 1f)
+                        colorFilter = ColorFilter.tint(
+                            androidx.compose.ui.graphics.lerp(accentColor, lensGlyphColor, press),
+                        )
+                    },
                 verticalAlignment = Alignment.CenterVertically,
                 content = content,
             )
@@ -272,10 +286,11 @@ internal fun FoldingTabGroup(
                     layerBlock: (GraphicsLayerScope.() -> Unit)?,
                 ) {
                     with(backdrop) { drawBackdrop(density, coordinates, layerBlock) }
-                    // The bar's own surface is no longer mixed in: it is opaque and artwork-tinted, so
-                    // the held lens filled with a solid red disc. BitChord's lens is clear glass over
-                    // what is behind the dock, and so is this one now.
-                    val progress = 0f
+                    // Clear glass over the bar, not a window through it: held, the lens refracts the
+                    // bar's own surface (the page as the bar shows it, blurred and tinted). Without
+                    // it the lens showed the page sharp and unblurred, a black or red hole with
+                    // whatever sat behind the dock ("Liked", a header) magnified inside it.
+                    val progress = dampedDragAnimation.pressProgress.fastCoerceIn(0f, 1f)
                     if (progress > 0f) {
                         surfacePaint.alpha = progress
                         val canvas = drawContext.canvas
@@ -318,7 +333,11 @@ internal fun FoldingTabGroup(
                             if (isLightTheme) Color.Black.copy(0.1f) else Color.White.copy(0.1f),
                             alpha = 1f - progress,
                         )
-                        drawRect(Color.Black.copy(alpha = 0.03f * progress))
+                        // A faint clear sheen, the glass itself: lighter than the bar, never opaque.
+                        drawRect(
+                            if (isLightTheme) Color.White.copy(alpha = 0.22f * progress)
+                            else Color.White.copy(alpha = 0.08f * progress),
+                        )
                     },
                 )
         )
@@ -327,9 +346,8 @@ internal fun FoldingTabGroup(
                 .height(height - 8.dp)
                 .fillMaxWidth(1f / tabsCount)
                 .then(slotGrowth)
-                // The accent-tinted tabs show through the slot at rest only. Held, the lens is
-                // clear glass over the tabs as they are, as BitChord's: no red bleeding through it.
-                .graphicsLayer { alpha = 1f - dampedDragAnimation.pressProgress.fastCoerceIn(0f, 1f) }
+                // The tabs inside the slot: accent-tinted at rest, plain ink and magnified while
+                // held (see the tinted copy above), so the lens never hides the tab beneath it.
                 .drawBackdrop(
                     backdrop = tabsBackdrop,
                     shape = { ContinuousCapsule },
@@ -340,6 +358,13 @@ internal fun FoldingTabGroup(
         )
     }
 }
+
+/** The slot's glide to a tab: about two thirds of a second, landing with a slight overshoot. */
+private const val DockSettleStiffness = 85f
+private const val DockSettleDamping = 0.8f
+
+/** While dragged the slot trails the finger by a beat rather than sticking to it. */
+private const val DockFollowStiffness = 140f
 
 /**
  * How strongly the selected tab shows its accent, 0..1: it fades while the glass slot is held, so

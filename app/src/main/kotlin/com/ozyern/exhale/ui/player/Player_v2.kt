@@ -1339,10 +1339,10 @@ private fun PlayerV2Content(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     trackMetaRow(
-                                        Modifier.sharedBounds(rememberSharedContentState(key = "title"), animatedVisibilityScope = this@AnimatedContent, boundsTransform = { _, _ -> pageMotion() }),
+                                        pageTextMorph("title", this@AnimatedContent),
                                         // In place, not in the overlay: the colour-dodge ink needs the page behind it to blend with.
-                                        Modifier.sharedBounds(rememberSharedContentState(key = "artist"), animatedVisibilityScope = this@AnimatedContent, boundsTransform = { _, _ -> pageMotion() }, renderInOverlayDuringTransition = false),
-                                        Modifier.sharedBounds(rememberSharedContentState(key = "actionButtons"), animatedVisibilityScope = this@AnimatedContent, boundsTransform = { _, _ -> pageMotion() }),
+                                        pageTextMorph("artist", this@AnimatedContent, inOverlay = false),
+                                        pageTextMorph("actionButtons", this@AnimatedContent, alignment = Alignment.CenterEnd),
                                     )
                                     }
                                 }
@@ -1461,11 +1461,7 @@ private fun PlayerV2Content(
                                             overflow = TextOverflow.Ellipsis,
                                             modifier = if (auxiliaryPageState != null && auxiliaryArtworkTransitionRunning()) {
                                                 Modifier.auxiliaryBoundsMorph("title")
-                                            } else Modifier.sharedBounds(
-                                                rememberSharedContentState(key = "title"),
-                                                animatedVisibilityScope = this@AnimatedContent,
-                                                boundsTransform = { _, _ -> pageMotion() },
-                                            )
+                                            } else pageTextMorph("title", this@AnimatedContent)
                                         )
                                         Text(
                                             textMetadata?.artists?.joinToString { it.name }.orEmpty(),
@@ -1476,22 +1472,13 @@ private fun PlayerV2Content(
                                             overflow = TextOverflow.Ellipsis,
                                             modifier = (if (auxiliaryPageState != null && auxiliaryArtworkTransitionRunning()) {
                                                 Modifier.auxiliaryBoundsMorph("artist", inOverlay = false)
-                                            } else Modifier.sharedBounds(
-                                                rememberSharedContentState(key = "artist"),
-                                                animatedVisibilityScope = this@AnimatedContent,
-                                                boundsTransform = { _, _ -> pageMotion() },
-                                                renderInOverlayDuringTransition = false,
-                                            ))
+                                            } else pageTextMorph("artist", this@AnimatedContent, inOverlay = false))
                                         )
                                     }
 
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.sharedBounds(
-                                            rememberSharedContentState(key = "actionButtons"),
-                                            animatedVisibilityScope = this@AnimatedContent,
-                                            boundsTransform = { _, _ -> pageMotion() },
-                                        )
+                                        modifier = pageTextMorph("actionButtons", this@AnimatedContent, alignment = Alignment.CenterEnd)
                                             .flamingoChrome(additiveChrome)
                                             .graphicsLayer { if (additiveChrome) alpha = AdditiveChromeContentAlpha }
                                     ) {
@@ -2622,12 +2609,39 @@ private fun Modifier.heroMorphDissolve(strength: () -> Float): Modifier = this
     }
 
 /** Roughly how long the cover takes to settle between the player and a page header; paces the fades. */
-private const val PAGE_TRAVEL_MS = 560
+private const val PAGE_TRAVEL_MS = 300
+
+/** The travelling text's hand-over: the old copy is gone before the new one shows, so no frame has two. */
+private const val PAGE_TEXT_OUT_MS = 90
+private const val PAGE_TEXT_IN_MS = 130
+
+/**
+ * Title, artist and buttons travelling between the player and a page header, as BitChord's do:
+ * each copy is scaled to the moving bounds (not laid out at full size inside them), and they hand
+ * over back to back instead of cross-fading, so the text reads as one line that shrinks into the
+ * header. The cross-fade showed both titles at once ("Co(Single Version)our L...").
+ */
+@OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+@Composable
+private fun androidx.compose.animation.SharedTransitionScope.pageTextMorph(
+    key: String,
+    visibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
+    inOverlay: Boolean = true,
+    alignment: Alignment = Alignment.CenterStart,
+): Modifier = Modifier.sharedBounds(
+    rememberSharedContentState(key = key),
+    animatedVisibilityScope = visibilityScope,
+    enter = fadeIn(tween(PAGE_TEXT_IN_MS, delayMillis = PAGE_TEXT_OUT_MS, easing = androidx.compose.animation.core.LinearEasing)),
+    exit = fadeOut(tween(PAGE_TEXT_OUT_MS, easing = androidx.compose.animation.core.LinearEasing)),
+    boundsTransform = { _, _ -> pageMotion() },
+    resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.scaleToBounds(ContentScale.FillHeight, alignment),
+    renderInOverlayDuringTransition = inOverlay,
+)
 
 /**
  * The page change's one curve: cover, title and buttons all ride it, so they arrive together.
  * A spring, not a tween: tapping lyrics again mid-flight re-targets with the cover's current
  * velocity, so it turns round smoothly instead of stopping dead and restarting its curve.
- * Critically damped and soft, so it glides in and settles without bounce.
+ * Quick and barely under-damped, as BitChord's: it lands in about 220 ms and settles with no visible bounce.
  */
-private fun <T> pageMotion(): FiniteAnimationSpec<T> = spring(dampingRatio = 1f, stiffness = 150f)
+private fun <T> pageMotion(): FiniteAnimationSpec<T> = spring(dampingRatio = 0.9f, stiffness = 560f)

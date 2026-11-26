@@ -39,16 +39,31 @@ class DampedDragAnimation(
     val pressedScale: Float,
     /** The pressed height, when it differs from the width's: Apple Music's lens swells wide and flat. */
     val pressedScaleY: Float = pressedScale,
+    /** How fast the slot settles on a tab; lower is slower. The reference app's is 1000. */
+    valueStiffness: Float = 1000f,
+    /** Settle damping; under 1 lets the slot overshoot a touch before it rests. */
+    valueDampingRatio: Float = 1f,
+    /** How fast the pressed lens swells and deflates; the reference app's is 1000. */
+    pressStiffness: Float = 1000f,
+    /** How fast the lens changes shape; the reference app's is 250. */
+    scaleStiffness: Float = 250f,
+    /**
+     * Set, the slot trails the finger on this spring while dragged instead of sticking to it:
+     * the slower, weightier feel of BitChord's dock. Unset (NaN), it snaps as the reference app's.
+     */
+    dragFollowStiffness: Float = Float.NaN,
     val canDrag: (Offset) -> Boolean = { true },
     val onDragStarted: DampedDragAnimation.(position: Offset) -> Unit,
     val onDragStopped: DampedDragAnimation.() -> Unit,
     val onDrag: DampedDragAnimation.(size: IntSize, dragAmount: Offset) -> Unit,
 ) {
-    private val valueAnimationSpec = spring(1f, 1000f, visibilityThreshold)
+    private val valueAnimationSpec = spring(valueDampingRatio, valueStiffness, visibilityThreshold)
     private val velocityAnimationSpec = spring(0.5f, 300f, visibilityThreshold * 10f)
-    private val pressProgressAnimationSpec = spring(1f, 1000f, 0.001f)
-    private val scaleXAnimationSpec = spring(0.6f, 250f, 0.001f)
-    private val scaleYAnimationSpec = spring(0.7f, 250f, 0.001f)
+    private val pressProgressAnimationSpec = spring(1f, pressStiffness, 0.001f)
+    private val scaleXAnimationSpec = spring(0.6f, scaleStiffness, 0.001f)
+    private val scaleYAnimationSpec = spring(0.7f, scaleStiffness, 0.001f)
+    private val dragFollowSpec = dragFollowStiffness.takeIf { !it.isNaN() }
+        ?.let { spring(1f, it, visibilityThreshold) }
 
     private val valueAnimation = Animatable(initialValue, visibilityThreshold)
     private val velocityAnimation = Animatable(0f, 5f)
@@ -69,7 +84,9 @@ class DampedDragAnimation(
     val progress: Float
         get() = (value - valueRange.start) /
             (valueRange.endInclusive - valueRange.start).coerceAtLeast(1e-6f)
-    val targetValue: Float get() = valueAnimation.targetValue
+    /** Where the finger has put the slot while it trails behind; NaN when not following. */
+    private var followTarget = Float.NaN
+    val targetValue: Float get() = if (followTarget.isNaN()) valueAnimation.targetValue else followTarget
     val pressProgress: Float get() = pressProgressAnimation.value
     val scaleX: Float get() = scaleXAnimation.value
     val scaleY: Float get() = scaleYAnimation.value
@@ -138,6 +155,15 @@ class DampedDragAnimation(
     fun updateValue(value: Float) {
         val coerced = if (value.isFinite()) value.coerceIn(valueRange) else valueAnimation.value
         // Snap, don't animate: one synchronous state write per drag event, no queue.
+        val follow = dragFollowSpec
+        if (follow != null) {
+            followTarget = coerced
+            // Each drag event retargets the running spring (animateTo cancels the previous one),
+            // so nothing queues; the velocity sample uses the finger's target, not the lagging slot.
+            animationScope.launch { snapVelocity(coerced) }
+            animationScope.launch { valueAnimation.animateTo(coerced, follow) }
+            return
+        }
         animationScope.launch {
             valueAnimation.snapTo(coerced)
             snapVelocity()
@@ -151,6 +177,7 @@ class DampedDragAnimation(
      * morphology always deflates, even when a newer tap supersedes this one.
      */
     fun animateToValue(value: Float) {
+        followTarget = Float.NaN
         settleJob?.cancel()
         settleJob = animationScope.launch {
             mutatorMutex.mutate {
@@ -184,11 +211,12 @@ class DampedDragAnimation(
 
     /** Exhale pager extension; pointer drag behavior remains identical to the reference app. */
     suspend fun snapValue(value: Float) {
+        followTarget = Float.NaN
         valueAnimation.snapTo(if (value.isFinite()) value.coerceIn(valueRange) else valueAnimation.value)
     }
 
-    private suspend fun snapVelocity() {
-        velocityTracker.addPosition(nowMillis(), Offset(valueAnimation.value, 0f))
+    private suspend fun snapVelocity(position: Float = valueAnimation.value) {
+        velocityTracker.addPosition(nowMillis(), Offset(position, 0f))
         val span = (valueRange.endInclusive - valueRange.start).coerceAtLeast(1e-6f)
         val raw = velocityTracker.calculateVelocity().x / span
         velocityAnimation.snapTo(if (raw.isFinite()) raw else 0f)
