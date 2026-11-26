@@ -37,33 +37,63 @@ private val beaconJson = Json { ignoreUnknownKeys = true }
 class DiscoveryResponder(private val port: Int = CONNECT_DISCOVERY_PORT, private val beacon: () -> Beacon) {
     @Volatile private var socket: DatagramSocket? = null
 
+    @Volatile private var running = false
+
+    /**
+     * Answers on [port] until [stop]. A bind that fails (the port still held by an instance that is
+     * closing, say) is tried again every few seconds instead of given up on: given up, the PC stayed
+     * silent to every phone until Exhale was restarted, while its TCP port went on accepting.
+     */
     fun start() {
-        if (socket != null) return
-        val bound = runCatching {
-            DatagramSocket(null).apply {
-                reuseAddress = true
-                bind(InetSocketAddress(port))
-            }
-        }.getOrNull() ?: return
-        socket = bound
+        if (running) return
+        running = true
         Thread({
-            val buffer = ByteArray(512)
-            while (socket === bound) {
-                try {
-                    val packet = DatagramPacket(buffer, buffer.size)
-                    bound.receive(packet)
-                    if (String(packet.data, 0, packet.length, Charsets.UTF_8).trim() != QUESTION) continue
-                    val answer = beaconJson.encodeToString(Beacon.serializer(), beacon()).toByteArray(Charsets.UTF_8)
-                    bound.send(DatagramPacket(answer, answer.size, packet.address, packet.port))
-                } catch (_: Exception) {
-                    if (bound.isClosed) break
+            // Read out here: inside DatagramSocket's apply block below, a bare `port` is the socket's own
+            // getPort() (-1 while unconnected), so the responder bound to "port -1", failed, and never
+            // answered a phone at all.
+            val listenPort = port
+            while (running) {
+                val bound = runCatching {
+                    DatagramSocket(null).apply {
+                        reuseAddress = true
+                        bind(InetSocketAddress(listenPort))
+                    }
+                }.getOrNull()
+                if (bound == null) {
+                    try { Thread.sleep(RETRY_MS) } catch (_: InterruptedException) { break }
+                    continue
                 }
+                socket = bound
+                answer(bound)
+                // Fell out of answering: closed by stop(), or the socket died; bind again if still wanted.
+                socket = null
+                runCatching { bound.close() }
             }
         }, "exhale-connect-discovery").apply { isDaemon = true }.start()
     }
 
+    private fun answer(bound: DatagramSocket) {
+        val buffer = ByteArray(512)
+        while (running && !bound.isClosed) {
+            try {
+                val packet = DatagramPacket(buffer, buffer.size)
+                bound.receive(packet)
+                if (String(packet.data, 0, packet.length, Charsets.UTF_8).trim() != QUESTION) continue
+                val answer = beaconJson.encodeToString(Beacon.serializer(), beacon()).toByteArray(Charsets.UTF_8)
+                bound.send(DatagramPacket(answer, answer.size, packet.address, packet.port))
+            } catch (_: Exception) {
+                if (bound.isClosed) return
+            }
+        }
+    }
+
     fun stop() {
+        running = false
         socket?.let { socket = null; it.close() }
+    }
+
+    private companion object {
+        const val RETRY_MS = 3_000L
     }
 }
 
@@ -113,6 +143,36 @@ object DiscoveryFinder {
         }
         return found.values.toList()
     }
+
+    /**
+     * Asks [hosts] over the connection port instead of UDP: the PC greets every connection with its
+     * hello, which names it, so a hello read back is as good as a beacon. UDP can be dropped by a
+     * firewall, a router or a discovery listener that failed to start while the connection port works.
+     * Hosts are tried [parallelism] at a time, each given [timeoutMs] to connect and greet.
+     */
+    fun probe(hosts: List<InetAddress>, port: Int = CONNECT_TCP_PORT, timeoutMs: Int = 600, parallelism: Int = 64): List<Beacon> {
+        if (hosts.isEmpty()) return emptyList()
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(parallelism.coerceIn(1, hosts.size)) { r ->
+            Thread(r, "exhale-connect-probe").apply { isDaemon = true }
+        }
+        return try {
+            hosts.map { host -> pool.submit<Beacon?> { greet(host, port, timeoutMs) } }
+                .mapNotNull { runCatching { it.get() }.getOrNull() }
+                .distinctBy { it.id }
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    private fun greet(host: InetAddress, port: Int, timeoutMs: Int): Beacon? = runCatching {
+        java.net.Socket().use { socket ->
+            socket.connect(InetSocketAddress(host, port), timeoutMs)
+            socket.soTimeout = timeoutMs * 2
+            val line = socket.getInputStream().bufferedReader(Charsets.UTF_8).readLine() ?: return@use null
+            val hello = ConnectCodec.decode(line) as? ConnectMessage.Hello ?: return@use null
+            Beacon(hello.deviceId, hello.deviceName, port, hello.version).also { it.host = host.hostAddress }
+        }
+    }.getOrNull()
 
     /**
      * Every other address on this device's subnet, for [find]'s one-by-one asking. Only for

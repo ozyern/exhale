@@ -63,12 +63,21 @@ class ConnectClient(
     val isConnected: Boolean get() = link?.isOpen == true && link?.peerId != null
 
     /** PCs answering on this Wi-Fi right now, for the pairing screen. Blocks for about a second. */
-    fun discover(): List<Beacon> = DiscoveryFinder.find(broadcastAddress(), directAddresses())
+    fun discover(): List<Beacon> {
+        val direct = directAddresses()
+        // UDP first; when nothing answers it, the connection port of every address on the Wi-Fi.
+        return DiscoveryFinder.find(broadcastAddress(), direct).ifEmpty { DiscoveryFinder.probe(direct) }
+    }
 
-    /** Asks one address the user typed in (the PC shows it in Settings → Connected devices). */
-    fun discoverAt(host: String): List<Beacon> =
-        runCatching { InetAddress.getByName(host.trim()) }.getOrNull()
-            ?.let { DiscoveryFinder.find(null, listOf(it)) }.orEmpty()
+    /**
+     * Asks one address the user typed in (the PC shows it in Settings → Connected devices): over UDP,
+     * then straight at its connection port, so a typed address works whenever the PC can be reached.
+     */
+    fun discoverAt(host: String): List<Beacon> {
+        val address = runCatching { InetAddress.getByName(host.trim()) }.getOrNull() ?: return emptyList()
+        return DiscoveryFinder.find(null, listOf(address), timeoutMs = 1_200)
+            .ifEmpty { DiscoveryFinder.probe(listOf(address), timeoutMs = 2_000) }
+    }
 
     /**
      * Pairs with [beacon] using the [code] on its screen. Blocks until the PC answers.
