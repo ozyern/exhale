@@ -56,7 +56,9 @@ class ConnectHost(
                 client.tcpNoDelay = true
                 // Phones ping every 20s; a minute of silence is a phone that left the Wi-Fi.
                 client.soTimeout = ConnectClient.READ_TIMEOUT_MS
-                val link = Link(client, ::handle, ::closed)
+                val link = Link(client, ::handle, ::closed) { l, message, error ->
+                    log("could not handle ${message::class.simpleName} from ${l.peerName ?: l.remoteHost}: ${error.javaClass.simpleName}: ${error.message}")
+                }
                 val nonce = Pairing.newNonce()
                 synchronized(nonces) { nonces[link] = nonce }
                 links += link
@@ -69,7 +71,7 @@ class ConnectHost(
     fun stop() {
         responder.stop()
         server?.let { server = null; runCatching { it.close() } }
-        links.forEach { it.close() }
+        links.forEach { it.close("this PC stopped listening") }
     }
 
     /** Opens pairing for two minutes and returns the code to show. */
@@ -86,7 +88,7 @@ class ConnectHost(
 
     fun forget(peerId: String) {
         store.forget(peerId)
-        links.filter { it.peerId == peerId }.forEach { it.close() }
+        links.filter { it.peerId == peerId }.forEach { it.close("forgotten on this PC") }
         onPeersChanged(store.devices())
     }
 
@@ -107,7 +109,7 @@ class ConnectHost(
             if (message is ConnectMessage.Ping) link.send(ConnectMessage.Pong) else onMessage(peer, message)
             return
         }
-        val nonce = synchronized(nonces) { nonces[link] } ?: return link.close()
+        val nonce = synchronized(nonces) { nonces[link] } ?: return link.close("no handshake on record")
         when (message) {
             is ConnectMessage.Auth -> {
                 val known = store.device(message.deviceId)
@@ -158,11 +160,11 @@ class ConnectHost(
         val since = admittedAt[id]?.let { System.currentTimeMillis() - it }
         if (previous.isNotEmpty() && since != null && since < REPLACE_GRACE_MS) {
             log("turned away a second link from $name ($id) from ${link.remoteHost}: the current one is ${since} ms old")
-            link.close()
+            link.close("turned away: this phone's current link is still new")
             return
         }
         // One link per phone: a reconnect replaces the one it left behind.
-        previous.forEach { it.close() }
+        previous.forEach { it.close("replaced by a newer link") }
         admittedAt[id] = System.currentTimeMillis()
         log("admitted $name ($id) from ${link.remoteHost}" + if (previous.isNotEmpty()) ", replacing ${previous.size} older link(s)" else "")
         link.peerId = id
@@ -174,7 +176,7 @@ class ConnectHost(
 
     private fun reject(link: Link, reason: ConnectMessage.Rejected.Reason) {
         link.send(ConnectMessage.Rejected(reason))
-        link.close()
+        link.close("rejected: $reason")
     }
 
     private fun closed(link: Link) {
@@ -182,7 +184,7 @@ class ConnectHost(
         synchronized(nonces) { nonces.remove(link) }
         link.peerId?.let { id ->
             val lived = admittedAt[id]?.let { System.currentTimeMillis() - it }
-            log("link from ${link.peerName ?: id} (${link.remoteHost}) closed" + (lived?.let { " after $it ms" } ?: ""))
+            log("link from ${link.peerName ?: id} (${link.remoteHost}) closed" + (lived?.let { " after $it ms" } ?: "") + ": ${link.closeReason}")
         }
         if (link.peerId != null) onPeersChanged(store.devices())
     }

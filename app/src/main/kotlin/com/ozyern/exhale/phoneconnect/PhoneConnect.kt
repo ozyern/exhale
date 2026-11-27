@@ -100,6 +100,7 @@ object PhoneConnect {
                 }
             },
             onMessage = { message -> main.post { handle(message) } },
+            log = { line -> android.util.Log.i("ExhaleConnect", line) },
         ).also { it.start() }
     }
 

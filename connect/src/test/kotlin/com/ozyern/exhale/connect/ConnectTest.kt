@@ -119,6 +119,64 @@ class ConnectLinkTest {
         }
     }
 
+    /**
+     * What the two apps do the moment a link comes up: the PC sends what is playing and its library
+     * from onPeerJoined, the phone sends its library from onStatus. The link has to stay up after it.
+     */
+    @Test fun theLinkStaysUpAfterTheGreeting() {
+        val hostStore = PairStore(tempDir("host3"))
+        val port = freePort()
+        val log = CopyOnWriteArrayList<String>()
+        val track = ConnectTrack("abc123", "Espresso", "Sabrina Carpenter", "Short n' Sweet", "https://x/y.jpg", 175_000)
+        lateinit var host: ConnectHost
+        host = ConnectHost(
+            store = hostStore,
+            selfName = { "Test PC" },
+            onPeersChanged = {},
+            onMessage = { _, _ -> },
+            onPeerJoined = { id ->
+                host.send(id, ConnectMessage.NowPlaying(track, playing = true, queue = listOf(track), sentAtMs = 1))
+                host.send(id, ConnectMessage.Library(likes = listOf(LikeEntry(track, true, 0)), full = true))
+            },
+            port = port,
+            discoveryPort = freePort(),
+            log = { log += it },
+        )
+        host.start()
+        try {
+            val phoneStore = PairStore(tempDir("phone3"))
+            val connected = CountDownLatch(1)
+            lateinit var client: ConnectClient
+            client = ConnectClient(
+                store = phoneStore,
+                selfName = { "Test Phone" },
+                broadcastAddress = { InetAddress.getLoopbackAddress() },
+                onStatus = {
+                    if (it is ConnectStatus.Connected) {
+                        client.send(ConnectMessage.NowPlaying(track, playing = false, sentAtMs = 2))
+                        client.send(ConnectMessage.Library(likes = listOf(LikeEntry(track, true, 0)), full = true))
+                        connected.countDown()
+                    }
+                },
+                onMessage = {},
+            )
+            val beacon = Beacon(hostStore.selfId, "Test PC", port).also { it.host = "127.0.0.1" }
+            assertNull(client.pair(beacon, host.openPairing()))
+            // The pairing link closes once the key is handed over; only the link after it counts.
+            Thread.sleep(300)
+            log.clear()
+            client.start()
+            assertTrue(connected.await(10, TimeUnit.SECONDS))
+            Thread.sleep(3_000)
+            assertTrue("still linked: $log", client.isConnected && phoneStore.selfId in host.connectedIds())
+            assertEquals("one admit and no drops: $log", 1, log.count { it.startsWith("admitted") })
+            assertTrue("no drops: $log", log.none { "closed" in it })
+            client.stop()
+        } finally {
+            host.stop()
+        }
+    }
+
     @Test fun aStrangerWithoutTheKeyIsTurnedAway() {
         val hostStore = PairStore(tempDir("host2"))
         val port = freePort()

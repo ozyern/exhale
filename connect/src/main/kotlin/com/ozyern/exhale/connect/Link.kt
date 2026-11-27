@@ -21,6 +21,8 @@ class Link(
     private val socket: Socket,
     private val onMessage: (Link, ConnectMessage) -> Unit,
     private val onClosed: (Link) -> Unit,
+    /** A message this side could not handle. It is logged and dropped; the link stays up. */
+    private val onHandlerError: (Link, ConnectMessage, Throwable) -> Unit = { _, _, _ -> },
 ) {
     private val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8))
     private val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
@@ -33,18 +35,38 @@ class Link(
     @Volatile var peerId: String? = null
     @Volatile var peerName: String? = null
 
+    /** Why the link ended, once it has: what a flaky connection is diagnosed from. */
+    @Volatile var closeReason: String? = null
+        private set
+
     fun start(threadName: String) {
         Thread({
+            var reason = "closed here"
             try {
                 while (!closed.get()) {
-                    val line = reader.readLine() ?: break
-                    if (line.length > MAX_LINE) break
-                    ConnectCodec.decode(line)?.let { onMessage(this, it) }
+                    val line = reader.readLine()
+                    if (line == null) {
+                        reason = "the other side hung up"
+                        break
+                    }
+                    if (line.length > MAX_LINE) {
+                        reason = "a message of ${line.length} chars, over the limit"
+                        break
+                    }
+                    val message = ConnectCodec.decode(line) ?: continue
+                    // A handler that throws is a bug on this side, not a dead socket: the message is
+                    // dropped and the link goes on. Ending the link for it made one bad message into a
+                    // reconnect, and the same message on every reconnect into a loop.
+                    runCatching { onMessage(this, message) }.onFailure { error ->
+                        onHandlerError(this, message, error)
+                    }
                 }
-            } catch (_: Exception) {
-                // A dropped socket ends the link the same way a clean close does.
+            } catch (_: java.net.SocketTimeoutException) {
+                reason = "nothing heard for ${socket.soTimeout / 1000} s"
+            } catch (error: Exception) {
+                if (!closed.get()) reason = "read failed: ${error.javaClass.simpleName}: ${error.message}"
             } finally {
-                close()
+                close(reason)
             }
         }, threadName).apply { isDaemon = true }.start()
     }
@@ -58,16 +80,17 @@ class Link(
                 writer.flush()
             }
             true
-        } catch (_: Exception) {
-            close()
+        } catch (error: Exception) {
+            close("write failed: ${error.javaClass.simpleName}: ${error.message}")
             false
         }
     }
 
     val isOpen: Boolean get() = !closed.get()
 
-    fun close() {
+    fun close(reason: String = "closed here") {
         if (!closed.compareAndSet(false, true)) return
+        closeReason = reason
         runCatching { socket.close() }
         onClosed(this)
     }

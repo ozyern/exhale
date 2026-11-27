@@ -35,6 +35,8 @@ class ConnectClient(
     private val directAddresses: () -> List<InetAddress> = { emptyList() },
     private val onStatus: (ConnectStatus) -> Unit,
     private val onMessage: (ConnectMessage) -> Unit,
+    /** Why links come and go, for the app's log. */
+    private val log: (String) -> Unit = {},
 ) {
     private val lock = Object()
     @Volatile private var running = false
@@ -51,7 +53,7 @@ class ConnectClient(
 
     fun stop() {
         running = false
-        link?.close()
+        link?.close("connect stopped on this phone")
         nudge()
     }
 
@@ -115,7 +117,7 @@ class ConnectClient(
         done.await(10, TimeUnit.SECONDS)
         pairing.close()
         if (result.get() == null) {
-            link?.close() // Drop any link to an older PC; the loop picks the new one up at once.
+            link?.close("paired with another PC") // Drop any link to an older PC; the loop picks the new one up at once.
             nudge()
         }
         return result.get()
@@ -123,7 +125,7 @@ class ConnectClient(
 
     fun forget(peerId: String) {
         store.forget(peerId)
-        if (link?.peerId == peerId) link?.close()
+        if (link?.peerId == peerId) link?.close("forgotten on this phone")
         setStatus(if (store.devices().isEmpty()) ConnectStatus.Unpaired else ConnectStatus.Searching)
     }
 
@@ -145,6 +147,7 @@ class ConnectClient(
                 val openedAt = System.currentTimeMillis()
                 // Hold here until the link drops.
                 while (running && connected.isOpen) waitFor(5_000)
+                log("link to ${connected.peerName} closed after ${System.currentTimeMillis() - openedAt} ms: ${connected.closeReason}")
                 if (link === connected) link = null
                 setStatus(if (store.devices().isEmpty()) ConnectStatus.Unpaired else ConnectStatus.Searching)
                 // A link that dropped within seconds of coming up is not retried at once: reconnecting
@@ -196,7 +199,7 @@ class ConnectClient(
             when (message) {
                 is ConnectMessage.Hello -> {
                     if (message.deviceId != device.id || message.version != CONNECT_PROTOCOL_VERSION) {
-                        l.close()
+                        l.close("not this phone's PC, or another protocol version")
                     } else {
                         l.send(ConnectMessage.Auth(store.selfId, selfName(), Pairing.secretProof(device.secret, message.nonce, store.selfId)))
                     }
@@ -210,15 +213,18 @@ class ConnectClient(
                 is ConnectMessage.Rejected -> {
                     // The PC no longer knows this phone (forgotten there): stop trying it.
                     if (message.reason == ConnectMessage.Rejected.Reason.UNKNOWN_DEVICE) store.forget(device.id)
-                    l.close()
+                    log("${device.name} turned this phone away: ${message.reason}")
+                    l.close("rejected: ${message.reason}")
                 }
                 else -> Unit
             }
-        }, onClosed = { admitted.countDown(); nudge() })
+        }, onClosed = { admitted.countDown(); nudge() }, onHandlerError = { _, message, error ->
+            log("could not handle ${message::class.simpleName}: ${error.javaClass.simpleName}: ${error.message}")
+        })
         candidate.start("exhale-connect-link")
         admitted.await(6, TimeUnit.SECONDS)
         if (!ok) {
-            candidate.close()
+            candidate.close("no welcome in time")
             return null
         }
         link = candidate
