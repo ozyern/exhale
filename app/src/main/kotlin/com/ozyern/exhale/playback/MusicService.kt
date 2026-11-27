@@ -3383,7 +3383,9 @@ class MusicService :
             val ytProxyAuth = YouTube.proxyAuth
             return DefaultDataSource.Factory(
                 this@MusicService,
-                ChunkedDataSource.Factory(OkHttpDataSource.Factory(
+                // Lossless files marked with ParallelRangeDataSource.markParallel are read over several
+                // ranges at once; googlevideo and everything else pass through to the chunked reader.
+                ParallelRangeDataSource.Factory(ChunkedDataSource.Factory(OkHttpDataSource.Factory(
                     OkHttpClient
                         .Builder()
                         .dns(object : Dns {
@@ -3416,7 +3418,7 @@ class MusicService :
                             } ?: response.request
                         }
                         .build(),
-                )),
+                ))),
             )
         }
 
@@ -3910,7 +3912,10 @@ class MusicService :
                 val mediaId = dataSpec.key ?: error("No media id")
 
                 // FLAC page songs: the id carries the file's address, read straight from its server.
-                FlacSongs.uriFor(mediaId)?.let { return@Factory dataSpec.withUri(it) }
+                FlacSongs.uriFor(mediaId)?.let { uri ->
+                    ParallelRangeDataSource.markParallel(uri)
+                    return@Factory dataSpec.withUri(uri)
+                }
 
                 // DefaultDataSource handles local URIs without YouTube resolution.
                 if (isDirectMediaSource(mediaId)) {
@@ -3921,6 +3926,7 @@ class MusicService :
                 // stream cached for the same song.
                 if (archiveFlacAllowed(mediaId)) {
                     ArchiveFlac.streamUrl(mediaId)?.let { url ->
+                        ParallelRangeDataSource.markParallel(url.toUri())
                         return@Factory dataSpec.buildUpon().setUri(url.toUri()).setKey(ArchiveFlac.cacheKey(mediaId)).build()
                     }
                 }
